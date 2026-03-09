@@ -1,4 +1,5 @@
 mod eval;
+mod memory;
 mod parser;
 mod repl;
 
