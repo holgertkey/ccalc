@@ -6,10 +6,97 @@ mod repl;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() > 1 && (args[1] == "-v" || args[1] == "--version") {
-        println!("ccalc v{}", env!("CARGO_PKG_VERSION"));
-        return;
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "-v" | "--version" => {
+                println!("ccalc v{}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            "-h" | "--help" => {
+                print_help();
+                return;
+            }
+            flag => {
+                eprintln!("Unknown option: {flag}");
+                eprintln!("Run 'ccalc -h' for usage.");
+                std::process::exit(1);
+            }
+        }
     }
 
     repl::run();
+}
+
+fn print_help() {
+    println!(
+        "\
+ccalc v{ver} — command-line calculator
+
+USAGE:
+    ccalc [OPTIONS]
+
+OPTIONS:
+    -h, --help       Show this help message
+    -v, --version    Show version information
+
+REPL COMMANDS:
+    q                Quit
+    c                Clear accumulator (reset to 0)
+    cls              Clear the screen
+
+ARITHMETIC:
+    Operators:  +  -  *  /  with standard precedence (* and / before + and -)
+    Grouping:   parentheses, e.g. (3 + 2) * 4
+    Unary minus: -5,  -(3 + 2)
+
+    The prompt [value]: shows the current accumulator — the result of the last
+    expression. Expressions starting with an operator use the accumulator as
+    the left-hand operand (partial expressions):
+
+        [6]: * 2         accumulator = 12
+        [12]: + 8        accumulator = 20
+
+MEMORY CELLS  m1 – m9:
+
+  Store
+    m[1-9]              Store accumulator into cell
+    expr m[1-9]         Evaluate expression, store result into cell
+
+  Recall (use inside any expression)
+    m[1-9]              Read cell value, e.g.:  m1 + 8 + m1
+
+  Add to cell
+    ma[1-9]             Add accumulator to cell; prints new cell value
+    expr ma[1-9]        Evaluate expression, add result to cell; prints new cell value
+
+  Subtract from cell
+    ms[1-9]             Subtract accumulator from cell; prints new cell value
+    expr ms[1-9]        Evaluate expression, subtract result from cell; prints new cell value
+
+  View / clear
+    m                   Show all non-zero memory cells
+    mc                  Clear all memory cells
+    mc[1-9]             Clear a specific cell, e.g. mc1
+
+EXAMPLES:
+
+  Store and recall:
+    [0]: (1 + 1) * 3 m1    stores 6 in m1; accumulator = 6
+    [6]: m1 + 8 + m1       expands to 6 + 8 + 6; accumulator = 20
+
+  Copy cell to cell:
+    [0]: m1 m2             stores value of m1 into m2
+
+  Running total with ma / ms:
+    [0]: 100 m1            m1 = 100; accumulator = 100
+    [100]: 25 ms1          m1 = 75;  prints 75;  accumulator = 25
+    [25]: 10 ma1           m1 = 85;  prints 85;  accumulator = 10
+
+  View and clear memory:
+    [10]: m
+    m1: 85
+    [10]: mc1              clears m1
+    [10]: mc               clears all cells",
+        ver = env!("CARGO_PKG_VERSION")
+    );
 }
