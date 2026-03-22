@@ -92,7 +92,7 @@ pub fn run() {
 }
 
 fn print_prompt(value: f64) {
-    print!("[{}]: ", format_number(value));
+    print!("[ {} ]: ", format_number(value));
     io::stdout().flush().expect("Failed to flush stdout");
 }
 
