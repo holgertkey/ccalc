@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- `ans` — explicit alias for the current accumulator value in expressions (e.g. `sqrt(ans)`, `ans * 2`)
+- Empty function call `fn()` uses the accumulator as argument (e.g. `sqrt()` → `sqrt(accumulator)`)
+
 ## [0.2.0] - 2026-03-22
 
 ### Added

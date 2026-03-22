@@ -72,7 +72,7 @@ pub fn run() {
             println!("{}", display);
         }
 
-        match parse(&expanded_expr).and_then(|ast| eval(&ast)) {
+        match parse(&expanded_expr, accumulator).and_then(|ast| eval(&ast)) {
             Ok(result) => {
                 accumulator = result;
                 match directive {

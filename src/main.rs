@@ -63,6 +63,7 @@ ARITHMETIC:
 CONSTANTS:
     pi          3.14159265358979...
     e           2.71828182845904...
+    ans         current accumulator value (explicit alias)
 
 MATH FUNCTIONS:
     sqrt(x)     square root
@@ -76,6 +77,9 @@ MATH FUNCTIONS:
     sin(x)      sine (radians)
     cos(x)      cosine (radians)
     tan(x)      tangent (radians)
+
+    If called with empty parentheses, the accumulator is used as the argument:
+        sqrt()   →   sqrt(accumulator)
 
 MEMORY CELLS  m1 – m9:
 
@@ -110,6 +114,11 @@ EXAMPLES:
     [ 0 ]: sin(pi / 6)     accumulator = 0.5
     [ 0 ]: log(1000)       accumulator = 3
     [ 0 ]: ln(e)           accumulator = 1
+
+  ans and empty-arg calls:
+    [ 4 ]: sqrt()          same as sqrt(4); accumulator = 2
+    [ 9 ]: sqrt(ans)       same as sqrt(9); accumulator = 3
+    [ 3 ]: ans * 2         accumulator = 6
 
   Store and recall:
     [ 0 ]: (1 + 1) * 3 m1  stores 6 in m1; accumulator = 6

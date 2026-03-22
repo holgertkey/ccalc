@@ -90,13 +90,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
 }
 
 /// Parses a full expression string into an AST.
-pub fn parse(input: &str) -> Result<Expr, String> {
+/// `accumulator` is the current REPL value, used by `ans` and empty-arg function calls.
+pub fn parse(input: &str, accumulator: f64) -> Result<Expr, String> {
     let tokens = tokenize(input)?;
     if tokens.is_empty() {
         return Err("Empty expression".to_string());
     }
     let mut pos = 0;
-    let expr = parse_expr(&tokens, &mut pos)?;
+    let expr = parse_expr(&tokens, &mut pos, accumulator)?;
     if pos != tokens.len() {
         return Err("Unexpected token after expression".to_string());
     }
@@ -113,19 +114,19 @@ pub fn is_partial(input: &str) -> bool {
 }
 
 // expr = term (('+' | '-') term)*
-fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let mut left = parse_term(tokens, pos)?;
+fn parse_expr(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
+    let mut left = parse_term(tokens, pos, acc)?;
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Plus => {
                 *pos += 1;
-                let right = parse_term(tokens, pos)?;
+                let right = parse_term(tokens, pos, acc)?;
                 left = Expr::BinOp(Box::new(left), Op::Add, Box::new(right));
             }
             Token::Minus => {
                 *pos += 1;
-                let right = parse_term(tokens, pos)?;
+                let right = parse_term(tokens, pos, acc)?;
                 left = Expr::BinOp(Box::new(left), Op::Sub, Box::new(right));
             }
             _ => break,
@@ -136,24 +137,24 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
 }
 
 // term = power (('*' | '/' | '%') power)*
-fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let mut left = parse_power(tokens, pos)?;
+fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
+    let mut left = parse_power(tokens, pos, acc)?;
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Star => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_power(tokens, pos, acc)?;
                 left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             Token::Slash => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_power(tokens, pos, acc)?;
                 left = Expr::BinOp(Box::new(left), Op::Div, Box::new(right));
             }
             Token::Percent => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_power(tokens, pos, acc)?;
                 left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
             }
             _ => break,
@@ -164,12 +165,12 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
 }
 
 // power = unary ('^' power)?   -- right-associative
-fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let base = parse_unary(tokens, pos)?;
+fn parse_power(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
+    let base = parse_unary(tokens, pos, acc)?;
     if *pos < tokens.len() {
         if let Token::Caret = &tokens[*pos] {
             *pos += 1;
-            let exp = parse_power(tokens, pos)?;
+            let exp = parse_power(tokens, pos, acc)?;
             return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
         }
     }
@@ -177,19 +178,19 @@ fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
 }
 
 // unary = '-' unary | primary
-fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+fn parse_unary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
     if *pos < tokens.len() {
         if let Token::Minus = &tokens[*pos] {
             *pos += 1;
-            let expr = parse_unary(tokens, pos)?;
+            let expr = parse_unary(tokens, pos, acc)?;
             return Ok(Expr::UnaryMinus(Box::new(expr)));
         }
     }
-    parse_primary(tokens, pos)
+    parse_primary(tokens, pos, acc)
 }
 
-// primary = ident '(' expr ')' | '(' expr ')' | number | ident
-fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+// primary = ident '(' expr ')' | ident '(' ')' | '(' expr ')' | number | ident
+fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
     if *pos >= tokens.len() {
         return Err("Unexpected end of expression".to_string());
     }
@@ -203,33 +204,43 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         Token::Ident(name) => {
             let name = name.clone();
             *pos += 1;
-            // Function call: ident '(' expr ')'
+            // Function call: ident '(' [expr] ')'
             if *pos < tokens.len() {
                 if let Token::LParen = &tokens[*pos] {
                     *pos += 1;
-                    let arg = parse_expr(tokens, pos)?;
+                    // Empty args: fn() uses the accumulator
+                    let arg = if *pos < tokens.len() {
+                        if let Token::RParen = &tokens[*pos] {
+                            Box::new(Expr::Number(acc))
+                        } else {
+                            Box::new(parse_expr(tokens, pos, acc)?)
+                        }
+                    } else {
+                        return Err("Expected closing ')'".to_string());
+                    };
                     if *pos >= tokens.len() {
                         return Err("Expected closing ')'".to_string());
                     }
                     match &tokens[*pos] {
                         Token::RParen => {
                             *pos += 1;
-                            return Ok(Expr::Call(name, Box::new(arg)));
+                            return Ok(Expr::Call(name, arg));
                         }
                         _ => return Err("Expected closing ')'".to_string()),
                     }
                 }
             }
-            // Constant
+            // Constants and accumulator alias
             match name.as_str() {
-                "pi" => Ok(Expr::Number(std::f64::consts::PI)),
-                "e" => Ok(Expr::Number(std::f64::consts::E)),
-                _ => Err(format!("Unknown identifier: '{name}'")),
+                "pi"  => Ok(Expr::Number(std::f64::consts::PI)),
+                "e"   => Ok(Expr::Number(std::f64::consts::E)),
+                "ans" => Ok(Expr::Number(acc)),
+                _     => Err(format!("Unknown identifier: '{name}'")),
             }
         }
         Token::LParen => {
             *pos += 1;
-            let expr = parse_expr(tokens, pos)?;
+            let expr = parse_expr(tokens, pos, acc)?;
             if *pos >= tokens.len() {
                 return Err("Expected closing ')'".to_string());
             }
@@ -251,7 +262,11 @@ mod tests {
     use crate::eval::eval;
 
     fn calc(input: &str) -> f64 {
-        eval(&parse(input).unwrap()).unwrap()
+        eval(&parse(input, 0.0).unwrap()).unwrap()
+    }
+
+    fn calc_with(input: &str, acc: f64) -> f64 {
+        eval(&parse(input, acc).unwrap()).unwrap()
     }
 
     #[test]
@@ -298,15 +313,13 @@ mod tests {
 
     #[test]
     fn test_power_right_associative() {
-        // 2^3^2 should be 2^(3^2) = 2^9 = 512, not (2^3)^2 = 64
+        // 2^3^2 = 2^(3^2) = 2^9 = 512
         assert_eq!(calc("2 ^ 3 ^ 2"), 512.0);
     }
 
     #[test]
     fn test_power_precedence() {
-        // 2 + 3 ^ 2 = 2 + 9 = 11
         assert_eq!(calc("2 + 3 ^ 2"), 11.0);
-        // 2 * 3 ^ 2 = 2 * 9 = 18
         assert_eq!(calc("2 * 3 ^ 2"), 18.0);
     }
 
@@ -319,7 +332,6 @@ mod tests {
 
     #[test]
     fn test_modulo_precedence() {
-        // 10 + 17 % 5 = 10 + 2 = 12
         assert_eq!(calc("10 + 17 % 5"), 12.0);
     }
 
@@ -336,6 +348,29 @@ mod tests {
     #[test]
     fn test_constant_in_expr() {
         assert!((calc("2 * pi") - 2.0 * std::f64::consts::PI).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_ans() {
+        assert_eq!(calc_with("ans", 42.0), 42.0);
+        assert_eq!(calc_with("ans + 1", 10.0), 11.0);
+        assert_eq!(calc_with("ans * 2", 5.0), 10.0);
+        assert_eq!(calc_with("ans", 0.0), 0.0);
+    }
+
+    #[test]
+    fn test_fn_empty_args_uses_accumulator() {
+        assert_eq!(calc_with("sqrt()", 4.0), 2.0);
+        assert_eq!(calc_with("abs()", -7.0), 7.0);
+        assert_eq!(calc_with("floor()", 3.9), 3.0);
+        assert_eq!(calc_with("ceil()", 3.1), 4.0);
+        assert_eq!(calc_with("round()", 3.5), 4.0);
+    }
+
+    #[test]
+    fn test_fn_ans_arg() {
+        assert_eq!(calc_with("sqrt(ans)", 9.0), 3.0);
+        assert_eq!(calc_with("abs(ans)", -5.0), 5.0);
     }
 
     #[test]
@@ -411,7 +446,6 @@ mod tests {
 
     #[test]
     fn test_fn_in_expr() {
-        // sqrt(144) + 3 = 15
         assert_eq!(calc("sqrt(144) + 3"), 15.0);
     }
 
@@ -430,28 +464,28 @@ mod tests {
 
     #[test]
     fn test_parse_error_empty() {
-        assert!(parse("").is_err());
+        assert!(parse("", 0.0).is_err());
     }
 
     #[test]
     fn test_parse_error_unmatched_paren() {
-        assert!(parse("(1 + 2").is_err());
+        assert!(parse("(1 + 2", 0.0).is_err());
     }
 
     #[test]
     fn test_parse_error_invalid_char() {
-        assert!(parse("1 @ 2").is_err());
+        assert!(parse("1 @ 2", 0.0).is_err());
     }
 
     #[test]
     fn test_parse_error_unknown_ident() {
-        assert!(parse("foo").is_err());
+        assert!(parse("foo", 0.0).is_err());
     }
 
     #[test]
     fn test_eval_error_unknown_function() {
         // parse succeeds — unknown function is caught at eval time
-        let ast = parse("foo(1)").unwrap();
+        let ast = parse("foo(1)", 0.0).unwrap();
         assert!(eval(&ast).is_err());
     }
 }
