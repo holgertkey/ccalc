@@ -24,9 +24,9 @@ The binary is placed at `target/release/ccalc`. Copy it anywhere on your `PATH`.
 ccalc [OPTIONS]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-h`, `--help` | Show help |
+| Option            | Description  |
+|-------------------|--------------|
+| `-h`, `--help`    | Show help    |
 | `-v`, `--version` | Show version |
 
 Run without arguments to start the REPL:
@@ -56,11 +56,11 @@ The prompt shows the **accumulator** — the result of the last expression. Ever
 
 ### Operators
 
-| Operator | Description | Precedence |
-|----------|-------------|------------|
-| `^` | Power (right-associative) | highest |
-| `*` `/` `%` | Multiply, divide, modulo | medium |
-| `+` `-` | Add, subtract | lowest |
+| Operator    | Description               | Precedence |
+|-------------|---------------------------|------------|
+| `^`         | Power (right-associative) | highest    |
+| `*` `/` `%` | Multiply, divide, modulo  | medium     |
+| `+` `-`     | Add, subtract             | lowest     |
 
 ```
 [ 0 ]: 2 + 3 * 4
@@ -94,10 +94,10 @@ The prompt shows the **accumulator** — the result of the last expression. Ever
 
 ## Constants
 
-| Name | Value |
-|------|-------|
-| `pi` | 3.14159265358979... |
-| `e` | 2.71828182845904... |
+| Name  | Value                     |
+|-------|---------------------------|
+| `pi`  | 3.14159265358979...       |
+| `e`   | 2.71828182845904...       |
 | `ans` | Current accumulator value |
 
 `ans` is an explicit alias for the accumulator — useful when you need it in the middle of an expression:
@@ -116,19 +116,19 @@ The prompt shows the **accumulator** — the result of the last expression. Ever
 
 All functions take a single argument in parentheses. If called with **empty parentheses**, the accumulator is used as the argument.
 
-| Function | Description |
-|----------|-------------|
-| `sqrt(x)` | Square root |
-| `abs(x)` | Absolute value |
-| `floor(x)` | Round down |
-| `ceil(x)` | Round up |
-| `round(x)` | Round to nearest |
-| `log(x)` | Base-10 logarithm |
-| `ln(x)` | Natural logarithm |
-| `exp(x)` | *e* raised to *x* |
-| `sin(x)` | Sine (radians) |
-| `cos(x)` | Cosine (radians) |
-| `tan(x)` | Tangent (radians) |
+| Function   | Description       |
+|------------|-------------------|
+| `sqrt(x)`  | Square root       |
+| `abs(x)`   | Absolute value    |
+| `floor(x)` | Round down        |
+| `ceil(x)`  | Round up          |
+| `round(x)` | Round to nearest  |
+| `log(x)`   | Base-10 logarithm |
+| `ln(x)`    | Natural logarithm |
+| `exp(x)`   | *e* raised to *x* |
+| `sin(x)`   | Sine (radians)    |
+| `cos(x)`   | Cosine (radians)  |
+| `tan(x)`   | Tangent (radians) |
 
 ```
 [ 0 ]: sqrt(144)
@@ -165,9 +165,9 @@ Nine persistent memory cells: `m1` through `m9`. They hold values across express
 
 ### Store
 
-| Input | Action |
-|-------|--------|
-| `m1` | Store accumulator into `m1` |
+| Input     | Action                                      |
+|-----------|---------------------------------------------|
+| `m1`      | Store accumulator into `m1`                 |
 | `expr m1` | Evaluate expression, store result into `m1` |
 
 ```
