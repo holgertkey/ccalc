@@ -42,16 +42,10 @@ pub fn run() {
             _ => {}
         }
 
-        // Standalone memory commands: m[1-9], ma[1-9], ms[1-9], mc[1-9]
+        // Standalone memory commands: m[1-9], mc[1-9]
         if let Some(cmd) = parse_standalone_cmd(trimmed) {
             match cmd {
                 StandaloneCmd::StoreAcc(idx) => memory.set(idx, accumulator),
-                StandaloneCmd::AddAcc(idx) => {
-                    println!("{}", format_number(memory.add(idx, accumulator)));
-                }
-                StandaloneCmd::SubAcc(idx) => {
-                    println!("{}", format_number(memory.sub(idx, accumulator)));
-                }
                 StandaloneCmd::ClearOne(idx) => memory.clear_one(idx),
             }
             continue;
@@ -75,15 +69,8 @@ pub fn run() {
         match parse(&expanded_expr, accumulator).and_then(|ast| eval(&ast)) {
             Ok(result) => {
                 accumulator = result;
-                match directive {
-                    Some(Directive::Store(idx)) => memory.set(idx, result),
-                    Some(Directive::Add(idx)) => {
-                        println!("{}", format_number(memory.add(idx, result)));
-                    }
-                    Some(Directive::Sub(idx)) => {
-                        println!("{}", format_number(memory.sub(idx, result)));
-                    }
-                    None => {}
+                if let Some(Directive::Store(idx)) = directive {
+                    memory.set(idx, result);
                 }
             }
             Err(e) => eprintln!("Error: {e}"),

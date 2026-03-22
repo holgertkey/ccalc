@@ -17,18 +17,6 @@ impl Memory {
         self.cells[idx] = val;
     }
 
-    /// Adds `val` to cell, returns the new cell value.
-    pub fn add(&mut self, idx: usize, val: f64) -> f64 {
-        self.cells[idx] += val;
-        self.cells[idx]
-    }
-
-    /// Subtracts `val` from cell, returns the new cell value.
-    pub fn sub(&mut self, idx: usize, val: f64) -> f64 {
-        self.cells[idx] -= val;
-        self.cells[idx]
-    }
-
     pub fn clear_one(&mut self, idx: usize) {
         self.cells[idx] = 0.0;
     }
@@ -49,16 +37,12 @@ impl Memory {
 /// Command that covers the entire input line (no preceding expression).
 pub enum StandaloneCmd {
     StoreAcc(usize),  // m[1-9]:  store accumulator → cell
-    AddAcc(usize),    // ma[1-9]: cell += accumulator
-    SubAcc(usize),    // ms[1-9]: cell -= accumulator
     ClearOne(usize),  // mc[1-9]: clear cell
 }
 
 /// Memory directive found at the end of an expression string.
 pub enum Directive {
-    Store(usize),  // m[1-9]:  cell = result
-    Add(usize),    // ma[1-9]: cell += result
-    Sub(usize),    // ms[1-9]: cell -= result
+    Store(usize),  // m[1-9]: cell = result
 }
 
 /// Returns a `StandaloneCmd` if the entire input matches a known memory command,
@@ -67,8 +51,6 @@ pub fn parse_standalone_cmd(input: &str) -> Option<StandaloneCmd> {
     let b = input.as_bytes();
     match b {
         [b'm', d] if is_mem_digit(*d) => Some(StandaloneCmd::StoreAcc(mem_idx(*d))),
-        [b'm', b'a', d] if is_mem_digit(*d) => Some(StandaloneCmd::AddAcc(mem_idx(*d))),
-        [b'm', b's', d] if is_mem_digit(*d) => Some(StandaloneCmd::SubAcc(mem_idx(*d))),
         [b'm', b'c', d] if is_mem_digit(*d) => Some(StandaloneCmd::ClearOne(mem_idx(*d))),
         _ => None,
     }
@@ -139,8 +121,6 @@ fn parse_directive_token(token: &str) -> Option<Directive> {
     let b = token.as_bytes();
     match b {
         [b'm', d] if is_mem_digit(*d) => Some(Directive::Store(mem_idx(*d))),
-        [b'm', b'a', d] if is_mem_digit(*d) => Some(Directive::Add(mem_idx(*d))),
-        [b'm', b's', d] if is_mem_digit(*d) => Some(Directive::Sub(mem_idx(*d))),
         _ => None,
     }
 }
@@ -177,24 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn test_memory_add() {
-        let mut m = Memory::new();
-        m.set(0, 20.0);
-        let new_val = m.add(0, 50.0);
-        assert_eq!(new_val, 70.0);
-        assert_eq!(m.get(0), 70.0);
-    }
-
-    #[test]
-    fn test_memory_sub() {
-        let mut m = Memory::new();
-        m.set(0, 20.0);
-        let new_val = m.sub(0, 10.0);
-        assert_eq!(new_val, 10.0);
-        assert_eq!(m.get(0), 10.0);
-    }
-
-    #[test]
     fn test_memory_clear_one() {
         let mut m = Memory::new();
         m.set(2, 99.0);
@@ -226,24 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn test_standalone_add_all_cells() {
-        for d in b'1'..=b'9' {
-            let input = format!("ma{}", d as char);
-            let cmd = parse_standalone_cmd(&input);
-            assert!(matches!(cmd, Some(StandaloneCmd::AddAcc(i)) if i == (d - b'1') as usize));
-        }
-    }
-
-    #[test]
-    fn test_standalone_sub_all_cells() {
-        for d in b'1'..=b'9' {
-            let input = format!("ms{}", d as char);
-            let cmd = parse_standalone_cmd(&input);
-            assert!(matches!(cmd, Some(StandaloneCmd::SubAcc(i)) if i == (d - b'1') as usize));
-        }
-    }
-
-    #[test]
     fn test_standalone_clear_one_all_cells() {
         for d in b'1'..=b'9' {
             let input = format!("mc{}", d as char);
@@ -256,7 +200,6 @@ mod tests {
     fn test_standalone_rejects_invalid() {
         assert!(parse_standalone_cmd("m0").is_none());
         assert!(parse_standalone_cmd("m10").is_none());
-        assert!(parse_standalone_cmd("ma0").is_none());
         assert!(parse_standalone_cmd("mb1").is_none());
         assert!(parse_standalone_cmd("5 m1").is_none());
         assert!(parse_standalone_cmd("m").is_none());
@@ -270,20 +213,6 @@ mod tests {
         let (expr, dir) = extract_directive("(1+1)*3 m1");
         assert_eq!(expr, "(1+1)*3");
         assert!(matches!(dir, Some(Directive::Store(0))));
-    }
-
-    #[test]
-    fn test_extract_directive_add() {
-        let (expr, dir) = extract_directive("50 ma1");
-        assert_eq!(expr, "50");
-        assert!(matches!(dir, Some(Directive::Add(0))));
-    }
-
-    #[test]
-    fn test_extract_directive_sub() {
-        let (expr, dir) = extract_directive("10 ms3");
-        assert_eq!(expr, "10");
-        assert!(matches!(dir, Some(Directive::Sub(2))));
     }
 
     #[test]
@@ -379,7 +308,6 @@ mod tests {
 
     #[test]
     fn test_expand_ignores_m_without_digit() {
-        // "m" not followed by 1-9 should be left as-is
         let m = Memory::new();
         let (expr, display) = expand_memory_refs("5 + 3", &m);
         assert_eq!(expr, "5 + 3");

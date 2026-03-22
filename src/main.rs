@@ -90,14 +90,6 @@ MEMORY CELLS  m1 – m9:
   Recall (use inside any expression)
     m[1-9]              Read cell value, e.g.:  m1 + 8 + m1
 
-  Add to cell
-    ma[1-9]             Add accumulator to cell; prints new cell value
-    expr ma[1-9]        Evaluate expression, add result to cell; prints new cell value
-
-  Subtract from cell
-    ms[1-9]             Subtract accumulator from cell; prints new cell value
-    expr ms[1-9]        Evaluate expression, subtract result from cell; prints new cell value
-
   View / clear
     m                   Show all non-zero memory cells
     mc                  Clear all memory cells
@@ -126,11 +118,6 @@ EXAMPLES:
 
   Copy cell to cell:
     [ 0 ]: m1 m2           stores value of m1 into m2
-
-  Running total with ma / ms:
-    [ 0 ]: 100 m1          m1 = 100; accumulator = 100
-    [ 100 ]: 25 ms1        m1 = 75;  prints 75;  accumulator = 25
-    [ 25 ]: 10 ma1         m1 = 85;  prints 85;  accumulator = 10
 
   View and clear memory:
     [ 10 ]: m

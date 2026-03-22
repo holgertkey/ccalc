@@ -198,24 +198,6 @@ When memory references are expanded, the substituted expression is printed befor
 [ 20 ]:
 ```
 
-### Add / subtract
-
-| Input | Action |
-|-------|--------|
-| `ma1` | Add accumulator to `m1`; print new cell value |
-| `expr ma1` | Evaluate expression, add result to `m1`; print new cell value |
-| `ms1` | Subtract accumulator from `m1`; print new cell value |
-| `expr ms1` | Evaluate expression, subtract result from `m1`; print new cell value |
-
-```
-[ 0 ]: 100 m1
-[ 100 ]: 25 ms1
-75
-[ 25 ]: 10 ma1
-85
-[ 10 ]:
-```
-
 ### Copy cell to cell
 
 ```
@@ -279,12 +261,10 @@ Results are displayed without unnecessary decoration:
 **Running budget** — track a total across multiple entries:
 
 ```
-[ 0 ]: 1200 m1          budget = 1200
-[ 1200 ]: 350 ms1       spent 350 → m1 = 850
-850
-[ 350 ]: 80 ms1         spent 80  → m1 = 770
-770
-[ 80 ]: m
+[ 0 ]: 1200 m1          budget in m1
+[ 1200 ]: m1 - 350 m1   spent 350 → m1 = 850
+[ 850 ]: m1 - 80 m1     spent 80  → m1 = 770
+[ 770 ]: m
 m1: 770
 ```
 
