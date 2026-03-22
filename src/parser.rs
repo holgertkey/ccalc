@@ -3,10 +3,13 @@ use crate::eval::{Expr, Op};
 #[derive(Debug, Clone)]
 enum Token {
     Number(f64),
+    Ident(String),
     Plus,
     Minus,
     Star,
     Slash,
+    Caret,
+    Percent,
     LParen,
     RParen,
 }
@@ -36,6 +39,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Slash);
                 chars.next();
             }
+            '^' => {
+                tokens.push(Token::Caret);
+                chars.next();
+            }
+            '%' => {
+                tokens.push(Token::Percent);
+                chars.next();
+            }
             '(' => {
                 tokens.push(Token::LParen);
                 chars.next();
@@ -58,6 +69,18 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     .parse()
                     .map_err(|_| format!("Invalid number: '{num_str}'"))?;
                 tokens.push(Token::Number(n));
+            }
+            'a'..='z' | 'A'..='Z' | '_' => {
+                let mut ident = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c.is_alphanumeric() || c == '_' {
+                        ident.push(c);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                tokens.push(Token::Ident(ident));
             }
             _ => return Err(format!("Unexpected character: '{c}'")),
         }
@@ -85,7 +108,7 @@ pub fn parse(input: &str) -> Result<Expr, String> {
 pub fn is_partial(input: &str) -> bool {
     matches!(
         input.trim_start().chars().next(),
-        Some('+' | '-' | '*' | '/')
+        Some('+' | '-' | '*' | '/' | '^' | '%')
     )
 }
 
@@ -112,21 +135,26 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// term = factor (('*' | '/') factor)*
+// term = power (('*' | '/' | '%') power)*
 fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let mut left = parse_factor(tokens, pos)?;
+    let mut left = parse_power(tokens, pos)?;
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Star => {
                 *pos += 1;
-                let right = parse_factor(tokens, pos)?;
+                let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             Token::Slash => {
                 *pos += 1;
-                let right = parse_factor(tokens, pos)?;
+                let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Div, Box::new(right));
+            }
+            Token::Percent => {
+                *pos += 1;
+                let right = parse_power(tokens, pos)?;
+                left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
             }
             _ => break,
         }
@@ -135,22 +163,69 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// factor = '-' factor | '(' expr ')' | number
-fn parse_factor(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+// power = unary ('^' power)?   -- right-associative
+fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let base = parse_unary(tokens, pos)?;
+    if *pos < tokens.len() {
+        if let Token::Caret = &tokens[*pos] {
+            *pos += 1;
+            let exp = parse_power(tokens, pos)?;
+            return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
+        }
+    }
+    Ok(base)
+}
+
+// unary = '-' unary | primary
+fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    if *pos < tokens.len() {
+        if let Token::Minus = &tokens[*pos] {
+            *pos += 1;
+            let expr = parse_unary(tokens, pos)?;
+            return Ok(Expr::UnaryMinus(Box::new(expr)));
+        }
+    }
+    parse_primary(tokens, pos)
+}
+
+// primary = ident '(' expr ')' | '(' expr ')' | number | ident
+fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos >= tokens.len() {
         return Err("Unexpected end of expression".to_string());
     }
 
     match &tokens[*pos] {
-        Token::Minus => {
-            *pos += 1;
-            let expr = parse_factor(tokens, pos)?;
-            Ok(Expr::UnaryMinus(Box::new(expr)))
-        }
         Token::Number(n) => {
             let n = *n;
             *pos += 1;
             Ok(Expr::Number(n))
+        }
+        Token::Ident(name) => {
+            let name = name.clone();
+            *pos += 1;
+            // Function call: ident '(' expr ')'
+            if *pos < tokens.len() {
+                if let Token::LParen = &tokens[*pos] {
+                    *pos += 1;
+                    let arg = parse_expr(tokens, pos)?;
+                    if *pos >= tokens.len() {
+                        return Err("Expected closing ')'".to_string());
+                    }
+                    match &tokens[*pos] {
+                        Token::RParen => {
+                            *pos += 1;
+                            return Ok(Expr::Call(name, Box::new(arg)));
+                        }
+                        _ => return Err("Expected closing ')'".to_string()),
+                    }
+                }
+            }
+            // Constant
+            match name.as_str() {
+                "pi" => Ok(Expr::Number(std::f64::consts::PI)),
+                "e" => Ok(Expr::Number(std::f64::consts::E)),
+                _ => Err(format!("Unknown identifier: '{name}'")),
+            }
         }
         Token::LParen => {
             *pos += 1;
@@ -166,7 +241,7 @@ fn parse_factor(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 _ => Err("Expected closing ')'".to_string()),
             }
         }
-        _ => Err("Expected number, '-', or '('".to_string()),
+        _ => Err("Expected number, function, constant, '-', or '('".to_string()),
     }
 }
 
@@ -215,13 +290,142 @@ mod tests {
     }
 
     #[test]
+    fn test_power() {
+        assert_eq!(calc("2 ^ 10"), 1024.0);
+        assert_eq!(calc("3 ^ 3"), 27.0);
+        assert_eq!(calc("4 ^ 0.5"), 2.0);
+    }
+
+    #[test]
+    fn test_power_right_associative() {
+        // 2^3^2 should be 2^(3^2) = 2^9 = 512, not (2^3)^2 = 64
+        assert_eq!(calc("2 ^ 3 ^ 2"), 512.0);
+    }
+
+    #[test]
+    fn test_power_precedence() {
+        // 2 + 3 ^ 2 = 2 + 9 = 11
+        assert_eq!(calc("2 + 3 ^ 2"), 11.0);
+        // 2 * 3 ^ 2 = 2 * 9 = 18
+        assert_eq!(calc("2 * 3 ^ 2"), 18.0);
+    }
+
+    #[test]
+    fn test_modulo() {
+        assert_eq!(calc("17 % 5"), 2.0);
+        assert_eq!(calc("10 % 3"), 1.0);
+        assert_eq!(calc("6 % 2"), 0.0);
+    }
+
+    #[test]
+    fn test_modulo_precedence() {
+        // 10 + 17 % 5 = 10 + 2 = 12
+        assert_eq!(calc("10 + 17 % 5"), 12.0);
+    }
+
+    #[test]
+    fn test_constant_pi() {
+        assert!((calc("pi") - std::f64::consts::PI).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_constant_e() {
+        assert!((calc("e") - std::f64::consts::E).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_constant_in_expr() {
+        assert!((calc("2 * pi") - 2.0 * std::f64::consts::PI).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_fn_sqrt() {
+        assert_eq!(calc("sqrt(144)"), 12.0);
+        assert_eq!(calc("sqrt(4)"), 2.0);
+    }
+
+    #[test]
+    fn test_fn_abs() {
+        assert_eq!(calc("abs(-7)"), 7.0);
+        assert_eq!(calc("abs(3)"), 3.0);
+    }
+
+    #[test]
+    fn test_fn_floor() {
+        assert_eq!(calc("floor(3.9)"), 3.0);
+        assert_eq!(calc("floor(-1.1)"), -2.0);
+    }
+
+    #[test]
+    fn test_fn_ceil() {
+        assert_eq!(calc("ceil(3.1)"), 4.0);
+        assert_eq!(calc("ceil(-1.9)"), -1.0);
+    }
+
+    #[test]
+    fn test_fn_round() {
+        assert_eq!(calc("round(3.4)"), 3.0);
+        assert_eq!(calc("round(3.5)"), 4.0);
+    }
+
+    #[test]
+    fn test_fn_log() {
+        assert!((calc("log(1000)") - 3.0).abs() < 1e-10);
+        assert_eq!(calc("log(1)"), 0.0);
+    }
+
+    #[test]
+    fn test_fn_ln() {
+        assert_eq!(calc("ln(1)"), 0.0);
+        assert!((calc("ln(e)") - 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_fn_exp() {
+        assert_eq!(calc("exp(0)"), 1.0);
+        assert!((calc("exp(1)") - std::f64::consts::E).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_fn_sin() {
+        assert!((calc("sin(0)")).abs() < 1e-15);
+        assert!((calc("sin(pi / 6)") - 0.5).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_fn_cos() {
+        assert!((calc("cos(0)") - 1.0).abs() < 1e-15);
+        assert!((calc("cos(pi)") + 1.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_fn_tan() {
+        assert!((calc("tan(0)")).abs() < 1e-15);
+        assert!((calc("tan(pi / 4)") - 1.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_fn_nested() {
+        assert!((calc("sqrt(abs(-16))") - 4.0).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_fn_in_expr() {
+        // sqrt(144) + 3 = 15
+        assert_eq!(calc("sqrt(144) + 3"), 15.0);
+    }
+
+    #[test]
     fn test_is_partial() {
         assert!(is_partial("+ 2"));
         assert!(is_partial("- 3"));
         assert!(is_partial("* 100"));
         assert!(is_partial("/ 2"));
+        assert!(is_partial("^ 2"));
+        assert!(is_partial("% 3"));
         assert!(!is_partial("1 + 1"));
         assert!(!is_partial("(3 + 3) * 2"));
+        assert!(!is_partial("sqrt(4)"));
     }
 
     #[test]
@@ -237,5 +441,17 @@ mod tests {
     #[test]
     fn test_parse_error_invalid_char() {
         assert!(parse("1 @ 2").is_err());
+    }
+
+    #[test]
+    fn test_parse_error_unknown_ident() {
+        assert!(parse("foo").is_err());
+    }
+
+    #[test]
+    fn test_eval_error_unknown_function() {
+        // parse succeeds — unknown function is caught at eval time
+        let ast = parse("foo(1)").unwrap();
+        assert!(eval(&ast).is_err());
     }
 }

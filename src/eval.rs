@@ -3,6 +3,7 @@ pub enum Expr {
     Number(f64),
     UnaryMinus(Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
+    Call(String, Box<Expr>),
 }
 
 #[derive(Debug)]
@@ -11,6 +12,8 @@ pub enum Op {
     Sub,
     Mul,
     Div,
+    Pow,
+    Mod,
 }
 
 pub fn eval(expr: &Expr) -> Result<f64, String> {
@@ -31,6 +34,31 @@ pub fn eval(expr: &Expr) -> Result<f64, String> {
                         Ok(l / r)
                     }
                 }
+                Op::Pow => Ok(l.powf(r)),
+                Op::Mod => {
+                    if r == 0.0 {
+                        Err("Modulo by zero".to_string())
+                    } else {
+                        Ok(l % r)
+                    }
+                }
+            }
+        }
+        Expr::Call(name, arg) => {
+            let x = eval(arg)?;
+            match name.as_str() {
+                "sqrt"  => Ok(x.sqrt()),
+                "abs"   => Ok(x.abs()),
+                "floor" => Ok(x.floor()),
+                "ceil"  => Ok(x.ceil()),
+                "round" => Ok(x.round()),
+                "log"   => Ok(x.log10()),
+                "ln"    => Ok(x.ln()),
+                "exp"   => Ok(x.exp()),
+                "sin"   => Ok(x.sin()),
+                "cos"   => Ok(x.cos()),
+                "tan"   => Ok(x.tan()),
+                _ => Err(format!("Unknown function: '{name}'")),
             }
         }
     }
@@ -111,6 +139,108 @@ mod tests {
     fn test_eval_unary_minus() {
         let expr = Expr::UnaryMinus(Box::new(Expr::Number(5.0)));
         assert_eq!(eval(&expr).unwrap(), -5.0);
+    }
+
+    #[test]
+    fn test_eval_pow() {
+        let expr = Expr::BinOp(
+            Box::new(Expr::Number(2.0)),
+            Op::Pow,
+            Box::new(Expr::Number(10.0)),
+        );
+        assert_eq!(eval(&expr).unwrap(), 1024.0);
+    }
+
+    #[test]
+    fn test_eval_mod() {
+        let expr = Expr::BinOp(
+            Box::new(Expr::Number(17.0)),
+            Op::Mod,
+            Box::new(Expr::Number(5.0)),
+        );
+        assert_eq!(eval(&expr).unwrap(), 2.0);
+    }
+
+    #[test]
+    fn test_eval_mod_by_zero() {
+        let expr = Expr::BinOp(
+            Box::new(Expr::Number(5.0)),
+            Op::Mod,
+            Box::new(Expr::Number(0.0)),
+        );
+        assert!(eval(&expr).is_err());
+    }
+
+    #[test]
+    fn test_eval_call_sqrt() {
+        let expr = Expr::Call("sqrt".to_string(), Box::new(Expr::Number(144.0)));
+        assert_eq!(eval(&expr).unwrap(), 12.0);
+    }
+
+    #[test]
+    fn test_eval_call_abs() {
+        let expr = Expr::Call("abs".to_string(), Box::new(Expr::Number(-7.0)));
+        assert_eq!(eval(&expr).unwrap(), 7.0);
+    }
+
+    #[test]
+    fn test_eval_call_floor() {
+        let expr = Expr::Call("floor".to_string(), Box::new(Expr::Number(3.9)));
+        assert_eq!(eval(&expr).unwrap(), 3.0);
+    }
+
+    #[test]
+    fn test_eval_call_ceil() {
+        let expr = Expr::Call("ceil".to_string(), Box::new(Expr::Number(3.1)));
+        assert_eq!(eval(&expr).unwrap(), 4.0);
+    }
+
+    #[test]
+    fn test_eval_call_round() {
+        let expr = Expr::Call("round".to_string(), Box::new(Expr::Number(3.5)));
+        assert_eq!(eval(&expr).unwrap(), 4.0);
+    }
+
+    #[test]
+    fn test_eval_call_log() {
+        let expr = Expr::Call("log".to_string(), Box::new(Expr::Number(1000.0)));
+        assert!((eval(&expr).unwrap() - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_call_ln() {
+        let expr = Expr::Call("ln".to_string(), Box::new(Expr::Number(1.0)));
+        assert_eq!(eval(&expr).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_eval_call_exp() {
+        let expr = Expr::Call("exp".to_string(), Box::new(Expr::Number(0.0)));
+        assert_eq!(eval(&expr).unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_eval_call_sin() {
+        let expr = Expr::Call("sin".to_string(), Box::new(Expr::Number(0.0)));
+        assert_eq!(eval(&expr).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_eval_call_cos() {
+        let expr = Expr::Call("cos".to_string(), Box::new(Expr::Number(0.0)));
+        assert_eq!(eval(&expr).unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_eval_call_tan() {
+        let expr = Expr::Call("tan".to_string(), Box::new(Expr::Number(0.0)));
+        assert_eq!(eval(&expr).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_eval_call_unknown() {
+        let expr = Expr::Call("foo".to_string(), Box::new(Expr::Number(1.0)));
+        assert!(eval(&expr).is_err());
     }
 
     #[test]

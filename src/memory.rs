@@ -90,7 +90,7 @@ pub fn extract_directive(input: &str) -> (&str, Option<Directive>) {
         if !trimmed_before.is_empty() {
             let last_char = trimmed_before.chars().last();
             let after_operator =
-                matches!(last_char, Some('+' | '-' | '*' | '/' | '('));
+                matches!(last_char, Some('+' | '-' | '*' | '/' | '^' | '%' | '('));
 
             if !after_operator {
                 if let Some(directive) = parse_directive_token(last_token) {
