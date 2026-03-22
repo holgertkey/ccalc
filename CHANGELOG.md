@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-22
+
+### Added
+
+- Power operator `^` (right-associative, higher precedence than `*` and `/`), e.g. `2 ^ 10` → `1024`
+- Modulo operator `%` (same precedence as `*` and `/`), e.g. `17 % 5` → `2`
+- Constants `pi` and `e` usable in any expression, e.g. `sin(pi / 6)` → `0.5`
+- Math functions: `sqrt`, `abs`, `floor`, `ceil`, `round`, `log` (base 10), `ln`, `exp`, `sin`, `cos`, `tan`
+- Partial expressions now also accept `^` and `%` as leading operators
+- New AST nodes: `Expr::Call(name, arg)`, `Op::Pow`, `Op::Mod`
+- New `Ident(String)` token in the lexer — architectural prerequisite for functions and constants
+- 38 new unit tests covering all new operators, constants, functions, precedence, and edge cases
+
 ## [0.1.0+004] - 2026-03-09
 
 ### Added

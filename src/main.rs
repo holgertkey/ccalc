@@ -45,16 +45,37 @@ REPL COMMANDS:
     cls              Clear the screen
 
 ARITHMETIC:
-    Operators:  +  -  *  /  with standard precedence (* and / before + and -)
-    Grouping:   parentheses, e.g. (3 + 2) * 4
+    Operators:  +  -  *  /  ^  %
+    Precedence (high to low):  ^  (right-associative)
+                               *  /  %
+                               +  -
+    Grouping:    parentheses, e.g. (3 + 2) * 4
     Unary minus: -5,  -(3 + 2)
 
-    The prompt [value]: shows the current accumulator — the result of the last
+    The prompt [ value ]: shows the current accumulator — the result of the last
     expression. Expressions starting with an operator use the accumulator as
     the left-hand operand (partial expressions):
 
-        [6]: * 2         accumulator = 12
-        [12]: + 8        accumulator = 20
+        [ 6 ]: * 2         accumulator = 12
+        [ 12 ]: ^ 2        accumulator = 144
+        [ 144 ]: % 100     accumulator = 44
+
+CONSTANTS:
+    pi          3.14159265358979...
+    e           2.71828182845904...
+
+MATH FUNCTIONS:
+    sqrt(x)     square root
+    abs(x)      absolute value
+    floor(x)    round down to integer
+    ceil(x)     round up to integer
+    round(x)    round to nearest integer
+    log(x)      base-10 logarithm
+    ln(x)       natural logarithm
+    exp(x)      e raised to the power x
+    sin(x)      sine (radians)
+    cos(x)      cosine (radians)
+    tan(x)      tangent (radians)
 
 MEMORY CELLS  m1 – m9:
 
@@ -80,23 +101,33 @@ MEMORY CELLS  m1 – m9:
 
 EXAMPLES:
 
+  Power and modulo:
+    [ 0 ]: 2 ^ 10          accumulator = 1024
+    [ 1024 ]: % 1000       accumulator = 24
+
+  Functions and constants:
+    [ 0 ]: sqrt(144)       accumulator = 12
+    [ 0 ]: sin(pi / 6)     accumulator = 0.5
+    [ 0 ]: log(1000)       accumulator = 3
+    [ 0 ]: ln(e)           accumulator = 1
+
   Store and recall:
-    [0]: (1 + 1) * 3 m1    stores 6 in m1; accumulator = 6
-    [6]: m1 + 8 + m1       expands to 6 + 8 + 6; accumulator = 20
+    [ 0 ]: (1 + 1) * 3 m1  stores 6 in m1; accumulator = 6
+    [ 6 ]: m1 + 8 + m1     expands to 6 + 8 + 6; accumulator = 20
 
   Copy cell to cell:
-    [0]: m1 m2             stores value of m1 into m2
+    [ 0 ]: m1 m2           stores value of m1 into m2
 
   Running total with ma / ms:
-    [0]: 100 m1            m1 = 100; accumulator = 100
-    [100]: 25 ms1          m1 = 75;  prints 75;  accumulator = 25
-    [25]: 10 ma1           m1 = 85;  prints 85;  accumulator = 10
+    [ 0 ]: 100 m1          m1 = 100; accumulator = 100
+    [ 100 ]: 25 ms1        m1 = 75;  prints 75;  accumulator = 25
+    [ 25 ]: 10 ma1         m1 = 85;  prints 85;  accumulator = 10
 
   View and clear memory:
-    [10]: m
+    [ 10 ]: m
     m1: 85
-    [10]: mc1              clears m1
-    [10]: mc               clears all cells",
+    [ 10 ]: mc1            clears m1
+    [ 10 ]: mc             clears all cells",
         ver = env!("CARGO_PKG_VERSION")
     );
 }
