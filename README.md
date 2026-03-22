@@ -198,6 +198,33 @@ When memory references are expanded, the substituted expression is printed befor
 [ 20 ]:
 ```
 
+### Compound assignment
+
+`expr m[1-9]OP` evaluates `cell OP expr`, stores the result back into the cell, and sets the accumulator to the new cell value.
+
+| Directive | Effect |
+|-----------|--------|
+| `expr m1+` | `m1 += expr` |
+| `expr m1-` | `m1 -= expr` |
+| `expr m1*` | `m1 *= expr` |
+| `expr m1/` | `m1 /= expr` |
+| `expr m1%` | `m1 %= expr` |
+| `expr m1^` | `m1 ^= expr` |
+
+```
+[ 0 ]: 100 m1           m1 = 100; accumulator = 100
+[ 100 ]: 2 m1*          m1 = 200; accumulator = 200
+[ 200 ]: 50 m1-         m1 = 150; accumulator = 150
+[ 150 ]: 3 m1/          m1 = 50;  accumulator = 50
+```
+
+The expression itself can be anything, including memory references:
+
+```
+[ 0 ]: m2 m1+           m1 = m1 + m2
+[ 0 ]: 1 m1+            m1 += 1   (increment)
+```
+
 ### Copy cell to cell
 
 ```
@@ -206,11 +233,11 @@ When memory references are expanded, the substituted expression is printed befor
 
 ### View and clear
 
-| Command | Action |
-|---------|--------|
-| `m` | Show all non-zero cells |
-| `mc` | Clear all cells |
-| `mc1` | Clear cell `m1` |
+| Command | Action                  |
+|---------|-------------------------|
+| `m`     | Show all non-zero cells |
+| `mc`    | Clear all cells         |
+| `mc1`   | Clear cell `m1`         |
 
 ```
 [ 10 ]: m
@@ -224,11 +251,11 @@ m2: 30
 
 ## REPL commands
 
-| Command | Action |
-|---------|--------|
-| `q` | Quit |
-| `c` | Clear accumulator (reset to 0) |
-| `cls` | Clear the screen |
+| Command | Action                         |
+|---------|--------------------------------|
+| `q`     | Quit                           |
+| `c`     | Clear accumulator (reset to 0) |
+| `cls`   | Clear the screen               |
 
 ---
 
@@ -263,7 +290,7 @@ Results are displayed without unnecessary decoration:
 ```
 [ 0 ]: 1200 m1          budget in m1
 [ 1200 ]: m1 - 350 m1   spent 350 → m1 = 850
-[ 850 ]: m1 - 80 m1     spent 80  → m1 = 770
+[ 850 ]: 80 m1-         spent 80  → m1 = 770
 [ 770 ]: m
 m1: 770
 ```

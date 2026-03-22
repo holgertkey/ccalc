@@ -40,9 +40,20 @@ pub enum StandaloneCmd {
     ClearOne(usize),  // mc[1-9]: clear cell
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CompoundOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+}
+
 /// Memory directive found at the end of an expression string.
 pub enum Directive {
-    Store(usize),  // m[1-9]: cell = result
+    Store(usize),                  // m[1-9]:   cell = result
+    Compound(usize, CompoundOp),   // m[1-9]OP: cell = cell OP result
 }
 
 /// Returns a `StandaloneCmd` if the entire input matches a known memory command,
@@ -121,6 +132,19 @@ fn parse_directive_token(token: &str) -> Option<Directive> {
     let b = token.as_bytes();
     match b {
         [b'm', d] if is_mem_digit(*d) => Some(Directive::Store(mem_idx(*d))),
+        [b'm', d, op] if is_mem_digit(*d) => {
+            let idx = mem_idx(*d);
+            let compound_op = match op {
+                b'+' => CompoundOp::Add,
+                b'-' => CompoundOp::Sub,
+                b'*' => CompoundOp::Mul,
+                b'/' => CompoundOp::Div,
+                b'%' => CompoundOp::Mod,
+                b'^' => CompoundOp::Pow,
+                _ => return None,
+            };
+            Some(Directive::Compound(idx, compound_op))
+        }
         _ => None,
     }
 }
@@ -216,6 +240,79 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_directive_compound_add() {
+        let (expr, dir) = extract_directive("2 m1+");
+        assert_eq!(expr, "2");
+        assert!(matches!(dir, Some(Directive::Compound(0, CompoundOp::Add))));
+    }
+
+    #[test]
+    fn test_extract_directive_compound_sub() {
+        let (expr, dir) = extract_directive("5 m3-");
+        assert_eq!(expr, "5");
+        assert!(matches!(dir, Some(Directive::Compound(2, CompoundOp::Sub))));
+    }
+
+    #[test]
+    fn test_extract_directive_compound_mul() {
+        let (expr, dir) = extract_directive("3 m2*");
+        assert_eq!(expr, "3");
+        assert!(matches!(dir, Some(Directive::Compound(1, CompoundOp::Mul))));
+    }
+
+    #[test]
+    fn test_extract_directive_compound_div() {
+        let (expr, dir) = extract_directive("4 m1/");
+        assert_eq!(expr, "4");
+        assert!(matches!(dir, Some(Directive::Compound(0, CompoundOp::Div))));
+    }
+
+    #[test]
+    fn test_extract_directive_compound_mod() {
+        let (expr, dir) = extract_directive("3 m1%");
+        assert_eq!(expr, "3");
+        assert!(matches!(dir, Some(Directive::Compound(0, CompoundOp::Mod))));
+    }
+
+    #[test]
+    fn test_extract_directive_compound_pow() {
+        let (expr, dir) = extract_directive("2 m1^");
+        assert_eq!(expr, "2");
+        assert!(matches!(dir, Some(Directive::Compound(0, CompoundOp::Pow))));
+    }
+
+    #[test]
+    fn test_extract_directive_compound_all_cells() {
+        for d in b'1'..=b'9' {
+            let input = format!("10 m{}+", d as char);
+            let (expr, dir) = extract_directive(&input);
+            assert_eq!(expr, "10");
+            let idx = (d - b'1') as usize;
+            assert!(matches!(dir, Some(Directive::Compound(i, CompoundOp::Add)) if i == idx));
+        }
+    }
+
+    #[test]
+    fn test_extract_directive_no_directive_after_operator() {
+        // operator before last token → directive NOT extracted
+        let (expr, dir) = extract_directive("5 + m1+");
+        assert_eq!(expr, "5 + m1+");
+        assert!(dir.is_none());
+
+        let (expr, dir) = extract_directive("5 ^ m1^");
+        assert_eq!(expr, "5 ^ m1^");
+        assert!(dir.is_none());
+    }
+
+    #[test]
+    fn test_extract_directive_compound_with_mem_ref_expr() {
+        // m2 m1+  →  m1 = m1 + m2
+        let (expr, dir) = extract_directive("m2 m1+");
+        assert_eq!(expr, "m2");
+        assert!(matches!(dir, Some(Directive::Compound(0, CompoundOp::Add))));
+    }
+
+    #[test]
     fn test_extract_directive_no_directive_after_plus() {
         let (expr, dir) = extract_directive("5 + m1");
         assert_eq!(expr, "5 + m1");
@@ -238,7 +335,6 @@ mod tests {
 
     #[test]
     fn test_extract_directive_chained_mem_refs() {
-        // m1 + 8 + m1: last m1 is after '+', so no directive
         let (expr, dir) = extract_directive("m1 + 8 + m1");
         assert_eq!(expr, "m1 + 8 + m1");
         assert!(dir.is_none());
@@ -246,7 +342,6 @@ mod tests {
 
     #[test]
     fn test_extract_directive_copy_cell() {
-        // "m1 m2": value of m1, store to m2
         let (expr, dir) = extract_directive("m1 m2");
         assert_eq!(expr, "m1");
         assert!(matches!(dir, Some(Directive::Store(1))));
@@ -254,7 +349,6 @@ mod tests {
 
     #[test]
     fn test_extract_directive_no_space() {
-        // No space → no directive extraction
         let (expr, dir) = extract_directive("5+3");
         assert_eq!(expr, "5+3");
         assert!(dir.is_none());

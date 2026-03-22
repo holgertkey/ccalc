@@ -87,6 +87,14 @@ MEMORY CELLS  m1 – m9:
     m[1-9]              Store accumulator into cell
     expr m[1-9]         Evaluate expression, store result into cell
 
+  Compound assignment  (cell = cell OP expr; accumulator = new cell value)
+    expr m[1-9]+        m[1-9] += expr
+    expr m[1-9]-        m[1-9] -= expr
+    expr m[1-9]*        m[1-9] *= expr
+    expr m[1-9]/        m[1-9] /= expr
+    expr m[1-9]%        m[1-9] %= expr
+    expr m[1-9]^        m[1-9] ^= expr
+
   Recall (use inside any expression)
     m[1-9]              Read cell value, e.g.:  m1 + 8 + m1
 
@@ -119,9 +127,15 @@ EXAMPLES:
   Copy cell to cell:
     [ 0 ]: m1 m2           stores value of m1 into m2
 
+  Compound assignment:
+    [ 0 ]: 100 m1          m1 = 100; accumulator = 100
+    [ 100 ]: 2 m1*         m1 = 200; accumulator = 200
+    [ 200 ]: 50 m1-        m1 = 150; accumulator = 150
+    [ 150 ]: 3 m1/         m1 = 50;  accumulator = 50
+
   View and clear memory:
     [ 10 ]: m
-    m1: 85
+    m1: 50
     [ 10 ]: mc1            clears m1
     [ 10 ]: mc             clears all cells",
         ver = env!("CARGO_PKG_VERSION")

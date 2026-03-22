@@ -2,7 +2,8 @@ use std::io::{self, Write};
 
 use crate::eval::{eval, format_number};
 use crate::memory::{
-    extract_directive, expand_memory_refs, parse_standalone_cmd, Directive, Memory, StandaloneCmd,
+    extract_directive, expand_memory_refs, parse_standalone_cmd, CompoundOp, Directive, Memory,
+    StandaloneCmd,
 };
 use crate::parser::{is_partial, parse};
 
@@ -69,8 +70,39 @@ pub fn run() {
         match parse(&expanded_expr, accumulator).and_then(|ast| eval(&ast)) {
             Ok(result) => {
                 accumulator = result;
-                if let Some(Directive::Store(idx)) = directive {
-                    memory.set(idx, result);
+                match directive {
+                    Some(Directive::Store(idx)) => memory.set(idx, result),
+                    Some(Directive::Compound(idx, op)) => {
+                        let cell = memory.get(idx);
+                        let new_val = match op {
+                            CompoundOp::Add => Ok(cell + result),
+                            CompoundOp::Sub => Ok(cell - result),
+                            CompoundOp::Mul => Ok(cell * result),
+                            CompoundOp::Div => {
+                                if result == 0.0 {
+                                    Err("Division by zero")
+                                } else {
+                                    Ok(cell / result)
+                                }
+                            }
+                            CompoundOp::Mod => {
+                                if result == 0.0 {
+                                    Err("Modulo by zero")
+                                } else {
+                                    Ok(cell % result)
+                                }
+                            }
+                            CompoundOp::Pow => Ok(cell.powf(result)),
+                        };
+                        match new_val {
+                            Ok(v) => {
+                                memory.set(idx, v);
+                                accumulator = v;
+                            }
+                            Err(e) => eprintln!("Error: {e}"),
+                        }
+                    }
+                    None => {}
                 }
             }
             Err(e) => eprintln!("Error: {e}"),
