@@ -1,4 +1,7 @@
-use std::io::{self, Write};
+use std::io::Write;
+
+use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 
 use crate::eval::{eval, format_number};
 use crate::memory::{
@@ -10,16 +13,26 @@ use crate::parser::{is_partial, parse};
 pub fn run() {
     let mut accumulator: f64 = 0.0;
     let mut memory = Memory::new();
+    let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     loop {
-        print_prompt(accumulator);
+        let prompt = format!("[ {} ]: ", format_number(accumulator));
+        let input = match rl.readline(&prompt) {
+            Ok(line) => line,
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+            Err(err) => {
+                eprintln!("Error: {:?}", err);
+                break;
+            }
+        };
 
-        let input = read_line();
         let trimmed = input.trim();
 
         if trimmed.is_empty() {
             continue;
         }
+
+        let _ = rl.add_history_entry(trimmed);
 
         // Built-in commands
         match trimmed {
@@ -110,20 +123,7 @@ pub fn run() {
     }
 }
 
-fn print_prompt(value: f64) {
-    print!("[ {} ]: ", format_number(value));
-    io::stdout().flush().expect("Failed to flush stdout");
-}
-
-fn read_line() -> String {
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read input");
-    input
-}
-
 fn clear_screen() {
     print!("\x1B[2J\x1B[H");
-    io::stdout().flush().expect("Failed to flush stdout");
+    std::io::stdout().flush().expect("Failed to flush stdout");
 }

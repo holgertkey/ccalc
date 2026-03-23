@@ -6,8 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-23
+
 ### Added
 
+- Line editing via `rustyline`: ← → Home End cursor movement, Ctrl+W word delete, Ctrl+U line clear
+- History navigation: ↑ ↓ to browse previous inputs, Ctrl+R for reverse search
+- Ctrl+C and Ctrl+D as additional quit shortcuts (in addition to `q`)
 - `ans` — explicit alias for the current accumulator value in expressions (e.g. `sqrt(ans)`, `ans * 2`)
 - Empty function call `fn()` uses the accumulator as argument (e.g. `sqrt()` → `sqrt(accumulator)`)
 - Compound assignment directives `m[1-9]OP` for operators `+`, `-`, `*`, `/`, `%`, `^`: `expr m1+` means `m1 = m1 + expr`; accumulator is set to the new cell value

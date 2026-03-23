@@ -43,6 +43,14 @@ REPL COMMANDS:
     q                Quit
     c                Clear accumulator (reset to 0)
     cls              Clear the screen
+    Ctrl+C, Ctrl+D   Quit
+
+KEYBOARD SHORTCUTS:
+    ↑ / ↓            Browse input history
+    Ctrl+R           Reverse history search
+    ← → Home End     Cursor movement
+    Ctrl+W           Delete word before cursor
+    Ctrl+U           Clear line
 
 ARITHMETIC:
     Operators:  +  -  *  /  ^  %

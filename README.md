@@ -1,8 +1,8 @@
 # ccalc
 
-A command-line calculator with a persistent accumulator, memory cells, and math functions. No external dependencies.
+A command-line calculator with a persistent accumulator, memory cells, and math functions.
 
-**Current version: 0.2.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.3.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -251,11 +251,22 @@ m2: 30
 
 ## REPL commands
 
-| Command | Action                         |
-|---------|--------------------------------|
-| `q`     | Quit                           |
-| `c`     | Clear accumulator (reset to 0) |
-| `cls`   | Clear the screen               |
+| Command       | Action                         |
+|---------------|--------------------------------|
+| `q`           | Quit                           |
+| `c`           | Clear accumulator (reset to 0) |
+| `cls`         | Clear the screen               |
+| Ctrl+C / Ctrl+D | Quit                         |
+
+## Keyboard shortcuts
+
+| Key                | Action                        |
+|--------------------|-------------------------------|
+| ↑ / ↓              | Browse input history          |
+| Ctrl+R             | Reverse history search        |
+| ← / → / Home / End | Cursor movement               |
+| Ctrl+W             | Delete word before cursor     |
+| Ctrl+U             | Clear line                    |
 
 ---
 
@@ -319,8 +330,6 @@ m1: 770
 cargo build            # debug build
 cargo build --release  # optimized build
 cargo test             # run all tests
-cargo clippy           # lint
-cargo fmt              # format
 ```
 
 ---
