@@ -42,7 +42,7 @@ ARITHMETIC:
 CONSTANTS:
     pi          3.14159265358979...
     e           2.71828182845904...
-    ans         current accumulator value (explicit alias)
+    acc         current accumulator value (explicit alias)
 
 MATH FUNCTIONS:
     sqrt(x)     square root
@@ -94,10 +94,10 @@ EXAMPLES:
     [ 0 ]: log(1000)       accumulator = 3
     [ 0 ]: ln(e)           accumulator = 1
 
-  ans and empty-arg calls:
+  acc and empty-arg calls:
     [ 4 ]: sqrt()          same as sqrt(4); accumulator = 2
-    [ 9 ]: sqrt(ans)       same as sqrt(9); accumulator = 3
-    [ 3 ]: ans * 2         accumulator = 6
+    [ 9 ]: sqrt(acc)       same as sqrt(9); accumulator = 3
+    [ 3 ]: acc * 2         accumulator = 6
 
   Store and recall:
     [ 0 ]: (1 + 1) * 3 m1  stores 6 in m1; accumulator = 6

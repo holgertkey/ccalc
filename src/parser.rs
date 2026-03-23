@@ -90,7 +90,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
 }
 
 /// Parses a full expression string into an AST.
-/// `accumulator` is the current REPL value, used by `ans` and empty-arg function calls.
+/// `accumulator` is the current REPL value, used by `acc` and empty-arg function calls.
 pub fn parse(input: &str, accumulator: f64) -> Result<Expr, String> {
     let tokens = tokenize(input)?;
     if tokens.is_empty() {
@@ -234,7 +234,7 @@ fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, St
             match name.as_str() {
                 "pi"  => Ok(Expr::Number(std::f64::consts::PI)),
                 "e"   => Ok(Expr::Number(std::f64::consts::E)),
-                "ans" => Ok(Expr::Number(acc)),
+                "acc" => Ok(Expr::Number(acc)),
                 _     => Err(format!("Unknown identifier: '{name}'")),
             }
         }
@@ -351,11 +351,11 @@ mod tests {
     }
 
     #[test]
-    fn test_ans() {
-        assert_eq!(calc_with("ans", 42.0), 42.0);
-        assert_eq!(calc_with("ans + 1", 10.0), 11.0);
-        assert_eq!(calc_with("ans * 2", 5.0), 10.0);
-        assert_eq!(calc_with("ans", 0.0), 0.0);
+    fn test_acc() {
+        assert_eq!(calc_with("acc", 42.0), 42.0);
+        assert_eq!(calc_with("acc + 1", 10.0), 11.0);
+        assert_eq!(calc_with("acc * 2", 5.0), 10.0);
+        assert_eq!(calc_with("acc", 0.0), 0.0);
     }
 
     #[test]
@@ -368,9 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fn_ans_arg() {
-        assert_eq!(calc_with("sqrt(ans)", 9.0), 3.0);
-        assert_eq!(calc_with("abs(ans)", -5.0), 5.0);
+    fn test_fn_acc_arg() {
+        assert_eq!(calc_with("sqrt(acc)", 9.0), 3.0);
+        assert_eq!(calc_with("abs(acc)", -5.0), 5.0);
     }
 
     #[test]

@@ -98,15 +98,15 @@ The prompt shows the **accumulator** — the result of the last expression. Ever
 |-------|---------------------------|
 | `pi`  | 3.14159265358979...       |
 | `e`   | 2.71828182845904...       |
-| `ans` | Current accumulator value |
+| `acc` | Current accumulator value |
 
-`ans` is an explicit alias for the accumulator — useful when you need it in the middle of an expression:
+`acc` is an explicit alias for the accumulator — useful when you need it in the middle of an expression:
 
 ```
-[ 9 ]: ans * 2 + 1
+[ 9 ]: acc * 2 + 1
 [ 19 ]:
 
-[ 25 ]: sqrt(ans)
+[ 25 ]: sqrt(acc)
 [ 5 ]:
 ```
 
@@ -143,7 +143,7 @@ All functions take a single argument in parentheses. If called with **empty pare
 [ 16 ]: sqrt()          same as sqrt(16)
 [ 4 ]:
 
-[ 4 ]: sqrt(ans)        same as sqrt(4)
+[ 4 ]: sqrt(acc)        same as sqrt(4)
 [ 2 ]:
 ```
 
@@ -318,7 +318,7 @@ m1: 770
 
 ```
 [ 0 ]: sqrt(2) m1       store √2
-[ 1.4142135624 ]: ans ^ 10
+[ 1.4142135624 ]: acc ^ 10
 [ 32 ]:                 (√2)^10 = 2^5 = 32
 ```
 
