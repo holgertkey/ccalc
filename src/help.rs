@@ -4,11 +4,28 @@ pub fn print() {
 ccalc v{ver} — command-line calculator
 
 USAGE:
-    ccalc [OPTIONS]
+    ccalc [OPTIONS]           start interactive REPL
+    ccalc \"EXPR\"              evaluate expression and print result
+    echo \"EXPR\" | ccalc       pipe mode — silent, result only
+    ccalc < formulas.txt      read expressions from file
 
 OPTIONS:
     -h, --help       Show this help message
     -v, --version    Show version information
+
+PIPE / NON-INTERACTIVE MODE:
+    When stdin is not a terminal (pipe or file redirect), ccalc runs in
+    silent mode: no prompt is shown, one result is printed per line.
+    The accumulator carries over across lines, so you can chain steps:
+
+        printf \"100\\n/ 4\\n+ 5\" | ccalc
+        100
+        25
+        30
+
+    Commands supported in pipe mode: q (stop), c (reset accumulator),
+    mc (clear all memory), mc[1-9], m[1-9] (memory store/clear).
+    cls and m are ignored.
 
 REPL COMMANDS:
     q                Quit
@@ -83,6 +100,22 @@ MEMORY CELLS  m1 – m9:
     mc[1-9]             Clear a specific cell, e.g. mc1
 
 EXAMPLES:
+
+  Single expression (argument mode):
+    $ ccalc \"2 ^ 32\"
+    4294967296
+
+    $ ccalc \"sqrt(2)\"
+    1.4142135624
+
+  Pipe mode:
+    $ echo \"sin(pi / 6)\" | ccalc
+    0.5
+
+    $ printf \"10\\n+ 5\\n* 2\" | ccalc
+    10
+    15
+    30
 
   Power and modulo:
     [ 0 ]: 2 ^ 10          accumulator = 1024

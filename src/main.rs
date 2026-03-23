@@ -4,6 +4,8 @@ mod memory;
 mod parser;
 mod repl;
 
+use std::io::IsTerminal;
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -17,6 +19,10 @@ fn main() {
                 help::print();
                 return;
             }
+            expr if !expr.starts_with('-') => {
+                repl::run_expr(expr);
+                return;
+            }
             flag => {
                 eprintln!("Unknown option: {flag}");
                 eprintln!("Run 'ccalc -h' for usage.");
@@ -25,5 +31,9 @@ fn main() {
         }
     }
 
-    repl::run();
+    if !std::io::stdin().is_terminal() {
+        repl::run_pipe(std::io::stdin().lock());
+    } else {
+        repl::run();
+    }
 }

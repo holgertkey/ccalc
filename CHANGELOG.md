@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-23
+
+### Added
+
+- Pipe / non-interactive mode: when stdin is not a terminal, ccalc runs silently (no prompt, one result per line)
+- Single-expression argument mode: `ccalc "expr"` evaluates and prints the result, exits with code 1 on error
+- File redirect support: `ccalc < formulas.txt` (handled by the same pipe path)
+- Accumulator carries over across lines in pipe mode — multi-step calculations work naturally
+- Commands `q`, `c`, `mc`, `mc[1-9]`, `m[1-9]` all work in pipe mode; `cls` and `m` are silently ignored
+
+### Changed
+
+- Refactored `repl.rs`: extracted shared `evaluate()` / `evaluate_expanded()` / `apply_compound()` helpers used by all three modes
+- `main.rs` now detects mode via `std::io::IsTerminal` (no extra dependency)
+
 ## [0.3.0] - 2026-03-23
 
 ### Added

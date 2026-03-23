@@ -2,7 +2,7 @@
 
 A command-line calculator with a persistent accumulator, memory cells, and math functions.
 
-**Current version: 0.3.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.4.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -21,7 +21,10 @@ The binary is placed at `target/release/ccalc`. Copy it anywhere on your `PATH`.
 ## Usage
 
 ```
-ccalc [OPTIONS]
+ccalc [OPTIONS]           start interactive REPL
+ccalc "EXPR"              evaluate expression and print result
+echo "EXPR" | ccalc       pipe mode — silent, result only
+ccalc < formulas.txt      read expressions from file
 ```
 
 | Option            | Description  |
@@ -29,12 +32,48 @@ ccalc [OPTIONS]
 | `-h`, `--help`    | Show help    |
 | `-v`, `--version` | Show version |
 
-Run without arguments to start the REPL:
+---
+
+## Modes
+
+### Interactive REPL
+
+Run without arguments:
 
 ```
 $ ccalc
 [ 0 ]:
 ```
+
+### Single expression
+
+Pass an expression as a command-line argument:
+
+```
+$ ccalc "2 ^ 32"
+4294967296
+
+$ ccalc "sqrt(144)"
+12
+```
+
+### Pipe / non-interactive mode
+
+When stdin is not a terminal, ccalc runs silently — no prompt, one result per line. The accumulator carries over across lines, so you can chain calculations:
+
+```
+$ echo "sin(pi / 6)" | ccalc
+0.5
+
+$ printf "10\n+ 5\n* 2" | ccalc
+10
+15
+30
+
+$ ccalc < formulas.txt
+```
+
+All commands work in pipe mode: `q` stops processing, `c` resets the accumulator, `mc`/`mc[1-9]` clear memory, `m[1-9]` stores into a cell. `cls` and `m` are ignored.
 
 ---
 
@@ -338,8 +377,8 @@ cargo test             # run all tests
 
 ```
 src/
-  main.rs      — entry point, CLI flags, help text
-  repl.rs      — REPL loop, input dispatch
+  main.rs      — entry point, mode detection (arg / pipe / REPL), CLI flags
+  repl.rs      — REPL loop, run_pipe(), run_expr(), shared evaluate() core
   parser.rs    — lexer (tokenizer) + recursive descent parser
   eval.rs      — AST types (Expr, Op) + evaluator + number formatter
   memory.rs    — memory cells, command parser, directive extractor, ref expander
