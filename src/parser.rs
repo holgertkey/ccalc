@@ -42,6 +42,51 @@ fn parse_integer_literal(
         .map_err(|_| format!("Invalid {prefix} literal: '{prefix}{digit_str}'"))
 }
 
+/// If the next chars look like a sci exponent (`e+5`, `E-3`, `e10`), consume and append them.
+/// Uses a cloned iterator for lookahead — only advances the real iterator on a confirmed match.
+fn try_consume_sci_exponent(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    num_str: &mut String,
+) {
+    if !matches!(chars.peek(), Some('e') | Some('E')) {
+        return;
+    }
+    let mut lookahead = chars.clone();
+    let e_char = lookahead.next().unwrap(); // 'e' or 'E'
+    match lookahead.peek().copied() {
+        Some('+') | Some('-') => {
+            let sign = lookahead.next().unwrap();
+            if lookahead.peek().map_or(false, |d| d.is_ascii_digit()) {
+                chars.next(); // consume 'e'/'E'
+                chars.next(); // consume sign
+                num_str.push(e_char);
+                num_str.push(sign);
+                while let Some(&d) = chars.peek() {
+                    if d.is_ascii_digit() {
+                        num_str.push(d);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Some(d) if d.is_ascii_digit() => {
+            chars.next(); // consume 'e'/'E'
+            num_str.push(e_char);
+            while let Some(&d) = chars.peek() {
+                if d.is_ascii_digit() {
+                    num_str.push(d);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+        }
+        _ => {} // 'e' is not a sci exponent here (could be start of identifier)
+    }
+}
+
 fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
@@ -103,7 +148,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                             tokens.push(Token::Number(n));
                         }
                         _ => {
-                            // Decimal number starting with '0' (e.g. 0.5 or just 0)
+                            // Decimal number starting with '0' (e.g. 0.5, 0e5, or just 0)
                             let mut num_str = String::from("0");
                             while let Some(&d) = chars.peek() {
                                 if d.is_ascii_digit() || d == '.' {
@@ -113,6 +158,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                                     break;
                                 }
                             }
+                            try_consume_sci_exponent(&mut chars, &mut num_str);
                             let n: f64 = num_str
                                 .parse()
                                 .map_err(|_| format!("Invalid number: '{num_str}'"))?;
@@ -130,6 +176,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                             break;
                         }
                     }
+                    try_consume_sci_exponent(&mut chars, &mut num_str);
                     let n: f64 = num_str
                         .parse()
                         .map_err(|_| format!("Invalid number: '{num_str}'"))?;
@@ -586,6 +633,42 @@ mod tests {
     #[test]
     fn test_parse_error_unknown_ident() {
         assert!(parse("foo", 0.0).is_err());
+    }
+
+    #[test]
+    fn test_sci_notation_positive_exponent() {
+        assert_eq!(calc("1e5"), 100000.0);
+        assert_eq!(calc("1E5"), 100000.0);
+        assert_eq!(calc("2.5e2"), 250.0);
+        assert_eq!(calc("1e+5"), 100000.0);
+    }
+
+    #[test]
+    fn test_sci_notation_negative_exponent() {
+        assert!((calc("1e-5") - 1e-5).abs() < 1e-20);
+        assert!((calc("1e-17") - 1e-17).abs() < 1e-32);
+        assert!((calc("2.5e-3") - 0.0025).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_sci_notation_in_expression() {
+        assert!((calc("1e-5 * 100") - 1e-3).abs() < 1e-18);
+        assert!((calc("1e3 + 1e2") - 1100.0).abs() < 1e-10);
+        assert!((calc("1e-5 + 2e-5") - 3e-5).abs() < 1e-20);
+    }
+
+    #[test]
+    fn test_sci_notation_zero() {
+        assert_eq!(calc("0e5"), 0.0);
+        assert_eq!(calc("0e-3"), 0.0);
+    }
+
+    #[test]
+    fn test_constant_e_still_works() {
+        // 'e' alone must still be Euler's number, not a sci exponent
+        assert!((calc("e") - std::f64::consts::E).abs() < 1e-15);
+        assert!((calc("1 + e") - (1.0 + std::f64::consts::E)).abs() < 1e-15);
+        assert!((calc("e ^ 2") - std::f64::consts::E.powi(2)).abs() < 1e-10);
     }
 
     #[test]
