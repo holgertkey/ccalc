@@ -2,7 +2,7 @@
 
 A command-line calculator with a persistent accumulator, memory cells, and math functions.
 
-**Current version: 0.4.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.5.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -73,7 +73,7 @@ $ printf "10\n+ 5\n* 2" | ccalc
 $ ccalc < formulas.txt
 ```
 
-All commands work in pipe mode: `q` stops processing, `c` resets the accumulator, `mc`/`mc[1-9]` clear memory, `m[1-9]` stores into a cell. `cls` and `m` are ignored.
+All commands work in pipe mode: `q` stops processing, `c` resets the accumulator, `mc`/`mc[1-9]` clear memory, `m[1-9]` stores into a cell, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` and `m` are ignored.
 
 ---
 
@@ -290,12 +290,16 @@ m2: 30
 
 ## REPL commands
 
-| Command       | Action                         |
-|---------------|--------------------------------|
-| `q`           | Quit                           |
-| `c`           | Clear accumulator (reset to 0) |
-| `cls`         | Clear the screen               |
-| Ctrl+C / Ctrl+D | Quit                         |
+| Command         | Action                                      |
+|-----------------|---------------------------------------------|
+| `q`             | Quit                                        |
+| `c`             | Clear accumulator (reset to 0)              |
+| `cls`           | Clear the screen                            |
+| `p`             | Show current decimal precision              |
+| `p<N>`          | Set decimal precision (0–15)                |
+| `hex` / `dec` / `bin` / `oct` | Switch display base          |
+| `base`          | Show accumulator in all four bases          |
+| Ctrl+C / Ctrl+D | Quit                                        |
 
 ## Keyboard shortcuts
 
@@ -309,13 +313,75 @@ m2: 30
 
 ---
 
-## Number formatting
+## Number formatting and bases
 
-Results are displayed without unnecessary decoration:
+### Decimal precision
 
-- Integers are shown without a decimal point: `12`, `-5`, `1024`
-- Floats are trimmed to 10 significant fractional digits with trailing zeros removed: `3.14`, `0.5`, `1.4142135624`
-- `0.1 + 0.2` displays as `0.3`
+By default results are shown with up to 10 decimal digits, trailing zeros removed:
+
+```
+[ 0 ]: 1 / 3
+[ 0.3333333333 ]:
+[ 0 ]: p4
+[ 0 ]: 1 / 3
+[ 0.3333 ]:
+[ 0 ]: p          show current precision
+precision: 4
+```
+
+`p<N>` sets N decimal places (0–15). `p` alone shows the current setting.
+
+Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scientific notation automatically:
+
+```
+[ 0 ]: 2 ^ 60
+[ 1.152921504606847e18 ]:
+```
+
+### Number bases
+
+**Input literals** — mix bases freely in any expression:
+
+| Prefix | Base   | Example        |
+|--------|--------|----------------|
+| `0x`   | hex    | `0xFF` → 255   |
+| `0b`   | binary | `0b1010` → 10  |
+| `0o`   | octal  | `0o17` → 15    |
+
+**Display base** — controls how the prompt and results are shown:
+
+| Command | Effect                          |
+|---------|---------------------------------|
+| `hex`   | Switch display to hexadecimal   |
+| `dec`   | Switch display to decimal (default) |
+| `bin`   | Switch display to binary        |
+| `oct`   | Switch display to octal         |
+| `base`  | Show accumulator in all four bases |
+
+```
+[ 0 ]: 0xFF + 0b1010
+[ 265 ]: hex
+[ 0x109 ]: + 0b10
+[ 0x10B ]: dec
+[ 267 ]:
+```
+
+**Inline base suffix** — evaluate an expression and switch display base in one step:
+
+```
+[ 0 ]: 0xFF + 0b1010 hex
+[ 0x109 ]:
+```
+
+**`base` command:**
+
+```
+[ 10 ]: base
+2  - 0b1010
+8  - 012
+10 - 10
+16 - A
+```
 
 ---
 
@@ -380,7 +446,7 @@ src/
   main.rs      — entry point, mode detection (arg / pipe / REPL), CLI flags
   repl.rs      — REPL loop, run_pipe(), run_expr(), shared evaluate() core
   parser.rs    — lexer (tokenizer) + recursive descent parser
-  eval.rs      — AST types (Expr, Op) + evaluator + number formatter
+  eval.rs      — AST types (Expr, Op) + evaluator + number formatters + Base enum
   memory.rs    — memory cells, command parser, directive extractor, ref expander
 Cargo.toml     — manifest (single source of truth for version)
 CHANGELOG.md   — version history

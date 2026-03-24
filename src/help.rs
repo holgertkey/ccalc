@@ -24,7 +24,8 @@ PIPE / NON-INTERACTIVE MODE:
         30
 
     Commands supported in pipe mode: q (stop), c (reset accumulator),
-    mc (clear all memory), mc[1-9], m[1-9] (memory store/clear).
+    mc (clear all memory), mc[1-9], m[1-9] (memory store/clear),
+    p / p<N> (precision), hex / dec / bin / oct / base (number base).
     cls and m are ignored.
 
 REPL COMMANDS:
@@ -32,6 +33,37 @@ REPL COMMANDS:
     c                Clear accumulator (reset to 0)
     cls              Clear the screen
     Ctrl+C, Ctrl+D   Quit
+
+PRECISION:
+    p                Show current precision (number of decimal places)
+    p<N>             Set precision to N decimal places (0–15, default 10)
+
+        [ 0 ]: 1 / 3       → 0.3333333333
+        [ 0 ]: p4
+        [ 0 ]: 1 / 3       → 0.3333
+
+NUMBER BASES:
+    Input literals
+        0xFF           hex integer
+        0b1010         binary integer
+        0o17           octal integer
+
+    Display base commands (apply to prompt and all subsequent results)
+        hex            switch display to hexadecimal
+        dec            switch display to decimal (default)
+        bin            switch display to binary
+        oct            switch display to octal
+
+    Inline base suffix — evaluate expression then switch display base
+        expr hex       e.g. 0xFF + 0b1010 hex  → 0x109
+
+    base               show current accumulator value in all four bases
+
+        [ 10 ]: base
+        2  - 0b1010
+        8  - 012
+        10 - 10
+        16 - A
 
 KEYBOARD SHORTCUTS:
     ↑ / ↓            Browse input history
@@ -131,6 +163,19 @@ EXAMPLES:
     [ 4 ]: sqrt()          same as sqrt(4); accumulator = 2
     [ 9 ]: sqrt(acc)       same as sqrt(9); accumulator = 3
     [ 3 ]: acc * 2         accumulator = 6
+
+  Number bases:
+    [ 0 ]: 0xFF + 0b1010   accumulator = 265
+    [ 265 ]: hex           switch display to hex
+    [ 0x109 ]: + 0b10      accumulator = 0x10B
+    [ 0x10B ]: dec         switch back to decimal
+    [ 267 ]:
+    [ 0 ]: 0xFF + 0b1010 hex   inline: evaluate and switch to hex → 0x109
+
+  Precision:
+    [ 0 ]: 1 / 3           0.3333333333
+    [ 0 ]: p4
+    [ 0 ]: 1 / 3           0.3333
 
   Store and recall:
     [ 0 ]: (1 + 1) * 3 m1  stores 6 in m1; accumulator = 6

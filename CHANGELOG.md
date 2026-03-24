@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-24
+
+### Added
+
+- Hex, binary, and octal input literals: `0xFF`, `0b1010`, `0o17` — parsed directly in expressions
+- Display base commands: `hex`, `dec`, `bin`, `oct` — change how all subsequent results are shown (including the prompt)
+- Inline base suffix: `0xFF + 0b1010 hex` evaluates the expression and switches the display base in one step
+- `base` command — prints the current accumulator value in all four bases simultaneously
+- Configurable decimal precision: `p` shows current precision, `p<N>` sets it (0–15 decimal places, default 10)
+- Scientific notation display for very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers
+- All new formatting and base commands work identically in REPL, pipe, and single-expression modes
+
+### Changed
+
+- `memory.display_nonzero` now accepts a format closure, allowing memory cells to be printed in the current display base
+
 ## [0.4.0] - 2026-03-23
 
 ### Added
