@@ -79,10 +79,12 @@ pub fn eval(expr: &Expr) -> Result<f64, String> {
 pub fn format_number(n: f64) -> String {
     if n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
+    } else if n != 0.0 && (n.abs() >= 1e15 || n.abs() < 1e-9) {
+        // Use scientific notation so the value round-trips through the parser.
+        trim_sci(&format!("{:.15e}", n))
     } else {
         let s = format!("{:.10}", n);
-        let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-        trimmed.to_string()
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
     }
 }
 
@@ -309,6 +311,18 @@ mod tests {
         assert_eq!(format_number(2.5), "2.5");
         assert_eq!(format_number(3.14), "3.14");
         assert_eq!(format_number(0.1 + 0.2), "0.3");
+    }
+
+    #[test]
+    fn test_format_number_sci() {
+        // Very small values must round-trip through the parser (not become "0")
+        let s = format_number(1e-12);
+        assert!(s.contains('e'), "expected sci notation, got: {s}");
+        assert!((s.parse::<f64>().unwrap() - 1e-12).abs() < 1e-25);
+        // Very large values
+        let s = format_number(1e20);
+        assert!(s.contains('e'), "expected sci notation, got: {s}");
+        assert!((s.parse::<f64>().unwrap() - 1e20).abs() < 1e10);
     }
 
     #[test]

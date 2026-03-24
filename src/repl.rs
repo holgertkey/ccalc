@@ -982,4 +982,19 @@ mod tests {
         let out = pipe_output("10 base\n+ 5");
         assert_eq!(out[4], "15"); // 4 base lines + result
     }
+
+    #[test]
+    fn test_pipe_sci_partial_expression() {
+        // Accumulator = 1e-12; partial "* 1000" must use it, not zero
+        let out = pipe_output("1e-12\n* 1000");
+        assert_eq!(out[0], "1e-12");
+        // 1e-12 * 1000 = 1e-9; boundary value, displayed as "0.000000001"
+        assert_eq!(out[1], "0.000000001");
+        // Continue: * 1000 again → 1e-6, also shown in decimal
+        let out2 = pipe_output("1e-12\n* 1000\n* 1000");
+        assert_eq!(out2[2], "0.000001");
+        // And a value that stays in sci range
+        let out3 = pipe_output("1e-12\n* 10");
+        assert_eq!(out3[1], "1e-11");
+    }
 }
