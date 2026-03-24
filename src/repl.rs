@@ -97,9 +97,10 @@ pub fn run() {
             continue;
         }
 
-        // Extract trailing base suffix (e.g. "0xFF + 0b10 hex")
-        let (trimmed_no_base, new_base) = extract_base_suffix(trimmed);
-        if let Some(b) = new_base {
+        // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
+        let (trimmed_no_base, base_suffix) = extract_base_suffix(trimmed);
+        let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+        if let Some(BaseSuffix::Switch(b)) = base_suffix {
             base = b;
         }
 
@@ -120,7 +121,11 @@ pub fn run() {
         }
 
         match evaluate_expanded(&full_expanded, directive, &mut accumulator, &mut memory) {
-            Ok(_) => {}
+            Ok(_) => {
+                if show_all_bases {
+                    print_all_bases(accumulator, precision);
+                }
+            }
             Err(e) => eprintln!("Error: {e}"),
         }
     }
@@ -132,8 +137,20 @@ pub fn run_expr(expr: &str) {
     let mut acc: f64 = 0.0;
     let mut mem = Memory::new();
     let mut base = Base::Dec;
-    match evaluate(expr.trim(), &mut acc, &mut mem, &mut base) {
-        Ok(result) => println!("{}", format_value(result, 10, base)),
+    let trimmed = expr.trim();
+    let (to_eval, base_suffix) = extract_base_suffix(trimmed);
+    let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+    if let Some(BaseSuffix::Switch(b)) = base_suffix {
+        base = b;
+    }
+    match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
+        Ok(result) => {
+            if show_all {
+                print_all_bases(result, 10);
+            } else {
+                println!("{}", format_value(result, 10, base));
+            }
+        }
         Err(e) => {
             eprintln!("Error: {e}");
             std::process::exit(1);
@@ -216,8 +233,20 @@ pub fn run_pipe(reader: impl BufRead) {
             continue;
         }
 
-        match evaluate(trimmed, &mut acc, &mut mem, &mut base) {
-            Ok(result) => println!("{}", format_value(result, precision, base)),
+        let (to_eval, base_suffix) = extract_base_suffix(trimmed);
+        let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+        if let Some(BaseSuffix::Switch(b)) = base_suffix {
+            base = b;
+        }
+
+        match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
+            Ok(result) => {
+                if show_all {
+                    print_all_bases(result, precision);
+                } else {
+                    println!("{}", format_value(result, precision, base));
+                }
+            }
             Err(e) => eprintln!("Error: {e}"),
         }
     }
@@ -231,8 +260,8 @@ fn evaluate(
     mem: &mut Memory,
     base: &mut Base,
 ) -> Result<f64, String> {
-    let (after_base, new_base) = extract_base_suffix(trimmed);
-    if let Some(b) = new_base {
+    let (after_base, base_suffix) = extract_base_suffix(trimmed);
+    if let Some(BaseSuffix::Switch(b)) = base_suffix {
         *base = b;
     }
 
@@ -305,27 +334,35 @@ fn print_all_bases(n: f64, precision: usize) {
     let u = i.unsigned_abs();
     let sign = if i < 0 { "-" } else { "" };
     println!("2  - {}0b{:b}", sign, u);
-    println!("8  - {}0{:o}", sign, u);
+    println!("8  - {}0o{:o}", sign, u);
     println!("10 - {}", format_value(n, precision, Base::Dec));
     println!("16 - {}{:X}", sign, u);
 }
 
-/// Strips a trailing base keyword (`hex`, `dec`, `bin`, `oct`) from an expression.
-/// Returns `(remaining_expr, Some(Base))` or `(input, None)` if no suffix found.
-fn extract_base_suffix(input: &str) -> (&str, Option<Base>) {
+/// Trailing base suffix: a base-change keyword or `base` (show all).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BaseSuffix {
+    Switch(Base),
+    ShowAll,
+}
+
+/// Strips a trailing base keyword (`hex`, `dec`, `bin`, `oct`, `base`) from an expression.
+/// Returns `(remaining_expr, Some(suffix))` or `(input, None)` if no suffix found.
+fn extract_base_suffix(input: &str) -> (&str, Option<BaseSuffix>) {
     if let Some(pos) = input.rfind(' ') {
         let token = &input[pos + 1..];
         let before = input[..pos].trim_end();
         if !before.is_empty() {
-            let b = match token {
-                "hex" => Some(Base::Hex),
-                "dec" => Some(Base::Dec),
-                "bin" => Some(Base::Bin),
-                "oct" => Some(Base::Oct),
+            let suffix = match token {
+                "hex"  => Some(BaseSuffix::Switch(Base::Hex)),
+                "dec"  => Some(BaseSuffix::Switch(Base::Dec)),
+                "bin"  => Some(BaseSuffix::Switch(Base::Bin)),
+                "oct"  => Some(BaseSuffix::Switch(Base::Oct)),
+                "base" => Some(BaseSuffix::ShowAll),
                 _ => None,
             };
-            if b.is_some() {
-                return (before, b);
+            if suffix.is_some() {
+                return (before, suffix);
             }
         }
     }
@@ -467,51 +504,58 @@ mod tests {
 
     #[test]
     fn test_extract_base_suffix_hex() {
-        let (expr, base) = extract_base_suffix("255 hex");
+        let (expr, suffix) = extract_base_suffix("255 hex");
         assert_eq!(expr, "255");
-        assert_eq!(base, Some(Base::Hex));
+        assert_eq!(suffix, Some(BaseSuffix::Switch(Base::Hex)));
     }
 
     #[test]
     fn test_extract_base_suffix_bin() {
-        let (expr, base) = extract_base_suffix("10 bin");
+        let (expr, suffix) = extract_base_suffix("10 bin");
         assert_eq!(expr, "10");
-        assert_eq!(base, Some(Base::Bin));
+        assert_eq!(suffix, Some(BaseSuffix::Switch(Base::Bin)));
     }
 
     #[test]
     fn test_extract_base_suffix_oct() {
-        let (expr, base) = extract_base_suffix("8 oct");
+        let (expr, suffix) = extract_base_suffix("8 oct");
         assert_eq!(expr, "8");
-        assert_eq!(base, Some(Base::Oct));
+        assert_eq!(suffix, Some(BaseSuffix::Switch(Base::Oct)));
     }
 
     #[test]
     fn test_extract_base_suffix_dec() {
-        let (expr, base) = extract_base_suffix("255 dec");
+        let (expr, suffix) = extract_base_suffix("255 dec");
         assert_eq!(expr, "255");
-        assert_eq!(base, Some(Base::Dec));
+        assert_eq!(suffix, Some(BaseSuffix::Switch(Base::Dec)));
+    }
+
+    #[test]
+    fn test_extract_base_suffix_show_all() {
+        let (expr, suffix) = extract_base_suffix("10 base");
+        assert_eq!(expr, "10");
+        assert_eq!(suffix, Some(BaseSuffix::ShowAll));
     }
 
     #[test]
     fn test_extract_base_suffix_none() {
-        let (expr, base) = extract_base_suffix("255 + 10");
+        let (expr, suffix) = extract_base_suffix("255 + 10");
         assert_eq!(expr, "255 + 10");
-        assert!(base.is_none());
+        assert!(suffix.is_none());
     }
 
     #[test]
     fn test_extract_base_suffix_complex() {
-        let (expr, base) = extract_base_suffix("0xFF + 0b1010 hex");
+        let (expr, suffix) = extract_base_suffix("0xFF + 0b1010 hex");
         assert_eq!(expr, "0xFF + 0b1010");
-        assert_eq!(base, Some(Base::Hex));
+        assert_eq!(suffix, Some(BaseSuffix::Switch(Base::Hex)));
     }
 
     #[test]
     fn test_extract_base_suffix_no_space() {
-        let (expr, base) = extract_base_suffix("hex");
+        let (expr, suffix) = extract_base_suffix("hex");
         assert_eq!(expr, "hex");
-        assert!(base.is_none());
+        assert!(suffix.is_none());
     }
 
     // --- parse_precision_cmd tests ---
@@ -559,7 +603,7 @@ mod tests {
                 _ => {}
             }
             if let Some(p) = parse_precision_cmd(trimmed) {
-                let _ = p; // precision changes not tracked in this helper
+                let _ = p;
                 continue;
             }
             if let Some(cmd) = parse_standalone_cmd(trimmed) {
@@ -569,8 +613,26 @@ mod tests {
                 }
                 continue;
             }
-            match evaluate(trimmed, &mut acc, &mut mem, &mut base) {
-                Ok(result) => output.push(format_value(result, 10, base)),
+            let (to_eval, base_suffix) = extract_base_suffix(trimmed);
+            let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+            if let Some(BaseSuffix::Switch(b)) = base_suffix {
+                base = b;
+            }
+            match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
+                Ok(result) => {
+                    if show_all {
+                        // Collect the 4-line base output as individual entries
+                        let i = result.round() as i64;
+                        let u = i.unsigned_abs();
+                        let sign = if i < 0 { "-" } else { "" };
+                        output.push(format!("2  - {}0b{:b}", sign, u));
+                        output.push(format!("8  - {}0o{:o}", sign, u));
+                        output.push(format!("10 - {}", format_value(result, 10, Base::Dec)));
+                        output.push(format!("16 - {}{:X}", sign, u));
+                    } else {
+                        output.push(format_value(result, 10, base));
+                    }
+                }
                 Err(e) => output.push(format!("Error: {e}")),
             }
         }
@@ -693,5 +755,24 @@ mod tests {
         evaluate("255 hex", &mut acc, &mut mem, &mut base).unwrap();
         assert_eq!(base, Base::Hex);
         assert_eq!(acc, 255.0);
+    }
+
+    #[test]
+    fn test_pipe_base_suffix_shows_all() {
+        let out = pipe_output("10 base");
+        assert_eq!(out, vec!["2  - 0b1010", "8  - 0o12", "10 - 10", "16 - A"]);
+    }
+
+    #[test]
+    fn test_pipe_base_suffix_evaluates_expression() {
+        let out = pipe_output("0xFF + 0b1010 base");
+        assert_eq!(out, vec!["2  - 0b100001001", "8  - 0o411", "10 - 265", "16 - 109"]);
+    }
+
+    #[test]
+    fn test_pipe_base_suffix_accumulator_set() {
+        // After "10 base", accumulator should be 10, next partial expression uses it
+        let out = pipe_output("10 base\n+ 5");
+        assert_eq!(out[4], "15"); // 4 base lines + result
     }
 }

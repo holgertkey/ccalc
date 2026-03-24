@@ -378,7 +378,7 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 ```
 [ 10 ]: base
 2  - 0b1010
-8  - 012
+8  - 0o12
 10 - 10
 16 - A
 ```
