@@ -16,6 +16,15 @@ pub enum Op {
     Mod,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum Base {
+    #[default]
+    Dec,
+    Hex,
+    Bin,
+    Oct,
+}
+
 pub fn eval(expr: &Expr) -> Result<f64, String> {
     match expr {
         Expr::Number(n) => Ok(*n),
@@ -66,6 +75,7 @@ pub fn eval(expr: &Expr) -> Result<f64, String> {
 
 /// Formats a number for display: integers without decimal point,
 /// floats with up to 10 significant fractional digits, trailing zeros trimmed.
+/// Always decimal — used for expression expansion, not user-facing output.
 pub fn format_number(n: f64) -> String {
     if n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
@@ -73,6 +83,49 @@ pub fn format_number(n: f64) -> String {
         let s = format!("{:.10}", n);
         let trimmed = s.trim_end_matches('0').trim_end_matches('.');
         trimmed.to_string()
+    }
+}
+
+/// Formats a number for user-facing output using the given base and decimal precision.
+pub fn format_value(n: f64, precision: usize, base: Base) -> String {
+    match base {
+        Base::Dec => format_decimal(n, precision),
+        _ => format_non_dec(n, base),
+    }
+}
+
+/// Formats a number in a non-decimal integer base (hex/bin/oct).
+/// Rounds to the nearest integer before formatting.
+pub fn format_non_dec(n: f64, base: Base) -> String {
+    let i = n.round() as i64;
+    let u = i.unsigned_abs();
+    let sign = if i < 0 { "-" } else { "" };
+    match base {
+        Base::Hex => format!("{}0x{:X}", sign, u),
+        Base::Bin => format!("{}0b{:b}", sign, u),
+        Base::Oct => format!("{}0o{:o}", sign, u),
+        Base::Dec => format_decimal(n, 10),
+    }
+}
+
+fn format_decimal(n: f64, precision: usize) -> String {
+    if n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else if n.abs() >= 1e15 || (n != 0.0 && n.abs() < 1e-9) {
+        let s = format!("{:.prec$e}", n, prec = precision);
+        trim_sci(&s)
+    } else {
+        let s = format!("{:.prec$}", n, prec = precision);
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+fn trim_sci(s: &str) -> String {
+    if let Some(e_pos) = s.find('e') {
+        let mantissa = s[..e_pos].trim_end_matches('0').trim_end_matches('.');
+        format!("{}{}", mantissa, &s[e_pos..])
+    } else {
+        s.to_string()
     }
 }
 
@@ -256,5 +309,59 @@ mod tests {
         assert_eq!(format_number(2.5), "2.5");
         assert_eq!(format_number(3.14), "3.14");
         assert_eq!(format_number(0.1 + 0.2), "0.3");
+    }
+
+    #[test]
+    fn test_format_value_dec_integer() {
+        assert_eq!(format_value(42.0, 10, Base::Dec), "42");
+        assert_eq!(format_value(-5.0, 10, Base::Dec), "-5");
+    }
+
+    #[test]
+    fn test_format_value_dec_float() {
+        assert_eq!(format_value(3.14, 2, Base::Dec), "3.14");
+        assert_eq!(format_value(1.0 / 3.0, 4, Base::Dec), "0.3333");
+    }
+
+    #[test]
+    fn test_format_value_dec_sci_large() {
+        let result = format_value(1e20, 2, Base::Dec);
+        assert!(result.contains('e'), "expected scientific notation, got: {result}");
+    }
+
+    #[test]
+    fn test_format_value_dec_sci_small() {
+        let result = format_value(1e-10, 4, Base::Dec);
+        assert!(result.contains('e'), "expected scientific notation, got: {result}");
+    }
+
+    #[test]
+    fn test_format_value_hex() {
+        assert_eq!(format_value(255.0, 10, Base::Hex), "0xFF");
+        assert_eq!(format_value(256.0, 10, Base::Hex), "0x100");
+        assert_eq!(format_value(0.0, 10, Base::Hex), "0x0");
+    }
+
+    #[test]
+    fn test_format_value_bin() {
+        assert_eq!(format_value(10.0, 10, Base::Bin), "0b1010");
+        assert_eq!(format_value(1.0, 10, Base::Bin), "0b1");
+    }
+
+    #[test]
+    fn test_format_value_oct() {
+        assert_eq!(format_value(8.0, 10, Base::Oct), "0o10");
+        assert_eq!(format_value(255.0, 10, Base::Oct), "0o377");
+    }
+
+    #[test]
+    fn test_format_non_dec_negative() {
+        assert_eq!(format_non_dec(-16.0, Base::Hex), "-0x10");
+        assert_eq!(format_non_dec(-2.0, Base::Bin), "-0b10");
+    }
+
+    #[test]
+    fn test_format_value_hex_rounds() {
+        assert_eq!(format_value(255.6, 10, Base::Hex), "0x100");
     }
 }

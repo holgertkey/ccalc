@@ -25,10 +25,10 @@ impl Memory {
         self.cells = [0.0; 9];
     }
 
-    pub fn display_nonzero(&self) {
+    pub fn display_nonzero(&self, fmt: impl Fn(f64) -> String) {
         for (i, &val) in self.cells.iter().enumerate() {
             if val != 0.0 {
-                println!("m{}: {}", i + 1, format_number(val));
+                println!("m{}: {}", i + 1, fmt(val));
             }
         }
     }

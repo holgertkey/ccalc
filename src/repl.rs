@@ -3,7 +3,7 @@ use std::io::{BufRead, Write};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
-use crate::eval::{eval, format_number};
+use crate::eval::{Base, eval, format_number, format_value};
 use crate::memory::{
     extract_directive, expand_memory_refs, parse_standalone_cmd, CompoundOp, Directive, Memory,
     StandaloneCmd,
@@ -13,10 +13,12 @@ use crate::parser::{is_partial, parse};
 pub fn run() {
     let mut accumulator: f64 = 0.0;
     let mut memory = Memory::new();
+    let mut precision: usize = 10;
+    let mut base = Base::Dec;
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     loop {
-        let prompt = format!("[ {} ]: ", format_number(accumulator));
+        let prompt = format!("[ {} ]: ", format_value(accumulator, precision, base));
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
@@ -46,14 +48,44 @@ pub fn run() {
                 continue;
             }
             "m" => {
-                memory.display_nonzero();
+                memory.display_nonzero(|v| format_value(v, precision, base));
                 continue;
             }
             "mc" => {
                 memory.clear_all();
                 continue;
             }
+            "p" => {
+                println!("precision: {precision}");
+                continue;
+            }
+            "hex" => {
+                base = Base::Hex;
+                continue;
+            }
+            "dec" => {
+                base = Base::Dec;
+                continue;
+            }
+            "bin" => {
+                base = Base::Bin;
+                continue;
+            }
+            "oct" => {
+                base = Base::Oct;
+                continue;
+            }
+            "base" => {
+                print_all_bases(accumulator, precision);
+                continue;
+            }
             _ => {}
+        }
+
+        // Precision command: p<N>
+        if let Some(p) = parse_precision_cmd(trimmed) {
+            precision = p;
+            continue;
         }
 
         // Standalone memory commands: m[1-9], mc[1-9]
@@ -65,8 +97,14 @@ pub fn run() {
             continue;
         }
 
+        // Extract trailing base suffix (e.g. "0xFF + 0b10 hex")
+        let (trimmed_no_base, new_base) = extract_base_suffix(trimmed);
+        if let Some(b) = new_base {
+            base = b;
+        }
+
         // Expression (with optional trailing memory directive and/or m[1-9] value refs)
-        let (expr_part, directive) = extract_directive(trimmed);
+        let (expr_part, directive) = extract_directive(trimmed_no_base);
 
         let base_expr = if is_partial(expr_part) {
             format!("{} {}", format_number(accumulator), expr_part)
@@ -93,8 +131,9 @@ pub fn run() {
 pub fn run_expr(expr: &str) {
     let mut acc: f64 = 0.0;
     let mut mem = Memory::new();
-    match evaluate(expr.trim(), &mut acc, &mut mem) {
-        Ok(result) => println!("{}", format_number(result)),
+    let mut base = Base::Dec;
+    match evaluate(expr.trim(), &mut acc, &mut mem, &mut base) {
+        Ok(result) => println!("{}", format_value(result, 10, base)),
         Err(e) => {
             eprintln!("Error: {e}");
             std::process::exit(1);
@@ -107,6 +146,8 @@ pub fn run_expr(expr: &str) {
 pub fn run_pipe(reader: impl BufRead) {
     let mut acc: f64 = 0.0;
     let mut mem = Memory::new();
+    let mut precision: usize = 10;
+    let mut base = Base::Dec;
 
     for line in reader.lines() {
         let line = match line {
@@ -133,7 +174,37 @@ pub fn run_pipe(reader: impl BufRead) {
                 continue;
             }
             "cls" | "m" => continue, // no-op in pipe mode
+            "p" => {
+                println!("precision: {precision}");
+                continue;
+            }
+            "hex" => {
+                base = Base::Hex;
+                continue;
+            }
+            "dec" => {
+                base = Base::Dec;
+                continue;
+            }
+            "bin" => {
+                base = Base::Bin;
+                continue;
+            }
+            "oct" => {
+                base = Base::Oct;
+                continue;
+            }
+            "base" => {
+                print_all_bases(acc, precision);
+                continue;
+            }
             _ => {}
+        }
+
+        // Precision command: p<N>
+        if let Some(p) = parse_precision_cmd(trimmed) {
+            precision = p;
+            continue;
         }
 
         // Standalone memory commands: m[1-9], mc[1-9]
@@ -145,17 +216,27 @@ pub fn run_pipe(reader: impl BufRead) {
             continue;
         }
 
-        match evaluate(trimmed, &mut acc, &mut mem) {
-            Ok(result) => println!("{}", format_number(result)),
+        match evaluate(trimmed, &mut acc, &mut mem, &mut base) {
+            Ok(result) => println!("{}", format_value(result, precision, base)),
             Err(e) => eprintln!("Error: {e}"),
         }
     }
 }
 
-/// Evaluate a line (expression + optional directive) updating acc and memory.
-/// Handles partial expressions, memory ref expansion, and acc substitution.
-fn evaluate(trimmed: &str, acc: &mut f64, mem: &mut Memory) -> Result<f64, String> {
-    let (expr_part, directive) = extract_directive(trimmed);
+/// Evaluate a line (expression + optional base suffix + optional directive)
+/// updating acc, mem, and base state.
+fn evaluate(
+    trimmed: &str,
+    acc: &mut f64,
+    mem: &mut Memory,
+    base: &mut Base,
+) -> Result<f64, String> {
+    let (after_base, new_base) = extract_base_suffix(trimmed);
+    if let Some(b) = new_base {
+        *base = b;
+    }
+
+    let (expr_part, directive) = extract_directive(after_base);
 
     let base_expr = if is_partial(expr_part) {
         format!("{} {}", format_number(*acc), expr_part)
@@ -215,6 +296,50 @@ fn apply_compound(cell: f64, result: f64, op: CompoundOp) -> Result<f64, String>
             }
         }
         CompoundOp::Pow => Ok(cell.powf(result)),
+    }
+}
+
+/// Prints the current accumulator value in all four bases.
+fn print_all_bases(n: f64, precision: usize) {
+    let i = n.round() as i64;
+    let u = i.unsigned_abs();
+    let sign = if i < 0 { "-" } else { "" };
+    println!("2  - {}0b{:b}", sign, u);
+    println!("8  - {}0{:o}", sign, u);
+    println!("10 - {}", format_value(n, precision, Base::Dec));
+    println!("16 - {}{:X}", sign, u);
+}
+
+/// Strips a trailing base keyword (`hex`, `dec`, `bin`, `oct`) from an expression.
+/// Returns `(remaining_expr, Some(Base))` or `(input, None)` if no suffix found.
+fn extract_base_suffix(input: &str) -> (&str, Option<Base>) {
+    if let Some(pos) = input.rfind(' ') {
+        let token = &input[pos + 1..];
+        let before = input[..pos].trim_end();
+        if !before.is_empty() {
+            let b = match token {
+                "hex" => Some(Base::Hex),
+                "dec" => Some(Base::Dec),
+                "bin" => Some(Base::Bin),
+                "oct" => Some(Base::Oct),
+                _ => None,
+            };
+            if b.is_some() {
+                return (before, b);
+            }
+        }
+    }
+    (input, None)
+}
+
+/// Parses a precision command of the form `p<N>` where N is 0–15.
+/// Returns `Some(N)` on match, `None` otherwise.
+fn parse_precision_cmd(input: &str) -> Option<usize> {
+    let bytes = input.as_bytes();
+    if bytes.first() == Some(&b'p') && bytes.len() > 1 {
+        input[1..].parse::<usize>().ok().filter(|&n| n <= 15)
+    } else {
+        None
     }
 }
 
@@ -338,6 +463,75 @@ mod tests {
         assert_eq!(display, Some("12 + 14 + 14".to_string()));
     }
 
+    // --- extract_base_suffix tests ---
+
+    #[test]
+    fn test_extract_base_suffix_hex() {
+        let (expr, base) = extract_base_suffix("255 hex");
+        assert_eq!(expr, "255");
+        assert_eq!(base, Some(Base::Hex));
+    }
+
+    #[test]
+    fn test_extract_base_suffix_bin() {
+        let (expr, base) = extract_base_suffix("10 bin");
+        assert_eq!(expr, "10");
+        assert_eq!(base, Some(Base::Bin));
+    }
+
+    #[test]
+    fn test_extract_base_suffix_oct() {
+        let (expr, base) = extract_base_suffix("8 oct");
+        assert_eq!(expr, "8");
+        assert_eq!(base, Some(Base::Oct));
+    }
+
+    #[test]
+    fn test_extract_base_suffix_dec() {
+        let (expr, base) = extract_base_suffix("255 dec");
+        assert_eq!(expr, "255");
+        assert_eq!(base, Some(Base::Dec));
+    }
+
+    #[test]
+    fn test_extract_base_suffix_none() {
+        let (expr, base) = extract_base_suffix("255 + 10");
+        assert_eq!(expr, "255 + 10");
+        assert!(base.is_none());
+    }
+
+    #[test]
+    fn test_extract_base_suffix_complex() {
+        let (expr, base) = extract_base_suffix("0xFF + 0b1010 hex");
+        assert_eq!(expr, "0xFF + 0b1010");
+        assert_eq!(base, Some(Base::Hex));
+    }
+
+    #[test]
+    fn test_extract_base_suffix_no_space() {
+        let (expr, base) = extract_base_suffix("hex");
+        assert_eq!(expr, "hex");
+        assert!(base.is_none());
+    }
+
+    // --- parse_precision_cmd tests ---
+
+    #[test]
+    fn test_parse_precision_cmd_valid() {
+        assert_eq!(parse_precision_cmd("p6"), Some(6));
+        assert_eq!(parse_precision_cmd("p0"), Some(0));
+        assert_eq!(parse_precision_cmd("p15"), Some(15));
+        assert_eq!(parse_precision_cmd("p10"), Some(10));
+    }
+
+    #[test]
+    fn test_parse_precision_cmd_invalid() {
+        assert_eq!(parse_precision_cmd("p"), None);
+        assert_eq!(parse_precision_cmd("p16"), None); // exceeds max
+        assert_eq!(parse_precision_cmd("pi"), None);  // not numeric
+        assert_eq!(parse_precision_cmd("6"), None);   // no 'p' prefix
+    }
+
     // --- evaluate / run_pipe tests ---
 
     fn pipe_output(input: &str) -> Vec<String> {
@@ -345,6 +539,7 @@ mod tests {
         let mut output = Vec::new();
         let mut acc: f64 = 0.0;
         let mut mem = Memory::new();
+        let mut base = Base::Dec;
         let reader = Cursor::new(input);
         for line in reader.lines() {
             let line = line.unwrap();
@@ -357,7 +552,15 @@ mod tests {
                 "c" => { acc = 0.0; continue; }
                 "mc" => { mem.clear_all(); continue; }
                 "cls" | "m" => continue,
+                "hex" => { base = Base::Hex; continue; }
+                "dec" => { base = Base::Dec; continue; }
+                "bin" => { base = Base::Bin; continue; }
+                "oct" => { base = Base::Oct; continue; }
                 _ => {}
+            }
+            if let Some(p) = parse_precision_cmd(trimmed) {
+                let _ = p; // precision changes not tracked in this helper
+                continue;
             }
             if let Some(cmd) = parse_standalone_cmd(trimmed) {
                 match cmd {
@@ -366,8 +569,8 @@ mod tests {
                 }
                 continue;
             }
-            match evaluate(trimmed, &mut acc, &mut mem) {
-                Ok(result) => output.push(format_number(result)),
+            match evaluate(trimmed, &mut acc, &mut mem, &mut base) {
+                Ok(result) => output.push(format_value(result, 10, base)),
                 Err(e) => output.push(format!("Error: {e}")),
             }
         }
@@ -427,10 +630,50 @@ mod tests {
     }
 
     #[test]
+    fn test_pipe_hex_literals() {
+        assert_eq!(pipe_output("0xFF"), vec!["255"]);
+        assert_eq!(pipe_output("0xFF + 0b1010"), vec!["265"]);
+    }
+
+    #[test]
+    fn test_pipe_hex_base_suffix_changes_display() {
+        // After "0xFF + 0b1010 hex", result should display as hex
+        let lines = "0xFF + 0b1010 hex";
+        assert_eq!(pipe_output(lines), vec!["0x109"]);
+    }
+
+    #[test]
+    fn test_pipe_base_persists() {
+        // Set hex base, subsequent result also in hex
+        let lines = "0xFF + 0b1010 hex\n+ 0b10";
+        assert_eq!(pipe_output(lines), vec!["0x109", "0x10B"]);
+    }
+
+    #[test]
+    fn test_pipe_base_switch_dec() {
+        let lines = "255 hex\ndec";
+        // After hex, 255 shows as 0xFF. After dec, nothing printed (standalone command).
+        // Next expression would print in dec.
+        let out = pipe_output(lines);
+        assert_eq!(out, vec!["0xFF"]);
+    }
+
+    #[test]
+    fn test_pipe_bin_literals() {
+        assert_eq!(pipe_output("0b1010"), vec!["10"]);
+    }
+
+    #[test]
+    fn test_pipe_oct_literals() {
+        assert_eq!(pipe_output("0o17"), vec!["15"]);
+    }
+
+    #[test]
     fn test_evaluate_simple() {
         let mut acc = 0.0;
         let mut mem = Memory::new();
-        assert_eq!(evaluate("3 * 4", &mut acc, &mut mem).unwrap(), 12.0);
+        let mut base = Base::Dec;
+        assert_eq!(evaluate("3 * 4", &mut acc, &mut mem, &mut base).unwrap(), 12.0);
         assert_eq!(acc, 12.0);
     }
 
@@ -438,6 +681,17 @@ mod tests {
     fn test_evaluate_partial_adds_to_acc() {
         let mut acc = 10.0;
         let mut mem = Memory::new();
-        assert_eq!(evaluate("+ 5", &mut acc, &mut mem).unwrap(), 15.0);
+        let mut base = Base::Dec;
+        assert_eq!(evaluate("+ 5", &mut acc, &mut mem, &mut base).unwrap(), 15.0);
+    }
+
+    #[test]
+    fn test_evaluate_sets_base_via_suffix() {
+        let mut acc = 0.0;
+        let mut mem = Memory::new();
+        let mut base = Base::Dec;
+        evaluate("255 hex", &mut acc, &mut mem, &mut base).unwrap();
+        assert_eq!(base, Base::Hex);
+        assert_eq!(acc, 255.0);
     }
 }

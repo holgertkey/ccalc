@@ -14,6 +14,34 @@ enum Token {
     RParen,
 }
 
+fn parse_integer_literal(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    radix: u32,
+    prefix: &str,
+) -> Result<f64, String> {
+    let mut digit_str = String::new();
+    while let Some(&d) = chars.peek() {
+        let valid = match radix {
+            16 => d.is_ascii_hexdigit(),
+            2 => d == '0' || d == '1',
+            8 => ('0'..='7').contains(&d),
+            _ => false,
+        };
+        if valid {
+            digit_str.push(d);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    if digit_str.is_empty() {
+        return Err(format!("Expected digits after '{prefix}'"));
+    }
+    i64::from_str_radix(&digit_str, radix)
+        .map(|i| i as f64)
+        .map_err(|_| format!("Invalid {prefix} literal: '{prefix}{digit_str}'"))
+}
+
 fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
@@ -56,19 +84,57 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             '0'..='9' | '.' => {
-                let mut num_str = String::new();
-                while let Some(&c) = chars.peek() {
-                    if c.is_ascii_digit() || c == '.' {
-                        num_str.push(c);
-                        chars.next();
-                    } else {
-                        break;
+                if c == '0' {
+                    chars.next(); // consume '0'
+                    match chars.peek().copied() {
+                        Some('x') | Some('X') => {
+                            chars.next();
+                            let n = parse_integer_literal(&mut chars, 16, "0x")?;
+                            tokens.push(Token::Number(n));
+                        }
+                        Some('b') | Some('B') => {
+                            chars.next();
+                            let n = parse_integer_literal(&mut chars, 2, "0b")?;
+                            tokens.push(Token::Number(n));
+                        }
+                        Some('o') | Some('O') => {
+                            chars.next();
+                            let n = parse_integer_literal(&mut chars, 8, "0o")?;
+                            tokens.push(Token::Number(n));
+                        }
+                        _ => {
+                            // Decimal number starting with '0' (e.g. 0.5 or just 0)
+                            let mut num_str = String::from("0");
+                            while let Some(&d) = chars.peek() {
+                                if d.is_ascii_digit() || d == '.' {
+                                    num_str.push(d);
+                                    chars.next();
+                                } else {
+                                    break;
+                                }
+                            }
+                            let n: f64 = num_str
+                                .parse()
+                                .map_err(|_| format!("Invalid number: '{num_str}'"))?;
+                            tokens.push(Token::Number(n));
+                        }
                     }
+                } else {
+                    // Decimal number not starting with '0'
+                    let mut num_str = String::new();
+                    while let Some(&d) = chars.peek() {
+                        if d.is_ascii_digit() || d == '.' {
+                            num_str.push(d);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    let n: f64 = num_str
+                        .parse()
+                        .map_err(|_| format!("Invalid number: '{num_str}'"))?;
+                    tokens.push(Token::Number(n));
                 }
-                let n: f64 = num_str
-                    .parse()
-                    .map_err(|_| format!("Invalid number: '{num_str}'"))?;
-                tokens.push(Token::Number(n));
             }
             'a'..='z' | 'A'..='Z' | '_' => {
                 let mut ident = String::new();
@@ -447,6 +513,46 @@ mod tests {
     #[test]
     fn test_fn_in_expr() {
         assert_eq!(calc("sqrt(144) + 3"), 15.0);
+    }
+
+    #[test]
+    fn test_hex_literal() {
+        assert_eq!(calc("0xFF"), 255.0);
+        assert_eq!(calc("0x10"), 16.0);
+        assert_eq!(calc("0XFF"), 255.0);
+    }
+
+    #[test]
+    fn test_bin_literal() {
+        assert_eq!(calc("0b1010"), 10.0);
+        assert_eq!(calc("0b1"), 1.0);
+        assert_eq!(calc("0B1111"), 15.0);
+    }
+
+    #[test]
+    fn test_oct_literal() {
+        assert_eq!(calc("0o17"), 15.0);
+        assert_eq!(calc("0o10"), 8.0);
+        assert_eq!(calc("0O377"), 255.0);
+    }
+
+    #[test]
+    fn test_mixed_base_expression() {
+        assert_eq!(calc("0xFF + 0b1010"), 265.0);
+        assert_eq!(calc("0x10 + 0o10 + 0b10"), 26.0);
+    }
+
+    #[test]
+    fn test_hex_error_no_digits() {
+        assert!(parse("0x", 0.0).is_err());
+        assert!(parse("0b", 0.0).is_err());
+        assert!(parse("0o", 0.0).is_err());
+    }
+
+    #[test]
+    fn test_decimal_zero_still_works() {
+        assert_eq!(calc("0"), 0.0);
+        assert_eq!(calc("0.5"), 0.5);
     }
 
     #[test]
