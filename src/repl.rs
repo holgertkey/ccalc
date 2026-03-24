@@ -116,7 +116,15 @@ pub fn run() {
         let (mem_expanded, mem_display) = expand_memory_refs(&base_expr, &memory);
         let (full_expanded, acc_display) = expand_acc(&mem_expanded, accumulator);
 
-        if let Some(display) = acc_display.or(mem_display) {
+        // When a base switch was applied, show the expression with all numbers in the target base.
+        // This display subsumes the acc/mem display since it already incorporates all substitutions.
+        let base_display = if matches!(base_suffix, Some(BaseSuffix::Switch(_))) {
+            format_expr_for_display(&full_expanded, base)
+        } else {
+            None
+        };
+
+        if let Some(display) = base_display.or(acc_display).or(mem_display) {
             println!("{}", display);
         }
 
@@ -369,6 +377,133 @@ fn extract_base_suffix(input: &str) -> (&str, Option<BaseSuffix>) {
     (input, None)
 }
 
+/// Formats `val` in the given base for expression display.
+/// Hex: uppercase digits, no `0x` prefix.
+/// Bin/Oct: `0b`/`0o` prefix.
+/// Dec: standard decimal.
+fn format_for_base(val: f64, base: Base) -> String {
+    let i = val.round() as i64;
+    let u = i.unsigned_abs();
+    let sign = if i < 0 { "-" } else { "" };
+    match base {
+        Base::Hex => format!("{}{:X}", sign, u),
+        Base::Bin => format!("{}0b{:b}", sign, u),
+        Base::Oct => format!("{}0o{:o}", sign, u),
+        Base::Dec => format_number(val),
+    }
+}
+
+/// Rewrites number literals in `expr` that are not in the target `base` to that base.
+/// Returns `Some(rewritten)` if any conversion happened, `None` if nothing changed.
+///
+/// Rule: literals already in the target base are kept verbatim (preserving prefix/case).
+/// All others are replaced with `format_for_base` output.
+fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
+    let mut result = String::with_capacity(expr.len());
+    let mut chars = expr.chars().peekable();
+    let mut changed = false;
+
+    while let Some(&c) = chars.peek() {
+        match c {
+            '0' => {
+                chars.next(); // consume '0'
+                match chars.peek().copied() {
+                    Some('x') | Some('X') => {
+                        let pfx = chars.next().unwrap(); // 'x' or 'X'
+                        let mut s = String::new();
+                        while let Some(&d) = chars.peek() {
+                            if d.is_ascii_hexdigit() { s.push(d); chars.next(); } else { break; }
+                        }
+                        if s.is_empty() {
+                            result.push('0'); result.push(pfx);
+                        } else if base == Base::Hex {
+                            // already target base — keep original
+                            result.push('0'); result.push(pfx); result.push_str(&s);
+                        } else {
+                            let val = i64::from_str_radix(&s, 16).unwrap_or(0) as f64;
+                            result.push_str(&format_for_base(val, base));
+                            changed = true;
+                        }
+                    }
+                    Some('b') | Some('B') => {
+                        let pfx = chars.next().unwrap();
+                        let mut s = String::new();
+                        while let Some(&d) = chars.peek() {
+                            if d == '0' || d == '1' { s.push(d); chars.next(); } else { break; }
+                        }
+                        if s.is_empty() {
+                            result.push('0'); result.push(pfx);
+                        } else if base == Base::Bin {
+                            result.push('0'); result.push(pfx); result.push_str(&s);
+                        } else {
+                            let val = i64::from_str_radix(&s, 2).unwrap_or(0) as f64;
+                            result.push_str(&format_for_base(val, base));
+                            changed = true;
+                        }
+                    }
+                    Some('o') | Some('O') => {
+                        let pfx = chars.next().unwrap();
+                        let mut s = String::new();
+                        while let Some(&d) = chars.peek() {
+                            if ('0'..='7').contains(&d) { s.push(d); chars.next(); } else { break; }
+                        }
+                        if s.is_empty() {
+                            result.push('0'); result.push(pfx);
+                        } else if base == Base::Oct {
+                            result.push('0'); result.push(pfx); result.push_str(&s);
+                        } else {
+                            let val = i64::from_str_radix(&s, 8).unwrap_or(0) as f64;
+                            result.push_str(&format_for_base(val, base));
+                            changed = true;
+                        }
+                    }
+                    _ => {
+                        // Decimal starting with '0' (e.g. 0.5 or bare 0)
+                        let mut num_str = String::from("0");
+                        while let Some(&d) = chars.peek() {
+                            if d.is_ascii_digit() || d == '.' { num_str.push(d); chars.next(); } else { break; }
+                        }
+                        if base == Base::Dec {
+                            result.push_str(&num_str);
+                        } else {
+                            let val: f64 = num_str.parse().unwrap_or(0.0);
+                            let formatted = format_for_base(val, base);
+                            if formatted != num_str { changed = true; }
+                            result.push_str(&formatted);
+                        }
+                    }
+                }
+            }
+            '1'..='9' | '.' => {
+                let mut num_str = String::new();
+                while let Some(&d) = chars.peek() {
+                    if d.is_ascii_digit() || d == '.' { num_str.push(d); chars.next(); } else { break; }
+                }
+                if base == Base::Dec {
+                    result.push_str(&num_str);
+                } else {
+                    let val: f64 = num_str.parse().unwrap_or(0.0);
+                    let formatted = format_for_base(val, base);
+                    if formatted != num_str { changed = true; }
+                    result.push_str(&formatted);
+                }
+            }
+            'a'..='z' | 'A'..='Z' | '_' => {
+                // Identifier (function name, constant) — keep verbatim
+                while let Some(&d) = chars.peek() {
+                    if d.is_alphanumeric() || d == '_' { result.push(d); chars.next(); } else { break; }
+                }
+            }
+            _ => {
+                result.push(c);
+                chars.next();
+            }
+        }
+    }
+
+    if changed { Some(result) } else { None }
+}
+
 /// Parses a precision command of the form `p<N>` where N is 0–15.
 /// Returns `Some(N)` on match, `None` otherwise.
 fn parse_precision_cmd(input: &str) -> Option<usize> {
@@ -559,6 +694,78 @@ mod tests {
     }
 
     // --- parse_precision_cmd tests ---
+
+    // --- format_for_base tests ---
+
+    #[test]
+    fn test_format_for_base_hex() {
+        assert_eq!(format_for_base(10.0, Base::Hex), "A");
+        assert_eq!(format_for_base(255.0, Base::Hex), "FF");
+        assert_eq!(format_for_base(0.0, Base::Hex), "0");
+    }
+
+    #[test]
+    fn test_format_for_base_bin() {
+        assert_eq!(format_for_base(10.0, Base::Bin), "0b1010");
+        assert_eq!(format_for_base(1.0, Base::Bin), "0b1");
+    }
+
+    #[test]
+    fn test_format_for_base_oct() {
+        assert_eq!(format_for_base(8.0, Base::Oct), "0o10");
+        assert_eq!(format_for_base(255.0, Base::Oct), "0o377");
+    }
+
+    #[test]
+    fn test_format_for_base_dec() {
+        assert_eq!(format_for_base(42.0, Base::Dec), "42");
+        assert_eq!(format_for_base(3.14, Base::Dec), "3.14");
+    }
+
+    // --- format_expr_for_display tests ---
+
+    #[test]
+    fn test_format_expr_hex_converts_bin_and_dec() {
+        // User's example: 0xFF + 0b1010 + 10 → 0xFF + A + A
+        assert_eq!(
+            format_expr_for_display("0xFF + 0b1010 + 10", Base::Hex),
+            Some("0xFF + A + A".to_string())
+        );
+    }
+
+    #[test]
+    fn test_format_expr_hex_keeps_hex_literals() {
+        // 0xFF is already hex — unchanged; 0b1010 → A
+        assert_eq!(
+            format_expr_for_display("0xFF + 0b1010", Base::Hex),
+            Some("0xFF + A".to_string())
+        );
+    }
+
+    #[test]
+    fn test_format_expr_dec_converts_hex() {
+        assert_eq!(
+            format_expr_for_display("0xFF + 10", Base::Dec),
+            Some("255 + 10".to_string())
+        );
+    }
+
+    #[test]
+    fn test_format_expr_no_change_when_all_match() {
+        // All literals already decimal, base is Dec → None
+        assert_eq!(format_expr_for_display("10 + 5", Base::Dec), None);
+        // All literals already hex, base is Hex → None
+        assert_eq!(format_expr_for_display("0xFF + 0xA", Base::Hex), None);
+    }
+
+    #[test]
+    fn test_format_expr_preserves_identifiers() {
+        // sin, pi, acc should pass through unchanged
+        assert_eq!(
+            format_expr_for_display("sin(pi) + 0b1010", Base::Hex),
+            Some("sin(pi) + A".to_string())
+        );
+    }
 
     #[test]
     fn test_parse_precision_cmd_valid() {
