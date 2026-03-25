@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use crate::eval::format_number;
 
 pub struct Memory {
@@ -31,6 +33,64 @@ impl Memory {
                 println!("m{}: {}", i + 1, fmt(val));
             }
         }
+    }
+
+    pub fn save_to_file(&self) -> Result<(), String> {
+        self.save_impl(&config_path())
+    }
+
+    pub fn load_from_file(&mut self) -> Result<(), String> {
+        self.load_impl(&config_path())
+    }
+
+    fn save_impl(&self, path: &Path) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Cannot create config dir: {e}"))?;
+        }
+        let mut content = String::new();
+        for (i, &val) in self.cells.iter().enumerate() {
+            if val != 0.0 {
+                content.push_str(&format!("m{} = {}\n", i + 1, val));
+            }
+        }
+        std::fs::write(path, &content)
+            .map_err(|e| format!("Cannot write {}: {e}", path.display()))
+    }
+
+    fn load_impl(&mut self, path: &Path) -> Result<(), String> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        self.clear_all();
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Some((key, val)) = line.split_once('=') {
+                if let Some(idx) = parse_cell_key(key.trim()) {
+                    if let Ok(v) = val.trim().parse::<f64>() {
+                        self.cells[idx] = v;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn config_path() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("ccalc")
+        .join("memory.toml")
+}
+
+fn parse_cell_key(key: &str) -> Option<usize> {
+    let b = key.as_bytes();
+    match b {
+        [b'm', d] if is_mem_digit(*d) => Some(mem_idx(*d)),
+        _ => None,
     }
 }
 
@@ -162,6 +222,61 @@ mod tests {
     use super::*;
 
     // ── Memory struct ────────────────────────────────────────────────────────
+
+    // ── Persistence ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_save_and_load_roundtrip() {
+        let path = std::env::temp_dir().join("ccalc_test_memory_roundtrip.toml");
+        let mut m = Memory::new();
+        m.set(0, 42.0);
+        m.set(4, -7.5);
+        m.set(8, 1e10);
+        m.save_impl(&path).unwrap();
+
+        let mut m2 = Memory::new();
+        m2.load_impl(&path).unwrap();
+        assert_eq!(m2.get(0), 42.0);
+        assert_eq!(m2.get(4), -7.5);
+        assert_eq!(m2.get(8), 1e10);
+        assert_eq!(m2.get(1), 0.0);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_clears_existing_cells() {
+        let path = std::env::temp_dir().join("ccalc_test_memory_clear.toml");
+        // Save only m1
+        let mut m = Memory::new();
+        m.set(0, 10.0);
+        m.save_impl(&path).unwrap();
+
+        // Load into a memory that had other cells set
+        let mut m2 = Memory::new();
+        m2.set(5, 99.0);
+        m2.load_impl(&path).unwrap();
+        assert_eq!(m2.get(0), 10.0);
+        assert_eq!(m2.get(5), 0.0); // cleared by load
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_save_empty_memory_produces_empty_file() {
+        let path = std::env::temp_dir().join("ccalc_test_memory_empty.toml");
+        let m = Memory::new();
+        m.save_impl(&path).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.is_empty());
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_nonexistent_file_returns_error() {
+        let path = std::env::temp_dir().join("ccalc_test_memory_nonexistent_xyz.toml");
+        let _ = std::fs::remove_file(&path); // ensure it doesn't exist
+        let mut m = Memory::new();
+        assert!(m.load_impl(&path).is_err());
+    }
 
     #[test]
     fn test_memory_new_all_zero() {

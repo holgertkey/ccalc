@@ -1,7 +1,8 @@
 [package]
 name = "ccalc"
-version = "0.6.0+001"
+version = "0.7.0"
 edition = "2024"
 
 [dependencies]
 rustyline = "14"
+dirs = "5"

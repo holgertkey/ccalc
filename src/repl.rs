@@ -55,6 +55,20 @@ pub fn run() {
                 memory.clear_all();
                 continue;
             }
+            "ms" => {
+                match memory.save_to_file() {
+                    Ok(()) => println!("Memory saved."),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+                continue;
+            }
+            "ml" => {
+                match memory.load_from_file() {
+                    Ok(()) => println!("Memory loaded."),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+                continue;
+            }
             "p" => {
                 println!("precision: {precision}");
                 continue;
