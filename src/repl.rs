@@ -5,8 +5,8 @@ use rustyline::error::ReadlineError;
 
 use crate::eval::{Base, eval, format_number, format_value};
 use crate::memory::{
-    CompoundOp, Directive, Memory, StandaloneCmd, expand_memory_refs, extract_directive,
-    parse_standalone_cmd,
+    CompoundOp, Directive, Memory, StandaloneCmd, config_dir, expand_memory_refs,
+    extract_directive, parse_standalone_cmd,
 };
 use crate::parser::{is_partial, parse};
 
@@ -16,6 +16,9 @@ pub fn run() {
     let mut precision: usize = 10;
     let mut base = Base::Dec;
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
+
+    let history_path = config_dir().join("history");
+    rl.load_history(&history_path).ok();
 
     loop {
         let prompt = format!("[ {} ]: ", format_value(accumulator, precision, base));
@@ -147,6 +150,8 @@ pub fn run() {
             Err(e) => eprintln!("Error: {e}"),
         }
     }
+
+    rl.save_history(&history_path).ok();
 }
 
 /// Evaluate a single expression string in pipe/non-interactive mode.

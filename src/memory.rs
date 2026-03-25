@@ -77,11 +77,14 @@ impl Memory {
     }
 }
 
-fn config_path() -> PathBuf {
+pub fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("ccalc")
-        .join("memory.toml")
+}
+
+fn config_path() -> PathBuf {
+    config_dir().join("memory.toml")
 }
 
 fn parse_cell_key(key: &str) -> Option<usize> {
