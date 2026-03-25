@@ -2,7 +2,7 @@
 
 A command-line calculator with a persistent accumulator, memory cells, and math functions.
 
-**Current version: 0.5.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.6.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -127,6 +127,44 @@ The prompt shows the **accumulator** — the result of the last expression. Ever
 
 [ 0 ]: -(3 + 2)
 [ -5 ]:
+```
+
+---
+
+## Ergonomics
+
+### Percentage operator
+
+`N%` means *N percent of the accumulator* — a postfix operator that expands to `N * acc / 100`:
+
+```
+[ 1500 ]: 20%
+[ 300 ]:               (20% of 1500)
+
+[ 1500 ]: + 20%
+[ 1800 ]:              (1500 + 20% of 1500)
+
+[ 1800 ]: - 10%
+[ 1620 ]:              (1800 − 10% of 1800)
+```
+
+`%` still works as **modulo** when followed by a number or expression:
+
+```
+[ 0 ]: 17 % 5
+[ 2 ]:
+```
+
+### Implicit multiplication
+
+A number or closing parenthesis immediately before `(` multiplies without an explicit `*`:
+
+```
+[ 0 ]: 2(3 + 1)
+[ 8 ]:
+
+[ 0 ]: (2 + 1)(4 - 1)
+[ 9 ]:
 ```
 
 ---
@@ -386,6 +424,32 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 ---
 
 ## Examples
+
+**Percentage — add VAT:**
+
+```
+[ 0 ]: 1200
+[ 1200 ]: + 20%
+[ 1440 ]:              (1200 + 20% of 1200)
+```
+
+**Percentage — discount:**
+
+```
+[ 0 ]: 850
+[ 850 ]: - 15%
+[ 722.5 ]:             (850 − 15% of 850)
+```
+
+**Implicit multiplication:**
+
+```
+[ 0 ]: 2(3 + 1)
+[ 8 ]:
+
+[ 0 ]: (2 + 1)(4 - 1)
+[ 9 ]:
+```
 
 **Compound interest** — 1000 at 7% for 10 years:
 

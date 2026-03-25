@@ -249,7 +249,13 @@ fn parse_expr(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, Strin
     Ok(left)
 }
 
-// term = power (('*' | '/' | '%') power)*
+fn token_starts_expr(t: &Token) -> bool {
+    matches!(t, Token::Number(_) | Token::Ident(_) | Token::LParen | Token::Minus)
+}
+
+// term = power (('*' | '/' | '%') power | '(' expr ')' )*
+// '%' is modulo when followed by an expression, otherwise postfix percentage (N% = N * acc/100).
+// '(' without an operator triggers implicit multiplication.
 fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
     let mut left = parse_power(tokens, pos, acc)?;
 
@@ -267,8 +273,23 @@ fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, Strin
             }
             Token::Percent => {
                 *pos += 1;
+                if *pos < tokens.len() && token_starts_expr(&tokens[*pos]) {
+                    // Modulo: N % M
+                    let right = parse_power(tokens, pos, acc)?;
+                    left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
+                } else {
+                    // Percentage postfix: N% = N * (acc / 100)
+                    left = Expr::BinOp(
+                        Box::new(left),
+                        Op::Mul,
+                        Box::new(Expr::Number(acc / 100.0)),
+                    );
+                }
+            }
+            Token::LParen => {
+                // Implicit multiplication: expr(...)
                 let right = parse_power(tokens, pos, acc)?;
-                left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
+                left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             _ => break,
         }
@@ -676,5 +697,72 @@ mod tests {
         // parse succeeds — unknown function is caught at eval time
         let ast = parse("foo(1)", 0.0).unwrap();
         assert!(eval(&ast).is_err());
+    }
+
+    // --- Percentage operator ---
+
+    #[test]
+    fn test_percent_of_acc() {
+        assert_eq!(calc_with("20%", 1500.0), 300.0);
+        assert_eq!(calc_with("50%", 80.0), 40.0);
+        assert_eq!(calc_with("100%", 42.0), 42.0);
+    }
+
+    #[test]
+    fn test_percent_zero_acc() {
+        assert_eq!(calc_with("20%", 0.0), 0.0);
+    }
+
+    #[test]
+    fn test_percent_add() {
+        // + 20% of 1500 → partial expansion gives "1500 + 20%", acc=1500
+        assert!((calc_with("1500 + 20%", 1500.0) - 1800.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_percent_sub() {
+        // - 10% of 1800 → 1620
+        assert!((calc_with("1800 - 10%", 1800.0) - 1620.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_percent_in_expr() {
+        // 20% + 5: percentage then add literal
+        assert!((calc_with("20% + 5", 1000.0) - 205.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_percent_no_conflict_with_modulo() {
+        assert_eq!(calc("17 % 5"), 2.0);
+        assert_eq!(calc("10 % 3"), 1.0);
+        assert_eq!(calc("6 % 2"), 0.0);
+        assert_eq!(calc("10 % (3)"), 1.0);
+    }
+
+    // --- Implicit multiplication ---
+
+    #[test]
+    fn test_implicit_mul_number_paren() {
+        assert_eq!(calc("2(3 + 1)"), 8.0);
+        assert_eq!(calc("3(2)"), 6.0);
+        assert_eq!(calc("5(0)"), 0.0);
+    }
+
+    #[test]
+    fn test_implicit_mul_paren_paren() {
+        assert_eq!(calc("(2 + 1)(4 - 1)"), 9.0);
+        assert_eq!(calc("(10)(10)"), 100.0);
+    }
+
+    #[test]
+    fn test_implicit_mul_precedence_with_add() {
+        // 2(3) + 1 = 6 + 1 = 7, not 2*4 = 8
+        assert_eq!(calc("2(3) + 1"), 7.0);
+        assert_eq!(calc("1 + 2(3)"), 7.0);
+    }
+
+    #[test]
+    fn test_implicit_mul_chained() {
+        assert_eq!(calc("2(3)(4)"), 24.0);
     }
 }

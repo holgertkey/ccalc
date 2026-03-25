@@ -75,7 +75,7 @@ KEYBOARD SHORTCUTS:
 ARITHMETIC:
     Operators:  +  -  *  /  ^  %
     Precedence (high to low):  ^  (right-associative)
-                               *  /  %
+                               *  /  %   (and implicit multiplication)
                                +  -
     Grouping:    parentheses, e.g. (3 + 2) * 4
     Unary minus: -5,  -(3 + 2)
@@ -87,6 +87,22 @@ ARITHMETIC:
         [ 6 ]: * 2         accumulator = 12
         [ 12 ]: ^ 2        accumulator = 144
         [ 144 ]: % 100     accumulator = 44
+
+PERCENTAGE:
+    N%    — N percent of the accumulator
+
+        [ 1500 ]: 20%      → 300   (20% of 1500)
+        [ 1500 ]: + 20%    → 1800  (add 20% of 1500)
+        [ 1800 ]: - 10%    → 1620  (subtract 10% of 1800)
+
+    The % symbol is context-sensitive: if followed by a number or expression
+    it acts as modulo (17 % 5 → 2); if at end of input it is percentage.
+
+IMPLICIT MULTIPLICATION:
+    A number or closing parenthesis immediately before ( triggers implicit *:
+
+        2(3 + 1)    →  8     (same as 2 * (3 + 1))
+        (2+1)(4-1)  →  9     (same as (2+1) * (4-1))
 
 CONSTANTS:
     pi          3.14159265358979...
@@ -148,6 +164,15 @@ EXAMPLES:
     10
     15
     30
+
+  Percentage:
+    [ 1500 ]: 20%          accumulator = 300  (20% of 1500)
+    [ 1500 ]: + 20%        accumulator = 1800 (1500 + 300)
+    [ 1800 ]: - 10%        accumulator = 1620 (1800 - 180)
+
+  Implicit multiplication:
+    [ 0 ]: 2(3 + 1)        accumulator = 8
+    [ 0 ]: (2+1)(4-1)      accumulator = 9
 
   Power and modulo:
     [ 0 ]: 2 ^ 10          accumulator = 1024

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-25
+
+### Added
+
+- Percentage postfix operator: `N%` evaluates to `N * accumulator / 100`
+  - `[1500]: 20%` → `300`
+  - `[1500]: + 20%` → `1800` (add 20% of accumulator)
+  - `[1800]: - 10%` → `1620` (subtract 10% of accumulator)
+  - Disambiguated from modulo by lookahead: `17 % 5` still means modulo
+- Implicit multiplication: a number or `)` immediately before `(` multiplies without an explicit `*`
+  - `2(3 + 1)` → `8`
+  - `(2+1)(4-1)` → `9`
+
 ## [0.5.0] - 2026-03-24
 
 ### Added
