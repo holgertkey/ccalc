@@ -340,7 +340,7 @@ fn print_all_bases(n: f64, precision: usize) {
     println!("2  - {}0b{:b}", sign, u);
     println!("8  - {}0o{:o}", sign, u);
     println!("10 - {}", format_value(n, precision, Base::Dec));
-    println!("16 - {}{:X}", sign, u);
+    println!("16 - {}0x{:X}", sign, u);
 }
 
 /// Trailing base suffix: a base-change keyword or `base` (show all).
@@ -849,7 +849,7 @@ mod tests {
                         output.push(format!("2  - {}0b{:b}", sign, u));
                         output.push(format!("8  - {}0o{:o}", sign, u));
                         output.push(format!("10 - {}", format_value(result, 10, Base::Dec)));
-                        output.push(format!("16 - {}{:X}", sign, u));
+                        output.push(format!("16 - {}0x{:X}", sign, u));
                     } else {
                         output.push(format_value(result, 10, base));
                     }
@@ -981,13 +981,13 @@ mod tests {
     #[test]
     fn test_pipe_base_suffix_shows_all() {
         let out = pipe_output("10 base");
-        assert_eq!(out, vec!["2  - 0b1010", "8  - 0o12", "10 - 10", "16 - A"]);
+        assert_eq!(out, vec!["2  - 0b1010", "8  - 0o12", "10 - 10", "16 - 0xA"]);
     }
 
     #[test]
     fn test_pipe_base_suffix_evaluates_expression() {
         let out = pipe_output("0xFF + 0b1010 base");
-        assert_eq!(out, vec!["2  - 0b100001001", "8  - 0o411", "10 - 265", "16 - 109"]);
+        assert_eq!(out, vec!["2  - 0b100001001", "8  - 0o411", "10 - 265", "16 - 0x109"]);
     }
 
     #[test]
