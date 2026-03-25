@@ -335,7 +335,7 @@ m2: 30
 | `cls`           | Clear the screen                            |
 | `p`             | Show current decimal precision              |
 | `p<N>`          | Set decimal precision (0–15)                |
-| `hex` / `dec` / `bin` / `oct` | Switch display base          |
+| `hex` / `dec` / `bin` / `oct` | Switch display base           |
 | `base`          | Show accumulator in all four bases          |
 | Ctrl+C / Ctrl+D | Quit                                        |
 
@@ -388,13 +388,13 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 
 **Display base** — controls how the prompt and results are shown:
 
-| Command | Effect                          |
-|---------|---------------------------------|
-| `hex`   | Switch display to hexadecimal   |
+| Command | Effect                              |
+|---------|-------------------------------------|
+| `hex`   | Switch display to hexadecimal       |
 | `dec`   | Switch display to decimal (default) |
-| `bin`   | Switch display to binary        |
-| `oct`   | Switch display to octal         |
-| `base`  | Show accumulator in all four bases |
+| `bin`   | Switch display to binary            |
+| `oct`   | Switch display to octal             |
+| `base`  | Show accumulator in all four bases  |
 
 ```
 [ 0 ]: 0xFF + 0b1010

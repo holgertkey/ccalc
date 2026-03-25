@@ -116,13 +116,9 @@ pub fn run() {
         let (mem_expanded, mem_display) = expand_memory_refs(&base_expr, &memory);
         let (full_expanded, acc_display) = expand_acc(&mem_expanded, accumulator);
 
-        // When a base switch was applied, show the expression with all numbers in the target base.
-        // This display subsumes the acc/mem display since it already incorporates all substitutions.
-        let base_display = if matches!(base_suffix, Some(BaseSuffix::Switch(_))) {
-            format_expr_for_display(&full_expanded, base)
-        } else {
-            None
-        };
+        // Show the expression with all numbers converted to the current base when there are
+        // mixed-base literals. Returns None if nothing changed (no conversion needed).
+        let base_display = format_expr_for_display(&full_expanded, base);
 
         if let Some(display) = base_display.or(acc_display).or(mem_display) {
             println!("{}", display);
@@ -764,6 +760,15 @@ mod tests {
         assert_eq!(
             format_expr_for_display("sin(pi) + 0b1010", Base::Hex),
             Some("sin(pi) + A".to_string())
+        );
+    }
+
+    #[test]
+    fn test_format_expr_bin_accumulator_mixed_bases() {
+        // [ 0b110 ]: 2 + 0b110 + 0xa → 0b10 + 0b110 + 0b1010
+        assert_eq!(
+            format_expr_for_display("2 + 0b110 + 0xa", Base::Bin),
+            Some("0b10 + 0b110 + 0b1010".to_string())
         );
     }
 
