@@ -153,10 +153,12 @@ MEMORY CELLS  m1 – m9:
   Recall (use inside any expression)
     m[1-9]              Read cell value, e.g.:  m1 + 8 + m1
 
-  View / clear
+  View / clear / persist
     m                   Show all non-zero memory cells
     mc                  Clear all memory cells
     mc[1-9]             Clear a specific cell, e.g. mc1
+    ms                  Save all cells to ~/.config/ccalc/memory.toml
+    ml                  Load cells from file (clears current cells first)
 
 EXAMPLES:
 

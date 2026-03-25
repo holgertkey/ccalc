@@ -2,7 +2,7 @@
 
 A command-line calculator with a persistent accumulator, memory cells, and math functions.
 
-**Current version: 0.6.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.7.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -238,7 +238,7 @@ Functions can be nested and combined:
 
 ## Memory cells
 
-Nine persistent memory cells: `m1` through `m9`. They hold values across expressions for the duration of the session.
+Nine memory cells: `m1` through `m9`. Values persist for the duration of the session and can be saved to disk with `ms` and restored with `ml`.
 
 ### Store
 
@@ -308,13 +308,15 @@ The expression itself can be anything, including memory references:
 [ 0 ]: m1 m2            store value of m1 into m2
 ```
 
-### View and clear
+### View, clear, and persist
 
-| Command | Action                  |
-|---------|-------------------------|
-| `m`     | Show all non-zero cells |
-| `mc`    | Clear all cells         |
-| `mc1`   | Clear cell `m1`         |
+| Command | Action                                              |
+|---------|-----------------------------------------------------|
+| `m`     | Show all non-zero cells                             |
+| `mc`    | Clear all cells                                     |
+| `mc1`   | Clear cell `m1`                                     |
+| `ms`    | Save all cells to `~/.config/ccalc/memory.toml`     |
+| `ml`    | Load cells from file (clears current cells first)   |
 
 ```
 [ 10 ]: m
@@ -337,6 +339,8 @@ m2: 30
 | `p<N>`          | Set decimal precision (0–15)                |
 | `hex` / `dec` / `bin` / `oct` | Switch display base           |
 | `base`          | Show accumulator in all four bases          |
+| `ms`            | Save memory cells to disk                   |
+| `ml`            | Load memory cells from disk                 |
 | Ctrl+C / Ctrl+D | Quit                                        |
 
 ## Keyboard shortcuts

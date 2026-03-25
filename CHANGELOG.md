@@ -6,8 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-25
+
 ### Added
 
+- Memory persistence: `ms` saves all non-zero memory cells to `~/.config/ccalc/memory.toml`; `ml` loads them back (clears all cells first, then restores from file)
+- `dirs` dependency for cross-platform config directory resolution
 - Expression conversion display: when the current base is non-decimal and the expression
   contains literals in other bases, the expression is printed with all values converted
   to the accumulator's base before the result
