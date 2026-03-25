@@ -143,7 +143,12 @@ pub fn run() {
                 .or(mem_display.as_deref())
                 .unwrap_or(&full_expanded);
             let cell_display = format_for_base(memory.get(*idx), base);
-            println!("{} {} {}", cell_display, compound_op_char(*op), expr_display);
+            let rhs = if expr_display.contains(' ') {
+                format!("({})", expr_display)
+            } else {
+                expr_display.to_string()
+            };
+            println!("{} {} {}", cell_display, compound_op_char(*op), rhs);
         } else if let Some(display) = base_display.or(acc_display).or(mem_display) {
             println!("{}", display);
         }
