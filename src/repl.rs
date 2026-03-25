@@ -5,8 +5,8 @@ use rustyline::error::ReadlineError;
 
 use crate::eval::{Base, eval, format_number, format_value};
 use crate::memory::{
-    extract_directive, expand_memory_refs, parse_standalone_cmd, CompoundOp, Directive, Memory,
-    StandaloneCmd,
+    CompoundOp, Directive, Memory, StandaloneCmd, expand_memory_refs, extract_directive,
+    parse_standalone_cmd,
 };
 use crate::parser::{is_partial, parse};
 
@@ -372,10 +372,10 @@ fn extract_base_suffix(input: &str) -> (&str, Option<BaseSuffix>) {
         let before = input[..pos].trim_end();
         if !before.is_empty() {
             let suffix = match token {
-                "hex"  => Some(BaseSuffix::Switch(Base::Hex)),
-                "dec"  => Some(BaseSuffix::Switch(Base::Dec)),
-                "bin"  => Some(BaseSuffix::Switch(Base::Bin)),
-                "oct"  => Some(BaseSuffix::Switch(Base::Oct)),
+                "hex" => Some(BaseSuffix::Switch(Base::Hex)),
+                "dec" => Some(BaseSuffix::Switch(Base::Dec)),
+                "bin" => Some(BaseSuffix::Switch(Base::Bin)),
+                "oct" => Some(BaseSuffix::Switch(Base::Oct)),
                 "base" => Some(BaseSuffix::ShowAll),
                 _ => None,
             };
@@ -422,13 +422,21 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                         let pfx = chars.next().unwrap(); // 'x' or 'X'
                         let mut s = String::new();
                         while let Some(&d) = chars.peek() {
-                            if d.is_ascii_hexdigit() { s.push(d); chars.next(); } else { break; }
+                            if d.is_ascii_hexdigit() {
+                                s.push(d);
+                                chars.next();
+                            } else {
+                                break;
+                            }
                         }
                         if s.is_empty() {
-                            result.push('0'); result.push(pfx);
+                            result.push('0');
+                            result.push(pfx);
                         } else if base == Base::Hex {
                             // already target base — keep original
-                            result.push('0'); result.push(pfx); result.push_str(&s);
+                            result.push('0');
+                            result.push(pfx);
+                            result.push_str(&s);
                         } else {
                             let val = i64::from_str_radix(&s, 16).unwrap_or(0) as f64;
                             result.push_str(&format_for_base(val, base));
@@ -439,12 +447,20 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                         let pfx = chars.next().unwrap();
                         let mut s = String::new();
                         while let Some(&d) = chars.peek() {
-                            if d == '0' || d == '1' { s.push(d); chars.next(); } else { break; }
+                            if d == '0' || d == '1' {
+                                s.push(d);
+                                chars.next();
+                            } else {
+                                break;
+                            }
                         }
                         if s.is_empty() {
-                            result.push('0'); result.push(pfx);
+                            result.push('0');
+                            result.push(pfx);
                         } else if base == Base::Bin {
-                            result.push('0'); result.push(pfx); result.push_str(&s);
+                            result.push('0');
+                            result.push(pfx);
+                            result.push_str(&s);
                         } else {
                             let val = i64::from_str_radix(&s, 2).unwrap_or(0) as f64;
                             result.push_str(&format_for_base(val, base));
@@ -455,12 +471,20 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                         let pfx = chars.next().unwrap();
                         let mut s = String::new();
                         while let Some(&d) = chars.peek() {
-                            if ('0'..='7').contains(&d) { s.push(d); chars.next(); } else { break; }
+                            if ('0'..='7').contains(&d) {
+                                s.push(d);
+                                chars.next();
+                            } else {
+                                break;
+                            }
                         }
                         if s.is_empty() {
-                            result.push('0'); result.push(pfx);
+                            result.push('0');
+                            result.push(pfx);
                         } else if base == Base::Oct {
-                            result.push('0'); result.push(pfx); result.push_str(&s);
+                            result.push('0');
+                            result.push(pfx);
+                            result.push_str(&s);
                         } else {
                             let val = i64::from_str_radix(&s, 8).unwrap_or(0) as f64;
                             result.push_str(&format_for_base(val, base));
@@ -471,14 +495,21 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                         // Decimal starting with '0' (e.g. 0.5 or bare 0)
                         let mut num_str = String::from("0");
                         while let Some(&d) = chars.peek() {
-                            if d.is_ascii_digit() || d == '.' { num_str.push(d); chars.next(); } else { break; }
+                            if d.is_ascii_digit() || d == '.' {
+                                num_str.push(d);
+                                chars.next();
+                            } else {
+                                break;
+                            }
                         }
                         if base == Base::Dec {
                             result.push_str(&num_str);
                         } else {
                             let val: f64 = num_str.parse().unwrap_or(0.0);
                             let formatted = format_for_base(val, base);
-                            if formatted != num_str { changed = true; }
+                            if formatted != num_str {
+                                changed = true;
+                            }
                             result.push_str(&formatted);
                         }
                     }
@@ -487,21 +518,33 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
             '1'..='9' | '.' => {
                 let mut num_str = String::new();
                 while let Some(&d) = chars.peek() {
-                    if d.is_ascii_digit() || d == '.' { num_str.push(d); chars.next(); } else { break; }
+                    if d.is_ascii_digit() || d == '.' {
+                        num_str.push(d);
+                        chars.next();
+                    } else {
+                        break;
+                    }
                 }
                 if base == Base::Dec {
                     result.push_str(&num_str);
                 } else {
                     let val: f64 = num_str.parse().unwrap_or(0.0);
                     let formatted = format_for_base(val, base);
-                    if formatted != num_str { changed = true; }
+                    if formatted != num_str {
+                        changed = true;
+                    }
                     result.push_str(&formatted);
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
                 // Identifier (function name, constant) — keep verbatim
                 while let Some(&d) = chars.peek() {
-                    if d.is_alphanumeric() || d == '_' { result.push(d); chars.next(); } else { break; }
+                    if d.is_alphanumeric() || d == '_' {
+                        result.push(d);
+                        chars.next();
+                    } else {
+                        break;
+                    }
                 }
             }
             _ => {
@@ -807,8 +850,8 @@ mod tests {
     fn test_parse_precision_cmd_invalid() {
         assert_eq!(parse_precision_cmd("p"), None);
         assert_eq!(parse_precision_cmd("p16"), None); // exceeds max
-        assert_eq!(parse_precision_cmd("pi"), None);  // not numeric
-        assert_eq!(parse_precision_cmd("6"), None);   // no 'p' prefix
+        assert_eq!(parse_precision_cmd("pi"), None); // not numeric
+        assert_eq!(parse_precision_cmd("6"), None); // no 'p' prefix
     }
 
     // --- evaluate / run_pipe tests ---
@@ -828,13 +871,31 @@ mod tests {
             }
             match trimmed {
                 "q" => break,
-                "c" => { acc = 0.0; continue; }
-                "mc" => { mem.clear_all(); continue; }
+                "c" => {
+                    acc = 0.0;
+                    continue;
+                }
+                "mc" => {
+                    mem.clear_all();
+                    continue;
+                }
                 "cls" | "m" => continue,
-                "hex" => { base = Base::Hex; continue; }
-                "dec" => { base = Base::Dec; continue; }
-                "bin" => { base = Base::Bin; continue; }
-                "oct" => { base = Base::Oct; continue; }
+                "hex" => {
+                    base = Base::Hex;
+                    continue;
+                }
+                "dec" => {
+                    base = Base::Dec;
+                    continue;
+                }
+                "bin" => {
+                    base = Base::Bin;
+                    continue;
+                }
+                "oct" => {
+                    base = Base::Oct;
+                    continue;
+                }
                 _ => {}
             }
             if let Some(p) = parse_precision_cmd(trimmed) {
@@ -970,7 +1031,10 @@ mod tests {
         let mut acc = 0.0;
         let mut mem = Memory::new();
         let mut base = Base::Dec;
-        assert_eq!(evaluate("3 * 4", &mut acc, &mut mem, &mut base).unwrap(), 12.0);
+        assert_eq!(
+            evaluate("3 * 4", &mut acc, &mut mem, &mut base).unwrap(),
+            12.0
+        );
         assert_eq!(acc, 12.0);
     }
 
@@ -979,7 +1043,10 @@ mod tests {
         let mut acc = 10.0;
         let mut mem = Memory::new();
         let mut base = Base::Dec;
-        assert_eq!(evaluate("+ 5", &mut acc, &mut mem, &mut base).unwrap(), 15.0);
+        assert_eq!(
+            evaluate("+ 5", &mut acc, &mut mem, &mut base).unwrap(),
+            15.0
+        );
     }
 
     #[test]
@@ -1001,7 +1068,10 @@ mod tests {
     #[test]
     fn test_pipe_base_suffix_evaluates_expression() {
         let out = pipe_output("0xFF + 0b1010 base");
-        assert_eq!(out, vec!["2  - 0b100001001", "8  - 0o411", "10 - 265", "16 - 0x109"]);
+        assert_eq!(
+            out,
+            vec!["2  - 0b100001001", "8  - 0o411", "10 - 265", "16 - 0x109"]
+        );
     }
 
     #[test]

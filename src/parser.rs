@@ -56,7 +56,7 @@ fn try_consume_sci_exponent(
     match lookahead.peek().copied() {
         Some('+') | Some('-') => {
             let sign = lookahead.next().unwrap();
-            if lookahead.peek().map_or(false, |d| d.is_ascii_digit()) {
+            if lookahead.peek().is_some_and(|d| d.is_ascii_digit()) {
                 chars.next(); // consume 'e'/'E'
                 chars.next(); // consume sign
                 num_str.push(e_char);
@@ -250,7 +250,10 @@ fn parse_expr(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, Strin
 }
 
 fn token_starts_expr(t: &Token) -> bool {
-    matches!(t, Token::Number(_) | Token::Ident(_) | Token::LParen | Token::Minus)
+    matches!(
+        t,
+        Token::Number(_) | Token::Ident(_) | Token::LParen | Token::Minus
+    )
 }
 
 // term = power (('*' | '/' | '%') power | '(' expr ')' )*
@@ -279,11 +282,8 @@ fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, Strin
                     left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
                 } else {
                     // Percentage postfix: N% = N * (acc / 100)
-                    left = Expr::BinOp(
-                        Box::new(left),
-                        Op::Mul,
-                        Box::new(Expr::Number(acc / 100.0)),
-                    );
+                    left =
+                        Expr::BinOp(Box::new(left), Op::Mul, Box::new(Expr::Number(acc / 100.0)));
                 }
             }
             Token::LParen => {
@@ -301,24 +301,24 @@ fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, Strin
 // power = unary ('^' power)?   -- right-associative
 fn parse_power(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
     let base = parse_unary(tokens, pos, acc)?;
-    if *pos < tokens.len() {
-        if let Token::Caret = &tokens[*pos] {
-            *pos += 1;
-            let exp = parse_power(tokens, pos, acc)?;
-            return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
-        }
+    if *pos < tokens.len()
+        && let Token::Caret = &tokens[*pos]
+    {
+        *pos += 1;
+        let exp = parse_power(tokens, pos, acc)?;
+        return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
     }
     Ok(base)
 }
 
 // unary = '-' unary | primary
 fn parse_unary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
-    if *pos < tokens.len() {
-        if let Token::Minus = &tokens[*pos] {
-            *pos += 1;
-            let expr = parse_unary(tokens, pos, acc)?;
-            return Ok(Expr::UnaryMinus(Box::new(expr)));
-        }
+    if *pos < tokens.len()
+        && let Token::Minus = &tokens[*pos]
+    {
+        *pos += 1;
+        let expr = parse_unary(tokens, pos, acc)?;
+        return Ok(Expr::UnaryMinus(Box::new(expr)));
     }
     parse_primary(tokens, pos, acc)
 }
@@ -339,37 +339,37 @@ fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, St
             let name = name.clone();
             *pos += 1;
             // Function call: ident '(' [expr] ')'
-            if *pos < tokens.len() {
-                if let Token::LParen = &tokens[*pos] {
-                    *pos += 1;
-                    // Empty args: fn() uses the accumulator
-                    let arg = if *pos < tokens.len() {
-                        if let Token::RParen = &tokens[*pos] {
-                            Box::new(Expr::Number(acc))
-                        } else {
-                            Box::new(parse_expr(tokens, pos, acc)?)
-                        }
+            if *pos < tokens.len()
+                && let Token::LParen = &tokens[*pos]
+            {
+                *pos += 1;
+                // Empty args: fn() uses the accumulator
+                let arg = if *pos < tokens.len() {
+                    if let Token::RParen = &tokens[*pos] {
+                        Box::new(Expr::Number(acc))
                     } else {
-                        return Err("Expected closing ')'".to_string());
-                    };
-                    if *pos >= tokens.len() {
-                        return Err("Expected closing ')'".to_string());
+                        Box::new(parse_expr(tokens, pos, acc)?)
                     }
-                    match &tokens[*pos] {
-                        Token::RParen => {
-                            *pos += 1;
-                            return Ok(Expr::Call(name, arg));
-                        }
-                        _ => return Err("Expected closing ')'".to_string()),
+                } else {
+                    return Err("Expected closing ')'".to_string());
+                };
+                if *pos >= tokens.len() {
+                    return Err("Expected closing ')'".to_string());
+                }
+                match &tokens[*pos] {
+                    Token::RParen => {
+                        *pos += 1;
+                        return Ok(Expr::Call(name, arg));
                     }
+                    _ => return Err("Expected closing ')'".to_string()),
                 }
             }
             // Constants and accumulator alias
             match name.as_str() {
-                "pi"  => Ok(Expr::Number(std::f64::consts::PI)),
-                "e"   => Ok(Expr::Number(std::f64::consts::E)),
+                "pi" => Ok(Expr::Number(std::f64::consts::PI)),
+                "e" => Ok(Expr::Number(std::f64::consts::E)),
                 "acc" => Ok(Expr::Number(acc)),
-                _     => Err(format!("Unknown identifier: '{name}'")),
+                _ => Err(format!("Unknown identifier: '{name}'")),
             }
         }
         Token::LParen => {

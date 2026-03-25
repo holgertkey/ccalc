@@ -56,17 +56,17 @@ pub fn eval(expr: &Expr) -> Result<f64, String> {
         Expr::Call(name, arg) => {
             let x = eval(arg)?;
             match name.as_str() {
-                "sqrt"  => Ok(x.sqrt()),
-                "abs"   => Ok(x.abs()),
+                "sqrt" => Ok(x.sqrt()),
+                "abs" => Ok(x.abs()),
                 "floor" => Ok(x.floor()),
-                "ceil"  => Ok(x.ceil()),
+                "ceil" => Ok(x.ceil()),
                 "round" => Ok(x.round()),
-                "log"   => Ok(x.log10()),
-                "ln"    => Ok(x.ln()),
-                "exp"   => Ok(x.exp()),
-                "sin"   => Ok(x.sin()),
-                "cos"   => Ok(x.cos()),
-                "tan"   => Ok(x.tan()),
+                "log" => Ok(x.log10()),
+                "ln" => Ok(x.ln()),
+                "exp" => Ok(x.exp()),
+                "sin" => Ok(x.sin()),
+                "cos" => Ok(x.cos()),
+                "tan" => Ok(x.tan()),
                 _ => Err(format!("Unknown function: '{name}'")),
             }
         }
@@ -340,13 +340,19 @@ mod tests {
     #[test]
     fn test_format_value_dec_sci_large() {
         let result = format_value(1e20, 2, Base::Dec);
-        assert!(result.contains('e'), "expected scientific notation, got: {result}");
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {result}"
+        );
     }
 
     #[test]
     fn test_format_value_dec_sci_small() {
         let result = format_value(1e-10, 4, Base::Dec);
-        assert!(result.contains('e'), "expected scientific notation, got: {result}");
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {result}"
+        );
     }
 
     #[test]

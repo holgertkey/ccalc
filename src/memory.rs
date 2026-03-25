@@ -54,8 +54,7 @@ impl Memory {
                 content.push_str(&format!("m{} = {}\n", i + 1, val));
             }
         }
-        std::fs::write(path, &content)
-            .map_err(|e| format!("Cannot write {}: {e}", path.display()))
+        std::fs::write(path, &content).map_err(|e| format!("Cannot write {}: {e}", path.display()))
     }
 
     fn load_impl(&mut self, path: &Path) -> Result<(), String> {
@@ -67,12 +66,11 @@ impl Memory {
             if line.is_empty() {
                 continue;
             }
-            if let Some((key, val)) = line.split_once('=') {
-                if let Some(idx) = parse_cell_key(key.trim()) {
-                    if let Ok(v) = val.trim().parse::<f64>() {
-                        self.cells[idx] = v;
-                    }
-                }
+            if let Some((key, val)) = line.split_once('=')
+                && let Some(idx) = parse_cell_key(key.trim())
+                && let Ok(v) = val.trim().parse::<f64>()
+            {
+                self.cells[idx] = v;
             }
         }
         Ok(())
@@ -96,8 +94,8 @@ fn parse_cell_key(key: &str) -> Option<usize> {
 
 /// Command that covers the entire input line (no preceding expression).
 pub enum StandaloneCmd {
-    StoreAcc(usize),  // m[1-9]:  store accumulator → cell
-    ClearOne(usize),  // mc[1-9]: clear cell
+    StoreAcc(usize), // m[1-9]:  store accumulator → cell
+    ClearOne(usize), // mc[1-9]: clear cell
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -112,8 +110,8 @@ pub enum CompoundOp {
 
 /// Memory directive found at the end of an expression string.
 pub enum Directive {
-    Store(usize),                  // m[1-9]:   cell = result
-    Compound(usize, CompoundOp),   // m[1-9]OP: cell = cell OP result
+    Store(usize),                // m[1-9]:   cell = result
+    Compound(usize, CompoundOp), // m[1-9]OP: cell = cell OP result
 }
 
 /// Returns a `StandaloneCmd` if the entire input matches a known memory command,
@@ -142,13 +140,10 @@ pub fn extract_directive(input: &str) -> (&str, Option<Directive>) {
 
         if !trimmed_before.is_empty() {
             let last_char = trimmed_before.chars().last();
-            let after_operator =
-                matches!(last_char, Some('+' | '-' | '*' | '/' | '^' | '%' | '('));
+            let after_operator = matches!(last_char, Some('+' | '-' | '*' | '/' | '^' | '%' | '('));
 
-            if !after_operator {
-                if let Some(directive) = parse_directive_token(last_token) {
-                    return (trimmed_before, Some(directive));
-                }
+            if !after_operator && let Some(directive) = parse_directive_token(last_token) {
+                return (trimmed_before, Some(directive));
             }
         }
     }
@@ -165,16 +160,15 @@ pub fn expand_memory_refs(input: &str, memory: &Memory) -> (String, Option<Strin
     let mut chars = input.chars().peekable();
 
     while let Some(c) = chars.next() {
-        if c == 'm' {
-            if let Some(&next) = chars.peek() {
-                if is_mem_digit(next as u8) {
-                    chars.next();
-                    let idx = mem_idx(next as u8);
-                    result.push_str(&format_number(memory.get(idx)));
-                    has_substitutions = true;
-                    continue;
-                }
-            }
+        if c == 'm'
+            && let Some(&next) = chars.peek()
+            && is_mem_digit(next as u8)
+        {
+            chars.next();
+            let idx = mem_idx(next as u8);
+            result.push_str(&format_number(memory.get(idx)));
+            has_substitutions = true;
+            continue;
         }
         result.push(c);
     }
