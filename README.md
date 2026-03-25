@@ -261,9 +261,11 @@ Use `m1`–`m9` as values anywhere inside an expression:
 
 ```
 [ 0 ]: m1 + m2
+42 + 30
 [ 72 ]:                 (42 + 30)
 
 [ 0 ]: m1 * 2 + m2 / 3
+42 * 2 + 30 / 3
 [ 94 ]:
 ```
 
@@ -486,7 +488,9 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 ```
 [ 0 ]: 1200 m1          budget in m1
 [ 1200 ]: m1 - 350 m1   spent 350 → m1 = 850
+1200 - 350
 [ 850 ]: 80 m1-         spent 80  → m1 = 770
+850 - 80
 [ 770 ]: m
 m1: 770
 ```
