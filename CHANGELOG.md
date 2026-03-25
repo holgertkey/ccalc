@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Expression conversion display: when the current base is non-decimal and the expression
+  contains literals in other bases, the expression is printed with all values converted
+  to the accumulator's base before the result
+  - `[ 0b110 ]: 2 + 0b110 + 0xa` prints `0b10 + 0b110 + 0b1010` then `[ 0b10010 ]:`
+  - `[ 0x6 ]: 0b11 + 0b11` prints `0x3 + 0x3` then `[ 0x6 ]:`
+
+### Fixed
+
+- `base` command and `expr base` suffix now display hex with `0x` prefix (e.g. `0xA` instead of `A`)
+- Hex display in expression conversion now uses `0x` prefix, consistent with bin (`0b`) and oct (`0o`)
+
 ## [0.6.0] - 2026-03-25
 
 ### Added

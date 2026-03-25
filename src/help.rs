@@ -63,7 +63,18 @@ NUMBER BASES:
         2  - 0b1010
         8  - 0o12
         10 - 10
-        16 - A
+        16 - 0xA
+
+    Expression conversion — when the current base is non-decimal and the expression
+    contains literals in other bases, the converted expression is shown before the result:
+
+        [ 0x6 ]: 0b11 + 0b11
+        0x3 + 0x3
+        [ 0x6 ]:
+
+        [ 0b110 ]: 2 + 0b110 + 0xa
+        0b10 + 0b110 + 0b1010
+        [ 0b10010 ]:
 
 KEYBOARD SHORTCUTS:
     ↑ / ↓            Browse input history

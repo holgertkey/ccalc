@@ -418,7 +418,19 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 2  - 0b1010
 8  - 0o12
 10 - 10
-16 - A
+16 - 0xA
+```
+
+**Expression conversion** — when the display base is non-decimal and the expression contains literals in other bases, the converted expression is printed before the result:
+
+```
+[ 0x6 ]: 0b11 + 0b11
+0x3 + 0x3
+[ 0x6 ]:
+
+[ 0b110 ]: 2 + 0b110 + 0xa
+0b10 + 0b110 + 0b1010
+[ 0b10010 ]:
 ```
 
 ---
