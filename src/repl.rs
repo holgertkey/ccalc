@@ -137,7 +137,14 @@ pub fn run() {
         // mixed-base literals. Returns None if nothing changed (no conversion needed).
         let base_display = format_expr_for_display(&full_expanded, base);
 
-        if let Some(display) = base_display.or(acc_display).or(mem_display) {
+        if let Some(Directive::Compound(idx, op)) = &directive {
+            let expr_display = base_display.as_deref()
+                .or(acc_display.as_deref())
+                .or(mem_display.as_deref())
+                .unwrap_or(&full_expanded);
+            let cell_display = format_for_base(memory.get(*idx), base);
+            println!("{} {} {}", expr_display, compound_op_char(*op), cell_display);
+        } else if let Some(display) = base_display.or(acc_display).or(mem_display) {
             println!("{}", display);
         }
 
@@ -326,6 +333,17 @@ fn evaluate_expanded(
     }
 
     Ok(*acc)
+}
+
+fn compound_op_char(op: CompoundOp) -> char {
+    match op {
+        CompoundOp::Add => '+',
+        CompoundOp::Sub => '-',
+        CompoundOp::Mul => '*',
+        CompoundOp::Div => '/',
+        CompoundOp::Mod => '%',
+        CompoundOp::Pow => '^',
+    }
 }
 
 fn apply_compound(cell: f64, result: f64, op: CompoundOp) -> Result<f64, String> {
