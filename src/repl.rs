@@ -382,7 +382,7 @@ fn format_for_base(val: f64, base: Base) -> String {
     let u = i.unsigned_abs();
     let sign = if i < 0 { "-" } else { "" };
     match base {
-        Base::Hex => format!("{}{:X}", sign, u),
+        Base::Hex => format!("{}0x{:X}", sign, u),
         Base::Bin => format!("{}0b{:b}", sign, u),
         Base::Oct => format!("{}0o{:o}", sign, u),
         Base::Dec => format_number(val),
@@ -695,9 +695,9 @@ mod tests {
 
     #[test]
     fn test_format_for_base_hex() {
-        assert_eq!(format_for_base(10.0, Base::Hex), "A");
-        assert_eq!(format_for_base(255.0, Base::Hex), "FF");
-        assert_eq!(format_for_base(0.0, Base::Hex), "0");
+        assert_eq!(format_for_base(10.0, Base::Hex), "0xA");
+        assert_eq!(format_for_base(255.0, Base::Hex), "0xFF");
+        assert_eq!(format_for_base(0.0, Base::Hex), "0x0");
     }
 
     #[test]
@@ -725,7 +725,7 @@ mod tests {
         // User's example: 0xFF + 0b1010 + 10 → 0xFF + A + A
         assert_eq!(
             format_expr_for_display("0xFF + 0b1010 + 10", Base::Hex),
-            Some("0xFF + A + A".to_string())
+            Some("0xFF + 0xA + 0xA".to_string())
         );
     }
 
@@ -734,7 +734,7 @@ mod tests {
         // 0xFF is already hex — unchanged; 0b1010 → A
         assert_eq!(
             format_expr_for_display("0xFF + 0b1010", Base::Hex),
-            Some("0xFF + A".to_string())
+            Some("0xFF + 0xA".to_string())
         );
     }
 
@@ -759,7 +759,7 @@ mod tests {
         // sin, pi, acc should pass through unchanged
         assert_eq!(
             format_expr_for_display("sin(pi) + 0b1010", Base::Hex),
-            Some("sin(pi) + A".to_string())
+            Some("sin(pi) + 0xA".to_string())
         );
     }
 
@@ -769,6 +769,15 @@ mod tests {
         assert_eq!(
             format_expr_for_display("2 + 0b110 + 0xa", Base::Bin),
             Some("0b10 + 0b110 + 0b1010".to_string())
+        );
+    }
+
+    #[test]
+    fn test_format_expr_hex_accumulator_bin_literals() {
+        // [ 0x6 ]: 0b11 + 0b11 → 0x3 + 0x3  (was incorrectly showing "3 + 3")
+        assert_eq!(
+            format_expr_for_display("0b11 + 0b11", Base::Hex),
+            Some("0x3 + 0x3".to_string())
         );
     }
 
