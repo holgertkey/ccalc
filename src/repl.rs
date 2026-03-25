@@ -138,7 +138,8 @@ pub fn run() {
         let base_display = format_expr_for_display(&full_expanded, base);
 
         if let Some(Directive::Compound(idx, op)) = &directive {
-            let expr_display = base_display.as_deref()
+            let expr_display = base_display
+                .as_deref()
                 .or(acc_display.as_deref())
                 .or(mem_display.as_deref())
                 .unwrap_or(&full_expanded);
