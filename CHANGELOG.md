@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+003]
+
+### Changed
+
+- Compound memory directives (`m1+`, `m2*`, etc.) now display the full operation before the result:
+  `80 m1-` with m1=850 prints `850 - 80` then `[ 770 ]:`
+- Operation order is `cell op expr` to match the actual computation
+- Multi-token expressions on the right-hand side are wrapped in parentheses:
+  `2 * 10 + 2 + 2 m1+` with m1=10 prints `10 + (2 * 10 + 2 + 2)` then `[ 34 ]:`
+
 ## [0.7.0] - 2026-03-25
 
 ### Added
