@@ -228,6 +228,7 @@ pub fn run_pipe(reader: impl BufRead) {
     let mut mem = Memory::new();
     let mut precision: usize = 10;
     let mut base = Base::Dec;
+    let mut result_pending = false;
 
     for line in reader.lines() {
         let line = match line {
@@ -245,6 +246,7 @@ pub fn run_pipe(reader: impl BufRead) {
             (trimmed, false)
         };
         if trimmed.is_empty() {
+            result_pending = false;
             continue;
         }
 
@@ -304,10 +306,10 @@ pub fn run_pipe(reader: impl BufRead) {
 
         // print / print "label"
         if let Some(label) = parse_print_cmd(trimmed) {
-            let value = format_value(acc, precision, base);
             match label {
-                None => println!("{value}"),
-                Some(s) => println!("{s} {value}"),
+                None => println!("{}", format_value(acc, precision, base)),
+                Some(s) if result_pending => println!("{s} {}", format_value(acc, precision, base)),
+                Some(s) => println!("{s}"),
             }
             continue;
         }
@@ -320,6 +322,7 @@ pub fn run_pipe(reader: impl BufRead) {
 
         match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
             Ok(result) => {
+                result_pending = true;
                 if !silent {
                     if show_all {
                         print_all_bases(result, precision);
@@ -947,6 +950,7 @@ mod tests {
         let mut acc: f64 = 0.0;
         let mut mem = Memory::new();
         let mut base = Base::Dec;
+        let mut result_pending = false;
         let reader = Cursor::new(input);
         for line in reader.lines() {
             let line = line.unwrap();
@@ -958,6 +962,7 @@ mod tests {
                 (trimmed, false)
             };
             if trimmed.is_empty() {
+                result_pending = false;
                 continue;
             }
             match trimmed {
@@ -1001,10 +1006,12 @@ mod tests {
                 continue;
             }
             if let Some(label) = parse_print_cmd(trimmed) {
-                let value = format_value(acc, 10, base);
                 match label {
-                    None => output.push(value),
-                    Some(s) => output.push(format!("{s} {value}")),
+                    None => output.push(format_value(acc, 10, base)),
+                    Some(s) if result_pending => {
+                        output.push(format!("{s} {}", format_value(acc, 10, base)))
+                    }
+                    Some(s) => output.push(s.to_string()),
                 }
                 continue;
             }
@@ -1015,6 +1022,7 @@ mod tests {
             }
             match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
                 Ok(result) => {
+                    result_pending = true;
                     if !silent {
                         if show_all {
                             // Collect the 4-line base output as individual entries
@@ -1287,6 +1295,28 @@ mod tests {
     fn test_pipe_semicolon_memory_store() {
         // m[1-9] standalone commands have no output anyway, but ; must not break them
         let out = pipe_output("7;\nm1;\nm1 + 3");
+        assert_eq!(out, vec!["10"]);
+    }
+
+    // ── print after blank line (section header) ──────────────────────────────
+
+    #[test]
+    fn test_print_label_after_blank_line_no_value() {
+        // blank line resets result_pending → label only, no number
+        let out = pipe_output("10;\n\nprint \"Section:\"");
+        assert_eq!(out, vec!["Section:"]);
+    }
+
+    #[test]
+    fn test_print_label_after_expression_shows_value() {
+        let out = pipe_output("42\nprint \"Answer:\"");
+        assert_eq!(out, vec!["42", "Answer: 42"]);
+    }
+
+    #[test]
+    fn test_print_bare_always_shows_value() {
+        // bare print always prints the accumulator, even after a blank line
+        let out = pipe_output("10;\n\nprint");
         assert_eq!(out, vec!["10"]);
     }
 }

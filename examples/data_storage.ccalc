@@ -11,5 +11,5 @@ m2;
 m3;
 
 500 * 1000^3;            # manufacturer bytes in "500 GB"
-/ m3                     # convert to real GiB
+/ m3;                    # convert to real GiB
 print "Real GiB in a 500 GB drive:"

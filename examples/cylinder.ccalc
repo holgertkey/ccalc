@@ -3,15 +3,11 @@
 # A = 2 * pi * r * (r + h)
 #
 # Usage: ccalc < cylinder.ccalc
-print "Cylinder volume and surface area"
-5;
-print "Radius ="
-4;
-print "Height ="
-
+print "Cylinder volume and surface area, Radius = 5, Height = 4"
+print ""
 pi * 5^2;                 # pi * r^2  (r = 5)
 m1;                       # save base area
-
+p4;                       # precision = 4
 m1 * 10;                  # volume: base * height (h = 10)
 print "Volume:"
 
