@@ -1225,7 +1225,9 @@ mod tests {
         use crate::parser::parse;
 
         let full_expanded = "2 + 2 + 2";
-        let val = parse(full_expanded, 0.0).and_then(|ast| eval(&ast)).unwrap();
+        let val = parse(full_expanded, 0.0)
+            .and_then(|ast| eval(&ast))
+            .unwrap();
         assert_eq!(val, 6.0);
         assert_eq!(format_for_base(val, Base::Dec), "6");
         // Verifies that the displayed RHS for "2 + 2 + 2 m1-" with m1=10
@@ -1241,7 +1243,10 @@ mod tests {
 
     #[test]
     fn test_parse_print_cmd_with_label() {
-        assert!(matches!(parse_print_cmd(r#"print "Monthly payment""#), Some(Some("Monthly payment"))));
+        assert!(matches!(
+            parse_print_cmd(r#"print "Monthly payment""#),
+            Some(Some("Monthly payment"))
+        ));
     }
 
     #[test]
