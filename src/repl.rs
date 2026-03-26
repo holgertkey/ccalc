@@ -138,16 +138,21 @@ pub fn run() {
         let base_display = format_expr_for_display(&full_expanded, base);
 
         if let Some(Directive::Compound(idx, op)) = &directive {
-            let expr_display = base_display
-                .as_deref()
-                .or(acc_display.as_deref())
-                .or(mem_display.as_deref())
-                .unwrap_or(&full_expanded);
             let cell_display = format_for_base(memory.get(*idx), base);
-            let rhs = if expr_display.contains(' ') {
-                format!("({})", expr_display)
-            } else {
-                expr_display.to_string()
+            let rhs = match parse(&full_expanded, accumulator).and_then(|ast| eval(&ast)) {
+                Ok(val) => format_for_base(val, base),
+                Err(_) => {
+                    let expr_display = base_display
+                        .as_deref()
+                        .or(acc_display.as_deref())
+                        .or(mem_display.as_deref())
+                        .unwrap_or(&full_expanded);
+                    if expr_display.contains(' ') {
+                        format!("({})", expr_display)
+                    } else {
+                        expr_display.to_string()
+                    }
+                }
             };
             println!("{} {} {}", cell_display, compound_op_char(*op), rhs);
         } else if let Some(display) = base_display.or(acc_display).or(mem_display) {
@@ -1123,5 +1128,20 @@ mod tests {
         // And a value that stays in sci range
         let out3 = pipe_output("1e-12\n* 10");
         assert_eq!(out3[1], "1e-11");
+    }
+
+    #[test]
+    fn test_compound_display_rhs_is_evaluated_value() {
+        // Regression: compound op display must show the evaluated number ("10 - 6"),
+        // not the raw expression ("10 - (2 + 2 + 2)").
+        use crate::eval::eval;
+        use crate::parser::parse;
+
+        let full_expanded = "2 + 2 + 2";
+        let val = parse(full_expanded, 0.0).and_then(|ast| eval(&ast)).unwrap();
+        assert_eq!(val, 6.0);
+        assert_eq!(format_for_base(val, Base::Dec), "6");
+        // Verifies that the displayed RHS for "2 + 2 + 2 m1-" with m1=10
+        // would be "6" (yielding "10 - 6") and not the expression string.
     }
 }
