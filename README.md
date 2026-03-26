@@ -77,82 +77,6 @@ All commands work in pipe mode: `q` stops processing, `c` resets the accumulator
 
 ---
 
-## Script files
-
-When reading from a file (`ccalc < formula.txt`) you have three tools to control output:
-
-### Comments
-
-A `#` starts a comment. It can be the first character on the line (full-line comment) or appear after an expression (inline comment). Everything from `#` to end-of-line is ignored.
-
-```
-# Cylinder volume: V = pi * r^2 * h
-pi * 5^2      # pi * r^2, r = 5
-```
-
-### Semicolon — suppress output
-
-A trailing `;` evaluates the expression and updates the accumulator, but prints nothing. Use it to silence intermediate steps.
-
-```
-0.06 / 12;              # monthly rate — silent
-m1;                     # save to m1 — silent
-1 + m1;
-^ 360;                  # (1 + r)^360 — silent
-```
-
-### `print` — explicit output
-
-`print` prints the current accumulator value. `print "label"` prints the label followed by the value. Write any punctuation you want directly in the label.
-
-| Command | Output |
-|---|---|
-| `print` | `1199.101050304` |
-| `print "Monthly payment ($):"` | `Monthly payment ($): 1199.101050304` |
-
-**Section headers** — `print "label"` placed after a blank line (with no expression between the blank line and the `print`) prints the label only, without a value. Use this for headings between calculation blocks:
-
-```
-print "=== Resistors in series ==="
-
-100 + 220 + 470
-print "Total resistance (Ohm):"
-
-print "=== Parallel combination ==="
-
-1/100 + 1/220;
-^ -1
-print "Parallel resistance (Ohm):"
-```
-
-Output:
-
-```
-=== Resistors in series ===
-790
-Total resistance (Ohm): 790
-=== Parallel combination ===
-68.7500002148
-Parallel resistance (Ohm): 68.7500002148
-```
-
-### Example files
-
-The `examples/` directory contains annotated formula files ready to run:
-
-| File | Description |
-|---|---|
-| `cylinder.ccalc` | Volume and surface area of a cylinder |
-| `mortgage.ccalc` | Monthly mortgage payment |
-| `data_storage.ccalc` | Real GiB capacity of a "500 GB" drive |
-| `resistors.ccalc` | Series, parallel resistance, voltage divider, power |
-
-```bash
-ccalc < examples/mortgage.ccalc
-```
-
----
-
 ## How it works
 
 The prompt shows the **accumulator** — the result of the last expression. Every new expression updates it. Expressions that start with an operator automatically use the accumulator as the left-hand operand (**partial expressions**):
@@ -585,6 +509,82 @@ m1: 770
 [ 0 ]: sqrt(2) m1       store √2
 [ 1.4142135624 ]: m1 ^ 10
 [ 32 ]:                 (√2)^10 = 2^5 = 32
+```
+
+---
+
+## Script files
+
+When reading from a file (`ccalc < formula.txt`) you have three tools to control output:
+
+### Comments
+
+A `#` starts a comment. It can be the first character on the line (full-line comment) or appear after an expression (inline comment). Everything from `#` to end-of-line is ignored.
+
+```
+# Cylinder volume: V = pi * r^2 * h
+pi * 5^2      # pi * r^2, r = 5
+```
+
+### Semicolon — suppress output
+
+A trailing `;` evaluates the expression and updates the accumulator, but prints nothing. Use it to silence intermediate steps.
+
+```
+0.06 / 12;              # monthly rate — silent
+m1;                     # save to m1 — silent
+1 + m1;
+^ 360;                  # (1 + r)^360 — silent
+```
+
+### `print` — explicit output
+
+`print` prints the current accumulator value. `print "label"` prints the label followed by the value. Write any punctuation you want directly in the label.
+
+| Command | Output |
+|---|---|
+| `print` | `1199.101050304` |
+| `print "Monthly payment ($):"` | `Monthly payment ($): 1199.101050304` |
+
+**Section headers** — `print "label"` placed after a blank line (with no expression between the blank line and the `print`) prints the label only, without a value. Use this for headings between calculation blocks:
+
+```
+print "=== Resistors in series ==="
+
+100 + 220 + 470
+print "Total resistance (Ohm):"
+
+print "=== Parallel combination ==="
+
+1/100 + 1/220;
+^ -1
+print "Parallel resistance (Ohm):"
+```
+
+Output:
+
+```
+=== Resistors in series ===
+790
+Total resistance (Ohm): 790
+=== Parallel combination ===
+68.7500002148
+Parallel resistance (Ohm): 68.7500002148
+```
+
+### Example files
+
+The `examples/` directory contains annotated formula files ready to run:
+
+| File | Description |
+|---|---|
+| `cylinder.ccalc` | Volume and surface area of a cylinder |
+| `mortgage.ccalc` | Monthly mortgage payment |
+| `data_storage.ccalc` | Real GiB capacity of a "500 GB" drive |
+| `resistors.ccalc` | Series, parallel resistance, voltage divider, power |
+
+```bash
+ccalc < examples/mortgage.ccalc
 ```
 
 ---
