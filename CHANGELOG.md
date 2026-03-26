@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+009] - 2026-03-26
+
+### Added
+
+- **Comments in pipe/file mode** — lines starting with `#` are skipped; inline `#` trims the rest of the line:
+  ```
+  # full-line comment
+  10 * 5  # inline comment — the expression still evaluates
+  ```
+- **Semicolon suppression** — a trailing `;` evaluates the expression and updates the accumulator but prints nothing:
+  ```
+  0.06 / 12;   # silent intermediate step
+  m1;
+  1 + m1;      # still updates accumulator
+  print "Monthly payment ($):"
+  ```
+- **`print` command** — explicit output control in pipe/file mode:
+  - `print` — prints the current accumulator value
+  - `print "label"` — prints `label value` (the label is the full quoted string, including any `:` the user writes)
+- **Section headers** — `print "label"` after a blank line (or at the start) prints the label only, without the value, acting as a section separator:
+  ```
+  print "=== Results ==="
+
+  10 + 5
+  print "Sum:"
+  ```
+  Output:
+  ```
+  === Results ===
+  15
+  Sum: 15
+  ```
+- **`examples/` directory** — four annotated formula files demonstrating comments, `;`, and `print`:
+  - `cylinder.ccalc` — volume and surface area of a cylinder
+  - `mortgage.ccalc` — monthly mortgage payment
+  - `data_storage.ccalc` — storage unit conversion (real GiB in a "500 GB" drive)
+  - `resistors.ccalc` — Ohm's law: series, parallel, voltage divider, power
+
+### Fixed
+
+- Compound memory directives (`2 + 2 + 2 m1-`) now display the evaluated RHS value instead of the raw expression string:
+  was: `10 - (2 + 2 + 2)` → now: `10 - 6`
+
 ## [0.7.0+003]
 
 ### Changed

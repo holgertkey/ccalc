@@ -28,6 +28,39 @@ PIPE / NON-INTERACTIVE MODE:
     p / p<N> (precision), hex / dec / bin / oct / base (number base).
     cls and m are ignored.
 
+SCRIPT FILES (ccalc < formula.txt):
+    Three tools for controlling output in pipe/file mode:
+
+    Comments
+        # full-line comment
+        10 * 5  # inline comment — expression still evaluates
+
+    Semicolon — suppress output of a line
+        0.06 / 12;    evaluates and updates accumulator, prints nothing
+        m1;           store to m1 silently
+        m1 + m2       evaluated and printed normally (no semicolon)
+
+    print — explicit output
+        print                   print current accumulator value
+        print \"label\"           print label then value (no separator added)
+                                write any punctuation you want in the label:
+                                  print \"Result:\"   →  Result: 42
+                                  print \"Sum =\"      →  Sum = 42
+
+    print after a blank line — section header (label only, no value)
+        Placing print \"label\" right after a blank line prints only the label.
+        Use this for headings between calculation blocks:
+
+            print \"=== Section ===\"
+
+            10 + 5
+            print \"Sum:\"
+
+        Output:
+            === Section ===
+            15
+            Sum: 15
+
 REPL COMMANDS:
     q                Quit
     c                Clear accumulator (reset to 0)
@@ -232,7 +265,19 @@ EXAMPLES:
     [ 10 ]: m
     m1: 50
     [ 10 ]: mc1            clears m1
-    [ 10 ]: mc             clears all cells",
+    [ 10 ]: mc             clears all cells
+
+  Script file (ccalc < formula.txt):
+    # Monthly mortgage payment
+    0.06 / 12;             # monthly rate — silent
+    m1;
+    1 + m1;                # (1 + r)
+    ^ 360;                 # (1 + r)^360 — silent
+    m2;
+    200000 * m1 * m2;      # numerator — silent
+    m3;
+    m3 / (m2 - 1)          # monthly payment
+    print \"Monthly payment ($):\"",
         ver = env!("CARGO_PKG_VERSION")
     );
 }
