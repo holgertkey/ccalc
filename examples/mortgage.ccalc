@@ -19,4 +19,4 @@ m2;
 m3;
 
 m3 / (m2 - 1)           # monthly payment = numerator / ((1+r)^n - 1)
-print "Monthly payment ($)"
+print "Monthly payment ($):"

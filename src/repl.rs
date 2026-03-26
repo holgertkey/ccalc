@@ -129,7 +129,7 @@ pub fn run() {
             let value = format_value(accumulator, precision, base);
             match label {
                 None => println!("{value}"),
-                Some(s) => println!("{s}: {value}"),
+                Some(s) => println!("{s} {value}"),
             }
             continue;
         }
@@ -307,7 +307,7 @@ pub fn run_pipe(reader: impl BufRead) {
             let value = format_value(acc, precision, base);
             match label {
                 None => println!("{value}"),
-                Some(s) => println!("{s}: {value}"),
+                Some(s) => println!("{s} {value}"),
             }
             continue;
         }
@@ -1004,7 +1004,7 @@ mod tests {
                 let value = format_value(acc, 10, base);
                 match label {
                     None => output.push(value),
-                    Some(s) => output.push(format!("{s}: {value}")),
+                    Some(s) => output.push(format!("{s} {value}")),
                 }
                 continue;
             }
@@ -1253,13 +1253,13 @@ mod tests {
     #[test]
     fn test_pipe_print_with_label() {
         let out = pipe_output("42\nprint \"Answer\"");
-        assert_eq!(out, vec!["42", "Answer: 42"]);
+        assert_eq!(out, vec!["42", "Answer 42"]);
     }
 
     #[test]
     fn test_pipe_print_does_not_change_accumulator() {
         let out = pipe_output("10\nprint \"val\"\n+ 5");
-        assert_eq!(out, vec!["10", "val: 10", "15"]);
+        assert_eq!(out, vec!["10", "val 10", "15"]);
     }
 
     // ── semicolon suppression ────────────────────────────────────────────────
@@ -1280,7 +1280,7 @@ mod tests {
     fn test_pipe_semicolon_with_comment() {
         // comment stripped first, then semicolon
         let out = pipe_output("10; # intermediate\nprint \"result\"");
-        assert_eq!(out, vec!["result: 10"]);
+        assert_eq!(out, vec!["result 10"]);
     }
 
     #[test]
