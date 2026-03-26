@@ -1,6 +1,6 @@
 [package]
 name = "ccalc"
-version = "0.7.0+006"
+version = "0.7.0+007"
 edition = "2024"
 
 [dependencies]

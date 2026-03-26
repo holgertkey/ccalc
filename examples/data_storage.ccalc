@@ -1,16 +1,15 @@
 # Data storage unit conversions
-# Shows KB, MB, GB sizes and real capacity of a 500 GB drive
+# Shows the real GiB capacity of a "500 GB" drive (manufacturers use 10^9 bytes)
 #
 # Usage: ccalc < data_storage.ccalc
 
-1024                     # 1 KB in bytes
-m1
-1024 * m1                # 1 MB in bytes
-m2
-1024 * m2                # 1 GB in bytes
-m3
+1024;                    # 1 KB
+m1;
+1024 * m1;               # 1 MB
+m2;
+1024 * m2;               # 1 GB
+m3;
 
-# How many real GiB fit in a "500 GB" drive (manufacturers use 10^9 bytes)
-500 * 1000^3             # manufacturer bytes
-/ m3                     # divide by real GiB size
+500 * 1000^3;            # manufacturer bytes in "500 GB"
+/ m3                     # convert to real GiB
 print "Real GiB in a 500 GB drive"

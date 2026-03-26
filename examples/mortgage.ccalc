@@ -8,15 +8,15 @@
 #
 # Usage: ccalc < mortgage.ccalc
 
-0.06 / 12               # monthly rate r
-m1
+0.06 / 12;              # monthly rate r
+m1;
 
-1 + m1                  # (1 + r)
-^ 360                   # (1 + r)^n,  n = 360 months
-m2
+1 + m1;                 # (1 + r)
+^ 360;                  # (1 + r)^n,  n = 360 months
+m2;
 
-200000 * m1 * m2        # P * r * (1+r)^n
-m3
+200000 * m1 * m2;       # P * r * (1+r)^n
+m3;
 
 m3 / (m2 - 1)           # monthly payment = numerator / ((1+r)^n - 1)
 print "Monthly payment ($)"

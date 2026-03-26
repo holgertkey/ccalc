@@ -4,11 +4,11 @@
 #
 # Usage: ccalc < cylinder.ccalc
 
-3.14159265358979 * 5^2  # pi * r^2  (r = 5)
-m1                       # save base area
+3.14159265358979 * 5^2; # pi * r^2  (r = 5)
+m1;                      # save base area
 
-m1 * 10                  # volume: base * height (h = 10)
+m1 * 10;                  # volume: base * height (h = 10)
 print "Volume"
 
-m1 * 2 * (5 + 10)        # total surface area: 2 * pi * r * (r + h)
+m1 * 2 * (5 + 10);        # total surface area: 2 * pi * r * (r + h)
 print "Surface area"

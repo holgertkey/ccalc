@@ -39,6 +39,16 @@ pub fn run() {
 
         let _ = rl.add_history_entry(trimmed);
 
+        let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
+            (t.trim_end(), true)
+        } else {
+            (trimmed, false)
+        };
+
+        if trimmed.is_empty() {
+            continue;
+        }
+
         // Built-in commands
         match trimmed {
             "q" => break,
@@ -147,31 +157,33 @@ pub fn run() {
         // mixed-base literals. Returns None if nothing changed (no conversion needed).
         let base_display = format_expr_for_display(&full_expanded, base);
 
-        if let Some(Directive::Compound(idx, op)) = &directive {
-            let cell_display = format_for_base(memory.get(*idx), base);
-            let rhs = match parse(&full_expanded, accumulator).and_then(|ast| eval(&ast)) {
-                Ok(val) => format_for_base(val, base),
-                Err(_) => {
-                    let expr_display = base_display
-                        .as_deref()
-                        .or(acc_display.as_deref())
-                        .or(mem_display.as_deref())
-                        .unwrap_or(&full_expanded);
-                    if expr_display.contains(' ') {
-                        format!("({})", expr_display)
-                    } else {
-                        expr_display.to_string()
+        if !silent {
+            if let Some(Directive::Compound(idx, op)) = &directive {
+                let cell_display = format_for_base(memory.get(*idx), base);
+                let rhs = match parse(&full_expanded, accumulator).and_then(|ast| eval(&ast)) {
+                    Ok(val) => format_for_base(val, base),
+                    Err(_) => {
+                        let expr_display = base_display
+                            .as_deref()
+                            .or(acc_display.as_deref())
+                            .or(mem_display.as_deref())
+                            .unwrap_or(&full_expanded);
+                        if expr_display.contains(' ') {
+                            format!("({})", expr_display)
+                        } else {
+                            expr_display.to_string()
+                        }
                     }
-                }
-            };
-            println!("{} {} {}", cell_display, compound_op_char(*op), rhs);
-        } else if let Some(display) = base_display.or(acc_display).or(mem_display) {
-            println!("{}", display);
+                };
+                println!("{} {} {}", cell_display, compound_op_char(*op), rhs);
+            } else if let Some(display) = base_display.or(acc_display).or(mem_display) {
+                println!("{}", display);
+            }
         }
 
         match evaluate_expanded(&full_expanded, directive, &mut accumulator, &mut memory) {
             Ok(_) => {
-                if show_all_bases {
+                if !silent && show_all_bases {
                     print_all_bases(accumulator, precision);
                 }
             }
@@ -227,6 +239,11 @@ pub fn run_pipe(reader: impl BufRead) {
         };
         let trimmed = line.trim();
         let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
+        let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
+            (t.trim_end(), true)
+        } else {
+            (trimmed, false)
+        };
         if trimmed.is_empty() {
             continue;
         }
@@ -303,10 +320,12 @@ pub fn run_pipe(reader: impl BufRead) {
 
         match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
             Ok(result) => {
-                if show_all {
-                    print_all_bases(result, precision);
-                } else {
-                    println!("{}", format_value(result, precision, base));
+                if !silent {
+                    if show_all {
+                        print_all_bases(result, precision);
+                    } else {
+                        println!("{}", format_value(result, precision, base));
+                    }
                 }
             }
             Err(e) => eprintln!("Error: {e}"),
@@ -933,6 +952,11 @@ mod tests {
             let line = line.unwrap();
             let trimmed = line.trim();
             let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
+            let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
+                (t.trim_end(), true)
+            } else {
+                (trimmed, false)
+            };
             if trimmed.is_empty() {
                 continue;
             }
@@ -991,17 +1015,19 @@ mod tests {
             }
             match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
                 Ok(result) => {
-                    if show_all {
-                        // Collect the 4-line base output as individual entries
-                        let i = result.round() as i64;
-                        let u = i.unsigned_abs();
-                        let sign = if i < 0 { "-" } else { "" };
-                        output.push(format!("2  - {}0b{:b}", sign, u));
-                        output.push(format!("8  - {}0o{:o}", sign, u));
-                        output.push(format!("10 - {}", format_value(result, 10, Base::Dec)));
-                        output.push(format!("16 - {}0x{:X}", sign, u));
-                    } else {
-                        output.push(format_value(result, 10, base));
+                    if !silent {
+                        if show_all {
+                            // Collect the 4-line base output as individual entries
+                            let i = result.round() as i64;
+                            let u = i.unsigned_abs();
+                            let sign = if i < 0 { "-" } else { "" };
+                            output.push(format!("2  - {}0b{:b}", sign, u));
+                            output.push(format!("8  - {}0o{:o}", sign, u));
+                            output.push(format!("10 - {}", format_value(result, 10, Base::Dec)));
+                            output.push(format!("16 - {}0x{:X}", sign, u));
+                        } else {
+                            output.push(format_value(result, 10, base));
+                        }
                     }
                 }
                 Err(e) => output.push(format!("Error: {e}")),
@@ -1234,5 +1260,33 @@ mod tests {
     fn test_pipe_print_does_not_change_accumulator() {
         let out = pipe_output("10\nprint \"val\"\n+ 5");
         assert_eq!(out, vec!["10", "val: 10", "15"]);
+    }
+
+    // ── semicolon suppression ────────────────────────────────────────────────
+
+    #[test]
+    fn test_pipe_semicolon_suppresses_output() {
+        let out = pipe_output("10;\n+ 5");
+        assert_eq!(out, vec!["15"]);
+    }
+
+    #[test]
+    fn test_pipe_semicolon_still_updates_accumulator() {
+        let out = pipe_output("10;\nprint");
+        assert_eq!(out, vec!["10"]);
+    }
+
+    #[test]
+    fn test_pipe_semicolon_with_comment() {
+        // comment stripped first, then semicolon
+        let out = pipe_output("10; # intermediate\nprint \"result\"");
+        assert_eq!(out, vec!["result: 10"]);
+    }
+
+    #[test]
+    fn test_pipe_semicolon_memory_store() {
+        // m[1-9] standalone commands have no output anyway, but ; must not break them
+        let out = pipe_output("7;\nm1;\nm1 + 3");
+        assert_eq!(out, vec!["10"]);
     }
 }
