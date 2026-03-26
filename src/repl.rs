@@ -114,6 +114,16 @@ pub fn run() {
             continue;
         }
 
+        // print / print "label"
+        if let Some(label) = parse_print_cmd(trimmed) {
+            let value = format_value(accumulator, precision, base);
+            match label {
+                None => println!("{value}"),
+                Some(s) => println!("{s}: {value}"),
+            }
+            continue;
+        }
+
         // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
         let (trimmed_no_base, base_suffix) = extract_base_suffix(trimmed);
         let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
@@ -271,6 +281,16 @@ pub fn run_pipe(reader: impl BufRead) {
             match cmd {
                 StandaloneCmd::StoreAcc(idx) => mem.set(idx, acc),
                 StandaloneCmd::ClearOne(idx) => mem.clear_one(idx),
+            }
+            continue;
+        }
+
+        // print / print "label"
+        if let Some(label) = parse_print_cmd(trimmed) {
+            let value = format_value(acc, precision, base);
+            match label {
+                None => println!("{value}"),
+                Some(s) => println!("{s}: {value}"),
             }
             continue;
         }
@@ -601,6 +621,17 @@ fn parse_precision_cmd(input: &str) -> Option<usize> {
     } else {
         None
     }
+}
+
+/// Parses a `print` command.
+/// Returns `Some(None)` for bare `print`, `Some(Some(label))` for `print "label"`.
+fn parse_print_cmd(input: &str) -> Option<Option<&str>> {
+    if input == "print" {
+        return Some(None);
+    }
+    let rest = input.strip_prefix("print ")?.trim_start();
+    let label = rest.strip_prefix('"')?.strip_suffix('"')?;
+    Some(Some(label))
 }
 
 fn clear_screen() {
@@ -945,6 +976,14 @@ mod tests {
                 }
                 continue;
             }
+            if let Some(label) = parse_print_cmd(trimmed) {
+                let value = format_value(acc, 10, base);
+                match label {
+                    None => output.push(value),
+                    Some(s) => output.push(format!("{s}: {value}")),
+                }
+                continue;
+            }
             let (to_eval, base_suffix) = extract_base_suffix(trimmed);
             let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
             if let Some(BaseSuffix::Switch(b)) = base_suffix {
@@ -1157,5 +1196,43 @@ mod tests {
         assert_eq!(format_for_base(val, Base::Dec), "6");
         // Verifies that the displayed RHS for "2 + 2 + 2 m1-" with m1=10
         // would be "6" (yielding "10 - 6") and not the expression string.
+    }
+
+    // ── parse_print_cmd ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_print_cmd_bare() {
+        assert!(matches!(parse_print_cmd("print"), Some(None)));
+    }
+
+    #[test]
+    fn test_parse_print_cmd_with_label() {
+        assert!(matches!(parse_print_cmd(r#"print "Monthly payment""#), Some(Some("Monthly payment"))));
+    }
+
+    #[test]
+    fn test_parse_print_cmd_not_matched() {
+        assert!(parse_print_cmd("printer").is_none());
+        assert!(parse_print_cmd("p").is_none());
+        assert!(parse_print_cmd("prin").is_none());
+        assert!(parse_print_cmd("print no quotes").is_none());
+    }
+
+    #[test]
+    fn test_pipe_print_bare() {
+        let out = pipe_output("42\nprint");
+        assert_eq!(out, vec!["42", "42"]);
+    }
+
+    #[test]
+    fn test_pipe_print_with_label() {
+        let out = pipe_output("42\nprint \"Answer\"");
+        assert_eq!(out, vec!["42", "Answer: 42"]);
+    }
+
+    #[test]
+    fn test_pipe_print_does_not_change_accumulator() {
+        let out = pipe_output("10\nprint \"val\"\n+ 5");
+        assert_eq!(out, vec!["10", "val: 10", "15"]);
     }
 }

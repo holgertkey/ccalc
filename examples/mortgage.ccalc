@@ -8,21 +8,15 @@
 #
 # Usage: ccalc < mortgage.ccalc
 
-# Monthly interest rate: 6% / 12
-0.06 / 12               # r
-m1                      # save r
+0.06 / 12               # monthly rate r
+m1
 
-# (1 + r)^n  where n = 360
-1 + m1                  # 1 + r
-^ 360                   # (1 + r)^360
-m2                      # save compound factor
+1 + m1                  # (1 + r)
+^ 360                   # (1 + r)^n,  n = 360 months
+m2
 
-# Numerator: P * r * (1+r)^n
 200000 * m1 * m2        # P * r * (1+r)^n
-m3                      # save numerator
+m3
 
-# Denominator: (1+r)^n - 1
-m2 - 1                  # (1+r)^n - 1
-
-# Monthly payment
-m3 / (m2 - 1)
+m3 / (m2 - 1)           # monthly payment = numerator / ((1+r)^n - 1)
+print "Monthly payment ($)"
