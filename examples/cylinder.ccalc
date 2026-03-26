@@ -1,0 +1,11 @@
+# Cylinder volume and surface area
+# V = pi * r^2 * h
+# A = 2 * pi * r * (r + h)
+#
+# Usage: ccalc < cylinder.ccalc
+
+3.14159265358979 * 5^2  # pi * r^2  (r = 5)
+m1                       # save base area to m1
+
+m1 * 10                  # volume: base * height (h = 10)
+m1 * 2 * (5 + 10)        # total surface area: 2 * pi * r * (r + h)

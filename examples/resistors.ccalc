@@ -1,0 +1,22 @@
+# Resistor network calculations (Ohm's law)
+# Series:   R_total = R1 + R2 + R3
+# Parallel: 1/R_total = 1/R1 + 1/R2 + 1/R3
+#
+# Usage: ccalc < resistors.ccalc
+
+# --- Series combination ---
+# R1=100, R2=220, R3=470
+100 + 220 + 470          # total series resistance (Ohm)
+m1                       # save series resistance
+
+# Voltage divider: V_out across R3 (V_in = 12V)
+12 * 470 / m1            # V_out = V_in * R3 / R_total
+
+# --- Parallel combination of R1 and R2 ---
+# 1/R = 1/100 + 1/220
+1/100 + 1/220            # sum of conductances
+^ -1                     # R_parallel = 1 / (sum)
+m2                       # save parallel resistance
+
+# Power dissipated in parallel combo at 5V
+5^2 / m2                 # P = V^2 / R  (Watts)

@@ -216,6 +216,7 @@ pub fn run_pipe(reader: impl BufRead) {
             }
         };
         let trimmed = line.trim();
+        let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
         if trimmed.is_empty() {
             continue;
         }
@@ -900,6 +901,7 @@ mod tests {
         for line in reader.lines() {
             let line = line.unwrap();
             let trimmed = line.trim();
+            let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
             if trimmed.is_empty() {
                 continue;
             }
@@ -1006,6 +1008,18 @@ mod tests {
     fn test_pipe_empty_lines_skipped() {
         let lines = "1\n\n\n2";
         assert_eq!(pipe_output(lines), vec!["1", "2"]);
+    }
+
+    #[test]
+    fn test_pipe_comments_skipped() {
+        let lines = "# header comment\n1\n# inline comment\n+ 2\n# trailing comment";
+        assert_eq!(pipe_output(lines), vec!["1", "3"]);
+    }
+
+    #[test]
+    fn test_pipe_inline_comments_stripped() {
+        let lines = "10  # first value\n+ 5 # add five";
+        assert_eq!(pipe_output(lines), vec!["10", "15"]);
     }
 
     #[test]
