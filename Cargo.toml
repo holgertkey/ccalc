@@ -1,7 +1,15 @@
 [package]
 name = "ccalc"
-version = "0.7.0+009"
+version = "0.7.0"
 edition = "2024"
+description = "Command-line calculator with accumulator, memory cells, multi-base arithmetic, and script file support"
+authors = ["Holgert K <holgertkey@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/holgertkey/ccalc"
+readme = "README.md"
+keywords = ["calculator", "repl", "cli", "math", "arithmetic"]
+categories = ["command-line-utilities"]
+exclude = ["CLAUDE.md", ".debug/**"]
 
 [dependencies]
 rustyline = "14"
