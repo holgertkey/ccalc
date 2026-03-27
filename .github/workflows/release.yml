@@ -7,6 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── 1. Build release binaries for every platform ──────────────────────────
@@ -27,7 +28,7 @@ jobs:
             os: macos-latest
             archive: tar.gz
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
             archive: tar.gz
 
     steps:
