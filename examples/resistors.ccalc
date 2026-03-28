@@ -3,14 +3,14 @@
 % Parallel: R_total = 1 / (1/R1 + 1/R2)
 %
 % Usage: ccalc < resistors.ccalc
-
+p4
 % --- Series combination: R1=100, R2=220, R3=470 ---
 100 + 220 + 470
 r_series = ans;           % save for reuse
 print "Series resistance (Ohm):"
 
 % Voltage divider: V_out across R3 with V_in = 12V
-12 * 470 / r_series
+12 * 470 / r_series;
 print "Voltage divider V_out (V):"
 
 % --- Parallel combination of R1=100 and R2=220 ---
@@ -19,5 +19,5 @@ r_parallel = ans;         % save for reuse
 print "Parallel resistance (Ohm):"
 
 % Power dissipated at 5V: P = V^2 / R
-5^2 / r_parallel
+5^2 / r_parallel;
 print "Power dissipated (W):"

@@ -6,12 +6,12 @@
 
 r = 5;                    % radius
 h = 10;                   % height
-p4;                       % precision = 4
+p4                        % precision = 4
 
 base_area = pi * r^2;     % pi * r^2
 
-base_area * h
+base_area * h;
 print "Volume:"
 
-2 * base_area + 2 * pi * r * h
+2 * base_area + 2 * pi * r * h;
 print "Surface area:"

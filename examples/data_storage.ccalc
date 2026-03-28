@@ -5,6 +5,6 @@
 % Usage: ccalc < data_storage.ccalc
 
 gib = 1024^3;             % bytes in one GiB
-
-500 * 1000^3 / gib
+p4;
+500 * 1000^3 / gib;
 print "Real GiB in a 500 GB drive:"

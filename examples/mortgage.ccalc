@@ -15,5 +15,5 @@ p = 200000;               % principal
 factor = (1 + rate) ^ n;
 p2;
 
-p * rate * factor / (factor - 1)
+p * rate * factor / (factor - 1);
 print "Monthly payment ($):"
