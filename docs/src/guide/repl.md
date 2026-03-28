@@ -4,7 +4,7 @@ Start with `ccalc` (no arguments, stdin is a terminal).
 
 ## Prompt
 
-The prompt always shows the current accumulator:
+The prompt always shows the current value of `ans`:
 
 ```
 [ 0 ]:
@@ -12,10 +12,10 @@ The prompt always shows the current accumulator:
 [ 0xFF ]:
 ```
 
-## Accumulator
+## ans
 
-Every expression result becomes the new accumulator. Expressions that start with
-an operator use the accumulator as the left-hand operand (**partial expressions**):
+Every expression result is stored in `ans`. Expressions that start with
+an operator use `ans` as the left-hand operand (**partial expressions**):
 
 ```
 [ 0 ]: 100
@@ -30,16 +30,17 @@ an operator use the accumulator as the left-hand operand (**partial expressions*
 | Command | Action |
 |---|---|
 | `q` | Quit |
-| `c` | Clear accumulator (reset to 0) |
+| `c` | Reset ans to 0 |
 | `cls` | Clear the screen |
+| `who` | Show all defined variables |
+| `clear` | Clear all variables |
+| `clear <name>` | Clear a single variable |
 | `p` | Show current decimal precision |
 | `p<N>` | Set precision to N decimal places (0–15) |
 | `hex` / `dec` / `bin` / `oct` | Switch display base |
-| `base` | Show accumulator in all four bases |
-| `m` | Show all non-zero memory cells |
-| `mc` | Clear all memory cells |
-| `ms` | Save memory cells to file |
-| `ml` | Load memory cells from file |
+| `base` | Show ans in all four bases |
+| `ws` | Save workspace to file |
+| `wl` | Load workspace from file |
 
 ## Keyboard shortcuts
 
@@ -54,7 +55,7 @@ an operator use the accumulator as the left-hand operand (**partial expressions*
 
 ## Silencing a line
 
-Append `;` to suppress output while still updating the accumulator:
+Append `;` to suppress output while still updating `ans`:
 
 ```
 [ 0 ]: 0.06 / 12;

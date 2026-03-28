@@ -16,17 +16,17 @@ OPTIONS:
 PIPE / NON-INTERACTIVE MODE:
     When stdin is not a terminal (pipe or file redirect), ccalc runs in
     silent mode: no prompt is shown, one result is printed per line.
-    The accumulator carries over across lines, so you can chain steps:
+    ans carries over across lines, so you can chain steps:
 
         printf \"100\\n/ 4\\n+ 5\" | ccalc
         100
         25
         30
 
-    Commands supported in pipe mode: q (stop), c (reset accumulator),
-    mc (clear all memory), mc[1-9], m[1-9] (memory store/clear),
+    Commands supported in pipe mode: q (stop), c (reset ans),
+    who, clear, clear <name>, ws, wl,
     p / p<N> (precision), hex / dec / bin / oct / base (number base).
-    cls and m are ignored.
+    cls is ignored.
 
 SCRIPT FILES (ccalc < formula.txt):
     Three tools for controlling output in pipe/file mode:
@@ -36,12 +36,12 @@ SCRIPT FILES (ccalc < formula.txt):
         10 * 5  # inline comment — expression still evaluates
 
     Semicolon — suppress output of a line
-        0.06 / 12;    evaluates and updates accumulator, prints nothing
-        m1;           store to m1 silently
-        m1 + m2       evaluated and printed normally (no semicolon)
+        0.06 / 12;    evaluates and updates ans, prints nothing
+        rate = ans;   store to variable silently
+        1 + rate;     still updates ans
 
     print — explicit output
-        print                   print current accumulator value
+        print                   print current ans value
         print \"label\"           print label then value (no separator added)
                                 write any punctuation you want in the label:
                                   print \"Result:\"   →  Result: 42
@@ -63,8 +63,13 @@ SCRIPT FILES (ccalc < formula.txt):
 
 REPL COMMANDS:
     q                Quit
-    c                Clear accumulator (reset to 0)
+    c                Reset ans to 0
     cls              Clear the screen
+    who              List all defined variables
+    clear            Clear all variables
+    clear <name>     Clear a single variable
+    ws               Save workspace to ~/.config/ccalc/workspace.toml
+    wl               Load workspace from file
     Ctrl+C, Ctrl+D   Quit
 
 PRECISION:
@@ -90,7 +95,7 @@ NUMBER BASES:
     Inline base suffix — evaluate expression then switch display base
         expr hex       e.g. 0xFF + 0b1010 hex  → 0x109
 
-    base               show current accumulator value in all four bases
+    base               show current ans value in all four bases
 
         [ 10 ]: base
         2  - 0b1010
@@ -124,16 +129,16 @@ ARITHMETIC:
     Grouping:    parentheses, e.g. (3 + 2) * 4
     Unary minus: -5,  -(3 + 2)
 
-    The prompt [ value ]: shows the current accumulator — the result of the last
-    expression. Expressions starting with an operator use the accumulator as
-    the left-hand operand (partial expressions):
+    The prompt [ value ]: shows ans — the result of the last expression.
+    Expressions starting with an operator use ans as the left-hand operand
+    (partial expressions):
 
-        [ 6 ]: * 2         accumulator = 12
-        [ 12 ]: ^ 2        accumulator = 144
-        [ 144 ]: % 100     accumulator = 44
+        [ 6 ]: * 2         ans = 12
+        [ 12 ]: ^ 2        ans = 144
+        [ 144 ]: % 100     ans = 44
 
 PERCENTAGE:
-    N%    — N percent of the accumulator
+    N%    — N percent of ans
 
         [ 1500 ]: 20%      → 300   (20% of 1500)
         [ 1500 ]: + 20%    → 1800  (add 20% of 1500)
@@ -151,7 +156,7 @@ IMPLICIT MULTIPLICATION:
 CONSTANTS:
     pi          3.14159265358979...
     e           2.71828182845904...
-    acc         current accumulator value (explicit alias)
+    ans         result of last expression (Octave/MATLAB convention)
 
 MATH FUNCTIONS:
     sqrt(x)     square root
@@ -166,32 +171,37 @@ MATH FUNCTIONS:
     cos(x)      cosine (radians)
     tan(x)      tangent (radians)
 
-    If called with empty parentheses, the accumulator is used as the argument:
-        sqrt()   →   sqrt(accumulator)
+    If called with empty parentheses, ans is used as the argument:
+        sqrt()   →   sqrt(ans)
 
-MEMORY CELLS  m1 – m9:
+VARIABLES:
 
-  Store
-    m[1-9]              Store accumulator into cell
-    expr m[1-9]         Evaluate expression, store result into cell
+  Assignment
+    name = expr         Evaluate expr, store result in variable; print as \"name = value\"
+    name = expr;        Same, but suppress output
 
-  Compound assignment  (cell = cell OP expr; accumulator = new cell value)
-    expr m[1-9]+        m[1-9] += expr
-    expr m[1-9]-        m[1-9] -= expr
-    expr m[1-9]*        m[1-9] *= expr
-    expr m[1-9]/        m[1-9] /= expr
-    expr m[1-9]%        m[1-9] %= expr
-    expr m[1-9]^        m[1-9] ^= expr
+  Using variables
+    Any defined variable can be used inside expressions by name.
+    ans is the implicit variable — set after every expression.
 
-  Recall (use inside any expression)
-    m[1-9]              Read cell value, e.g.:  m1 + 8 + m1
+        [ 0 ]: rate = 0.06 / 12
+        rate = 0.005
+        [ 0.005 ]: 1 + rate
+        [ 1.005 ]:
 
-  View / clear / persist
-    m                   Show all non-zero memory cells
-    mc                  Clear all memory cells
-    mc[1-9]             Clear a specific cell, e.g. mc1
-    ms                  Save all cells to ~/.config/ccalc/memory.toml
-    ml                  Load cells from file (clears current cells first)
+  Built-in variables
+    ans             Result of last expression (reset to 0 by c)
+    pi              3.14159265358979...
+    e               2.71828182845904...
+
+  View and clear
+    who             List all defined variables and their values
+    clear           Clear all variables
+    clear <name>    Clear a single variable by name
+
+  Workspace persistence
+    ws              Save all variables to ~/.config/ccalc/workspace.toml
+    wl              Load variables from file (replaces current workspace)
 
 EXAMPLES:
 
@@ -212,33 +222,33 @@ EXAMPLES:
     30
 
   Percentage:
-    [ 1500 ]: 20%          accumulator = 300  (20% of 1500)
-    [ 1500 ]: + 20%        accumulator = 1800 (1500 + 300)
-    [ 1800 ]: - 10%        accumulator = 1620 (1800 - 180)
+    [ 1500 ]: 20%          ans = 300  (20% of 1500)
+    [ 1500 ]: + 20%        ans = 1800 (1500 + 300)
+    [ 1800 ]: - 10%        ans = 1620 (1800 - 180)
 
   Implicit multiplication:
-    [ 0 ]: 2(3 + 1)        accumulator = 8
-    [ 0 ]: (2+1)(4-1)      accumulator = 9
+    [ 0 ]: 2(3 + 1)        ans = 8
+    [ 0 ]: (2+1)(4-1)      ans = 9
 
   Power and modulo:
-    [ 0 ]: 2 ^ 10          accumulator = 1024
-    [ 1024 ]: % 1000       accumulator = 24
+    [ 0 ]: 2 ^ 10          ans = 1024
+    [ 1024 ]: % 1000       ans = 24
 
   Functions and constants:
-    [ 0 ]: sqrt(144)       accumulator = 12
-    [ 0 ]: sin(pi / 6)     accumulator = 0.5
-    [ 0 ]: log(1000)       accumulator = 3
-    [ 0 ]: ln(e)           accumulator = 1
+    [ 0 ]: sqrt(144)       ans = 12
+    [ 0 ]: sin(pi / 6)     ans = 0.5
+    [ 0 ]: log(1000)       ans = 3
+    [ 0 ]: ln(e)           ans = 1
 
-  acc and empty-arg calls:
-    [ 4 ]: sqrt()          same as sqrt(4); accumulator = 2
-    [ 9 ]: sqrt(acc)       same as sqrt(9); accumulator = 3
-    [ 3 ]: acc * 2         accumulator = 6
+  ans and empty-arg calls:
+    [ 4 ]: sqrt()          same as sqrt(4); ans = 2
+    [ 9 ]: sqrt(ans)       same as sqrt(9); ans = 3
+    [ 3 ]: ans * 2         ans = 6
 
   Number bases:
-    [ 0 ]: 0xFF + 0b1010   accumulator = 265
+    [ 0 ]: 0xFF + 0b1010   ans = 265
     [ 265 ]: hex           switch display to hex
-    [ 0x109 ]: + 0b10      accumulator = 0x10B
+    [ 0x109 ]: + 0b10      ans = 0x10B
     [ 0x10B ]: dec         switch back to decimal
     [ 267 ]:
     [ 0 ]: 0xFF + 0b1010 hex   inline: evaluate and switch to hex → 0x109
@@ -248,35 +258,22 @@ EXAMPLES:
     [ 0 ]: p4
     [ 0 ]: 1 / 3           0.3333
 
-  Store and recall:
-    [ 0 ]: (1 + 1) * 3 m1  stores 6 in m1; accumulator = 6
-    [ 6 ]: m1 + 8 + m1     expands to 6 + 8 + 6; accumulator = 20
-
-  Copy cell to cell:
-    [ 0 ]: m1 m2           stores value of m1 into m2
-
-  Compound assignment:
-    [ 0 ]: 100 m1          m1 = 100; accumulator = 100
-    [ 100 ]: 2 m1*         m1 = 200; accumulator = 200
-    [ 200 ]: 50 m1-        m1 = 150; accumulator = 150
-    [ 150 ]: 3 m1/         m1 = 50;  accumulator = 50
-
-  View and clear memory:
-    [ 10 ]: m
-    m1: 50
-    [ 10 ]: mc1            clears m1
-    [ 10 ]: mc             clears all cells
+  Variables — store and reuse:
+    [ 0 ]: rate = 0.06 / 12
+    rate = 0.005
+    [ 0.005 ]: n = 360
+    n = 360
+    [ 360 ]: factor = (1 + rate) ^ n
+    factor = 6.0226...
+    [ 6.0226 ]: 200000 * rate * factor / (factor - 1)
+    [ 1199.10 ]:
 
   Script file (ccalc < formula.txt):
     # Monthly mortgage payment
-    0.06 / 12;             # monthly rate — silent
-    m1;
-    1 + m1;                # (1 + r)
-    ^ 360;                 # (1 + r)^360 — silent
-    m2;
-    200000 * m1 * m2;      # numerator — silent
-    m3;
-    m3 / (m2 - 1)          # monthly payment
+    rate = 0.06 / 12;      # monthly rate — silent
+    n = 360;               # 30 years in months — silent
+    factor = (1 + rate) ^ n;
+    200000 * rate * factor / (factor - 1)
     print \"Monthly payment ($):\"",
         ver = env!("CARGO_PKG_VERSION")
     );

@@ -1,15 +1,16 @@
 # Evaluator (`eval.rs`)
 
-The evaluator walks an `Expr` AST and produces an `f64` result.
+The evaluator walks an `Expr` AST and produces an `f64` result, given a variable environment.
 
 ## AST types
 
 ```rust
 pub enum Expr {
     Number(f64),
+    Var(String),                     // variable lookup
     UnaryMinus(Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
-    Call(String, Box<Expr>),     // single-argument function call
+    Call(String, Box<Expr>),         // single-argument function call
 }
 
 pub enum Op {
@@ -20,11 +21,12 @@ pub enum Op {
 > `Call` currently accepts exactly one argument. Phase 2 (multi-argument
 > functions) will extend this to `Call(String, Vec<Expr>)`.
 
-## `eval(expr)` semantics
+## `eval(expr, env)` semantics
 
 | Variant | Semantics |
 |---|---|
 | `Number(n)` | Returns `n` |
+| `Var(name)` | Looks up `name` in `env`; `Err` if not defined |
 | `UnaryMinus(e)` | Returns `-eval(e)` |
 | `BinOp(l, Div, r)` | Returns `Err` if `r == 0.0` |
 | `BinOp(l, Mod, r)` | Returns `Err` if `r == 0.0` |
@@ -50,8 +52,7 @@ Always decimal, always round-trips through the parser:
 - Floats: up to 10 significant fractional digits, trailing zeros trimmed
 - Very large / very small: scientific notation to preserve value
 
-This function is used by `memory::expand_memory_refs` to substitute cell values
-into expression strings before re-parsing.
+This function is used by `repl.rs` when displaying partial-expression context.
 
 ## `Base` enum
 

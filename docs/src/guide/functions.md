@@ -18,7 +18,7 @@
 
 ## Empty-argument shorthand
 
-Calling a function with empty parentheses uses the **accumulator** as the argument:
+Calling a function with empty parentheses uses **ans** as the argument:
 
 ```
 [ 144 ]: sqrt()      →  12     (same as sqrt(144))
@@ -32,14 +32,13 @@ Calling a function with empty parentheses uses the **accumulator** as the argume
 |---|---|
 | `pi` | 3.14159265358979… |
 | `e` | 2.71828182845904… |
-| `acc` | Current accumulator value (explicit alias) |
+| `ans` | Result of last expression |
 
-`acc` is most useful in expressions where you need the accumulator
-mid-expression without making it a partial expression:
+`ans` can appear anywhere in an expression:
 
 ```
-[ 9 ]: acc * 2 + 1    →  19
-[ 9 ]: sqrt(acc)      →   3
+[ 9 ]: ans * 2 + 1    →  19
+[ 9 ]: sqrt(ans)      →   3
 ```
 
 ## Nesting

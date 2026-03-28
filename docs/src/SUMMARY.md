@@ -10,7 +10,7 @@
 - [Arithmetic & Operators](./guide/arithmetic.md)
 - [Functions & Constants](./guide/functions.md)
 - [Number Bases](./guide/number-bases.md)
-- [Memory Cells](./guide/memory.md)
+- [Variables](./guide/variables.md)
 - [Precision](./guide/precision.md)
 
 # Architecture

@@ -1,7 +1,7 @@
 # ccalc
 
-`ccalc` is a command-line calculator with an accumulator, memory cells,
-multi-base arithmetic, and script file support.
+`ccalc` is a command-line calculator with named variables,
+multi-base arithmetic, math functions, and script file support.
 
 ## Quick start
 
@@ -21,7 +21,7 @@ echo "sqrt(2)" | ccalc
 | Crate | Role |
 |---|---|
 | `crates/ccalc` | CLI binary: argument parsing, REPL, pipe mode |
-| `crates/ccalc-engine` | Library: tokenizer, parser, AST evaluator, memory cells |
+| `crates/ccalc-engine` | Library: tokenizer, parser, AST evaluator, variable environment |
 
 The engine crate is the foundation for the upcoming Octave/MATLAB
 compatibility layer.

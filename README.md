@@ -1,6 +1,6 @@
 # ccalc
 
-A command-line calculator with a persistent accumulator, memory cells, and math functions.
+A command-line calculator with named variables, multi-base arithmetic, and math functions.
 
 **Current version: 0.7.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
@@ -59,7 +59,7 @@ $ ccalc "sqrt(144)"
 
 ### Pipe / non-interactive mode
 
-When stdin is not a terminal, ccalc runs silently — no prompt, one result per line. The accumulator carries over across lines, so you can chain calculations:
+When stdin is not a terminal, ccalc runs silently — no prompt, one result per line. `ans` carries over across lines, so you can chain calculations:
 
 ```
 $ echo "sin(pi / 6)" | ccalc
@@ -73,13 +73,13 @@ $ printf "10\n+ 5\n* 2" | ccalc
 $ ccalc < formulas.txt
 ```
 
-All commands work in pipe mode: `q` stops processing, `c` resets the accumulator, `mc`/`mc[1-9]` clear memory, `m[1-9]` stores into a cell, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` and `m` are ignored.
+All commands work in pipe mode: `q` stops processing, `c` resets `ans`, `who`/`clear`/`ws`/`wl` manage variables, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
 
 ---
 
 ## How it works
 
-The prompt shows the **accumulator** — the result of the last expression. Every new expression updates it. Expressions that start with an operator automatically use the accumulator as the left-hand operand (**partial expressions**):
+The prompt shows **ans** — the result of the last expression. Every new expression updates it. Expressions that start with an operator automatically use `ans` as the left-hand operand (**partial expressions**):
 
 ```
 [ 0 ]: 100
@@ -135,7 +135,7 @@ The prompt shows the **accumulator** — the result of the last expression. Ever
 
 ### Percentage operator
 
-`N%` means *N percent of the accumulator* — a postfix operator that expands to `N * acc / 100`:
+`N%` means *N percent of ans* — a postfix operator that expands to `N * ans / 100`:
 
 ```
 [ 1500 ]: 20%
@@ -175,15 +175,15 @@ A number or closing parenthesis immediately before `(` multiplies without an exp
 |-------|---------------------------|
 | `pi`  | 3.14159265358979...       |
 | `e`   | 2.71828182845904...       |
-| `acc` | Current accumulator value |
+| `ans` | Result of the last expression |
 
-`acc` is an explicit alias for the accumulator — useful when you need it in the middle of an expression:
+`ans` is the implicit accumulator — it is updated after every expression and can be used anywhere in an expression:
 
 ```
-[ 9 ]: acc * 2 + 1
+[ 9 ]: ans * 2 + 1
 [ 19 ]:
 
-[ 25 ]: sqrt(acc)
+[ 25 ]: sqrt(ans)
 [ 5 ]:
 ```
 
@@ -191,7 +191,7 @@ A number or closing parenthesis immediately before `(` multiplies without an exp
 
 ## Math functions
 
-All functions take a single argument in parentheses. If called with **empty parentheses**, the accumulator is used as the argument.
+All functions take a single argument in parentheses. If called with **empty parentheses**, `ans` is used as the argument.
 
 | Function   | Description       |
 |------------|-------------------|
@@ -220,7 +220,7 @@ All functions take a single argument in parentheses. If called with **empty pare
 [ 16 ]: sqrt()          same as sqrt(16)
 [ 4 ]:
 
-[ 4 ]: sqrt(acc)        same as sqrt(4)
+[ 4 ]: sqrt(ans)        same as sqrt(4)
 [ 2 ]:
 ```
 
@@ -236,114 +236,70 @@ Functions can be nested and combined:
 
 ---
 
-## Memory cells
+## Variables
 
-Nine memory cells: `m1` through `m9`. Values persist for the duration of the session and can be saved to disk with `ms` and restored with `ml`.
+Any identifier can be used as a variable. `ans` is the implicit variable updated after every expression.
 
-### Store
-
-| Input     | Action                                      |
-|-----------|---------------------------------------------|
-| `m1`      | Store accumulator into `m1`                 |
-| `expr m1` | Evaluate expression, store result into `m1` |
+### Assignment
 
 ```
-[ 0 ]: 42
-[ 42 ]: m1              m1 = 42
-
-[ 0 ]: (10 + 5) * 2 m2  m2 = 30
-[ 30 ]:
+[ 0 ]: rate = 0.06 / 12
+rate = 0.005
+[ 0.005 ]: n = 360
+n = 360
 ```
 
-### Recall
-
-Use `m1`–`m9` as values anywhere inside an expression:
+### Using variables
 
 ```
-[ 0 ]: m1 + m2
-42 + 30
-[ 72 ]:                 (42 + 30)
-
-[ 0 ]: m1 * 2 + m2 / 3
-42 * 2 + 30 / 3
-[ 94 ]:
+[ 0 ]: rate = 0.07
+rate = 0.07
+[ 0.07 ]: 1000 * (1 + rate) ^ 10
+[ 1967.1513573 ]:
 ```
 
-When memory references are expanded, the substituted expression is printed before the result:
+### View and clear
+
+| Command       | Action                                            |
+|---------------|---------------------------------------------------|
+| `who`         | Show all defined variables and their values       |
+| `clear`       | Clear all variables                               |
+| `clear name`  | Clear a single variable                           |
+| `ws`          | Save workspace to `~/.config/ccalc/workspace.toml` |
+| `wl`          | Load workspace from file                          |
 
 ```
-[ 0 ]: m1 + 8 + m1
-6 + 8 + 6
-[ 20 ]:
-```
-
-### Compound assignment
-
-`expr m[1-9]OP` evaluates `cell OP expr`, stores the result back into the cell, and sets the accumulator to the new cell value.
-
-| Directive | Effect |
-|-----------|--------|
-| `expr m1+` | `m1 += expr` |
-| `expr m1-` | `m1 -= expr` |
-| `expr m1*` | `m1 *= expr` |
-| `expr m1/` | `m1 /= expr` |
-| `expr m1%` | `m1 %= expr` |
-| `expr m1^` | `m1 ^= expr` |
-
-```
-[ 0 ]: 100 m1           m1 = 100; accumulator = 100
-[ 100 ]: 2 m1*          m1 = 200; accumulator = 200
-[ 200 ]: 50 m1-         m1 = 150; accumulator = 150
-[ 150 ]: 3 m1/          m1 = 50;  accumulator = 50
-```
-
-The expression itself can be anything, including memory references:
-
-```
-[ 0 ]: m2 m1+           m1 = m1 + m2
-[ 0 ]: 1 m1+            m1 += 1   (increment)
-```
-
-### Copy cell to cell
-
-```
-[ 0 ]: m1 m2            store value of m1 into m2
-```
-
-### View, clear, and persist
-
-| Command | Action                                              |
-|---------|-----------------------------------------------------|
-| `m`     | Show all non-zero cells                             |
-| `mc`    | Clear all cells                                     |
-| `mc1`   | Clear cell `m1`                                     |
-| `ms`    | Save all cells to `~/.config/ccalc/memory.toml`     |
-| `ml`    | Load cells from file (clears current cells first)   |
-
-```
-[ 10 ]: m
-m1: 85
-m2: 30
-[ 10 ]: mc1
-[ 10 ]: mc
+[ 0 ]: rate = 0.05
+rate = 0.05
+[ 0.05 ]: n = 12
+n = 12
+[ 12 ]: who
+ans = 12
+n = 12
+rate = 0.05
+[ 12 ]: clear rate
+[ 12 ]: clear
 ```
 
 ---
 
 ## REPL commands
 
-| Command         | Action                                      |
-|-----------------|---------------------------------------------|
-| `q`             | Quit                                        |
-| `c`             | Clear accumulator (reset to 0)              |
-| `cls`           | Clear the screen                            |
-| `p`             | Show current decimal precision              |
-| `p<N>`          | Set decimal precision (0–15)                |
-| `hex` / `dec` / `bin` / `oct` | Switch display base           |
-| `base`          | Show accumulator in all four bases          |
-| `ms`            | Save memory cells to disk                   |
-| `ml`            | Load memory cells from disk                 |
-| Ctrl+C / Ctrl+D | Quit                                        |
+| Command                           | Action                              |
+|-----------------------------------|-------------------------------------|
+| `q`                               | Quit                                |
+| `c`                               | Reset ans to 0                      |
+| `cls`                             | Clear the screen                    |
+| `who`                             | List all defined variables          |
+| `clear`                           | Clear all variables                 |
+| `clear <name>`                    | Clear a single variable             |
+| `p`                               | Show current decimal precision      |
+| `p<N>`                            | Set decimal precision (0–15)        |
+| `hex` / `dec` / `bin` / `oct`    | Switch display base                 |
+| `base`                            | Show ans in all four bases          |
+| `ws`                              | Save workspace to disk              |
+| `wl`                              | Load workspace from disk            |
+| Ctrl+C / Ctrl+D                   | Quit                                |
 
 ## Keyboard shortcuts
 
@@ -400,7 +356,7 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 | `dec`   | Switch display to decimal (default) |
 | `bin`   | Switch display to binary            |
 | `oct`   | Switch display to octal             |
-| `base`  | Show accumulator in all four bases  |
+| `base`  | Show ans in all four bases          |
 
 ```
 [ 0 ]: 0xFF + 0b1010
@@ -483,16 +439,17 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 [ 5 ]:
 ```
 
-**Running budget** — track a total across multiple entries:
+**Variables — monthly mortgage:**
 
 ```
-[ 0 ]: 1200 m1          budget in m1
-[ 1200 ]: m1 - 350 m1   spent 350 → m1 = 850
-1200 - 350
-[ 850 ]: 80 m1-         spent 80  → m1 = 770
-850 - 80
-[ 770 ]: m
-m1: 770
+[ 0 ]: rate = 0.06 / 12
+rate = 0.005
+[ 0.005 ]: n = 360
+n = 360
+[ 360 ]: factor = (1 + rate) ^ n
+factor = 6.0226...
+[ 6.0226 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
 ```
 
 **Angle conversion** — degrees to radians, then sine:
@@ -501,14 +458,6 @@ m1: 770
 [ 0 ]: 30 * pi / 180
 [ 0.5235987756 ]: sin()
 [ 0.5 ]:
-```
-
-**Storing intermediate results**:
-
-```
-[ 0 ]: sqrt(2) m1       store √2
-[ 1.4142135624 ]: m1 ^ 10
-[ 32 ]:                 (√2)^10 = 2^5 = 32
 ```
 
 ---
@@ -528,25 +477,26 @@ pi * 5^2      # pi * r^2, r = 5
 
 ### Semicolon — suppress output
 
-A trailing `;` evaluates the expression and updates the accumulator, but prints nothing. Use it to silence intermediate steps.
+A trailing `;` evaluates the expression and updates `ans`, but prints nothing. Use it to silence intermediate steps.
 
 ```
-0.06 / 12;              # monthly rate — silent
-m1;                     # save to m1 — silent
-1 + m1;
-^ 360;                  # (1 + r)^360 — silent
+rate = 0.06 / 12;     # monthly rate — silent
+n = 360;              # 30-year term — silent
+factor = (1 + rate) ^ n;
+200000 * rate * factor / (factor - 1)
+print "Monthly payment ($):"
 ```
 
 ### `print` — explicit output
 
-`print` prints the current accumulator value. `print "label"` prints the label followed by the value. Write any punctuation you want directly in the label.
+`print` prints the current `ans` value. `print "label"` prints the label followed by the value. Write any punctuation you want directly in the label.
 
 | Command | Output |
 |---|---|
 | `print` | `1199.101050304` |
 | `print "Monthly payment ($):"` | `Monthly payment ($): 1199.101050304` |
 
-**Section headers** — `print "label"` placed after a blank line (with no expression between the blank line and the `print`) prints the label only, without a value. Use this for headings between calculation blocks:
+**Section headers** — `print "label"` placed after a blank line prints the label only, without a value. Use this for headings between calculation blocks:
 
 ```
 print "=== Resistors in series ==="
@@ -602,14 +552,18 @@ cargo test             # run all tests
 ## Project structure
 
 ```
-src/
-  main.rs      — entry point, mode detection (arg / pipe / REPL), CLI flags
-  repl.rs      — REPL loop, run_pipe(), run_expr(), shared evaluate() core
-  parser.rs    — lexer (tokenizer) + recursive descent parser
-  eval.rs      — AST types (Expr, Op) + evaluator + number formatters + Base enum
-  memory.rs    — memory cells, command parser, directive extractor, ref expander
-Cargo.toml     — manifest (single source of truth for version)
-CHANGELOG.md   — version history
+crates/
+  ccalc/src/
+    main.rs      — entry point, mode detection (arg / pipe / REPL), CLI flags
+    repl.rs      — REPL loop, run_pipe(), run_expr(), shared evaluate() core
+    help.rs      — help text
+  ccalc-engine/src/
+    lib.rs       — crate root, public module exports
+    env.rs       — Env type (HashMap<String, f64>), workspace save/load
+    eval.rs      — AST types (Expr, Op) + evaluator + number formatters + Base enum
+    parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
+Cargo.toml       — workspace manifest (single source of truth for version)
+CHANGELOG.md     — version history
 ```
 
 ---
