@@ -272,7 +272,7 @@ rate = 0.05
 
 | Command                           | Action                              |
 |-----------------------------------|-------------------------------------|
-| `q`                               | Quit                                |
+| `exit`, `quit`                    | Quit                                |
 | `c`                               | Reset ans to 0                      |
 | `cls`                             | Clear the screen                    |
 | `who`                             | List all defined variables          |

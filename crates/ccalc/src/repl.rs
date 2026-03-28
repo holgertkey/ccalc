@@ -88,7 +88,7 @@ pub fn run() {
 
         // Built-in commands
         match trimmed {
-            "q" => break,
+            "exit" | "quit" => break,
             "c" => {
                 env.insert("ans".to_string(), 0.0);
                 continue;
@@ -284,7 +284,7 @@ pub fn run_pipe(reader: impl BufRead) {
 
         // Built-in commands (subset relevant in pipe mode)
         match trimmed {
-            "q" => break,
+            "exit" | "quit" => break,
             "c" => {
                 env.insert("ans".to_string(), 0.0);
                 continue;
@@ -883,7 +883,7 @@ mod tests {
                 continue;
             }
             match trimmed {
-                "q" => break,
+                "exit" | "quit" => break,
                 "c" => {
                     env.insert("ans".to_string(), 0.0);
                     continue;
@@ -1001,8 +1001,14 @@ mod tests {
     }
 
     #[test]
-    fn test_pipe_quit_with_q() {
-        let lines = "1\n2\nq\n3";
+    fn test_pipe_quit_with_exit() {
+        let lines = "1\n2\nexit\n3";
+        assert_eq!(pipe_output(lines), vec!["1", "2"]);
+    }
+
+    #[test]
+    fn test_pipe_quit_with_quit() {
+        let lines = "1\n2\nquit\n3";
         assert_eq!(pipe_output(lines), vec!["1", "2"]);
     }
 

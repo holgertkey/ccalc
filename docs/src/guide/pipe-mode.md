@@ -79,7 +79,7 @@ First payment: 1000
 ### Supported commands in pipe mode
 
 All REPL commands except `cls` (which is ignored):
-`q`, `c`, `who`, `clear`, `clear <name>`, `ws`, `wl`,
+`exit`, `quit`, `c`, `who`, `clear`, `clear <name>`, `ws`, `wl`,
 `p`, `p<N>`, `hex`, `dec`, `bin`, `oct`, `base`.
 
 ## Example — mortgage script

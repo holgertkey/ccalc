@@ -24,7 +24,7 @@ PIPE / NON-INTERACTIVE MODE:
         25
         30
 
-    Commands supported in pipe mode: q (stop), c (reset ans),
+    Commands supported in pipe mode: exit / quit (stop), c (reset ans),
     who, clear, clear <name>, ws, wl,
     p / p<N> (precision), hex / dec / bin / oct / base (number base).
     cls is ignored.
@@ -63,7 +63,7 @@ SCRIPT FILES (ccalc < formula.txt):
             Sum: 15
 
 REPL COMMANDS:
-    q                Quit
+    exit, quit       Quit
     c                Reset ans to 0
     cls              Clear the screen
     who              List all defined variables

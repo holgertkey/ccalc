@@ -25,7 +25,7 @@ A prompt shows the current value of `ans`. Type an expression and press Enter.
 [ 0 ]: 2 ^ 32
 [ 4294967296 ]: / 1024
 [ 4194304 ]: sqrt()
-[ 2048 ]: q
+[ 2048 ]: exit
 ```
 
 ### Single expression (argument mode)

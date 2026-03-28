@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+005] - 2026-03-28
+
+### Changed
+
+- **`q` → `exit`** — quit command renamed to `exit`; `quit` also accepted as an alias
+
 ## [0.7.0+004] - 2026-03-28
 
 ### Added
