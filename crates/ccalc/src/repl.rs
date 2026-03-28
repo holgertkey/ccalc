@@ -187,17 +187,6 @@ pub fn run() {
         let base_display =
             format_expr_for_display(expanded.as_deref().unwrap_or(&display_str), base);
 
-        if !silent {
-            let to_show: Option<&str> = if let Some(ref s) = base_display {
-                Some(s.as_str())
-            } else {
-                expanded.as_deref()
-            };
-            if let Some(display) = to_show {
-                println!("{display}");
-            }
-        }
-
         match evaluate(to_eval, &mut env) {
             Ok(result) => {
                 let val = match &result {
@@ -209,10 +198,18 @@ pub fn run() {
                             println!("{} = {}", name, format_value(v, precision, base));
                         }
                         EvalResult::Value(_) => {
+                            // Show expanded expression only for plain expressions
+                            let to_show: Option<&str> = if let Some(ref s) = base_display {
+                                Some(s.as_str())
+                            } else {
+                                expanded.as_deref()
+                            };
+                            if let Some(display) = to_show {
+                                println!("{display}");
+                            }
                             if show_all_bases {
                                 print_all_bases(val, precision);
                             }
-                            // For plain expressions the result shows in the prompt
                         }
                     }
                 }

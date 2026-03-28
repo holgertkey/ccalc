@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+008] - 2026-03-28
+
+### Added
+
+- **Variable expansion in REPL** — when an expression contains known variables, the expanded form is printed before the result: `ans + x + y` → prints `13 + 10 + 20` then `[ 43 ]:`
+
+### Fixed
+
+- **Double output for assignments** — `w = ans` was printing `w = 110` twice (once from expansion display, once from assignment handler); expansion display is now suppressed for assignment statements
+
+## [0.7.0+007] - 2026-03-28
+
 ## [0.7.0+006] - 2026-03-28
 
 ### Removed
