@@ -23,6 +23,7 @@ The binary is placed at `target/release/ccalc`. Copy it anywhere on your `PATH`.
 ```
 ccalc [OPTIONS]           start interactive REPL
 ccalc "EXPR"              evaluate expression and print result
+ccalc script.m            run a script file
 echo "EXPR" | ccalc       pipe mode — silent, result only
 ccalc < formulas.txt      read expressions from file
 ```
@@ -57,6 +58,15 @@ $ ccalc "sqrt(144)"
 12
 ```
 
+### Script file
+
+Pass a script file as an argument — any file that exists on disk:
+
+```
+$ ccalc script.m
+$ ccalc examples/mortgage.ccalc
+```
+
 ### Pipe / non-interactive mode
 
 When stdin is not a terminal, ccalc runs silently — no prompt, one result per line. `ans` carries over across lines, so you can chain calculations:
@@ -73,7 +83,7 @@ $ printf "10\n+ 5\n* 2" | ccalc
 $ ccalc < formulas.txt
 ```
 
-All commands work in pipe mode: `q` stops processing, `c` resets `ans`, `who`/`clear`/`ws`/`wl` manage variables, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
+All commands work in script/pipe mode: `q` stops processing, `c` resets `ans`, `who`/`clear`/`ws`/`wl` manage variables, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
 
 ---
 

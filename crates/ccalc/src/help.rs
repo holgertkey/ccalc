@@ -6,6 +6,7 @@ ccalc v{ver} — command-line calculator
 USAGE:
     ccalc [OPTIONS]           start interactive REPL
     ccalc \"EXPR\"              evaluate expression and print result
+    ccalc script.m            run a script file
     echo \"EXPR\" | ccalc       pipe mode — silent, result only
     ccalc < formulas.txt      read expressions from file
 

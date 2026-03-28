@@ -11,7 +11,7 @@ cargo build --release
 # binary: target/release/ccalc
 ```
 
-## Three usage modes
+## Usage modes
 
 ### Interactive REPL
 
@@ -19,7 +19,7 @@ cargo build --release
 ccalc
 ```
 
-A prompt shows the current accumulator value. Type an expression and press Enter.
+A prompt shows the current value of `ans`. Type an expression and press Enter.
 
 ```
 [ 0 ]: 2 ^ 32
@@ -44,10 +44,19 @@ $ ccalc "sqrt(2)"
 1.4142135624
 ```
 
+### Script file
+
+Pass a `.m` or `.ccalc` file as an argument:
+
+```sh
+ccalc script.m
+ccalc examples/mortgage.ccalc
+```
+
 ### Pipe / non-interactive mode
 
-When stdin is not a terminal, ccalc reads lines one by one, prints one result per
-line, and carries the accumulator across lines.
+When stdin is not a terminal, ccalc reads lines one by one and prints one result
+per line. `ans` carries over across lines.
 
 ```sh
 $ echo "sin(pi / 6)" | ccalc
@@ -57,6 +66,8 @@ $ printf "100\n/ 4\n+ 5" | ccalc
 100
 25
 30
+
+$ ccalc < formula.txt
 ```
 
 ## Command-line options

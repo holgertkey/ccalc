@@ -16,8 +16,17 @@ fn main() {
                 help::print();
                 return;
             }
-            expr if !expr.starts_with('-') => {
-                repl::run_expr(expr);
+            arg if !arg.starts_with('-') => {
+                let path = std::path::Path::new(arg);
+                if path.is_file() {
+                    let file = std::fs::File::open(path).unwrap_or_else(|e| {
+                        eprintln!("Error opening '{}': {e}", path.display());
+                        std::process::exit(1);
+                    });
+                    repl::run_pipe(std::io::BufReader::new(file));
+                } else {
+                    repl::run_expr(arg);
+                }
                 return;
             }
             flag => {
