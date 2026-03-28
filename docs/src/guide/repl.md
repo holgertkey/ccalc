@@ -30,7 +30,6 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | Command | Action |
 |---|---|
 | `exit`, `quit` | Quit |
-| `c` | Reset ans to 0 |
 | `cls` | Clear the screen |
 | `who` | Show all defined variables |
 | `clear` | Clear all variables |

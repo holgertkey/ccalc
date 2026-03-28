@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+006] - 2026-03-28
+
+### Removed
+
+- **`c` command** — reset-ans command removed; use `ans = 0` to reset manually if needed
+
 ## [0.7.0+005] - 2026-03-28
 
 ### Changed

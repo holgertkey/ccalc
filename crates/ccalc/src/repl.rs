@@ -89,10 +89,6 @@ pub fn run() {
         // Built-in commands
         match trimmed {
             "exit" | "quit" => break,
-            "c" => {
-                env.insert("ans".to_string(), 0.0);
-                continue;
-            }
             "cls" => {
                 clear_screen();
                 continue;
@@ -285,10 +281,6 @@ pub fn run_pipe(reader: impl BufRead) {
         // Built-in commands (subset relevant in pipe mode)
         match trimmed {
             "exit" | "quit" => break,
-            "c" => {
-                env.insert("ans".to_string(), 0.0);
-                continue;
-            }
             "clear" => {
                 env.clear();
                 continue;
@@ -884,10 +876,6 @@ mod tests {
             }
             match trimmed {
                 "exit" | "quit" => break,
-                "c" => {
-                    env.insert("ans".to_string(), 0.0);
-                    continue;
-                }
                 "clear" => {
                     env.clear();
                     continue;
@@ -994,11 +982,6 @@ mod tests {
         assert_eq!(pipe_output(lines), vec!["10", "15", "30"]);
     }
 
-    #[test]
-    fn test_pipe_reset_with_c() {
-        let lines = "10\nc\n+ 5";
-        assert_eq!(pipe_output(lines), vec!["10", "5"]);
-    }
 
     #[test]
     fn test_pipe_quit_with_exit() {

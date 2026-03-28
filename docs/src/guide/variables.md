@@ -35,7 +35,7 @@ rate = 0.07
 
 ## ans
 
-`ans` is the implicit result variable — set automatically after every expression that is not an assignment. It is initialized to `0` and reset to `0` by the `c` command.
+`ans` is the implicit result variable — set automatically after every expression that is not an assignment. It is initialized to `0` at startup. To reset it manually: `ans = 0`.
 
 Expressions starting with an operator use `ans` as the left-hand operand:
 

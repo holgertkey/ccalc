@@ -83,7 +83,7 @@ $ printf "10\n+ 5\n* 2" | ccalc
 $ ccalc < formulas.txt
 ```
 
-All commands work in script/pipe mode: `q` stops processing, `c` resets `ans`, `who`/`clear`/`ws`/`wl` manage variables, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
+All commands work in script/pipe mode: `exit`/`quit` stop processing, `who`/`clear`/`ws`/`wl` manage variables, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
 
 ---
 
@@ -273,7 +273,6 @@ rate = 0.05
 | Command                           | Action                              |
 |-----------------------------------|-------------------------------------|
 | `exit`, `quit`                    | Quit                                |
-| `c`                               | Reset ans to 0                      |
 | `cls`                             | Clear the screen                    |
 | `who`                             | List all defined variables          |
 | `clear`                           | Clear all variables                 |
