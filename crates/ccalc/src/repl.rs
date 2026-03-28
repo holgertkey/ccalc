@@ -57,6 +57,9 @@ pub fn run() {
     let history_path = config_dir().join("history");
     rl.load_history(&history_path).ok();
 
+    println!("ccalc v{}", env!("CARGO_PKG_VERSION"));
+    println!("");
+
     loop {
         let prompt = format!("[ {} ]: ", format_value(ans(&env), precision, base));
         let input = match rl.readline(&prompt) {
