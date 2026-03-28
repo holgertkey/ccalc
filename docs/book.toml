@@ -1,0 +1,11 @@
+[book]
+title = "ccalc"
+authors = ["Holgert K"]
+description = "Documentation for ccalc — command-line calculator"
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+git-repository-url = "https://github.com/holgertkey/ccalc"
+edit-url-template = "https://github.com/holgertkey/ccalc/edit/main/docs/src/{path}"

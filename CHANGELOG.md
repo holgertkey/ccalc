@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+001] - 2026-03-28
+
+### Changed
+
+- **Cargo workspace** — project restructured into two crates:
+  - `crates/ccalc-engine` — new library crate containing the parser, evaluator, and memory modules; serves as the foundation for the upcoming Octave/MATLAB compatibility layer
+  - `crates/ccalc` — binary crate (CLI), now depends on `ccalc-engine`
+- **Single version source** — version is now defined once in `[workspace.package]` and inherited by both crates via `version.workspace = true`
+
+### Added
+
+- **mdBook documentation skeleton** — `docs/` directory with `book.toml` and `src/SUMMARY.md`; sections: User Guide, Architecture, Octave Compatibility
+
 ## [0.7.0+009] - 2026-03-26
 
 ### Added

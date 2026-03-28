@@ -1,7 +1,4 @@
-mod eval;
 mod help;
-mod memory;
-mod parser;
 mod repl;
 
 use std::io::IsTerminal;

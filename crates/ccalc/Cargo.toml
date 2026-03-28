@@ -1,0 +1,20 @@
+[package]
+name = "ccalc"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "Command-line calculator with accumulator, memory cells, multi-base arithmetic, and script file support"
+readme = "../../README.md"
+keywords = ["calculator", "repl", "cli", "math", "arithmetic"]
+categories = ["command-line-utilities"]
+exclude = ["CLAUDE.md", ".debug/**"]
+
+[[bin]]
+name = "ccalc"
+path = "src/main.rs"
+
+[dependencies]
+rustyline = "14"
+ccalc-engine = { path = "../ccalc-engine" }

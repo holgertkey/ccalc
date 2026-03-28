@@ -3,12 +3,12 @@ use std::io::{BufRead, Write};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
-use crate::eval::{Base, eval, format_number, format_value};
-use crate::memory::{
+use ccalc_engine::eval::{Base, eval, format_number, format_value};
+use ccalc_engine::memory::{
     CompoundOp, Directive, Memory, StandaloneCmd, config_dir, expand_memory_refs,
     extract_directive, parse_standalone_cmd,
 };
-use crate::parser::{is_partial, parse};
+use ccalc_engine::parser::{is_partial, parse};
 
 pub fn run() {
     let mut accumulator: f64 = 0.0;
@@ -1221,8 +1221,8 @@ mod tests {
     fn test_compound_display_rhs_is_evaluated_value() {
         // Regression: compound op display must show the evaluated number ("10 - 6"),
         // not the raw expression ("10 - (2 + 2 + 2)").
-        use crate::eval::eval;
-        use crate::parser::parse;
+        use ccalc_engine::eval::eval;
+        use ccalc_engine::parser::parse;
 
         let full_expanded = "2 + 2 + 2";
         let val = parse(full_expanded, 0.0)
