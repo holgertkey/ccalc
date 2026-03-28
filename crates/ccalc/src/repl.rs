@@ -271,7 +271,7 @@ pub fn run_pipe(reader: impl BufRead) {
         };
         let trimmed = line.trim();
         // Strip inline comments
-        let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
+        let trimmed = trimmed.split('%').next().unwrap_or("").trim_end();
         let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
             (t.trim_end(), true)
         } else {
@@ -872,7 +872,7 @@ mod tests {
         for line in reader.lines() {
             let line = line.unwrap();
             let trimmed = line.trim();
-            let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
+            let trimmed = trimmed.split('%').next().unwrap_or("").trim_end();
             let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
                 (t.trim_end(), true)
             } else {
@@ -1014,13 +1014,13 @@ mod tests {
 
     #[test]
     fn test_pipe_comments_skipped() {
-        let lines = "# header comment\n1\n# inline comment\n+ 2\n# trailing comment";
+        let lines = "% header comment\n1\n% inline comment\n+ 2\n% trailing comment";
         assert_eq!(pipe_output(lines), vec!["1", "3"]);
     }
 
     #[test]
     fn test_pipe_inline_comments_stripped() {
-        let lines = "10  # first value\n+ 5 # add five";
+        let lines = "10  % first value\n+ 5 % add five";
         assert_eq!(pipe_output(lines), vec!["10", "15"]);
     }
 
@@ -1135,7 +1135,7 @@ mod tests {
 
     #[test]
     fn test_pipe_semicolon_with_comment() {
-        let out = pipe_output("10; # intermediate\nprint \"result\"");
+        let out = pipe_output("10; % intermediate\nprint \"result\"");
         assert_eq!(out, vec!["result 10"]);
     }
 

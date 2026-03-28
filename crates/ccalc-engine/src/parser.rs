@@ -18,7 +18,6 @@ enum Token {
     Star,
     Slash,
     Caret,
-    Percent,
     LParen,
     RParen,
 }
@@ -126,8 +125,8 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             '%' => {
-                tokens.push(Token::Percent);
-                chars.next();
+                // '%' starts a comment in Octave/MATLAB — stop tokenizing
+                break;
             }
             '(' => {
                 tokens.push(Token::LParen);
@@ -299,15 +298,8 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-fn token_starts_expr(t: &Token) -> bool {
-    matches!(
-        t,
-        Token::Number(_) | Token::Ident(_) | Token::LParen | Token::Minus
-    )
-}
 
-// term = power (('*' | '/' | '%') power | '(' expr ')' )*
-// '%' is modulo when followed by an expression, otherwise postfix percentage (N% = N * ans/100).
+// term = power (('*' | '/') power | '(' expr ')' )*
 // '(' without an operator triggers implicit multiplication.
 fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     let mut left = parse_power(tokens, pos)?;
@@ -323,25 +315,6 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 *pos += 1;
                 let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Div, Box::new(right));
-            }
-            Token::Percent => {
-                *pos += 1;
-                if *pos < tokens.len() && token_starts_expr(&tokens[*pos]) {
-                    // Modulo: N % M
-                    let right = parse_power(tokens, pos)?;
-                    left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
-                } else {
-                    // Postfix percentage: N% = N * (ans / 100)
-                    left = Expr::BinOp(
-                        Box::new(left),
-                        Op::Mul,
-                        Box::new(Expr::BinOp(
-                            Box::new(Expr::Var("ans".to_string())),
-                            Op::Div,
-                            Box::new(Expr::Number(100.0)),
-                        )),
-                    );
-                }
             }
             Token::LParen => {
                 // Implicit multiplication: expr(...)
@@ -527,18 +500,6 @@ mod tests {
     fn test_power_precedence() {
         assert_eq!(calc("2 + 3 ^ 2"), 11.0);
         assert_eq!(calc("2 * 3 ^ 2"), 18.0);
-    }
-
-    #[test]
-    fn test_modulo() {
-        assert_eq!(calc("17 % 5"), 2.0);
-        assert_eq!(calc("10 % 3"), 1.0);
-        assert_eq!(calc("6 % 2"), 0.0);
-    }
-
-    #[test]
-    fn test_modulo_precedence() {
-        assert_eq!(calc("10 + 17 % 5"), 12.0);
     }
 
     #[test]
@@ -802,43 +763,6 @@ mod tests {
             Stmt::Expr(expr) => assert!(eval(&expr, &env).is_err()),
             _ => panic!("expected Stmt::Expr"),
         }
-    }
-
-    // --- Percentage operator ---
-
-    #[test]
-    fn test_percent_of_ans() {
-        assert_eq!(calc_with_ans("20%", 1500.0), 300.0);
-        assert_eq!(calc_with_ans("50%", 80.0), 40.0);
-        assert_eq!(calc_with_ans("100%", 42.0), 42.0);
-    }
-
-    #[test]
-    fn test_percent_zero_ans() {
-        assert_eq!(calc_with_ans("20%", 0.0), 0.0);
-    }
-
-    #[test]
-    fn test_percent_add() {
-        assert!((calc_with_ans("1500 + 20%", 1500.0) - 1800.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_percent_sub() {
-        assert!((calc_with_ans("1800 - 10%", 1800.0) - 1620.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_percent_in_expr() {
-        assert!((calc_with_ans("20% + 5", 1000.0) - 205.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_percent_no_conflict_with_modulo() {
-        assert_eq!(calc("17 % 5"), 2.0);
-        assert_eq!(calc("10 % 3"), 1.0);
-        assert_eq!(calc("6 % 2"), 0.0);
-        assert_eq!(calc("10 % (3)"), 1.0);
     }
 
     // --- Implicit multiplication ---

@@ -16,7 +16,6 @@ pub enum Op {
     Mul,
     Div,
     Pow,
-    Mod,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -51,13 +50,6 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<f64, String> {
                     }
                 }
                 Op::Pow => Ok(l.powf(r)),
-                Op::Mod => {
-                    if r == 0.0 {
-                        Err("Modulo by zero".to_string())
-                    } else {
-                        Ok(l % r)
-                    }
-                }
             }
         }
         Expr::Call(name, arg) => {
@@ -240,26 +232,6 @@ mod tests {
             Box::new(Expr::Number(10.0)),
         );
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 1024.0);
-    }
-
-    #[test]
-    fn test_eval_mod() {
-        let expr = Expr::BinOp(
-            Box::new(Expr::Number(17.0)),
-            Op::Mod,
-            Box::new(Expr::Number(5.0)),
-        );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 2.0);
-    }
-
-    #[test]
-    fn test_eval_mod_by_zero() {
-        let expr = Expr::BinOp(
-            Box::new(Expr::Number(5.0)),
-            Op::Mod,
-            Box::new(Expr::Number(0.0)),
-        );
-        assert!(eval(&expr, &empty_env()).is_err());
     }
 
     #[test]

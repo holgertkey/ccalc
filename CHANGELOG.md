@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+003] - 2026-03-28
+
+### Changed
+
+- **Comment symbol `#` → `%`** — aligns with Octave/MATLAB convention; `%` starts a comment both as a full line and inline after an expression
+- **`%` operator removed** — modulo (`17 % 5`) and percentage postfix (`20%`) are no longer supported; `%` is now exclusively a comment character
+- **REPL welcome line** — version banner printed on startup: `ccalc v0.7.0+003  (type q to quit, -h for help)`
+
+### Removed
+
+- `Op::Mod` from the AST and evaluator
+- `Token::Percent` from the tokenizer
+
 ## [0.7.0+002] - 2026-03-28
 
 ### Changed

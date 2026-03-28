@@ -95,11 +95,11 @@ The prompt shows **ans** — the result of the last expression. Every new expres
 
 ### Operators
 
-| Operator    | Description               | Precedence |
-|-------------|---------------------------|------------|
-| `^`         | Power (right-associative) | highest    |
-| `*` `/` `%` | Multiply, divide, modulo  | medium     |
-| `+` `-`     | Add, subtract             | lowest     |
+| Operator | Description               | Precedence |
+|----------|---------------------------|------------|
+| `^`      | Power (right-associative) | highest    |
+| `*` `/`  | Multiply, divide          | medium     |
+| `+` `-`  | Add, subtract             | lowest     |
 
 ```
 [ 0 ]: 2 + 3 * 4
@@ -107,9 +107,6 @@ The prompt shows **ans** — the result of the last expression. Every new expres
 
 [ 0 ]: 2 ^ 3 ^ 2
 [ 512 ]:               (right-associative: 2^(3^2) = 2^9)
-
-[ 0 ]: 17 % 5
-[ 2 ]:
 ```
 
 ### Grouping
@@ -132,28 +129,6 @@ The prompt shows **ans** — the result of the last expression. Every new expres
 ---
 
 ## Ergonomics
-
-### Percentage operator
-
-`N%` means *N percent of ans* — a postfix operator that expands to `N * ans / 100`:
-
-```
-[ 1500 ]: 20%
-[ 300 ]:               (20% of 1500)
-
-[ 1500 ]: + 20%
-[ 1800 ]:              (1500 + 20% of 1500)
-
-[ 1800 ]: - 10%
-[ 1620 ]:              (1800 − 10% of 1800)
-```
-
-`%` still works as **modulo** when followed by a number or expression:
-
-```
-[ 0 ]: 17 % 5
-[ 2 ]:
-```
 
 ### Implicit multiplication
 
@@ -468,11 +443,11 @@ When reading from a file (`ccalc < formula.txt`) you have three tools to control
 
 ### Comments
 
-A `#` starts a comment. It can be the first character on the line (full-line comment) or appear after an expression (inline comment). Everything from `#` to end-of-line is ignored.
+`%` starts a comment (Octave/MATLAB convention). It can be the first character on the line (full-line comment) or appear after an expression (inline comment). Everything from `%` to end-of-line is ignored.
 
 ```
-# Cylinder volume: V = pi * r^2 * h
-pi * 5^2      # pi * r^2, r = 5
+% Cylinder volume: V = pi * r^2 * h
+pi * 5^2      % pi * r^2, r = 5
 ```
 
 ### Semicolon — suppress output
@@ -480,8 +455,8 @@ pi * 5^2      # pi * r^2, r = 5
 A trailing `;` evaluates the expression and updates `ans`, but prints nothing. Use it to silence intermediate steps.
 
 ```
-rate = 0.06 / 12;     # monthly rate — silent
-n = 360;              # 30-year term — silent
+rate = 0.06 / 12;     % monthly rate — silent
+n = 360;              % 30-year term — silent
 factor = (1 + rate) ^ n;
 200000 * rate * factor / (factor - 1)
 print "Monthly payment ($):"

@@ -31,9 +31,9 @@ PIPE / NON-INTERACTIVE MODE:
 SCRIPT FILES (ccalc < formula.txt):
     Three tools for controlling output in pipe/file mode:
 
-    Comments
-        # full-line comment
-        10 * 5  # inline comment — expression still evaluates
+    Comments  (% — Octave/MATLAB convention)
+        % full-line comment
+        10 * 5  % inline comment — expression still evaluates
 
     Semicolon — suppress output of a line
         0.06 / 12;    evaluates and updates ans, prints nothing
@@ -122,9 +122,9 @@ KEYBOARD SHORTCUTS:
     Ctrl+U           Clear line
 
 ARITHMETIC:
-    Operators:  +  -  *  /  ^  %
+    Operators:  +  -  *  /  ^
     Precedence (high to low):  ^  (right-associative)
-                               *  /  %   (and implicit multiplication)
+                               *  /   (and implicit multiplication)
                                +  -
     Grouping:    parentheses, e.g. (3 + 2) * 4
     Unary minus: -5,  -(3 + 2)
@@ -135,17 +135,6 @@ ARITHMETIC:
 
         [ 6 ]: * 2         ans = 12
         [ 12 ]: ^ 2        ans = 144
-        [ 144 ]: % 100     ans = 44
-
-PERCENTAGE:
-    N%    — N percent of ans
-
-        [ 1500 ]: 20%      → 300   (20% of 1500)
-        [ 1500 ]: + 20%    → 1800  (add 20% of 1500)
-        [ 1800 ]: - 10%    → 1620  (subtract 10% of 1800)
-
-    The % symbol is context-sensitive: if followed by a number or expression
-    it acts as modulo (17 % 5 → 2); if at end of input it is percentage.
 
 IMPLICIT MULTIPLICATION:
     A number or closing parenthesis immediately before ( triggers implicit *:
@@ -221,18 +210,12 @@ EXAMPLES:
     15
     30
 
-  Percentage:
-    [ 1500 ]: 20%          ans = 300  (20% of 1500)
-    [ 1500 ]: + 20%        ans = 1800 (1500 + 300)
-    [ 1800 ]: - 10%        ans = 1620 (1800 - 180)
-
   Implicit multiplication:
     [ 0 ]: 2(3 + 1)        ans = 8
     [ 0 ]: (2+1)(4-1)      ans = 9
 
-  Power and modulo:
+  Power:
     [ 0 ]: 2 ^ 10          ans = 1024
-    [ 1024 ]: % 1000       ans = 24
 
   Functions and constants:
     [ 0 ]: sqrt(144)       ans = 12
@@ -269,9 +252,9 @@ EXAMPLES:
     [ 1199.10 ]:
 
   Script file (ccalc < formula.txt):
-    # Monthly mortgage payment
-    rate = 0.06 / 12;      # monthly rate — silent
-    n = 360;               # 30 years in months — silent
+    % Monthly mortgage payment
+    rate = 0.06 / 12;      % monthly rate — silent
+    n = 360;               % 30 years in months — silent
     factor = (1 + rate) ^ n;
     200000 * rate * factor / (factor - 1)
     print \"Monthly payment ($):\"",

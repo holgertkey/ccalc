@@ -42,7 +42,7 @@ pub fn load_workspace(path: &Path) -> Result<Env, String> {
     let mut env = Env::new();
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        if line.is_empty() || line.starts_with('%') {
             continue;
         }
         if let Some((key, val)) = line.split_once('=') {
