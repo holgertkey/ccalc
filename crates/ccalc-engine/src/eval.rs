@@ -1,6 +1,9 @@
+use crate::env::Env;
+
 #[derive(Debug)]
 pub enum Expr {
     Number(f64),
+    Var(String),
     UnaryMinus(Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
     Call(String, Box<Expr>),
@@ -25,13 +28,17 @@ pub enum Base {
     Oct,
 }
 
-pub fn eval(expr: &Expr) -> Result<f64, String> {
+pub fn eval(expr: &Expr, env: &Env) -> Result<f64, String> {
     match expr {
         Expr::Number(n) => Ok(*n),
-        Expr::UnaryMinus(e) => Ok(-eval(e)?),
+        Expr::Var(name) => env
+            .get(name)
+            .copied()
+            .ok_or_else(|| format!("Undefined variable: '{name}'")),
+        Expr::UnaryMinus(e) => Ok(-eval(e, env)?),
         Expr::BinOp(left, op, right) => {
-            let l = eval(left)?;
-            let r = eval(right)?;
+            let l = eval(left, env)?;
+            let r = eval(right, env)?;
             match op {
                 Op::Add => Ok(l + r),
                 Op::Sub => Ok(l - r),
@@ -54,7 +61,7 @@ pub fn eval(expr: &Expr) -> Result<f64, String> {
             }
         }
         Expr::Call(name, arg) => {
-            let x = eval(arg)?;
+            let x = eval(arg, env)?;
             match name.as_str() {
                 "sqrt" => Ok(x.sqrt()),
                 "abs" => Ok(x.abs()),
@@ -75,12 +82,11 @@ pub fn eval(expr: &Expr) -> Result<f64, String> {
 
 /// Formats a number for display: integers without decimal point,
 /// floats with up to 10 significant fractional digits, trailing zeros trimmed.
-/// Always decimal — used for expression expansion, not user-facing output.
+/// Always decimal — used for expression re-display, not user-facing output.
 pub fn format_number(n: f64) -> String {
     if n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
     } else if n != 0.0 && (n.abs() >= 1e15 || n.abs() < 1e-9) {
-        // Use scientific notation so the value round-trips through the parser.
         trim_sci(&format!("{:.15e}", n))
     } else {
         let s = format!("{:.10}", n);
@@ -135,9 +141,39 @@ fn trim_sci(s: &str) -> String {
 mod tests {
     use super::*;
 
+    fn empty_env() -> Env {
+        Env::new()
+    }
+
+    fn env_with_ans(val: f64) -> Env {
+        let mut env = Env::new();
+        env.insert("ans".to_string(), val);
+        env
+    }
+
     #[test]
     fn test_eval_number() {
-        assert_eq!(eval(&Expr::Number(42.0)).unwrap(), 42.0);
+        assert_eq!(eval(&Expr::Number(42.0), &empty_env()).unwrap(), 42.0);
+    }
+
+    #[test]
+    fn test_eval_var_found() {
+        let mut env = Env::new();
+        env.insert("x".to_string(), 7.0);
+        assert_eq!(eval(&Expr::Var("x".to_string()), &env).unwrap(), 7.0);
+    }
+
+    #[test]
+    fn test_eval_var_not_found() {
+        assert!(eval(&Expr::Var("z".to_string()), &empty_env()).is_err());
+    }
+
+    #[test]
+    fn test_eval_ans() {
+        assert_eq!(
+            eval(&Expr::Var("ans".to_string()), &env_with_ans(42.0)).unwrap(),
+            42.0
+        );
     }
 
     #[test]
@@ -147,7 +183,7 @@ mod tests {
             Op::Add,
             Box::new(Expr::Number(2.0)),
         );
-        assert_eq!(eval(&expr).unwrap(), 3.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
     }
 
     #[test]
@@ -157,7 +193,7 @@ mod tests {
             Op::Sub,
             Box::new(Expr::Number(4.0)),
         );
-        assert_eq!(eval(&expr).unwrap(), 6.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 6.0);
     }
 
     #[test]
@@ -167,7 +203,7 @@ mod tests {
             Op::Mul,
             Box::new(Expr::Number(7.0)),
         );
-        assert_eq!(eval(&expr).unwrap(), 21.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 21.0);
     }
 
     #[test]
@@ -177,7 +213,7 @@ mod tests {
             Op::Div,
             Box::new(Expr::Number(4.0)),
         );
-        assert_eq!(eval(&expr).unwrap(), 2.5);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 2.5);
     }
 
     #[test]
@@ -187,13 +223,13 @@ mod tests {
             Op::Div,
             Box::new(Expr::Number(0.0)),
         );
-        assert!(eval(&expr).is_err());
+        assert!(eval(&expr, &empty_env()).is_err());
     }
 
     #[test]
     fn test_eval_unary_minus() {
         let expr = Expr::UnaryMinus(Box::new(Expr::Number(5.0)));
-        assert_eq!(eval(&expr).unwrap(), -5.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), -5.0);
     }
 
     #[test]
@@ -203,7 +239,7 @@ mod tests {
             Op::Pow,
             Box::new(Expr::Number(10.0)),
         );
-        assert_eq!(eval(&expr).unwrap(), 1024.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1024.0);
     }
 
     #[test]
@@ -213,7 +249,7 @@ mod tests {
             Op::Mod,
             Box::new(Expr::Number(5.0)),
         );
-        assert_eq!(eval(&expr).unwrap(), 2.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 2.0);
     }
 
     #[test]
@@ -223,79 +259,79 @@ mod tests {
             Op::Mod,
             Box::new(Expr::Number(0.0)),
         );
-        assert!(eval(&expr).is_err());
+        assert!(eval(&expr, &empty_env()).is_err());
     }
 
     #[test]
     fn test_eval_call_sqrt() {
         let expr = Expr::Call("sqrt".to_string(), Box::new(Expr::Number(144.0)));
-        assert_eq!(eval(&expr).unwrap(), 12.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 12.0);
     }
 
     #[test]
     fn test_eval_call_abs() {
         let expr = Expr::Call("abs".to_string(), Box::new(Expr::Number(-7.0)));
-        assert_eq!(eval(&expr).unwrap(), 7.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 7.0);
     }
 
     #[test]
     fn test_eval_call_floor() {
         let expr = Expr::Call("floor".to_string(), Box::new(Expr::Number(3.9)));
-        assert_eq!(eval(&expr).unwrap(), 3.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
     }
 
     #[test]
     fn test_eval_call_ceil() {
         let expr = Expr::Call("ceil".to_string(), Box::new(Expr::Number(3.1)));
-        assert_eq!(eval(&expr).unwrap(), 4.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 4.0);
     }
 
     #[test]
     fn test_eval_call_round() {
         let expr = Expr::Call("round".to_string(), Box::new(Expr::Number(3.5)));
-        assert_eq!(eval(&expr).unwrap(), 4.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 4.0);
     }
 
     #[test]
     fn test_eval_call_log() {
         let expr = Expr::Call("log".to_string(), Box::new(Expr::Number(1000.0)));
-        assert!((eval(&expr).unwrap() - 3.0).abs() < 1e-10);
+        assert!((eval(&expr, &empty_env()).unwrap() - 3.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_eval_call_ln() {
         let expr = Expr::Call("ln".to_string(), Box::new(Expr::Number(1.0)));
-        assert_eq!(eval(&expr).unwrap(), 0.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
     }
 
     #[test]
     fn test_eval_call_exp() {
         let expr = Expr::Call("exp".to_string(), Box::new(Expr::Number(0.0)));
-        assert_eq!(eval(&expr).unwrap(), 1.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
     }
 
     #[test]
     fn test_eval_call_sin() {
         let expr = Expr::Call("sin".to_string(), Box::new(Expr::Number(0.0)));
-        assert_eq!(eval(&expr).unwrap(), 0.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
     }
 
     #[test]
     fn test_eval_call_cos() {
         let expr = Expr::Call("cos".to_string(), Box::new(Expr::Number(0.0)));
-        assert_eq!(eval(&expr).unwrap(), 1.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
     }
 
     #[test]
     fn test_eval_call_tan() {
         let expr = Expr::Call("tan".to_string(), Box::new(Expr::Number(0.0)));
-        assert_eq!(eval(&expr).unwrap(), 0.0);
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
     }
 
     #[test]
     fn test_eval_call_unknown() {
         let expr = Expr::Call("foo".to_string(), Box::new(Expr::Number(1.0)));
-        assert!(eval(&expr).is_err());
+        assert!(eval(&expr, &empty_env()).is_err());
     }
 
     #[test]
@@ -315,11 +351,9 @@ mod tests {
 
     #[test]
     fn test_format_number_sci() {
-        // Very small values must round-trip through the parser (not become "0")
         let s = format_number(1e-12);
         assert!(s.contains('e'), "expected sci notation, got: {s}");
         assert!((s.parse::<f64>().unwrap() - 1e-12).abs() < 1e-25);
-        // Very large values
         let s = format_number(1e20);
         assert!(s.contains('e'), "expected sci notation, got: {s}");
         assert!((s.parse::<f64>().unwrap() - 1e20).abs() < 1e10);
@@ -340,19 +374,13 @@ mod tests {
     #[test]
     fn test_format_value_dec_sci_large() {
         let result = format_value(1e20, 2, Base::Dec);
-        assert!(
-            result.contains('e'),
-            "expected scientific notation, got: {result}"
-        );
+        assert!(result.contains('e'), "expected scientific notation, got: {result}");
     }
 
     #[test]
     fn test_format_value_dec_sci_small() {
         let result = format_value(1e-10, 4, Base::Dec);
-        assert!(
-            result.contains('e'),
-            "expected scientific notation, got: {result}"
-        );
+        assert!(result.contains('e'), "expected scientific notation, got: {result}");
     }
 
     #[test]

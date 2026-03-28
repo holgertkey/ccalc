@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+002] - 2026-03-28
+
+### Changed
+
+- **Variable system** — replaced fixed memory cells (`m1`–`m9`) with a full named-variable environment:
+  - `x = expr` assignment syntax (any valid identifier)
+  - `ans` replaces `acc` as the implicit result of the last expression (Octave/MATLAB convention)
+  - `who` lists all defined variables (replaces `m`)
+  - `clear` / `clear x` clears all variables or a single one (replaces `mc` / `mc1`)
+  - `ws` / `wl` save/load the workspace (replaces `ms` / `ml`)
+  - `c` resets `ans` to `0` (behavior unchanged)
+- **Engine restructure** — `memory.rs` removed; new `env.rs` module provides `Env` type (`HashMap<String, f64>`), workspace I/O, and identifier validation
+
 ## [0.7.0+001] - 2026-03-28
 
 ### Changed

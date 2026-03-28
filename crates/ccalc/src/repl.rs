@@ -3,16 +3,53 @@ use std::io::{BufRead, Write};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
+use ccalc_engine::env::{Env, config_dir, load_workspace_default, save_workspace_default};
 use ccalc_engine::eval::{Base, eval, format_number, format_value};
-use ccalc_engine::memory::{
-    CompoundOp, Directive, Memory, StandaloneCmd, config_dir, expand_memory_refs,
-    extract_directive, parse_standalone_cmd,
-};
-use ccalc_engine::parser::{is_partial, parse};
+use ccalc_engine::parser::{Stmt, is_partial, parse};
+
+/// Result of evaluating one input line.
+enum EvalResult {
+    /// Assignment `name = expr` was executed; `name` was set to `val`.
+    Assigned(String, f64),
+    /// Standalone expression; result stored in `ans`.
+    Value(f64),
+}
+
+/// Parse and evaluate one input string, updating `env`.
+/// Handles partial expressions (starting with an operator) by prepending `ans`.
+fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
+    let expanded = if is_partial(input) {
+        format!("ans {}", input)
+    } else {
+        input.to_string()
+    };
+
+    match parse(&expanded)? {
+        Stmt::Assign(name, expr) => {
+            let val = eval(&expr, env)?;
+            env.insert(name.clone(), val);
+            Ok(EvalResult::Assigned(name, val))
+        }
+        Stmt::Expr(expr) => {
+            let val = eval(&expr, env)?;
+            env.insert("ans".to_string(), val);
+            Ok(EvalResult::Value(val))
+        }
+    }
+}
+
+fn ans(env: &Env) -> f64 {
+    env.get("ans").copied().unwrap_or(0.0)
+}
+
+fn new_env() -> Env {
+    let mut env = Env::new();
+    env.insert("ans".to_string(), 0.0);
+    env
+}
 
 pub fn run() {
-    let mut accumulator: f64 = 0.0;
-    let mut memory = Memory::new();
+    let mut env = new_env();
     let mut precision: usize = 10;
     let mut base = Base::Dec;
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
@@ -21,7 +58,7 @@ pub fn run() {
     rl.load_history(&history_path).ok();
 
     loop {
-        let prompt = format!("[ {} ]: ", format_value(accumulator, precision, base));
+        let prompt = format!("[ {} ]: ", format_value(ans(&env), precision, base));
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
@@ -32,11 +69,9 @@ pub fn run() {
         };
 
         let trimmed = input.trim();
-
         if trimmed.is_empty() {
             continue;
         }
-
         let _ = rl.add_history_entry(trimmed);
 
         let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
@@ -44,7 +79,6 @@ pub fn run() {
         } else {
             (trimmed, false)
         };
-
         if trimmed.is_empty() {
             continue;
         }
@@ -53,33 +87,19 @@ pub fn run() {
         match trimmed {
             "q" => break,
             "c" => {
-                accumulator = 0.0;
+                env.insert("ans".to_string(), 0.0);
                 continue;
             }
             "cls" => {
                 clear_screen();
                 continue;
             }
-            "m" => {
-                memory.display_nonzero(|v| format_value(v, precision, base));
+            "who" => {
+                print_who(&env, precision, base);
                 continue;
             }
-            "mc" => {
-                memory.clear_all();
-                continue;
-            }
-            "ms" => {
-                match memory.save_to_file() {
-                    Ok(()) => println!("Memory saved."),
-                    Err(e) => eprintln!("Error: {e}"),
-                }
-                continue;
-            }
-            "ml" => {
-                match memory.load_from_file() {
-                    Ok(()) => println!("Memory loaded."),
-                    Err(e) => eprintln!("Error: {e}"),
-                }
+            "clear" => {
+                env.clear();
                 continue;
             }
             "p" => {
@@ -103,10 +123,35 @@ pub fn run() {
                 continue;
             }
             "base" => {
-                print_all_bases(accumulator, precision);
+                print_all_bases(ans(&env), precision);
+                continue;
+            }
+            "ws" => {
+                match save_workspace_default(&env) {
+                    Ok(()) => println!("Workspace saved."),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+                continue;
+            }
+            "wl" => {
+                match load_workspace_default() {
+                    Ok(loaded) => {
+                        env = loaded;
+                        println!("Workspace loaded.");
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
                 continue;
             }
             _ => {}
+        }
+
+        // clear <name>
+        if let Some(name) = trimmed.strip_prefix("clear ").map(str::trim) {
+            if !name.is_empty() {
+                env.remove(name);
+            }
+            continue;
         }
 
         // Precision command: p<N>
@@ -115,18 +160,9 @@ pub fn run() {
             continue;
         }
 
-        // Standalone memory commands: m[1-9], mc[1-9]
-        if let Some(cmd) = parse_standalone_cmd(trimmed) {
-            match cmd {
-                StandaloneCmd::StoreAcc(idx) => memory.set(idx, accumulator),
-                StandaloneCmd::ClearOne(idx) => memory.clear_one(idx),
-            }
-            continue;
-        }
-
         // print / print "label"
         if let Some(label) = parse_print_cmd(trimmed) {
-            let value = format_value(accumulator, precision, base);
+            let value = format_value(ans(&env), precision, base);
             match label {
                 None => println!("{value}"),
                 Some(s) => println!("{s} {value}"),
@@ -135,56 +171,43 @@ pub fn run() {
         }
 
         // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
-        let (trimmed_no_base, base_suffix) = extract_base_suffix(trimmed);
+        let (to_eval, base_suffix) = extract_base_suffix(trimmed);
         let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
         if let Some(BaseSuffix::Switch(b)) = base_suffix {
             base = b;
         }
 
-        // Expression (with optional trailing memory directive and/or m[1-9] value refs)
-        let (expr_part, directive) = extract_directive(trimmed_no_base);
-
-        let base_expr = if is_partial(expr_part) {
-            format!("{} {}", format_number(accumulator), expr_part)
+        // Build display string: partial expressions show numeric ans, not the word "ans"
+        let display_str = if is_partial(to_eval) {
+            format!("{} {}", format_for_base(ans(&env), base), to_eval)
         } else {
-            expr_part.to_string()
+            to_eval.to_string()
         };
-
-        let (mem_expanded, mem_display) = expand_memory_refs(&base_expr, &memory);
-        let (full_expanded, acc_display) = expand_acc(&mem_expanded, accumulator);
-
-        // Show the expression with all numbers converted to the current base when there are
-        // mixed-base literals. Returns None if nothing changed (no conversion needed).
-        let base_display = format_expr_for_display(&full_expanded, base);
+        let base_display = format_expr_for_display(&display_str, base);
 
         if !silent {
-            if let Some(Directive::Compound(idx, op)) = &directive {
-                let cell_display = format_for_base(memory.get(*idx), base);
-                let rhs = match parse(&full_expanded, accumulator).and_then(|ast| eval(&ast)) {
-                    Ok(val) => format_for_base(val, base),
-                    Err(_) => {
-                        let expr_display = base_display
-                            .as_deref()
-                            .or(acc_display.as_deref())
-                            .or(mem_display.as_deref())
-                            .unwrap_or(&full_expanded);
-                        if expr_display.contains(' ') {
-                            format!("({})", expr_display)
-                        } else {
-                            expr_display.to_string()
-                        }
-                    }
-                };
-                println!("{} {} {}", cell_display, compound_op_char(*op), rhs);
-            } else if let Some(display) = base_display.or(acc_display).or(mem_display) {
-                println!("{}", display);
+            if let Some(ref display) = base_display {
+                println!("{display}");
             }
         }
 
-        match evaluate_expanded(&full_expanded, directive, &mut accumulator, &mut memory) {
-            Ok(_) => {
-                if !silent && show_all_bases {
-                    print_all_bases(accumulator, precision);
+        match evaluate(to_eval, &mut env) {
+            Ok(result) => {
+                let val = match &result {
+                    EvalResult::Assigned(_, v) | EvalResult::Value(v) => *v,
+                };
+                if !silent {
+                    match result {
+                        EvalResult::Assigned(name, v) => {
+                            println!("{} = {}", name, format_value(v, precision, base));
+                        }
+                        EvalResult::Value(_) => {
+                            if show_all_bases {
+                                print_all_bases(val, precision);
+                            }
+                            // For plain expressions the result shows in the prompt
+                        }
+                    }
                 }
             }
             Err(e) => eprintln!("Error: {e}"),
@@ -194,11 +217,10 @@ pub fn run() {
     rl.save_history(&history_path).ok();
 }
 
-/// Evaluate a single expression string in pipe/non-interactive mode.
+/// Evaluate a single expression string in argument mode.
 /// Prints the result and exits with code 1 on error.
 pub fn run_expr(expr: &str) {
-    let mut acc: f64 = 0.0;
-    let mut mem = Memory::new();
+    let mut env = new_env();
     let mut base = Base::Dec;
     let trimmed = expr.trim();
     let (to_eval, base_suffix) = extract_base_suffix(trimmed);
@@ -206,12 +228,19 @@ pub fn run_expr(expr: &str) {
     if let Some(BaseSuffix::Switch(b)) = base_suffix {
         base = b;
     }
-    match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
+    match evaluate(to_eval, &mut env) {
         Ok(result) => {
+            let val = match result {
+                EvalResult::Assigned(name, v) => {
+                    println!("{} = {}", name, format_value(v, 10, base));
+                    return;
+                }
+                EvalResult::Value(v) => v,
+            };
             if show_all {
-                print_all_bases(result, 10);
+                print_all_bases(val, 10);
             } else {
-                println!("{}", format_value(result, 10, base));
+                println!("{}", format_value(val, 10, base));
             }
         }
         Err(e) => {
@@ -224,8 +253,7 @@ pub fn run_expr(expr: &str) {
 /// Process lines from a non-interactive reader (pipe, file redirect).
 /// Prints one result per expression line; no prompts.
 pub fn run_pipe(reader: impl BufRead) {
-    let mut acc: f64 = 0.0;
-    let mut mem = Memory::new();
+    let mut env = new_env();
     let mut precision: usize = 10;
     let mut base = Base::Dec;
     let mut result_pending = false;
@@ -239,6 +267,7 @@ pub fn run_pipe(reader: impl BufRead) {
             }
         };
         let trimmed = line.trim();
+        // Strip inline comments
         let trimmed = trimmed.split('#').next().unwrap_or("").trim_end();
         let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
             (t.trim_end(), true)
@@ -254,14 +283,14 @@ pub fn run_pipe(reader: impl BufRead) {
         match trimmed {
             "q" => break,
             "c" => {
-                acc = 0.0;
+                env.insert("ans".to_string(), 0.0);
                 continue;
             }
-            "mc" => {
-                mem.clear_all();
+            "clear" => {
+                env.clear();
                 continue;
             }
-            "cls" | "m" => continue, // no-op in pipe mode
+            "cls" | "who" => continue, // no-op in pipe mode
             "p" => {
                 println!("precision: {precision}");
                 continue;
@@ -283,10 +312,28 @@ pub fn run_pipe(reader: impl BufRead) {
                 continue;
             }
             "base" => {
-                print_all_bases(acc, precision);
+                print_all_bases(ans(&env), precision);
+                continue;
+            }
+            "ws" => {
+                let _ = save_workspace_default(&env);
+                continue;
+            }
+            "wl" => {
+                if let Ok(loaded) = load_workspace_default() {
+                    env = loaded;
+                }
                 continue;
             }
             _ => {}
+        }
+
+        // clear <name>
+        if let Some(name) = trimmed.strip_prefix("clear ").map(str::trim) {
+            if !name.is_empty() {
+                env.remove(name);
+            }
+            continue;
         }
 
         // Precision command: p<N>
@@ -295,20 +342,13 @@ pub fn run_pipe(reader: impl BufRead) {
             continue;
         }
 
-        // Standalone memory commands: m[1-9], mc[1-9]
-        if let Some(cmd) = parse_standalone_cmd(trimmed) {
-            match cmd {
-                StandaloneCmd::StoreAcc(idx) => mem.set(idx, acc),
-                StandaloneCmd::ClearOne(idx) => mem.clear_one(idx),
-            }
-            continue;
-        }
-
         // print / print "label"
         if let Some(label) = parse_print_cmd(trimmed) {
             match label {
-                None => println!("{}", format_value(acc, precision, base)),
-                Some(s) if result_pending => println!("{s} {}", format_value(acc, precision, base)),
+                None => println!("{}", format_value(ans(&env), precision, base)),
+                Some(s) if result_pending => {
+                    println!("{s} {}", format_value(ans(&env), precision, base))
+                }
                 Some(s) => println!("{s}"),
             }
             continue;
@@ -320,15 +360,31 @@ pub fn run_pipe(reader: impl BufRead) {
             base = b;
         }
 
-        match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
+        match evaluate(to_eval, &mut env) {
             Ok(result) => {
                 result_pending = true;
                 if !silent {
-                    if show_all {
-                        print_all_bases(result, precision);
-                    } else {
-                        println!("{}", format_value(result, precision, base));
-                    }
+                    let val = match result {
+                        EvalResult::Assigned(name, v) => {
+                            println!("{} = {}", name, format_value(v, precision, base));
+                            v
+                        }
+                        EvalResult::Value(v) => {
+                            if show_all {
+                                let i = v.round() as i64;
+                                let u = i.unsigned_abs();
+                                let sign = if i < 0 { "-" } else { "" };
+                                println!("2  - {}0b{:b}", sign, u);
+                                println!("8  - {}0o{:o}", sign, u);
+                                println!("10 - {}", format_value(v, precision, Base::Dec));
+                                println!("16 - {}0x{:X}", sign, u);
+                            } else {
+                                println!("{}", format_value(v, precision, base));
+                            }
+                            v
+                        }
+                    };
+                    let _ = val;
                 }
             }
             Err(e) => eprintln!("Error: {e}"),
@@ -336,94 +392,15 @@ pub fn run_pipe(reader: impl BufRead) {
     }
 }
 
-/// Evaluate a line (expression + optional base suffix + optional directive)
-/// updating acc, mem, and base state.
-fn evaluate(
-    trimmed: &str,
-    acc: &mut f64,
-    mem: &mut Memory,
-    base: &mut Base,
-) -> Result<f64, String> {
-    let (after_base, base_suffix) = extract_base_suffix(trimmed);
-    if let Some(BaseSuffix::Switch(b)) = base_suffix {
-        *base = b;
-    }
-
-    let (expr_part, directive) = extract_directive(after_base);
-
-    let base_expr = if is_partial(expr_part) {
-        format!("{} {}", format_number(*acc), expr_part)
-    } else {
-        expr_part.to_string()
-    };
-
-    let (mem_expanded, _) = expand_memory_refs(&base_expr, mem);
-    let (full_expanded, _) = expand_acc(&mem_expanded, *acc);
-
-    evaluate_expanded(&full_expanded, directive, acc, mem)
-}
-
-/// Parse and evaluate an already-expanded expression string, applying the directive.
-fn evaluate_expanded(
-    full_expanded: &str,
-    directive: Option<Directive>,
-    acc: &mut f64,
-    mem: &mut Memory,
-) -> Result<f64, String> {
-    let result = parse(full_expanded, *acc).and_then(|ast| eval(&ast))?;
-    *acc = result;
-
-    match directive {
-        Some(Directive::Store(idx)) => {
-            mem.set(idx, result);
-        }
-        Some(Directive::Compound(idx, op)) => {
-            let cell = mem.get(idx);
-            let new_val = apply_compound(cell, result, op)?;
-            mem.set(idx, new_val);
-            *acc = new_val;
-        }
-        None => {}
-    }
-
-    Ok(*acc)
-}
-
-fn compound_op_char(op: CompoundOp) -> char {
-    match op {
-        CompoundOp::Add => '+',
-        CompoundOp::Sub => '-',
-        CompoundOp::Mul => '*',
-        CompoundOp::Div => '/',
-        CompoundOp::Mod => '%',
-        CompoundOp::Pow => '^',
+fn print_who(env: &Env, precision: usize, base: Base) {
+    let mut vars: Vec<(&String, &f64)> = env.iter().collect();
+    vars.sort_by_key(|(k, _)| k.as_str());
+    for (name, val) in vars {
+        println!("{} = {}", name, format_value(*val, precision, base));
     }
 }
 
-fn apply_compound(cell: f64, result: f64, op: CompoundOp) -> Result<f64, String> {
-    match op {
-        CompoundOp::Add => Ok(cell + result),
-        CompoundOp::Sub => Ok(cell - result),
-        CompoundOp::Mul => Ok(cell * result),
-        CompoundOp::Div => {
-            if result == 0.0 {
-                Err("Division by zero".to_string())
-            } else {
-                Ok(cell / result)
-            }
-        }
-        CompoundOp::Mod => {
-            if result == 0.0 {
-                Err("Modulo by zero".to_string())
-            } else {
-                Ok(cell % result)
-            }
-        }
-        CompoundOp::Pow => Ok(cell.powf(result)),
-    }
-}
-
-/// Prints the current accumulator value in all four bases.
+/// Prints a value in all four bases.
 fn print_all_bases(n: f64, precision: usize) {
     let i = n.round() as i64;
     let u = i.unsigned_abs();
@@ -441,7 +418,7 @@ enum BaseSuffix {
     ShowAll,
 }
 
-/// Strips a trailing base keyword (`hex`, `dec`, `bin`, `oct`, `base`) from an expression.
+/// Strips a trailing base keyword from an expression.
 /// Returns `(remaining_expr, Some(suffix))` or `(input, None)` if no suffix found.
 fn extract_base_suffix(input: &str) -> (&str, Option<BaseSuffix>) {
     if let Some(pos) = input.rfind(' ') {
@@ -465,9 +442,6 @@ fn extract_base_suffix(input: &str) -> (&str, Option<BaseSuffix>) {
 }
 
 /// Formats `val` in the given base for expression display.
-/// Hex: uppercase digits, no `0x` prefix.
-/// Bin/Oct: `0b`/`0o` prefix.
-/// Dec: standard decimal.
 fn format_for_base(val: f64, base: Base) -> String {
     let i = val.round() as i64;
     let u = i.unsigned_abs();
@@ -482,9 +456,6 @@ fn format_for_base(val: f64, base: Base) -> String {
 
 /// Rewrites number literals in `expr` that are not in the target `base` to that base.
 /// Returns `Some(rewritten)` if any conversion happened, `None` if nothing changed.
-///
-/// Rule: literals already in the target base are kept verbatim (preserving prefix/case).
-/// All others are replaced with `format_for_base` output.
 fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
     let mut result = String::with_capacity(expr.len());
     let mut chars = expr.chars().peekable();
@@ -493,10 +464,10 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
     while let Some(&c) = chars.peek() {
         match c {
             '0' => {
-                chars.next(); // consume '0'
+                chars.next();
                 match chars.peek().copied() {
                     Some('x') | Some('X') => {
-                        let pfx = chars.next().unwrap(); // 'x' or 'X'
+                        let pfx = chars.next().unwrap();
                         let mut s = String::new();
                         while let Some(&d) = chars.peek() {
                             if d.is_ascii_hexdigit() {
@@ -510,7 +481,6 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                             result.push('0');
                             result.push(pfx);
                         } else if base == Base::Hex {
-                            // already target base — keep original
                             result.push('0');
                             result.push(pfx);
                             result.push_str(&s);
@@ -569,7 +539,6 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                         }
                     }
                     _ => {
-                        // Decimal starting with '0' (e.g. 0.5 or bare 0)
                         let mut num_str = String::from("0");
                         while let Some(&d) = chars.peek() {
                             if d.is_ascii_digit() || d == '.' {
@@ -614,7 +583,7 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
                 }
             }
             'a'..='z' | 'A'..='Z' | '_' => {
-                // Identifier (function name, constant) — keep verbatim
+                // Identifier (function name, variable, constant) — keep verbatim
                 while let Some(&d) = chars.peek() {
                     if d.is_alphanumeric() || d == '_' {
                         result.push(d);
@@ -635,7 +604,6 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
 }
 
 /// Parses a precision command of the form `p<N>` where N is 0–15.
-/// Returns `Some(N)` on match, `None` otherwise.
 fn parse_precision_cmd(input: &str) -> Option<usize> {
     let bytes = input.as_bytes();
     if bytes.first() == Some(&b'p') && bytes.len() > 1 {
@@ -661,120 +629,9 @@ fn clear_screen() {
     std::io::stdout().flush().expect("Failed to flush stdout");
 }
 
-/// Replaces `acc` (word-boundary) and `fn()` (empty-arg calls) with the numeric
-/// accumulator value. Returns `(expanded, display)` where `display` is `Some`
-/// only when at least one substitution was performed.
-fn expand_acc(input: &str, acc: f64) -> (String, Option<String>) {
-    let acc_str = format_number(acc);
-    let chars: Vec<char> = input.chars().collect();
-    let n = chars.len();
-    let mut result = String::with_capacity(input.len() + 4);
-    let mut had = false;
-    let mut i = 0;
-
-    while i < n {
-        // `acc` as a whole word (not part of a longer identifier)
-        if i + 3 <= n
-            && chars[i] == 'a'
-            && chars[i + 1] == 'c'
-            && chars[i + 2] == 'c'
-            && (i == 0 || !is_ident_char(chars[i - 1]))
-            && (i + 3 >= n || !is_ident_char(chars[i + 3]))
-        {
-            result.push_str(&acc_str);
-            had = true;
-            i += 3;
-            continue;
-        }
-        // `fn()` — empty-arg call: `(` immediately followed by `)`, preceded by identifier
-        if chars[i] == '('
-            && i + 1 < n
-            && chars[i + 1] == ')'
-            && i > 0
-            && is_ident_char(chars[i - 1])
-        {
-            result.push('(');
-            result.push_str(&acc_str);
-            result.push(')');
-            had = true;
-            i += 2;
-            continue;
-        }
-        result.push(chars[i]);
-        i += 1;
-    }
-
-    let display = if had { Some(result.clone()) } else { None };
-    (result, display)
-}
-
-fn is_ident_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- expand_acc tests ---
-
-    #[test]
-    fn test_expand_acc_standalone() {
-        let (expr, display) = expand_acc("acc", 42.0);
-        assert_eq!(expr, "42");
-        assert_eq!(display, Some("42".to_string()));
-    }
-
-    #[test]
-    fn test_expand_acc_in_expr() {
-        let (expr, display) = expand_acc("2 + acc + 2", 10.0);
-        assert_eq!(expr, "2 + 10 + 2");
-        assert_eq!(display, Some("2 + 10 + 2".to_string()));
-    }
-
-    #[test]
-    fn test_expand_acc_no_match() {
-        let (expr, display) = expand_acc("2 + 3", 10.0);
-        assert_eq!(expr, "2 + 3");
-        assert!(display.is_none());
-    }
-
-    #[test]
-    fn test_expand_acc_empty_call() {
-        let (expr, display) = expand_acc("sin()", 40.0);
-        assert_eq!(expr, "sin(40)");
-        assert_eq!(display, Some("sin(40)".to_string()));
-    }
-
-    #[test]
-    fn test_expand_acc_in_call_arg() {
-        let (expr, display) = expand_acc("sqrt(acc)", 9.0);
-        assert_eq!(expr, "sqrt(9)");
-        assert_eq!(display, Some("sqrt(9)".to_string()));
-    }
-
-    #[test]
-    fn test_expand_acc_combined_empty_call_and_acc() {
-        let (expr, display) = expand_acc("sqrt() + acc", 9.0);
-        assert_eq!(expr, "sqrt(9) + 9");
-        assert_eq!(display, Some("sqrt(9) + 9".to_string()));
-    }
-
-    #[test]
-    fn test_expand_acc_word_boundary() {
-        // longer identifiers containing "acc" should not be affected
-        let (expr, display) = expand_acc("access", 10.0);
-        assert_eq!(expr, "access");
-        assert!(display.is_none());
-    }
-
-    #[test]
-    fn test_expand_acc_with_mem_already_expanded() {
-        // simulate combined: m1 was already replaced by 14, acc=14
-        let (expr, display) = expand_acc("12 + acc + 14", 14.0);
-        assert_eq!(expr, "12 + 14 + 14");
-        assert_eq!(display, Some("12 + 14 + 14".to_string()));
-    }
 
     // --- extract_base_suffix tests ---
 
@@ -834,8 +691,6 @@ mod tests {
         assert!(suffix.is_none());
     }
 
-    // --- parse_precision_cmd tests ---
-
     // --- format_for_base tests ---
 
     #[test]
@@ -867,7 +722,6 @@ mod tests {
 
     #[test]
     fn test_format_expr_hex_converts_bin_and_dec() {
-        // User's example: 0xFF + 0b1010 + 10 → 0xFF + A + A
         assert_eq!(
             format_expr_for_display("0xFF + 0b1010 + 10", Base::Hex),
             Some("0xFF + 0xA + 0xA".to_string())
@@ -876,7 +730,6 @@ mod tests {
 
     #[test]
     fn test_format_expr_hex_keeps_hex_literals() {
-        // 0xFF is already hex — unchanged; 0b1010 → A
         assert_eq!(
             format_expr_for_display("0xFF + 0b1010", Base::Hex),
             Some("0xFF + 0xA".to_string())
@@ -893,15 +746,12 @@ mod tests {
 
     #[test]
     fn test_format_expr_no_change_when_all_match() {
-        // All literals already decimal, base is Dec → None
         assert_eq!(format_expr_for_display("10 + 5", Base::Dec), None);
-        // All literals already hex, base is Hex → None
         assert_eq!(format_expr_for_display("0xFF + 0xA", Base::Hex), None);
     }
 
     #[test]
     fn test_format_expr_preserves_identifiers() {
-        // sin, pi, acc should pass through unchanged
         assert_eq!(
             format_expr_for_display("sin(pi) + 0b1010", Base::Hex),
             Some("sin(pi) + 0xA".to_string())
@@ -910,7 +760,6 @@ mod tests {
 
     #[test]
     fn test_format_expr_bin_accumulator_mixed_bases() {
-        // [ 0b110 ]: 2 + 0b110 + 0xa → 0b10 + 0b110 + 0b1010
         assert_eq!(
             format_expr_for_display("2 + 0b110 + 0xa", Base::Bin),
             Some("0b10 + 0b110 + 0b1010".to_string())
@@ -919,12 +768,13 @@ mod tests {
 
     #[test]
     fn test_format_expr_hex_accumulator_bin_literals() {
-        // [ 0x6 ]: 0b11 + 0b11 → 0x3 + 0x3  (was incorrectly showing "3 + 3")
         assert_eq!(
             format_expr_for_display("0b11 + 0b11", Base::Hex),
             Some("0x3 + 0x3".to_string())
         );
     }
+
+    // --- parse_precision_cmd tests ---
 
     #[test]
     fn test_parse_precision_cmd_valid() {
@@ -937,21 +787,85 @@ mod tests {
     #[test]
     fn test_parse_precision_cmd_invalid() {
         assert_eq!(parse_precision_cmd("p"), None);
-        assert_eq!(parse_precision_cmd("p16"), None); // exceeds max
-        assert_eq!(parse_precision_cmd("pi"), None); // not numeric
-        assert_eq!(parse_precision_cmd("6"), None); // no 'p' prefix
+        assert_eq!(parse_precision_cmd("p16"), None);
+        assert_eq!(parse_precision_cmd("pi"), None);
+        assert_eq!(parse_precision_cmd("6"), None);
     }
 
-    // --- evaluate / run_pipe tests ---
+    // --- parse_print_cmd tests ---
+
+    #[test]
+    fn test_parse_print_cmd_bare() {
+        assert!(matches!(parse_print_cmd("print"), Some(None)));
+    }
+
+    #[test]
+    fn test_parse_print_cmd_with_label() {
+        assert!(matches!(
+            parse_print_cmd(r#"print "Monthly payment""#),
+            Some(Some("Monthly payment"))
+        ));
+    }
+
+    #[test]
+    fn test_parse_print_cmd_not_matched() {
+        assert!(parse_print_cmd("printer").is_none());
+        assert!(parse_print_cmd("p").is_none());
+        assert!(parse_print_cmd("prin").is_none());
+        assert!(parse_print_cmd("print no quotes").is_none());
+    }
+
+    // --- evaluate tests ---
+
+    #[test]
+    fn test_evaluate_simple() {
+        let mut env = Env::new();
+        let result = evaluate("3 * 4", &mut env).unwrap();
+        assert!(matches!(result, EvalResult::Value(12.0)));
+        assert_eq!(ans(&env), 12.0);
+    }
+
+    #[test]
+    fn test_evaluate_partial_adds_to_ans() {
+        let mut env = Env::new();
+        env.insert("ans".to_string(), 10.0);
+        let result = evaluate("+ 5", &mut env).unwrap();
+        assert!(matches!(result, EvalResult::Value(15.0)));
+        assert_eq!(ans(&env), 15.0);
+    }
+
+    #[test]
+    fn test_evaluate_assignment() {
+        let mut env = Env::new();
+        let result = evaluate("x = 7", &mut env).unwrap();
+        assert!(matches!(result, EvalResult::Assigned(ref n, 7.0) if n == "x"));
+        assert_eq!(env.get("x"), Some(&7.0));
+    }
+
+    #[test]
+    fn test_evaluate_sets_base_via_suffix() {
+        let mut env = Env::new();
+        let mut base = Base::Dec;
+        let (to_eval, suffix) = extract_base_suffix("255 hex");
+        if let Some(BaseSuffix::Switch(b)) = suffix {
+            base = b;
+        }
+        evaluate(to_eval, &mut env).unwrap();
+        assert_eq!(base, Base::Hex);
+        assert_eq!(ans(&env), 255.0);
+    }
+
+    // --- pipe_output helper + tests ---
 
     fn pipe_output(input: &str) -> Vec<String> {
         use std::io::Cursor;
         let mut output = Vec::new();
-        let mut acc: f64 = 0.0;
-        let mut mem = Memory::new();
+        let mut env = new_env();
+        let mut precision: usize = 10;
         let mut base = Base::Dec;
         let mut result_pending = false;
         let reader = Cursor::new(input);
+
         for line in reader.lines() {
             let line = line.unwrap();
             let trimmed = line.trim();
@@ -968,14 +882,14 @@ mod tests {
             match trimmed {
                 "q" => break,
                 "c" => {
-                    acc = 0.0;
+                    env.insert("ans".to_string(), 0.0);
                     continue;
                 }
-                "mc" => {
-                    mem.clear_all();
+                "clear" => {
+                    env.clear();
                     continue;
                 }
-                "cls" | "m" => continue,
+                "cls" | "who" => continue,
                 "hex" => {
                     base = Base::Hex;
                     continue;
@@ -994,22 +908,21 @@ mod tests {
                 }
                 _ => {}
             }
-            if let Some(p) = parse_precision_cmd(trimmed) {
-                let _ = p;
+            if let Some(name) = trimmed.strip_prefix("clear ").map(str::trim) {
+                if !name.is_empty() {
+                    env.remove(name);
+                }
                 continue;
             }
-            if let Some(cmd) = parse_standalone_cmd(trimmed) {
-                match cmd {
-                    StandaloneCmd::StoreAcc(idx) => mem.set(idx, acc),
-                    StandaloneCmd::ClearOne(idx) => mem.clear_one(idx),
-                }
+            if let Some(p) = parse_precision_cmd(trimmed) {
+                precision = p;
                 continue;
             }
             if let Some(label) = parse_print_cmd(trimmed) {
                 match label {
-                    None => output.push(format_value(acc, 10, base)),
+                    None => output.push(format_value(ans(&env), precision, base)),
                     Some(s) if result_pending => {
-                        output.push(format!("{s} {}", format_value(acc, 10, base)))
+                        output.push(format!("{s} {}", format_value(ans(&env), precision, base)))
                     }
                     Some(s) => output.push(s.to_string()),
                 }
@@ -1020,21 +933,34 @@ mod tests {
             if let Some(BaseSuffix::Switch(b)) = base_suffix {
                 base = b;
             }
-            match evaluate(to_eval, &mut acc, &mut mem, &mut base) {
+            match evaluate(to_eval, &mut env) {
                 Ok(result) => {
                     result_pending = true;
                     if !silent {
-                        if show_all {
-                            // Collect the 4-line base output as individual entries
-                            let i = result.round() as i64;
-                            let u = i.unsigned_abs();
-                            let sign = if i < 0 { "-" } else { "" };
-                            output.push(format!("2  - {}0b{:b}", sign, u));
-                            output.push(format!("8  - {}0o{:o}", sign, u));
-                            output.push(format!("10 - {}", format_value(result, 10, Base::Dec)));
-                            output.push(format!("16 - {}0x{:X}", sign, u));
-                        } else {
-                            output.push(format_value(result, 10, base));
+                        match result {
+                            EvalResult::Assigned(name, v) => {
+                                output.push(format!(
+                                    "{} = {}",
+                                    name,
+                                    format_value(v, precision, base)
+                                ));
+                            }
+                            EvalResult::Value(v) => {
+                                if show_all {
+                                    let i = v.round() as i64;
+                                    let u = i.unsigned_abs();
+                                    let sign = if i < 0 { "-" } else { "" };
+                                    output.push(format!("2  - {}0b{:b}", sign, u));
+                                    output.push(format!("8  - {}0o{:o}", sign, u));
+                                    output.push(format!(
+                                        "10 - {}",
+                                        format_value(v, precision, Base::Dec)
+                                    ));
+                                    output.push(format!("16 - {}0x{:X}", sign, u));
+                                } else {
+                                    output.push(format_value(v, precision, base));
+                                }
+                            }
                         }
                     }
                 }
@@ -1102,10 +1028,9 @@ mod tests {
     }
 
     #[test]
-    fn test_pipe_memory_store_and_use() {
-        // Store 7 in m1, then use m1
-        let lines = "7 m1\nm1 + 3";
-        assert_eq!(pipe_output(lines), vec!["7", "10"]);
+    fn test_pipe_variable_assignment() {
+        let lines = "x = 7\nx + 3";
+        assert_eq!(pipe_output(lines), vec!["x = 7", "10"]);
     }
 
     #[test]
@@ -1116,14 +1041,12 @@ mod tests {
 
     #[test]
     fn test_pipe_hex_base_suffix_changes_display() {
-        // After "0xFF + 0b1010 hex", result should display as hex
         let lines = "0xFF + 0b1010 hex";
         assert_eq!(pipe_output(lines), vec!["0x109"]);
     }
 
     #[test]
     fn test_pipe_base_persists() {
-        // Set hex base, subsequent result also in hex
         let lines = "0xFF + 0b1010 hex\n+ 0b10";
         assert_eq!(pipe_output(lines), vec!["0x109", "0x10B"]);
     }
@@ -1131,8 +1054,6 @@ mod tests {
     #[test]
     fn test_pipe_base_switch_dec() {
         let lines = "255 hex\ndec";
-        // After hex, 255 shows as 0xFF. After dec, nothing printed (standalone command).
-        // Next expression would print in dec.
         let out = pipe_output(lines);
         assert_eq!(out, vec!["0xFF"]);
     }
@@ -1145,39 +1066,6 @@ mod tests {
     #[test]
     fn test_pipe_oct_literals() {
         assert_eq!(pipe_output("0o17"), vec!["15"]);
-    }
-
-    #[test]
-    fn test_evaluate_simple() {
-        let mut acc = 0.0;
-        let mut mem = Memory::new();
-        let mut base = Base::Dec;
-        assert_eq!(
-            evaluate("3 * 4", &mut acc, &mut mem, &mut base).unwrap(),
-            12.0
-        );
-        assert_eq!(acc, 12.0);
-    }
-
-    #[test]
-    fn test_evaluate_partial_adds_to_acc() {
-        let mut acc = 10.0;
-        let mut mem = Memory::new();
-        let mut base = Base::Dec;
-        assert_eq!(
-            evaluate("+ 5", &mut acc, &mut mem, &mut base).unwrap(),
-            15.0
-        );
-    }
-
-    #[test]
-    fn test_evaluate_sets_base_via_suffix() {
-        let mut acc = 0.0;
-        let mut mem = Memory::new();
-        let mut base = Base::Dec;
-        evaluate("255 hex", &mut acc, &mut mem, &mut base).unwrap();
-        assert_eq!(base, Base::Hex);
-        assert_eq!(acc, 255.0);
     }
 
     #[test]
@@ -1197,64 +1085,19 @@ mod tests {
 
     #[test]
     fn test_pipe_base_suffix_accumulator_set() {
-        // After "10 base", accumulator should be 10, next partial expression uses it
         let out = pipe_output("10 base\n+ 5");
-        assert_eq!(out[4], "15"); // 4 base lines + result
+        assert_eq!(out[4], "15");
     }
 
     #[test]
     fn test_pipe_sci_partial_expression() {
-        // Accumulator = 1e-12; partial "* 1000" must use it, not zero
         let out = pipe_output("1e-12\n* 1000");
         assert_eq!(out[0], "1e-12");
-        // 1e-12 * 1000 = 1e-9; boundary value, displayed as "0.000000001"
         assert_eq!(out[1], "0.000000001");
-        // Continue: * 1000 again → 1e-6, also shown in decimal
         let out2 = pipe_output("1e-12\n* 1000\n* 1000");
         assert_eq!(out2[2], "0.000001");
-        // And a value that stays in sci range
         let out3 = pipe_output("1e-12\n* 10");
         assert_eq!(out3[1], "1e-11");
-    }
-
-    #[test]
-    fn test_compound_display_rhs_is_evaluated_value() {
-        // Regression: compound op display must show the evaluated number ("10 - 6"),
-        // not the raw expression ("10 - (2 + 2 + 2)").
-        use ccalc_engine::eval::eval;
-        use ccalc_engine::parser::parse;
-
-        let full_expanded = "2 + 2 + 2";
-        let val = parse(full_expanded, 0.0)
-            .and_then(|ast| eval(&ast))
-            .unwrap();
-        assert_eq!(val, 6.0);
-        assert_eq!(format_for_base(val, Base::Dec), "6");
-        // Verifies that the displayed RHS for "2 + 2 + 2 m1-" with m1=10
-        // would be "6" (yielding "10 - 6") and not the expression string.
-    }
-
-    // ── parse_print_cmd ──────────────────────────────────────────────────────
-
-    #[test]
-    fn test_parse_print_cmd_bare() {
-        assert!(matches!(parse_print_cmd("print"), Some(None)));
-    }
-
-    #[test]
-    fn test_parse_print_cmd_with_label() {
-        assert!(matches!(
-            parse_print_cmd(r#"print "Monthly payment""#),
-            Some(Some("Monthly payment"))
-        ));
-    }
-
-    #[test]
-    fn test_parse_print_cmd_not_matched() {
-        assert!(parse_print_cmd("printer").is_none());
-        assert!(parse_print_cmd("p").is_none());
-        assert!(parse_print_cmd("prin").is_none());
-        assert!(parse_print_cmd("print no quotes").is_none());
     }
 
     #[test]
@@ -1275,8 +1118,6 @@ mod tests {
         assert_eq!(out, vec!["10", "val 10", "15"]);
     }
 
-    // ── semicolon suppression ────────────────────────────────────────────────
-
     #[test]
     fn test_pipe_semicolon_suppresses_output() {
         let out = pipe_output("10;\n+ 5");
@@ -1291,23 +1132,19 @@ mod tests {
 
     #[test]
     fn test_pipe_semicolon_with_comment() {
-        // comment stripped first, then semicolon
         let out = pipe_output("10; # intermediate\nprint \"result\"");
         assert_eq!(out, vec!["result 10"]);
     }
 
     #[test]
-    fn test_pipe_semicolon_memory_store() {
-        // m[1-9] standalone commands have no output anyway, but ; must not break them
-        let out = pipe_output("7;\nm1;\nm1 + 3");
+    fn test_pipe_semicolon_variable_store() {
+        // silent assignment, then use it
+        let out = pipe_output("7;\nx = ans;\nx + 3");
         assert_eq!(out, vec!["10"]);
     }
 
-    // ── print after blank line (section header) ──────────────────────────────
-
     #[test]
     fn test_print_label_after_blank_line_no_value() {
-        // blank line resets result_pending → label only, no number
         let out = pipe_output("10;\n\nprint \"Section:\"");
         assert_eq!(out, vec!["Section:"]);
     }
@@ -1320,8 +1157,14 @@ mod tests {
 
     #[test]
     fn test_print_bare_always_shows_value() {
-        // bare print always prints the accumulator, even after a blank line
         let out = pipe_output("10;\n\nprint");
         assert_eq!(out, vec!["10"]);
+    }
+
+    #[test]
+    fn test_pipe_base_suffix_accumulator_set_uses_ans() {
+        // Verify partial expression uses ans, not a stale accumulator
+        let out = pipe_output("ans\n+ 5");
+        assert_eq!(out, vec!["0", "5"]);
     }
 }

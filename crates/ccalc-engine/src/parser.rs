@@ -1,5 +1,14 @@
 use crate::eval::{Expr, Op};
 
+/// Top-level statement returned by [`parse`].
+#[derive(Debug)]
+pub enum Stmt {
+    /// Variable assignment: `name = expr`
+    Assign(String, Expr),
+    /// Standalone expression — result goes into `ans`
+    Expr(Expr),
+}
+
 #[derive(Debug, Clone)]
 enum Token {
     Number(f64),
@@ -52,13 +61,13 @@ fn try_consume_sci_exponent(
         return;
     }
     let mut lookahead = chars.clone();
-    let e_char = lookahead.next().unwrap(); // 'e' or 'E'
+    let e_char = lookahead.next().unwrap();
     match lookahead.peek().copied() {
         Some('+') | Some('-') => {
             let sign = lookahead.next().unwrap();
             if lookahead.peek().is_some_and(|d| d.is_ascii_digit()) {
-                chars.next(); // consume 'e'/'E'
-                chars.next(); // consume sign
+                chars.next();
+                chars.next();
                 num_str.push(e_char);
                 num_str.push(sign);
                 while let Some(&d) = chars.peek() {
@@ -72,7 +81,7 @@ fn try_consume_sci_exponent(
             }
         }
         Some(d) if d.is_ascii_digit() => {
-            chars.next(); // consume 'e'/'E'
+            chars.next();
             num_str.push(e_char);
             while let Some(&d) = chars.peek() {
                 if d.is_ascii_digit() {
@@ -83,7 +92,7 @@ fn try_consume_sci_exponent(
                 }
             }
         }
-        _ => {} // 'e' is not a sci exponent here (could be start of identifier)
+        _ => {}
     }
 }
 
@@ -130,7 +139,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             }
             '0'..='9' | '.' => {
                 if c == '0' {
-                    chars.next(); // consume '0'
+                    chars.next();
                     match chars.peek().copied() {
                         Some('x') | Some('X') => {
                             chars.next();
@@ -148,7 +157,6 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                             tokens.push(Token::Number(n));
                         }
                         _ => {
-                            // Decimal number starting with '0' (e.g. 0.5, 0e5, or just 0)
                             let mut num_str = String::from("0");
                             while let Some(&d) = chars.peek() {
                                 if d.is_ascii_digit() || d == '.' {
@@ -166,7 +174,6 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                         }
                     }
                 } else {
-                    // Decimal number not starting with '0'
                     let mut num_str = String::new();
                     while let Some(&d) = chars.peek() {
                         if d.is_ascii_digit() || d == '.' {
@@ -202,19 +209,34 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
-/// Parses a full expression string into an AST.
-/// `accumulator` is the current REPL value, used by `acc` and empty-arg function calls.
-pub fn parse(input: &str, accumulator: f64) -> Result<Expr, String> {
+/// Parses a full input string into a [`Stmt`].
+///
+/// Assignment (`name = expr`) is detected first. Everything else is treated as
+/// an expression whose result will be stored in `ans`.
+pub fn parse(input: &str) -> Result<Stmt, String> {
+    if let Some((name, rhs)) = try_split_assignment(input) {
+        let tokens = tokenize(rhs)?;
+        if tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut pos = 0;
+        let expr = parse_expr(&tokens, &mut pos)?;
+        if pos != tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::Assign(name.to_string(), expr));
+    }
+
     let tokens = tokenize(input)?;
     if tokens.is_empty() {
         return Err("Empty expression".to_string());
     }
     let mut pos = 0;
-    let expr = parse_expr(&tokens, &mut pos, accumulator)?;
+    let expr = parse_expr(&tokens, &mut pos)?;
     if pos != tokens.len() {
         return Err("Unexpected token after expression".to_string());
     }
-    Ok(expr)
+    Ok(Stmt::Expr(expr))
 }
 
 /// Returns true if the input looks like a partial expression
@@ -226,20 +248,48 @@ pub fn is_partial(input: &str) -> bool {
     )
 }
 
+/// If `input` matches `"name = rhs"` (not `==`), returns `Some((name, rhs))`.
+/// The name must be a valid identifier; otherwise returns `None`.
+fn try_split_assignment(input: &str) -> Option<(&str, &str)> {
+    let trimmed = input.trim();
+    let eq_pos = trimmed.find('=')?;
+    // Reject `==`
+    if trimmed[eq_pos + 1..].starts_with('=') {
+        return None;
+    }
+    let lhs = trimmed[..eq_pos].trim();
+    let rhs = trimmed[eq_pos + 1..].trim();
+    if is_valid_ident(lhs) {
+        Some((lhs, rhs))
+    } else {
+        None
+    }
+}
+
+fn is_valid_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_alphabetic() || c == '_' => {
+            chars.all(|c| c.is_alphanumeric() || c == '_')
+        }
+        _ => false,
+    }
+}
+
 // expr = term (('+' | '-') term)*
-fn parse_expr(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
-    let mut left = parse_term(tokens, pos, acc)?;
+fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let mut left = parse_term(tokens, pos)?;
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Plus => {
                 *pos += 1;
-                let right = parse_term(tokens, pos, acc)?;
+                let right = parse_term(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Add, Box::new(right));
             }
             Token::Minus => {
                 *pos += 1;
-                let right = parse_term(tokens, pos, acc)?;
+                let right = parse_term(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Sub, Box::new(right));
             }
             _ => break,
@@ -257,38 +307,45 @@ fn token_starts_expr(t: &Token) -> bool {
 }
 
 // term = power (('*' | '/' | '%') power | '(' expr ')' )*
-// '%' is modulo when followed by an expression, otherwise postfix percentage (N% = N * acc/100).
+// '%' is modulo when followed by an expression, otherwise postfix percentage (N% = N * ans/100).
 // '(' without an operator triggers implicit multiplication.
-fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
-    let mut left = parse_power(tokens, pos, acc)?;
+fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let mut left = parse_power(tokens, pos)?;
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Star => {
                 *pos += 1;
-                let right = parse_power(tokens, pos, acc)?;
+                let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             Token::Slash => {
                 *pos += 1;
-                let right = parse_power(tokens, pos, acc)?;
+                let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Div, Box::new(right));
             }
             Token::Percent => {
                 *pos += 1;
                 if *pos < tokens.len() && token_starts_expr(&tokens[*pos]) {
                     // Modulo: N % M
-                    let right = parse_power(tokens, pos, acc)?;
+                    let right = parse_power(tokens, pos)?;
                     left = Expr::BinOp(Box::new(left), Op::Mod, Box::new(right));
                 } else {
-                    // Percentage postfix: N% = N * (acc / 100)
-                    left =
-                        Expr::BinOp(Box::new(left), Op::Mul, Box::new(Expr::Number(acc / 100.0)));
+                    // Postfix percentage: N% = N * (ans / 100)
+                    left = Expr::BinOp(
+                        Box::new(left),
+                        Op::Mul,
+                        Box::new(Expr::BinOp(
+                            Box::new(Expr::Var("ans".to_string())),
+                            Op::Div,
+                            Box::new(Expr::Number(100.0)),
+                        )),
+                    );
                 }
             }
             Token::LParen => {
                 // Implicit multiplication: expr(...)
-                let right = parse_power(tokens, pos, acc)?;
+                let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             _ => break,
@@ -299,32 +356,32 @@ fn parse_term(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, Strin
 }
 
 // power = unary ('^' power)?   -- right-associative
-fn parse_power(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
-    let base = parse_unary(tokens, pos, acc)?;
+fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let base = parse_unary(tokens, pos)?;
     if *pos < tokens.len()
         && let Token::Caret = &tokens[*pos]
     {
         *pos += 1;
-        let exp = parse_power(tokens, pos, acc)?;
+        let exp = parse_power(tokens, pos)?;
         return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
     }
     Ok(base)
 }
 
 // unary = '-' unary | primary
-fn parse_unary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
+fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos < tokens.len()
         && let Token::Minus = &tokens[*pos]
     {
         *pos += 1;
-        let expr = parse_unary(tokens, pos, acc)?;
+        let expr = parse_unary(tokens, pos)?;
         return Ok(Expr::UnaryMinus(Box::new(expr)));
     }
-    parse_primary(tokens, pos, acc)
+    parse_primary(tokens, pos)
 }
 
 // primary = ident '(' expr ')' | ident '(' ')' | '(' expr ')' | number | ident
-fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, String> {
+fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos >= tokens.len() {
         return Err("Unexpected end of expression".to_string());
     }
@@ -343,12 +400,12 @@ fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, St
                 && let Token::LParen = &tokens[*pos]
             {
                 *pos += 1;
-                // Empty args: fn() uses the accumulator
+                // Empty args: fn() uses ans
                 let arg = if *pos < tokens.len() {
                     if let Token::RParen = &tokens[*pos] {
-                        Box::new(Expr::Number(acc))
+                        Box::new(Expr::Var("ans".to_string()))
                     } else {
-                        Box::new(parse_expr(tokens, pos, acc)?)
+                        Box::new(parse_expr(tokens, pos)?)
                     }
                 } else {
                     return Err("Expected closing ')'".to_string());
@@ -364,17 +421,17 @@ fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, St
                     _ => return Err("Expected closing ')'".to_string()),
                 }
             }
-            // Constants and accumulator alias
+            // Built-in constants
             match name.as_str() {
                 "pi" => Ok(Expr::Number(std::f64::consts::PI)),
                 "e" => Ok(Expr::Number(std::f64::consts::E)),
-                "acc" => Ok(Expr::Number(acc)),
-                _ => Err(format!("Unknown identifier: '{name}'")),
+                // All other identifiers → variable reference (resolved at eval time)
+                _ => Ok(Expr::Var(name)),
             }
         }
         Token::LParen => {
             *pos += 1;
-            let expr = parse_expr(tokens, pos, acc)?;
+            let expr = parse_expr(tokens, pos)?;
             if *pos >= tokens.len() {
                 return Err("Expected closing ')'".to_string());
             }
@@ -386,21 +443,37 @@ fn parse_primary(tokens: &[Token], pos: &mut usize, acc: f64) -> Result<Expr, St
                 _ => Err("Expected closing ')'".to_string()),
             }
         }
-        _ => Err("Expected number, function, constant, '-', or '('".to_string()),
+        _ => Err("Expected number, function, variable, '-', or '('".to_string()),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::env::Env;
     use crate::eval::eval;
 
     fn calc(input: &str) -> f64 {
-        eval(&parse(input, 0.0).unwrap()).unwrap()
+        let env = Env::new();
+        match parse(input).unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).unwrap(),
+        }
     }
 
-    fn calc_with(input: &str, acc: f64) -> f64 {
-        eval(&parse(input, acc).unwrap()).unwrap()
+    fn calc_with_ans(input: &str, ans: f64) -> f64 {
+        let mut env = Env::new();
+        env.insert("ans".to_string(), ans);
+        match parse(input).unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).unwrap(),
+        }
+    }
+
+    fn calc_with_var(input: &str, name: &str, val: f64) -> f64 {
+        let mut env = Env::new();
+        env.insert(name.to_string(), val);
+        match parse(input).unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).unwrap(),
+        }
     }
 
     #[test]
@@ -447,7 +520,6 @@ mod tests {
 
     #[test]
     fn test_power_right_associative() {
-        // 2^3^2 = 2^(3^2) = 2^9 = 512
         assert_eq!(calc("2 ^ 3 ^ 2"), 512.0);
     }
 
@@ -485,26 +557,63 @@ mod tests {
     }
 
     #[test]
-    fn test_acc() {
-        assert_eq!(calc_with("acc", 42.0), 42.0);
-        assert_eq!(calc_with("acc + 1", 10.0), 11.0);
-        assert_eq!(calc_with("acc * 2", 5.0), 10.0);
-        assert_eq!(calc_with("acc", 0.0), 0.0);
+    fn test_ans_variable() {
+        assert_eq!(calc_with_ans("ans", 42.0), 42.0);
+        assert_eq!(calc_with_ans("ans + 1", 10.0), 11.0);
+        assert_eq!(calc_with_ans("ans * 2", 5.0), 10.0);
+        assert_eq!(calc_with_ans("ans", 0.0), 0.0);
     }
 
     #[test]
-    fn test_fn_empty_args_uses_accumulator() {
-        assert_eq!(calc_with("sqrt()", 4.0), 2.0);
-        assert_eq!(calc_with("abs()", -7.0), 7.0);
-        assert_eq!(calc_with("floor()", 3.9), 3.0);
-        assert_eq!(calc_with("ceil()", 3.1), 4.0);
-        assert_eq!(calc_with("round()", 3.5), 4.0);
+    fn test_user_variable() {
+        assert_eq!(calc_with_var("x + 1", "x", 5.0), 6.0);
+        assert_eq!(calc_with_var("x * x", "x", 3.0), 9.0);
     }
 
     #[test]
-    fn test_fn_acc_arg() {
-        assert_eq!(calc_with("sqrt(acc)", 9.0), 3.0);
-        assert_eq!(calc_with("abs(acc)", -5.0), 5.0);
+    fn test_undefined_variable_is_error() {
+        let env = Env::new();
+        match parse("undefined_var").unwrap() {
+            Stmt::Expr(expr) => assert!(eval(&expr, &env).is_err()),
+            _ => panic!("expected Stmt::Expr"),
+        }
+    }
+
+    #[test]
+    fn test_assignment_parses() {
+        match parse("x = 5").unwrap() {
+            Stmt::Assign(name, expr) => {
+                assert_eq!(name, "x");
+                assert_eq!(eval(&expr, &Env::new()).unwrap(), 5.0);
+            }
+            _ => panic!("expected Stmt::Assign"),
+        }
+    }
+
+    #[test]
+    fn test_assignment_complex_expr() {
+        match parse("result = 2 ^ 10 + 1").unwrap() {
+            Stmt::Assign(name, expr) => {
+                assert_eq!(name, "result");
+                assert_eq!(eval(&expr, &Env::new()).unwrap(), 1025.0);
+            }
+            _ => panic!("expected Stmt::Assign"),
+        }
+    }
+
+    #[test]
+    fn test_fn_empty_args_uses_ans() {
+        assert_eq!(calc_with_ans("sqrt()", 4.0), 2.0);
+        assert_eq!(calc_with_ans("abs()", -7.0), 7.0);
+        assert_eq!(calc_with_ans("floor()", 3.9), 3.0);
+        assert_eq!(calc_with_ans("ceil()", 3.1), 4.0);
+        assert_eq!(calc_with_ans("round()", 3.5), 4.0);
+    }
+
+    #[test]
+    fn test_fn_ans_arg() {
+        assert_eq!(calc_with_ans("sqrt(ans)", 9.0), 3.0);
+        assert_eq!(calc_with_ans("abs(ans)", -5.0), 5.0);
     }
 
     #[test]
@@ -612,9 +721,9 @@ mod tests {
 
     #[test]
     fn test_hex_error_no_digits() {
-        assert!(parse("0x", 0.0).is_err());
-        assert!(parse("0b", 0.0).is_err());
-        assert!(parse("0o", 0.0).is_err());
+        assert!(parse("0x").is_err());
+        assert!(parse("0b").is_err());
+        assert!(parse("0o").is_err());
     }
 
     #[test]
@@ -638,22 +747,17 @@ mod tests {
 
     #[test]
     fn test_parse_error_empty() {
-        assert!(parse("", 0.0).is_err());
+        assert!(parse("").is_err());
     }
 
     #[test]
     fn test_parse_error_unmatched_paren() {
-        assert!(parse("(1 + 2", 0.0).is_err());
+        assert!(parse("(1 + 2").is_err());
     }
 
     #[test]
     fn test_parse_error_invalid_char() {
-        assert!(parse("1 @ 2", 0.0).is_err());
-    }
-
-    #[test]
-    fn test_parse_error_unknown_ident() {
-        assert!(parse("foo", 0.0).is_err());
+        assert!(parse("1 @ 2").is_err());
     }
 
     #[test]
@@ -686,7 +790,6 @@ mod tests {
 
     #[test]
     fn test_constant_e_still_works() {
-        // 'e' alone must still be Euler's number, not a sci exponent
         assert!((calc("e") - std::f64::consts::E).abs() < 1e-15);
         assert!((calc("1 + e") - (1.0 + std::f64::consts::E)).abs() < 1e-15);
         assert!((calc("e ^ 2") - std::f64::consts::E.powi(2)).abs() < 1e-10);
@@ -694,41 +797,40 @@ mod tests {
 
     #[test]
     fn test_eval_error_unknown_function() {
-        // parse succeeds — unknown function is caught at eval time
-        let ast = parse("foo(1)", 0.0).unwrap();
-        assert!(eval(&ast).is_err());
+        let env = Env::new();
+        match parse("foo(1)").unwrap() {
+            Stmt::Expr(expr) => assert!(eval(&expr, &env).is_err()),
+            _ => panic!("expected Stmt::Expr"),
+        }
     }
 
     // --- Percentage operator ---
 
     #[test]
-    fn test_percent_of_acc() {
-        assert_eq!(calc_with("20%", 1500.0), 300.0);
-        assert_eq!(calc_with("50%", 80.0), 40.0);
-        assert_eq!(calc_with("100%", 42.0), 42.0);
+    fn test_percent_of_ans() {
+        assert_eq!(calc_with_ans("20%", 1500.0), 300.0);
+        assert_eq!(calc_with_ans("50%", 80.0), 40.0);
+        assert_eq!(calc_with_ans("100%", 42.0), 42.0);
     }
 
     #[test]
-    fn test_percent_zero_acc() {
-        assert_eq!(calc_with("20%", 0.0), 0.0);
+    fn test_percent_zero_ans() {
+        assert_eq!(calc_with_ans("20%", 0.0), 0.0);
     }
 
     #[test]
     fn test_percent_add() {
-        // + 20% of 1500 → partial expansion gives "1500 + 20%", acc=1500
-        assert!((calc_with("1500 + 20%", 1500.0) - 1800.0).abs() < 1e-10);
+        assert!((calc_with_ans("1500 + 20%", 1500.0) - 1800.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_percent_sub() {
-        // - 10% of 1800 → 1620
-        assert!((calc_with("1800 - 10%", 1800.0) - 1620.0).abs() < 1e-10);
+        assert!((calc_with_ans("1800 - 10%", 1800.0) - 1620.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_percent_in_expr() {
-        // 20% + 5: percentage then add literal
-        assert!((calc_with("20% + 5", 1000.0) - 205.0).abs() < 1e-10);
+        assert!((calc_with_ans("20% + 5", 1000.0) - 205.0).abs() < 1e-10);
     }
 
     #[test]
@@ -756,7 +858,6 @@ mod tests {
 
     #[test]
     fn test_implicit_mul_precedence_with_add() {
-        // 2(3) + 1 = 6 + 1 = 7, not 2*4 = 8
         assert_eq!(calc("2(3) + 1"), 7.0);
         assert_eq!(calc("1 + 2(3)"), 7.0);
     }

@@ -7,19 +7,19 @@
 //! ```text
 //! input string
 //!     └─► tokenizer (parser::tokenize)
-//!             └─► recursive-descent parser (parser::parse)  →  Expr AST
+//!             └─► recursive-descent parser (parser::parse)  →  Stmt AST
 //!                     └─► evaluator (eval::eval)  →  f64
 //! ```
 //!
-//! It also hosts [`memory`] (m1–m9 cells and persistence), and will grow
-//! to host the Octave/MATLAB compatibility layer in future phases.
+//! It also hosts [`env`] (variable environment and workspace persistence),
+//! and will grow to host the Octave/MATLAB compatibility layer in future phases.
 //!
 //! ## Modules
 //!
+//! - [`env`]    — [`Env`](env::Env) type, workspace save/load
 //! - [`eval`]   — AST types, evaluator, number formatters, [`Base`](eval::Base)
-//! - [`parser`] — tokenizer and recursive-descent parser
-//! - [`memory`] — memory cells, directives, config-file persistence
+//! - [`parser`] — tokenizer and recursive-descent parser, [`Stmt`](parser::Stmt)
 
+pub mod env;
 pub mod eval;
-pub mod memory;
 pub mod parser;
