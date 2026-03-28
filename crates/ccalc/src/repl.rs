@@ -182,10 +182,18 @@ pub fn run() {
         } else {
             to_eval.to_string()
         };
-        let base_display = format_expr_for_display(&display_str, base);
+        // Expand variable references, then apply base conversion on the result
+        let expanded = expand_vars_for_display(&display_str, &env, base);
+        let base_display =
+            format_expr_for_display(expanded.as_deref().unwrap_or(&display_str), base);
 
         if !silent {
-            if let Some(ref display) = base_display {
+            let to_show: Option<&str> = if let Some(ref s) = base_display {
+                Some(s.as_str())
+            } else {
+                expanded.as_deref()
+            };
+            if let Some(display) = to_show {
                 println!("{display}");
             }
         }
@@ -447,6 +455,39 @@ fn format_for_base(val: f64, base: Base) -> String {
         Base::Oct => format!("{}0o{:o}", sign, u),
         Base::Dec => format_number(val),
     }
+}
+
+/// Replaces identifiers that match a variable in `env` with their formatted values.
+/// Returns `Some(expanded)` if any replacement was made, `None` otherwise.
+fn expand_vars_for_display(expr: &str, env: &Env, base: Base) -> Option<String> {
+    let mut result = String::with_capacity(expr.len());
+    let mut chars = expr.chars().peekable();
+    let mut replaced = false;
+
+    while let Some(&c) = chars.peek() {
+        if c.is_alphabetic() || c == '_' {
+            let mut ident = String::new();
+            while let Some(&ch) = chars.peek() {
+                if ch.is_alphanumeric() || ch == '_' {
+                    ident.push(ch);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            if let Some(&val) = env.get(&ident) {
+                result.push_str(&format_for_base(val, base));
+                replaced = true;
+            } else {
+                result.push_str(&ident);
+            }
+        } else {
+            result.push(c);
+            chars.next();
+        }
+    }
+
+    if replaced { Some(result) } else { None }
 }
 
 /// Rewrites number literals in `expr` that are not in the target `base` to that base.
@@ -808,6 +849,57 @@ mod tests {
         assert!(parse_print_cmd("p").is_none());
         assert!(parse_print_cmd("prin").is_none());
         assert!(parse_print_cmd("print no quotes").is_none());
+    }
+
+    // --- expand_vars_for_display tests ---
+
+    #[test]
+    fn test_expand_vars_no_vars() {
+        let env = new_env();
+        assert_eq!(expand_vars_for_display("2 + 3", &env, Base::Dec), None);
+    }
+
+    #[test]
+    fn test_expand_vars_single() {
+        let mut env = new_env();
+        env.insert("x".to_string(), 10.0);
+        assert_eq!(
+            expand_vars_for_display("x + 5", &env, Base::Dec),
+            Some("10 + 5".to_string())
+        );
+    }
+
+    #[test]
+    fn test_expand_vars_multiple() {
+        let mut env = new_env();
+        env.insert("ans".to_string(), 13.0);
+        env.insert("x".to_string(), 10.0);
+        env.insert("y".to_string(), 20.0);
+        assert_eq!(
+            expand_vars_for_display("ans + x + y", &env, Base::Dec),
+            Some("13 + 10 + 20".to_string())
+        );
+    }
+
+    #[test]
+    fn test_expand_vars_unknown_ident_preserved() {
+        let mut env = new_env();
+        env.insert("x".to_string(), 5.0);
+        // sqrt is not in env — should stay as-is
+        assert_eq!(
+            expand_vars_for_display("sqrt(x)", &env, Base::Dec),
+            Some("sqrt(5)".to_string())
+        );
+    }
+
+    #[test]
+    fn test_expand_vars_in_hex_base() {
+        let mut env = new_env();
+        env.insert("x".to_string(), 255.0);
+        assert_eq!(
+            expand_vars_for_display("x + 1", &env, Base::Hex),
+            Some("0xFF + 1".to_string())
+        );
     }
 
     // --- evaluate tests ---

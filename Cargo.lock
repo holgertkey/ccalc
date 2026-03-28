@@ -10,7 +10,7 @@ checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "ccalc"
-version = "0.7.0+006"
+version = "0.7.0+007"
 dependencies = [
  "ccalc-engine",
  "rustyline",
@@ -18,7 +18,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc-engine"
-version = "0.7.0+006"
+version = "0.7.0+007"
 dependencies = [
  "dirs",
 ]
