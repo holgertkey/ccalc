@@ -346,13 +346,19 @@ mod tests {
     #[test]
     fn test_format_value_dec_sci_large() {
         let result = format_value(1e20, 2, Base::Dec);
-        assert!(result.contains('e'), "expected scientific notation, got: {result}");
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {result}"
+        );
     }
 
     #[test]
     fn test_format_value_dec_sci_small() {
         let result = format_value(1e-10, 4, Base::Dec);
-        assert!(result.contains('e'), "expected scientific notation, got: {result}");
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {result}"
+        );
     }
 
     #[test]

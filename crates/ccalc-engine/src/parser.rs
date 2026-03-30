@@ -268,9 +268,7 @@ fn try_split_assignment(input: &str) -> Option<(&str, &str)> {
 fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
-        Some(c) if c.is_alphabetic() || c == '_' => {
-            chars.all(|c| c.is_alphanumeric() || c == '_')
-        }
+        Some(c) if c.is_alphabetic() || c == '_' => chars.all(|c| c.is_alphanumeric() || c == '_'),
         _ => false,
     }
 }
@@ -297,7 +295,6 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
 
     Ok(left)
 }
-
 
 // term = power (('*' | '/') power | '(' expr ')' )*
 // '(' without an operator triggers implicit multiplication.

@@ -58,7 +58,7 @@ pub fn run() {
     rl.load_history(&history_path).ok();
 
     println!("ccalc v{}", env!("CARGO_PKG_VERSION"));
-    println!("");
+    println!();
 
     loop {
         let prompt = format!("[ {} ]: ", format_value(ans(&env), precision, base));
@@ -1068,7 +1068,6 @@ mod tests {
         let lines = "10\n+ 5\n* 2";
         assert_eq!(pipe_output(lines), vec!["10", "15", "30"]);
     }
-
 
     #[test]
     fn test_pipe_quit_with_exit() {

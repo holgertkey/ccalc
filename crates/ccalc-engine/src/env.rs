@@ -21,8 +21,7 @@ fn workspace_path() -> PathBuf {
 /// Each variable is written as `name = value\n`.
 pub fn save_workspace(env: &Env, path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Cannot create config dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create config dir: {e}"))?;
     }
     let mut pairs: Vec<(&String, &f64)> = env.iter().collect();
     pairs.sort_by_key(|(k, _)| k.as_str());
@@ -30,8 +29,7 @@ pub fn save_workspace(env: &Env, path: &Path) -> Result<(), String> {
     for (name, val) in pairs {
         content.push_str(&format!("{name} = {val}\n"));
     }
-    std::fs::write(path, &content)
-        .map_err(|e| format!("Cannot write {}: {e}", path.display()))
+    std::fs::write(path, &content).map_err(|e| format!("Cannot write {}: {e}", path.display()))
 }
 
 /// Loads variables from `path`, returning a new `Env`.
@@ -48,10 +46,10 @@ pub fn load_workspace(path: &Path) -> Result<Env, String> {
         if let Some((key, val)) = line.split_once('=') {
             let key = key.trim();
             let val = val.trim();
-            if is_valid_ident(key) {
-                if let Ok(v) = val.parse::<f64>() {
-                    env.insert(key.to_string(), v);
-                }
+            if is_valid_ident(key)
+                && let Ok(v) = val.parse::<f64>()
+            {
+                env.insert(key.to_string(), v);
             }
         }
     }
@@ -69,9 +67,7 @@ pub fn load_workspace_default() -> Result<Env, String> {
 fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
-        Some(c) if c.is_alphabetic() || c == '_' => {
-            chars.all(|c| c.is_alphanumeric() || c == '_')
-        }
+        Some(c) if c.is_alphabetic() || c == '_' => chars.all(|c| c.is_alphanumeric() || c == '_'),
         _ => false,
     }
 }
