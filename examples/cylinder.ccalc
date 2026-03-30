@@ -2,7 +2,7 @@
 % V = pi * r^2 * h
 % A = 2 * pi * r * (r + h)
 %
-% Usage: ccalc < cylinder.ccalc
+% Usage: ccalc cylinder.ccalc
 
 r = 5;                    % radius
 h = 10;                   % height
@@ -11,7 +11,9 @@ p4                        % precision = 4
 base_area = pi * r^2;     % pi * r^2
 
 base_area * h;
-print "Volume:"
+fprintf('Volume: ')
+disp(ans)
 
 2 * base_area + 2 * pi * r * h;
-print "Surface area:"
+fprintf('Surface area: ')
+disp(ans)

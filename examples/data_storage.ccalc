@@ -2,9 +2,11 @@
 % Shows the real GiB capacity of a "500 GB" drive
 % (manufacturers use 10^9 bytes; 1 GiB = 1024^3 bytes)
 %
-% Usage: ccalc < data_storage.ccalc
+% Usage: ccalc data_storage.ccalc
 
 gib = 1024^3;             % bytes in one GiB
-p4;
+p4
+
 500 * 1000^3 / gib;
-print "Real GiB in a 500 GB drive:"
+fprintf('Real GiB in a 500 GB drive: ')
+disp(ans)

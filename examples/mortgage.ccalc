@@ -6,14 +6,15 @@
 %
 % Example: $200,000 loan, 6% annual rate, 30 years
 %
-% Usage: ccalc < mortgage.ccalc
+% Usage: ccalc mortgage.ccalc
 
 rate = 0.06 / 12;         % monthly interest rate
 n = 360;                  % 30 years * 12 months
 p = 200000;               % principal
 
 factor = (1 + rate) ^ n;
-p2;
+p2                        % 2 decimal places for currency
 
 p * rate * factor / (factor - 1);
-print "Monthly payment ($):"
+fprintf('Monthly payment ($): ')
+disp(ans)
