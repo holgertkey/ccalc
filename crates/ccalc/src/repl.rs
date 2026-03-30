@@ -159,13 +159,15 @@ pub fn run() {
             continue;
         }
 
-        // print / print "label"
-        if let Some(label) = parse_print_cmd(trimmed) {
-            let value = format_value(ans(&env), precision, base);
-            match label {
-                None => println!("{value}"),
-                Some(s) => println!("{s} {value}"),
-            }
+        // disp(expr) — print value without updating ans
+        if let Some(arg) = parse_disp_cmd(trimmed) {
+            handle_disp(arg, &env, precision, base);
+            continue;
+        }
+
+        // fprintf('fmt') — print formatted string
+        if let Some(arg) = parse_fprintf_cmd(trimmed) {
+            handle_fprintf(arg);
             continue;
         }
 
@@ -225,6 +227,16 @@ pub fn run_expr(expr: &str) {
     let mut env = new_env();
     let mut base = Base::Dec;
     let trimmed = expr.trim();
+
+    if let Some(arg) = parse_disp_cmd(trimmed) {
+        handle_disp(arg, &env, 10, base);
+        return;
+    }
+    if let Some(arg) = parse_fprintf_cmd(trimmed) {
+        handle_fprintf(arg);
+        return;
+    }
+
     let (to_eval, base_suffix) = extract_base_suffix(trimmed);
     let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
     if let Some(BaseSuffix::Switch(b)) = base_suffix {
@@ -258,7 +270,6 @@ pub fn run_pipe(reader: impl BufRead) {
     let mut env = new_env();
     let mut precision: usize = 10;
     let mut base = Base::Dec;
-    let mut result_pending = false;
 
     for line in reader.lines() {
         let line = match line {
@@ -277,7 +288,6 @@ pub fn run_pipe(reader: impl BufRead) {
             (trimmed, false)
         };
         if trimmed.is_empty() {
-            result_pending = false;
             continue;
         }
 
@@ -340,15 +350,15 @@ pub fn run_pipe(reader: impl BufRead) {
             continue;
         }
 
-        // print / print "label"
-        if let Some(label) = parse_print_cmd(trimmed) {
-            match label {
-                None => println!("{}", format_value(ans(&env), precision, base)),
-                Some(s) if result_pending => {
-                    println!("{s} {}", format_value(ans(&env), precision, base))
-                }
-                Some(s) => println!("{s}"),
-            }
+        // disp(expr) — print value without updating ans
+        if let Some(arg) = parse_disp_cmd(trimmed) {
+            handle_disp(arg, &env, precision, base);
+            continue;
+        }
+
+        // fprintf('fmt') — print formatted string
+        if let Some(arg) = parse_fprintf_cmd(trimmed) {
+            handle_fprintf(arg);
             continue;
         }
 
@@ -360,7 +370,6 @@ pub fn run_pipe(reader: impl BufRead) {
 
         match evaluate(to_eval, &mut env) {
             Ok(result) => {
-                result_pending = true;
                 if !silent {
                     let val = match result {
                         EvalResult::Assigned(name, v) => {
@@ -644,15 +653,68 @@ fn parse_precision_cmd(input: &str) -> Option<usize> {
     }
 }
 
-/// Parses a `print` command.
-/// Returns `Some(None)` for bare `print`, `Some(Some(label))` for `print "label"`.
-fn parse_print_cmd(input: &str) -> Option<Option<&str>> {
-    if input == "print" {
-        return Some(None);
+/// Extracts the argument string from a `disp(...)` call.
+/// Returns `None` if the input does not match the pattern.
+fn parse_disp_cmd(input: &str) -> Option<&str> {
+    let inner = input.strip_prefix("disp(")?.strip_suffix(')')?;
+    if inner.is_empty() { None } else { Some(inner) }
+}
+
+/// Extracts the argument string from a `fprintf(...)` call.
+fn parse_fprintf_cmd(input: &str) -> Option<&str> {
+    input.strip_prefix("fprintf(")?.strip_suffix(')')
+}
+
+/// Evaluates `arg` and prints the result. Does not update `ans`.
+fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
+    let result = parse(arg.trim()).and_then(|stmt| {
+        let expr = match stmt {
+            Stmt::Expr(e) => e,
+            Stmt::Assign(_, e) => e,
+        };
+        eval(&expr, env)
+    });
+    match result {
+        Ok(v) => println!("{}", format_value(v, precision, base)),
+        Err(e) => eprintln!("Error: {e}"),
     }
-    let rest = input.strip_prefix("print ")?.trim_start();
-    let label = rest.strip_prefix('"')?.strip_suffix('"')?;
-    Some(Some(label))
+}
+
+/// Prints a formatted string literal. Phase 1: single string arg, escape sequences only.
+fn handle_fprintf(arg: &str) {
+    let s = arg.trim();
+    let content = if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+        inner
+    } else if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        inner
+    } else {
+        eprintln!("Error: fprintf requires a string literal");
+        return;
+    };
+    print!("{}", process_escapes(content));
+    let _ = std::io::stdout().flush();
+}
+
+/// Processes `\n`, `\t`, `\\` escape sequences in a string.
+fn process_escapes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('\\') => result.push('\\'),
+                Some('\'') => result.push('\''),
+                Some('"') => result.push('"'),
+                Some(other) => { result.push('\\'); result.push(other); }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 fn clear_screen() {
@@ -823,27 +885,56 @@ mod tests {
         assert_eq!(parse_precision_cmd("6"), None);
     }
 
-    // --- parse_print_cmd tests ---
+    // --- parse_disp_cmd tests ---
 
     #[test]
-    fn test_parse_print_cmd_bare() {
-        assert!(matches!(parse_print_cmd("print"), Some(None)));
+    fn test_parse_disp_cmd_simple() {
+        assert_eq!(parse_disp_cmd("disp(42)"), Some("42"));
+        assert_eq!(parse_disp_cmd("disp(x + 1)"), Some("x + 1"));
+        assert_eq!(parse_disp_cmd("disp(sin(pi/2))"), Some("sin(pi/2)"));
     }
 
     #[test]
-    fn test_parse_print_cmd_with_label() {
-        assert!(matches!(
-            parse_print_cmd(r#"print "Monthly payment""#),
-            Some(Some("Monthly payment"))
-        ));
+    fn test_parse_disp_cmd_not_matched() {
+        assert!(parse_disp_cmd("display(42)").is_none());
+        assert!(parse_disp_cmd("disp()").is_none());
+        assert!(parse_disp_cmd("disp 42").is_none());
+    }
+
+    // --- parse_fprintf_cmd tests ---
+
+    #[test]
+    fn test_parse_fprintf_cmd_string() {
+        assert_eq!(parse_fprintf_cmd("fprintf('hello')"), Some("'hello'"));
+        assert_eq!(parse_fprintf_cmd("fprintf(\"hi\")"), Some("\"hi\""));
     }
 
     #[test]
-    fn test_parse_print_cmd_not_matched() {
-        assert!(parse_print_cmd("printer").is_none());
-        assert!(parse_print_cmd("p").is_none());
-        assert!(parse_print_cmd("prin").is_none());
-        assert!(parse_print_cmd("print no quotes").is_none());
+    fn test_parse_fprintf_cmd_not_matched() {
+        assert!(parse_fprintf_cmd("printf('x')").is_none());
+        assert!(parse_fprintf_cmd("fprintf 'x'").is_none());
+    }
+
+    // --- process_escapes tests ---
+
+    #[test]
+    fn test_process_escapes_newline() {
+        assert_eq!(process_escapes("a\\nb"), "a\nb");
+    }
+
+    #[test]
+    fn test_process_escapes_tab() {
+        assert_eq!(process_escapes("a\\tb"), "a\tb");
+    }
+
+    #[test]
+    fn test_process_escapes_backslash() {
+        assert_eq!(process_escapes("a\\\\b"), "a\\b");
+    }
+
+    #[test]
+    fn test_process_escapes_no_escape() {
+        assert_eq!(process_escapes("hello"), "hello");
     }
 
     // --- expand_vars_for_display tests ---
@@ -940,12 +1031,14 @@ mod tests {
     // --- pipe_output helper + tests ---
 
     fn pipe_output(input: &str) -> Vec<String> {
+        use ccalc_engine::eval::eval;
+        use ccalc_engine::parser::{Stmt, parse};
         use std::io::Cursor;
+
         let mut output = Vec::new();
         let mut env = new_env();
         let mut precision: usize = 10;
         let mut base = Base::Dec;
-        let mut result_pending = false;
         let reader = Cursor::new(input);
 
         for line in reader.lines() {
@@ -958,7 +1051,6 @@ mod tests {
                 (trimmed, false)
             };
             if trimmed.is_empty() {
-                result_pending = false;
                 continue;
             }
             match trimmed {
@@ -996,14 +1088,35 @@ mod tests {
                 precision = p;
                 continue;
             }
-            if let Some(label) = parse_print_cmd(trimmed) {
-                match label {
-                    None => output.push(format_value(ans(&env), precision, base)),
-                    Some(s) if result_pending => {
-                        output.push(format!("{s} {}", format_value(ans(&env), precision, base)))
-                    }
-                    Some(s) => output.push(s.to_string()),
+            // disp(expr) — push formatted value without updating ans
+            if let Some(arg) = parse_disp_cmd(trimmed) {
+                let result = parse(arg.trim()).and_then(|stmt| {
+                    let expr = match stmt {
+                        Stmt::Expr(e) => e,
+                        Stmt::Assign(_, e) => e,
+                    };
+                    eval(&expr, &env)
+                });
+                match result {
+                    Ok(v) => output.push(format_value(v, precision, base)),
+                    Err(e) => output.push(format!("Error: {e}")),
                 }
+                continue;
+            }
+            // fprintf('fmt') — push processed string
+            if let Some(arg) = parse_fprintf_cmd(trimmed) {
+                let s = arg.trim();
+                let content =
+                    if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+                        process_escapes(inner)
+                    } else if let Some(inner) =
+                        s.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
+                    {
+                        process_escapes(inner)
+                    } else {
+                        "Error: fprintf requires a string literal".to_string()
+                    };
+                output.push(content);
                 continue;
             }
             let (to_eval, base_suffix) = extract_base_suffix(trimmed);
@@ -1013,7 +1126,6 @@ mod tests {
             }
             match evaluate(to_eval, &mut env) {
                 Ok(result) => {
-                    result_pending = true;
                     if !silent {
                         match result {
                             EvalResult::Assigned(name, v) => {
@@ -1179,64 +1291,73 @@ mod tests {
     }
 
     #[test]
-    fn test_pipe_print_bare() {
-        let out = pipe_output("42\nprint");
-        assert_eq!(out, vec!["42", "42"]);
-    }
-
-    #[test]
-    fn test_pipe_print_with_label() {
-        let out = pipe_output("42\nprint \"Answer\"");
-        assert_eq!(out, vec!["42", "Answer 42"]);
-    }
-
-    #[test]
-    fn test_pipe_print_does_not_change_accumulator() {
-        let out = pipe_output("10\nprint \"val\"\n+ 5");
-        assert_eq!(out, vec!["10", "val 10", "15"]);
-    }
-
-    #[test]
     fn test_pipe_semicolon_suppresses_output() {
         let out = pipe_output("10;\n+ 5");
         assert_eq!(out, vec!["15"]);
     }
 
     #[test]
-    fn test_pipe_semicolon_still_updates_accumulator() {
-        let out = pipe_output("10;\nprint");
+    fn test_pipe_semicolon_still_updates_ans() {
+        let out = pipe_output("10;\ndisp(ans)");
         assert_eq!(out, vec!["10"]);
     }
 
     #[test]
     fn test_pipe_semicolon_with_comment() {
-        let out = pipe_output("10; % intermediate\nprint \"result\"");
-        assert_eq!(out, vec!["result 10"]);
+        let out = pipe_output("10; % intermediate\ndisp(ans)");
+        assert_eq!(out, vec!["10"]);
     }
 
     #[test]
     fn test_pipe_semicolon_variable_store() {
-        // silent assignment, then use it
         let out = pipe_output("7;\nx = ans;\nx + 3");
         assert_eq!(out, vec!["10"]);
     }
 
+    // --- disp tests ---
+
     #[test]
-    fn test_print_label_after_blank_line_no_value() {
-        let out = pipe_output("10;\n\nprint \"Section:\"");
-        assert_eq!(out, vec!["Section:"]);
+    fn test_pipe_disp_simple() {
+        let out = pipe_output("disp(42)");
+        assert_eq!(out, vec!["42"]);
     }
 
     #[test]
-    fn test_print_label_after_expression_shows_value() {
-        let out = pipe_output("42\nprint \"Answer:\"");
-        assert_eq!(out, vec!["42", "Answer: 42"]);
+    fn test_pipe_disp_expression() {
+        let out = pipe_output("disp(sqrt(16))");
+        assert_eq!(out, vec!["4"]);
     }
 
     #[test]
-    fn test_print_bare_always_shows_value() {
-        let out = pipe_output("10;\n\nprint");
-        assert_eq!(out, vec!["10"]);
+    fn test_pipe_disp_does_not_change_ans() {
+        let out = pipe_output("10\ndisp(42)\n+ 5");
+        assert_eq!(out, vec!["10", "42", "15"]);
+    }
+
+    #[test]
+    fn test_pipe_disp_variable() {
+        let out = pipe_output("x = 7;\ndisp(x)");
+        assert_eq!(out, vec!["7"]);
+    }
+
+    // --- fprintf tests ---
+
+    #[test]
+    fn test_pipe_fprintf_single_quotes() {
+        let out = pipe_output("fprintf('hello\\n')");
+        assert_eq!(out, vec!["hello\n"]);
+    }
+
+    #[test]
+    fn test_pipe_fprintf_double_quotes() {
+        let out = pipe_output("fprintf(\"hi\\n\")");
+        assert_eq!(out, vec!["hi\n"]);
+    }
+
+    #[test]
+    fn test_pipe_fprintf_no_newline() {
+        let out = pipe_output("fprintf('result: ')");
+        assert_eq!(out, vec!["result: "]);
     }
 
     #[test]

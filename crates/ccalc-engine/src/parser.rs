@@ -243,7 +243,7 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
 pub fn is_partial(input: &str) -> bool {
     matches!(
         input.trim_start().chars().next(),
-        Some('+' | '-' | '*' | '/' | '^' | '%')
+        Some('+' | '-' | '*' | '/' | '^')
     )
 }
 
@@ -697,7 +697,6 @@ mod tests {
         assert!(is_partial("* 100"));
         assert!(is_partial("/ 2"));
         assert!(is_partial("^ 2"));
-        assert!(is_partial("% 3"));
         assert!(!is_partial("1 + 1"));
         assert!(!is_partial("(3 + 3) * 2"));
         assert!(!is_partial("sqrt(4)"));
