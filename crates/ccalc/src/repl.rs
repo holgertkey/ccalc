@@ -707,7 +707,10 @@ fn process_escapes(s: &str) -> String {
                 Some('\\') => result.push('\\'),
                 Some('\'') => result.push('\''),
                 Some('"') => result.push('"'),
-                Some(other) => { result.push('\\'); result.push(other); }
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
                 None => result.push('\\'),
             }
         } else {
@@ -1106,16 +1109,15 @@ mod tests {
             // fprintf('fmt') — push processed string
             if let Some(arg) = parse_fprintf_cmd(trimmed) {
                 let s = arg.trim();
-                let content =
-                    if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
-                        process_escapes(inner)
-                    } else if let Some(inner) =
-                        s.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
-                    {
-                        process_escapes(inner)
-                    } else {
-                        "Error: fprintf requires a string literal".to_string()
-                    };
+                let content = if let Some(inner) =
+                    s.strip_prefix('\'').and_then(|s| s.strip_suffix('\''))
+                {
+                    process_escapes(inner)
+                } else if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                    process_escapes(inner)
+                } else {
+                    "Error: fprintf requires a string literal".to_string()
+                };
                 output.push(content);
                 continue;
             }
