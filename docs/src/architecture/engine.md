@@ -12,16 +12,18 @@ pub fn parser::parse(input: &str) -> Result<Stmt, String>
 // Check whether input is a partial expression (starts with an operator)
 pub fn parser::is_partial(input: &str) -> bool
 
-// Evaluate an AST to a float, given a variable environment
+// Evaluate an AST node given a variable environment
 pub fn eval::eval(expr: &Expr, env: &Env) -> Result<f64, String>
+// Note: return type migrates to Result<Value, String> in Phase 3
 
-// Format a number for user-facing display
+// Format a number for user-facing display (respects base and precision)
 pub fn eval::format_value(n: f64, precision: usize, base: Base) -> String
 
-// Format a number for internal use (always decimal, for re-parsing)
+// Format a number for internal use (always decimal)
 pub fn eval::format_number(n: f64) -> String
 
-// Variable environment: HashMap<String, f64>
+// Variable environment: maps names to scalar values
+// Migrates to HashMap<String, Value> in Phase 3
 pub type env::Env = HashMap<String, f64>;
 
 // Save / load workspace to ~/.config/ccalc/workspace.toml

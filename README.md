@@ -1,8 +1,26 @@
 # ccalc
 
-A command-line calculator with named variables, multi-base arithmetic, and math functions.
+A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
 **Current version: 0.7.0** — see [CHANGELOG](CHANGELOG.md) for history.
+
+---
+
+## Why ccalc?
+
+Octave is hundreds of megabytes. Python requires a runtime. ccalc is a single
+self-contained binary that starts instantly and works anywhere: interactive
+sessions, shell scripts, CI pipelines, Docker containers.
+
+It speaks Octave/MATLAB syntax — familiar to engineers and scientists — without
+requiring a full language installation.
+
+| Who | Typical use |
+|-----|-------------|
+| Embedded / systems engineer | Arithmetic, hex/bin conversions, bit masks |
+| DevOps / SRE | Quick calculations in scripts and pipelines |
+| Scientist / student | Interactive session with variables and math functions |
+| MATLAB / Octave user | Familiar syntax, no heavy installation |
 
 ---
 
@@ -156,10 +174,10 @@ A number or closing parenthesis immediately before `(` multiplies without an exp
 
 ## Constants
 
-| Name  | Value                     |
-|-------|---------------------------|
-| `pi`  | 3.14159265358979...       |
-| `e`   | 2.71828182845904...       |
+| Name  | Value                         |
+|-------|-------------------------------|
+| `pi`  | 3.14159265358979...           |
+| `e`   | 2.71828182845904...           |
 | `ans` | Result of the last expression |
 
 `ans` is the implicit accumulator — it is updated after every expression and can be used anywhere in an expression:
@@ -245,13 +263,13 @@ rate = 0.07
 
 ### View and clear
 
-| Command       | Action                                            |
-|---------------|---------------------------------------------------|
-| `who`         | Show all defined variables and their values       |
-| `clear`       | Clear all variables                               |
-| `clear name`  | Clear a single variable                           |
+| Command       | Action                                             |
+|---------------|----------------------------------------------------|
+| `who`         | Show all defined variables and their values        |
+| `clear`       | Clear all variables                                |
+| `clear name`  | Clear a single variable                            |
 | `ws`          | Save workspace to `~/.config/ccalc/workspace.toml` |
-| `wl`          | Load workspace from file                          |
+| `wl`          | Load workspace from file                           |
 
 ```
 [ 0 ]: rate = 0.05
@@ -279,7 +297,7 @@ rate = 0.05
 | `clear <name>`                    | Clear a single variable             |
 | `p`                               | Show current decimal precision      |
 | `p<N>`                            | Set decimal precision (0–15)        |
-| `hex` / `dec` / `bin` / `oct`    | Switch display base                 |
+| `hex` / `dec` / `bin` / `oct`     | Switch display base                 |
 | `base`                            | Show ans in all four bases          |
 | `ws`                              | Save workspace to disk              |
 | `wl`                              | Load workspace from disk            |
@@ -383,22 +401,6 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 
 ## Examples
 
-**Percentage — add VAT:**
-
-```
-[ 0 ]: 1200
-[ 1200 ]: + 20%
-[ 1440 ]:              (1200 + 20% of 1200)
-```
-
-**Percentage — discount:**
-
-```
-[ 0 ]: 850
-[ 850 ]: - 15%
-[ 722.5 ]:             (850 − 15% of 850)
-```
-
 **Implicit multiplication:**
 
 ```
@@ -475,9 +477,9 @@ print "Monthly payment ($):"
 
 `print` prints the current `ans` value. `print "label"` prints the label followed by the value. Write any punctuation you want directly in the label.
 
-| Command | Output |
-|---|---|
-| `print` | `1199.101050304` |
+| Command                        | Output                                |
+|--------------------------------|---------------------------------------|
+| `print`                        | `1199.101050304`                      |
 | `print "Monthly payment ($):"` | `Monthly payment ($): 1199.101050304` |
 
 **Section headers** — `print "label"` placed after a blank line prints the label only, without a value. Use this for headings between calculation blocks:

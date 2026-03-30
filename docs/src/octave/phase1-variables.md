@@ -1,76 +1,77 @@
 # Phase 1 — Variables and Assignment
 
+**Status: ✅ Done** (v0.7.0)
+
 **Goal**: `x = 5`, then `x + 1` → `6`
 
-## What changes
-
-### New `Value` type
-
-Replace bare `f64` in the evaluator with an enum that can grow:
-
-```rust
-pub enum Value {
-    Scalar(f64),
-    // Matrix(Array2<f64>) — added in Phase 3
-}
-```
+## What was implemented
 
 ### Variable environment (`Env`)
 
 ```rust
-pub type Env = HashMap<String, Value>;
+pub type Env = HashMap<String, f64>;
 ```
 
-`eval` gains a `&mut Env` parameter. The REPL holds one `Env` per session.
+`eval` takes `&Env`. The REPL holds one `Env` per session, initialized with
+`ans = 0.0` on startup.
 
 ### Assignment statement
 
-`x = expr` is a new statement type, separate from an expression:
+`x = expr` is a top-level statement, separate from an expression:
 
 ```rust
 pub enum Stmt {
     Assign(String, Expr),   // x = expr
-    Expr(Expr),             // standalone expression
+    Expr(Expr),             // standalone expression → stored in ans
 }
 ```
-
-The parser's top-level entry point returns `Stmt` instead of `Expr`.
 
 ### Variable lookup in expressions
 
 ```rust
-Expr::Var(String)   // new variant
+Expr::Var(String)
 ```
 
 When the evaluator encounters `Var(name)`, it looks up `name` in `Env`.
-Unknown names produce an error (as before for unknown identifiers).
+Unknown names produce an error.
 
-### New commands
+### `ans` — implicit last result
+
+`ans` is the reserved name for the result of the last standalone expression.
+It is initialized to `0.0` on startup and updated after every expression
+that is not assigned to a named variable — exactly as in Octave/MATLAB.
+
+Partial expressions (starting with an operator) automatically prepend `ans`:
+
+```
+[ 100 ]: / 4
+[ 25 ]: + 5
+[ 30 ]:
+```
+
+### Commands
 
 | Command | Action |
 |---|---|
 | `who` | List all variables and their values |
-| `clear x` | Delete variable `x` from `Env` |
-| `clear` | Delete all variables |
+| `clear` | Delete all variables (reinitializes `ans = 0`) |
+| `clear x` | Delete variable `x` |
+| `ws` | Save workspace to `~/.config/ccalc/workspace.toml` |
+| `wl` | Load workspace from file |
 
-### Variable-name-as-expression
+### Workspace persistence
 
-Typing a variable name alone prints its value in Octave style:
+Variables are saved and loaded via `env::save_workspace_default()` /
+`load_workspace_default()`. The file format is plain `name = value` lines.
 
-```
->> x = 5
-x = 5
->> x
-x = 5
-```
+## What was removed in this phase
 
-## Coexistence with existing features
+- **`acc`** (old accumulator) — replaced by `ans`.
+- **`m1`–`m9`** (memory cells) — replaced by named variables.
+- **`c` command** — replaced by `clear`.
 
-- `acc` and `m1`–`m9` remain unchanged.
-- `pi` and `e` continue to work as before (resolved before `Env` lookup).
-- Partial expressions (`+ 5`, `* 2`) still use the accumulator.
+## Octave/MATLAB alignment
 
-## Key constraint
-
-`eval` currently takes no mutable state. After this phase it takes
-`&mut Env`. All call sites in `repl.rs` must be updated.
+- `ans` follows Octave/MATLAB convention exactly.
+- `pi` and `e` are resolved in the parser (not stored in `Env`).
+- `%` terminates tokenization — everything after `%` on a line is a comment.
