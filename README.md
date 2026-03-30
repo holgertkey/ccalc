@@ -523,12 +523,12 @@ Parallel resistance (Ohm): 68.7500002148
 
 The `examples/` directory contains annotated formula files ready to run:
 
-| File | Description |
-|---|---|
-| `cylinder.ccalc` | Volume and surface area of a cylinder |
-| `mortgage.ccalc` | Monthly mortgage payment |
-| `data_storage.ccalc` | Real GiB capacity of a "500 GB" drive |
-| `resistors.ccalc` | Series, parallel resistance, voltage divider, power |
+| File                 | Description                                         |
+|----------------------|-----------------------------------------------------|
+| `cylinder.ccalc`     | Volume and surface area of a cylinder               |
+| `mortgage.ccalc`     | Monthly mortgage payment                            |
+| `data_storage.ccalc` | Real GiB capacity of a "500 GB" drive               |
+| `resistors.ccalc`    | Series, parallel resistance, voltage divider, power |
 
 ```bash
 ccalc < examples/mortgage.ccalc
