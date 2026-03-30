@@ -15,12 +15,12 @@ sessions, shell scripts, CI pipelines, Docker containers.
 It speaks Octave/MATLAB syntax — familiar to engineers and scientists — without
 requiring a full language installation.
 
-| Who | Typical use |
-|-----|-------------|
-| Embedded / systems engineer | Arithmetic, hex/bin conversions, bit masks |
-| DevOps / SRE | Quick calculations in scripts and pipelines |
-| Scientist / student | Interactive session with variables and math functions |
-| MATLAB / Octave user | Familiar syntax, no heavy installation |
+| Who                         | Typical use                                           |
+|-----------------------------|-------------------------------------------------------|
+| Embedded / systems engineer | Arithmetic, hex/bin conversions, bit masks            |
+| DevOps / SRE                | Quick calculations in scripts and pipelines           |
+| Scientist / student         | Interactive session with variables and math functions |
+| MATLAB / Octave user        | Familiar syntax, no heavy installation                |
 
 ---
 
