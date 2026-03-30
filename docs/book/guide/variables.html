@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Memory Cells - ccalc</title>
+        <title>Variables - ccalc</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -146,7 +146,7 @@
                         <a href="https://github.com/holgertkey/ccalc" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
-                        <a href="https://github.com/holgertkey/ccalc/edit/main/docs/src/src/guide/memory.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                        <a href="https://github.com/holgertkey/ccalc/edit/main/docs/src/src/guide/variables.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
                             <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
                         </a>
 
@@ -180,57 +180,59 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="memory-cells"><a class="header" href="#memory-cells">Memory Cells</a></h1>
-<p>ccalc has nine named memory cells: <strong>m1</strong> through <strong>m9</strong>.</p>
-<h2 id="storing"><a class="header" href="#storing">Storing</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Syntax</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td><code>m[1-9]</code></td><td>Store current accumulator into cell</td></tr>
-<tr><td><code>expr m[1-9]</code></td><td>Evaluate expression, store result into cell</td></tr>
-</tbody>
-</table>
-</div>
+                        <h1 id="variables"><a class="header" href="#variables">Variables</a></h1>
+<p>ccalc supports named variables. Any valid identifier can store a value.</p>
+<h2 id="assignment"><a class="header" href="#assignment">Assignment</a></h2>
+<p>Use <code>name = expr</code> to assign. Assignment is <strong>silent</strong> — no output is produced
+and <code>ans</code> is not updated:</p>
+<pre><code>[ 0 ]: rate = 0.06 / 12
+[ 0 ]: n = 360
+[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
+</code></pre>
+<p>Append <code>;</code> to assign silently in pipe/script mode (redundant in REPL, but
+consistent with Octave/MATLAB style):</p>
+<pre><code>rate = 0.06 / 12;
+n = 360;
+</code></pre>
+<p>In <strong>pipe/script mode</strong>, assignment without <code>;</code> prints <code>name = value</code>:</p>
+<pre><code>rate = 0.06 / 12
+</code></pre>
+<pre><code>rate = 0.005
+</code></pre>
+<h2 id="using-variables"><a class="header" href="#using-variables">Using variables</a></h2>
+<p>Any defined variable can appear inside an expression:</p>
+<pre><code>[ 0 ]: rate = 0.07
+[ 0 ]: 1000 * (1 + rate) ^ 10
+[ 1967.1513573 ]:
+</code></pre>
+<h2 id="ans"><a class="header" href="#ans">ans</a></h2>
+<p><code>ans</code> is the implicit result variable — set automatically after every
+standalone expression (not after assignments). It is initialized to <code>0</code>
+at startup.</p>
+<p>Expressions starting with an operator use <code>ans</code> as the left-hand operand:</p>
 <pre><code>[ 0 ]: 100
-[ 100 ]: m1           # m1 = 100
-[ 100 ]: (1 + 1) * 3 m2   # m2 = 6
+[ 100 ]: / 4
+[ 25 ]: + 5
+[ 30 ]:
 </code></pre>
-<h2 id="recalling"><a class="header" href="#recalling">Recalling</a></h2>
-<p>Use <code>m[1-9]</code> inside any expression — it is replaced with the cell’s value:</p>
-<pre><code>[ 0 ]: m1 + m2        →  106    (100 + 6)
-[ 0 ]: sqrt(m1)       →   10
+<p>Empty-argument function calls use <code>ans</code> as the argument:</p>
+<pre><code>[ 144 ]: sqrt()      →  12     (same as sqrt(144))
 </code></pre>
-<h2 id="compound-assignment"><a class="header" href="#compound-assignment">Compound assignment</a></h2>
-<p>Combine a store with an arithmetic operation in one step.
-The result is written back to the cell <strong>and</strong> becomes the new accumulator.</p>
+<h2 id="constants"><a class="header" href="#constants">Constants</a></h2>
+<p><code>pi</code> and <code>e</code> are pre-defined read-only constants:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Syntax</th><th>Operation</th></tr>
+<tr><th>Name</th><th>Value</th></tr>
 </thead>
 <tbody>
-<tr><td><code>expr m[1-9]+</code></td><td>cell += expr</td></tr>
-<tr><td><code>expr m[1-9]-</code></td><td>cell -= expr</td></tr>
-<tr><td><code>expr m[1-9]*</code></td><td>cell *= expr</td></tr>
-<tr><td><code>expr m[1-9]/</code></td><td>cell /= expr</td></tr>
-<tr><td><code>expr m[1-9]%</code></td><td>cell %= expr</td></tr>
-<tr><td><code>expr m[1-9]^</code></td><td>cell ^= expr</td></tr>
+<tr><td><code>pi</code></td><td>3.14159265358979…</td></tr>
+<tr><td><code>e</code></td><td>2.71828182845904…</td></tr>
 </tbody>
 </table>
 </div>
-<pre><code>[ 0 ]: 100 m1         # m1 = 100
-[ 100 ]: 2 m1*        # m1 = 200; accumulator = 200
-[ 200 ]: 50 m1-       # m1 = 150; accumulator = 150
-[ 150 ]: 3 m1/        # m1 = 50;  accumulator = 50
-</code></pre>
-<h2 id="copying-a-cell"><a class="header" href="#copying-a-cell">Copying a cell</a></h2>
-<p><code>expr m[1-9]</code> stores the expression result into the cell.
-To copy m1 into m2, use the cell value as the expression:</p>
-<pre><code>[ 0 ]: m1 m2          # m2 = value of m1
-</code></pre>
 <h2 id="view-and-clear"><a class="header" href="#view-and-clear">View and clear</a></h2>
 <div class="table-wrapper">
 <table>
@@ -238,40 +240,59 @@ To copy m1 into m2, use the cell value as the expression:</p>
 <tr><th>Command</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>m</code></td><td>Show all non-zero cells</td></tr>
-<tr><td><code>mc</code></td><td>Clear all cells</td></tr>
-<tr><td><code>mc[1-9]</code></td><td>Clear a specific cell</td></tr>
+<tr><td><code>who</code></td><td>Show all defined variables and their values</td></tr>
+<tr><td><code>clear</code></td><td>Clear all variables</td></tr>
+<tr><td><code>clear name</code></td><td>Clear a single variable by name</td></tr>
 </tbody>
 </table>
 </div>
-<pre><code>[ 50 ]: m
-m1: 50
-m2: 6
-[ 50 ]: mc1
-[ 50 ]: m
-m2: 6
-[ 50 ]: mc
-[ 50 ]: m
-(nothing)
+<pre><code>[ 0 ]: x = 10
+[ 0 ]: y = 3.14
+[ 0 ]: x + y
+[ 13.14 ]: who
+ans = 13.14
+x = 10
+y = 3.14
+[ 13.14 ]: clear x
+[ 13.14 ]: who
+ans = 13.14
+y = 3.14
+[ 13.14 ]: clear
 </code></pre>
-<h2 id="persistence"><a class="header" href="#persistence">Persistence</a></h2>
+<h2 id="workspace-persistence"><a class="header" href="#workspace-persistence">Workspace persistence</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Command</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>ms</code></td><td>Save cells to <code>~/.config/ccalc/memory.toml</code></td></tr>
-<tr><td><code>ml</code></td><td>Load cells from file (clears current cells first)</td></tr>
+<tr><td><code>ws</code></td><td>Save all variables to <code>~/.config/ccalc/workspace.toml</code></td></tr>
+<tr><td><code>wl</code></td><td>Load variables from file (replaces current workspace)</td></tr>
 </tbody>
 </table>
 </div>
-<p>The file is plain text in TOML-like format:</p>
-<pre><code>m1 = 100
-m3 = 3.14
-m9 = -7.5
+<p>The workspace file is plain text, one <code>name = value</code> entry per line:</p>
+<pre><code>ans = 13.14
+n = 360
+rate = 0.005
 </code></pre>
-<p>Cells that are zero are not written to the file.</p>
+<h2 id="example--monthly-mortgage"><a class="header" href="#example--monthly-mortgage">Example — monthly mortgage</a></h2>
+<pre><code>% REPL session
+[ 0 ]: rate = 0.06 / 12
+[ 0 ]: n = 360
+[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
+</code></pre>
+<p>As a script file (pipe mode, assignments print unless <code>;</code> is used):</p>
+<pre><code>% Monthly mortgage payment
+rate = 0.06 / 12;
+n = 360;
+factor = (1 + rate) ^ n;
+200000 * rate * factor / (factor - 1)
+fprintf('Monthly payment ($): ')
+disp(ans)
+</code></pre>
 
                     </main>
 

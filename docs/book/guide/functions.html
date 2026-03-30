@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -203,7 +203,7 @@
 </table>
 </div>
 <h2 id="empty-argument-shorthand"><a class="header" href="#empty-argument-shorthand">Empty-argument shorthand</a></h2>
-<p>Calling a function with empty parentheses uses the <strong>accumulator</strong> as the argument:</p>
+<p>Calling a function with empty parentheses uses <strong>ans</strong> as the argument:</p>
 <pre><code>[ 144 ]: sqrt()      →  12     (same as sqrt(144))
 [ -7 ]:  abs()       →   7
 [ 0 ]:   sin()       →   0
@@ -217,14 +217,13 @@
 <tbody>
 <tr><td><code>pi</code></td><td>3.14159265358979…</td></tr>
 <tr><td><code>e</code></td><td>2.71828182845904…</td></tr>
-<tr><td><code>acc</code></td><td>Current accumulator value (explicit alias)</td></tr>
+<tr><td><code>ans</code></td><td>Result of last expression</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>acc</code> is most useful in expressions where you need the accumulator
-mid-expression without making it a partial expression:</p>
-<pre><code>[ 9 ]: acc * 2 + 1    →  19
-[ 9 ]: sqrt(acc)      →   3
+<p><code>ans</code> can appear anywhere in an expression:</p>
+<pre><code>[ 9 ]: ans * 2 + 1    →  19
+[ 9 ]: sqrt(ans)      →   3
 </code></pre>
 <h2 id="nesting"><a class="header" href="#nesting">Nesting</a></h2>
 <p>Functions can be nested freely:</p>

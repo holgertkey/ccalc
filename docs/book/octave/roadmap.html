@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,8 +181,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="octave-compatibility-roadmap"><a class="header" href="#octave-compatibility-roadmap">Octave Compatibility Roadmap</a></h1>
-<p>ccalc is being extended to support Octave/MATLAB syntax in the engine crate.
-The work is divided into 9 phases in order of architectural importance.</p>
+<p>ccalc aims for maximum practical compatibility with Octave/MATLAB <code>.m</code> files.
+The work is divided into phases in order of architectural dependency.</p>
 <h2 id="phase-summary"><a class="header" href="#phase-summary">Phase summary</a></h2>
 <div class="table-wrapper">
 <table>
@@ -190,8 +190,8 @@ The work is divided into 9 phases in order of architectural importance.</p>
 <tr><th>Phase</th><th>Goal</th><th>Status</th></tr>
 </thead>
 <tbody>
-<tr><td>1</td><td>Variables and assignment (<code>x = 5</code>, <code>who</code>, <code>clear</code>)</td><td>Planned</td></tr>
-<tr><td>2</td><td>Multi-argument functions (<code>atan2</code>, <code>mod</code>, <code>max</code>)</td><td>Planned</td></tr>
+<tr><td>1</td><td>Variables and assignment (<code>x = 5</code>, <code>who</code>, <code>clear</code>, <code>ws</code>/<code>wl</code>)</td><td>✅ Done</td></tr>
+<tr><td>2</td><td>Multi-argument functions (<code>atan2</code>, <code>mod</code>, <code>max</code>, <code>min</code>)</td><td>Planned</td></tr>
 <tr><td>3</td><td>Matrix literals (<code>[1 2 3]</code>, <code>[1; 2; 3]</code>)</td><td>Planned</td></tr>
 <tr><td>4</td><td>Matrix operations (<code>A * B</code>, <code>A'</code>, <code>A .* B</code>)</td><td>Planned</td></tr>
 <tr><td>5</td><td>Range operator (<code>1:5</code>, <code>1:2:10</code>, <code>linspace</code>)</td><td>Planned</td></tr>
@@ -199,26 +199,38 @@ The work is divided into 9 phases in order of architectural importance.</p>
 <tr><td>7</td><td>Comparison and logical operators (<code>==</code>, <code>~=</code>, <code>&amp;&amp;</code>)</td><td>Planned</td></tr>
 <tr><td>8</td><td>Control flow (<code>if</code>, <code>for</code>, <code>while</code> in <code>.m</code> files)</td><td>Planned</td></tr>
 <tr><td>9</td><td>User-defined functions (<code>function y = f(x) … end</code>)</td><td>Planned</td></tr>
+<tr><td>10</td><td>String data types (<code>'char array'</code>, <code>"string object"</code>)</td><td>Planned</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="key-architectural-decisions"><a class="header" href="#key-architectural-decisions">Key architectural decisions</a></h2>
-<p><strong>Phase 1</strong> introduces <code>Value</code> (replacing bare <code>f64</code>) and <code>Env</code> (variable
-environment), which are load-bearing for every subsequent phase.</p>
-<p><strong>Phase 3</strong> adds <code>ndarray</code> as the first external computation dependency.</p>
+<p><strong>Phase 1</strong> introduced <code>Env</code> (<code>HashMap&lt;String, f64&gt;</code>) and <code>Stmt</code>
+(assignment vs expression), which are load-bearing for every subsequent phase.</p>
+<p><strong>Phase 2</strong> migrates <code>Expr::Call(String, Box&lt;Expr&gt;)</code> to
+<code>Expr::Call(String, Vec&lt;Expr&gt;)</code> and introduces a function registry
+(<code>HashMap&lt;&amp;str, BuiltinFn&gt;</code>). The evaluator will no longer hard-code function
+names.</p>
+<p><strong>Phase 3</strong> adds <code>ndarray</code> and a <code>Value</code> enum (<code>Scalar(f64)</code> | <code>Matrix(...)</code>),
+migrating <code>Env</code> from <code>f64</code> to <code>Value</code>.</p>
 <p><strong>Phase 6</strong> resolves the syntactic ambiguity between <code>f(x)</code> (function call)
-and <code>A(i)</code> (matrix indexing) by checking <code>Env</code> at parse/eval time.</p>
+and <code>A(i)</code> (matrix indexing) by checking <code>Env</code> at eval time.</p>
 <p><strong>Phase 8</strong> adds multi-line input buffering to the REPL for unclosed
 <code>if</code>/<code>for</code>/<code>while</code>/<code>end</code> blocks.</p>
+<p><strong>Phase 10</strong> adds two distinct string types following the modern MATLAB
+standard: <code>'text'</code> (char array, numeric-compatible) and <code>"text"</code> (string
+object).</p>
 <h2 id="compatibility-notes"><a class="header" href="#compatibility-notes">Compatibility notes</a></h2>
 <ul>
-<li><code>%</code> is already <strong>modulo</strong> in ccalc; in Octave <code>%</code> starts a comment.
-Resolution deferred to Phase 8 (scripting).</li>
-<li>The accumulator (<code>acc</code>) and memory cells (m1–m9) coexist with Octave
-variables throughout all phases.</li>
-<li>Rarely-used Octave features are left unimplemented until clearly needed.</li>
+<li><code>%</code> is a <strong>comment</strong> character (Octave/MATLAB convention). It terminates
+tokenization at that point. This is already implemented.</li>
+<li><code>ans</code> is the sole implicit variable (Octave/MATLAB convention). The old
+accumulator (<code>acc</code>) and memory cells (<code>m1</code>–<code>m9</code>) were removed in Phase 1.</li>
+<li>1-based indexing for matrices (Octave/MATLAB convention) — implemented in Phase 6.</li>
+<li>Where MATLAB and Octave differ, ccalc follows the <strong>modern MATLAB standard
+(R2016b+)</strong>.</li>
+<li>Full toolbox compatibility (Signal Processing, Optimization, etc.) is
+out of scope.</li>
 </ul>
-<p>See individual phase pages for detailed implementation plans.</p>
 
                     </main>
 

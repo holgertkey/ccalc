@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,14 +183,14 @@
                         <h1 id="repl-mode"><a class="header" href="#repl-mode">REPL Mode</a></h1>
 <p>Start with <code>ccalc</code> (no arguments, stdin is a terminal).</p>
 <h2 id="prompt"><a class="header" href="#prompt">Prompt</a></h2>
-<p>The prompt always shows the current accumulator:</p>
+<p>The prompt always shows the current value of <code>ans</code>:</p>
 <pre><code>[ 0 ]:
 [ 42 ]:
 [ 0xFF ]:
 </code></pre>
-<h2 id="accumulator"><a class="header" href="#accumulator">Accumulator</a></h2>
-<p>Every expression result becomes the new accumulator. Expressions that start with
-an operator use the accumulator as the left-hand operand (<strong>partial expressions</strong>):</p>
+<h2 id="ans"><a class="header" href="#ans">ans</a></h2>
+<p>Every expression result is stored in <code>ans</code>. Expressions that start with
+an operator use <code>ans</code> as the left-hand operand (<strong>partial expressions</strong>):</p>
 <pre><code>[ 0 ]: 100
 [ 100 ]: * 2
 [ 200 ]: + 50
@@ -204,17 +204,17 @@ an operator use the accumulator as the left-hand operand (<strong>partial expres
 <tr><th>Command</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>q</code></td><td>Quit</td></tr>
-<tr><td><code>c</code></td><td>Clear accumulator (reset to 0)</td></tr>
+<tr><td><code>exit</code>, <code>quit</code></td><td>Quit</td></tr>
 <tr><td><code>cls</code></td><td>Clear the screen</td></tr>
+<tr><td><code>who</code></td><td>Show all defined variables</td></tr>
+<tr><td><code>clear</code></td><td>Clear all variables</td></tr>
+<tr><td><code>clear &lt;name&gt;</code></td><td>Clear a single variable</td></tr>
 <tr><td><code>p</code></td><td>Show current decimal precision</td></tr>
 <tr><td><code>p&lt;N&gt;</code></td><td>Set precision to N decimal places (0–15)</td></tr>
 <tr><td><code>hex</code> / <code>dec</code> / <code>bin</code> / <code>oct</code></td><td>Switch display base</td></tr>
-<tr><td><code>base</code></td><td>Show accumulator in all four bases</td></tr>
-<tr><td><code>m</code></td><td>Show all non-zero memory cells</td></tr>
-<tr><td><code>mc</code></td><td>Clear all memory cells</td></tr>
-<tr><td><code>ms</code></td><td>Save memory cells to file</td></tr>
-<tr><td><code>ml</code></td><td>Load memory cells from file</td></tr>
+<tr><td><code>base</code></td><td>Show ans in all four bases</td></tr>
+<tr><td><code>ws</code></td><td>Save workspace to file</td></tr>
+<tr><td><code>wl</code></td><td>Load workspace from file</td></tr>
 </tbody>
 </table>
 </div>
@@ -235,7 +235,7 @@ an operator use the accumulator as the left-hand operand (<strong>partial expres
 </table>
 </div>
 <h2 id="silencing-a-line"><a class="header" href="#silencing-a-line">Silencing a line</a></h2>
-<p>Append <code>;</code> to suppress output while still updating the accumulator:</p>
+<p>Append <code>;</code> to suppress output while still updating <code>ans</code>:</p>
 <pre><code>[ 0 ]: 0.06 / 12;
 [ 0.005 ]:
 </code></pre>

@@ -4,22 +4,32 @@ ccalc supports named variables. Any valid identifier can store a value.
 
 ## Assignment
 
-Use `name = expr` to assign:
+Use `name = expr` to assign. Assignment is **silent** — no output is produced
+and `ans` is not updated:
 
 ```
 [ 0 ]: rate = 0.06 / 12
-rate = 0.005
-[ 0.005 ]: n = 360
-n = 360
+[ 0 ]: n = 360
+[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
 ```
 
-The result is printed as `name = value`. Assignment also updates `ans`.
-
-Append `;` to assign silently:
+Append `;` to assign silently in pipe/script mode (redundant in REPL, but
+consistent with Octave/MATLAB style):
 
 ```
 rate = 0.06 / 12;
 n = 360;
+```
+
+In **pipe/script mode**, assignment without `;` prints `name = value`:
+
+```
+rate = 0.06 / 12
+```
+```
+rate = 0.005
 ```
 
 ## Using variables
@@ -28,14 +38,15 @@ Any defined variable can appear inside an expression:
 
 ```
 [ 0 ]: rate = 0.07
-rate = 0.07
-[ 0.07 ]: 1000 * (1 + rate) ^ 10
+[ 0 ]: 1000 * (1 + rate) ^ 10
 [ 1967.1513573 ]:
 ```
 
 ## ans
 
-`ans` is the implicit result variable — set automatically after every expression that is not an assignment. It is initialized to `0` at startup. To reset it manually: `ans = 0`.
+`ans` is the implicit result variable — set automatically after every
+standalone expression (not after assignments). It is initialized to `0`
+at startup.
 
 Expressions starting with an operator use `ans` as the left-hand operand:
 
@@ -71,18 +82,17 @@ Empty-argument function calls use `ans` as the argument:
 
 ```
 [ 0 ]: x = 10
+[ 0 ]: y = 3.14
+[ 0 ]: x + y
+[ 13.14 ]: who
+ans = 13.14
 x = 10
-[ 10 ]: y = 3.14
 y = 3.14
-[ 3.14 ]: who
-ans = 3.14
-x = 10
+[ 13.14 ]: clear x
+[ 13.14 ]: who
+ans = 13.14
 y = 3.14
-[ 3.14 ]: clear x
-[ 3.14 ]: who
-ans = 3.14
-y = 3.14
-[ 3.14 ]: clear
+[ 13.14 ]: clear
 ```
 
 ## Workspace persistence
@@ -95,7 +105,7 @@ y = 3.14
 The workspace file is plain text, one `name = value` entry per line:
 
 ```
-ans = 3.14
+ans = 13.14
 n = 360
 rate = 0.005
 ```
@@ -103,15 +113,22 @@ rate = 0.005
 ## Example — monthly mortgage
 
 ```
+% REPL session
+[ 0 ]: rate = 0.06 / 12
+[ 0 ]: n = 360
+[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
+```
+
+As a script file (pipe mode, assignments print unless `;` is used):
+
+```
+% Monthly mortgage payment
 rate = 0.06 / 12;
 n = 360;
 factor = (1 + rate) ^ n;
 200000 * rate * factor / (factor - 1)
-print "Monthly payment ($):"
-```
-
-Output:
-
-```
-Monthly payment ($): 1199.1010503
+fprintf('Monthly payment ($): ')
+disp(ans)
 ```

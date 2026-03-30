@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -188,15 +188,15 @@ cd ccalc
 cargo build --release
 # binary: target/release/ccalc
 </code></pre>
-<h2 id="three-usage-modes"><a class="header" href="#three-usage-modes">Three usage modes</a></h2>
+<h2 id="usage-modes"><a class="header" href="#usage-modes">Usage modes</a></h2>
 <h3 id="interactive-repl"><a class="header" href="#interactive-repl">Interactive REPL</a></h3>
 <pre><code class="language-sh">ccalc
 </code></pre>
-<p>A prompt shows the current accumulator value. Type an expression and press Enter.</p>
+<p>A prompt shows the current value of <code>ans</code>. Type an expression and press Enter.</p>
 <pre><code>[ 0 ]: 2 ^ 32
 [ 4294967296 ]: / 1024
 [ 4194304 ]: sqrt()
-[ 2048 ]: q
+[ 2048 ]: exit
 </code></pre>
 <h3 id="single-expression-argument-mode"><a class="header" href="#single-expression-argument-mode">Single expression (argument mode)</a></h3>
 <pre><code class="language-sh">ccalc "EXPR"
@@ -208,9 +208,14 @@ cargo build --release
 $ ccalc "sqrt(2)"
 1.4142135624
 </code></pre>
+<h3 id="script-file"><a class="header" href="#script-file">Script file</a></h3>
+<p>Pass a <code>.m</code> or <code>.ccalc</code> file as an argument:</p>
+<pre><code class="language-sh">ccalc script.m
+ccalc examples/mortgage.ccalc
+</code></pre>
 <h3 id="pipe--non-interactive-mode"><a class="header" href="#pipe--non-interactive-mode">Pipe / non-interactive mode</a></h3>
-<p>When stdin is not a terminal, ccalc reads lines one by one, prints one result per
-line, and carries the accumulator across lines.</p>
+<p>When stdin is not a terminal, ccalc reads lines one by one and prints one result
+per line. <code>ans</code> carries over across lines.</p>
 <pre><code class="language-sh">$ echo "sin(pi / 6)" | ccalc
 0.5
 
@@ -218,6 +223,8 @@ $ printf "100\n/ 4\n+ 5" | ccalc
 100
 25
 30
+
+$ ccalc &lt; formula.txt
 </code></pre>
 <h2 id="command-line-options"><a class="header" href="#command-line-options">Command-line options</a></h2>
 <div class="table-wrapper">

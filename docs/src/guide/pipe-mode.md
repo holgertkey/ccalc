@@ -45,35 +45,31 @@ n = 360;             % term in months, silently
 factor = (1 + rate) ^ n;
 ```
 
-### `print` — explicit output
+### `disp(expr)` — print value
+
+`disp(expr)` evaluates the expression and prints the result.
+It does **not** update `ans`.
 
 ```
-print              % print current ans value
-print "label"      % print label then value
+disp(ans)               % print current ans value
+disp(rate * 12)         % print expression result
 ```
 
-The label is the full quoted string. Write any punctuation you want inside it:
+### `fprintf('fmt')` — print formatted text
+
+`fprintf('fmt')` prints a string with escape sequences (`\n`, `\t`, `\\`).
+No newline is added automatically — include `\n` explicitly.
 
 ```
-print "Result:"    →  Result: 42
-print "Sum ="      →  Sum = 42
-```
-
-**Section headers** — `print "label"` placed right after a blank line (or at the
-very start of the file) prints the label only, without a value:
-
-```
-print "=== Monthly mortgage ==="
-
-200000 * 0.005
-print "First payment:"
+fprintf('=== Monthly mortgage ===\n')
+fprintf('Result: ')
+disp(ans)
 ```
 
 Output:
 ```
 === Monthly mortgage ===
-1000
-First payment: 1000
+Result: 1199.1010503
 ```
 
 ### Supported commands in pipe mode
@@ -93,8 +89,14 @@ n = 360;                  % 30 years * 12 months
 p = 200000;               % principal
 
 factor = (1 + rate) ^ n;
-p2;
 
-p * rate * factor / (factor - 1);
-print "Monthly payment ($):"
+p * rate * factor / (factor - 1)
+fprintf('Monthly payment ($): ')
+disp(ans)
+```
+
+Output:
+```
+1199.1010503
+Monthly payment ($): 1199.1010503
 ```

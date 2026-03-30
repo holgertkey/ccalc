@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,23 +193,20 @@
 │   └── ccalc-engine/           ← library crate (computation)
 │       └── src/
 │           ├── lib.rs          ← public API
-│           ├── eval.rs         ← AST + evaluator + formatters
-│           ├── parser.rs       ← tokenizer + recursive-descent parser
-│           └── memory.rs       ← memory cells + persistence
+│           ├── env.rs          ← Env type, workspace save/load
+│           ├── eval.rs         ← AST + evaluator + formatters + Base enum
+│           └── parser.rs       ← tokenizer + recursive-descent parser, Stmt enum
 └── docs/                       ← this mdBook
 </code></pre>
 <h2 id="data-flow"><a class="header" href="#data-flow">Data flow</a></h2>
 <pre><code>User input (String)
     │
     ▼
-memory::expand_memory_refs()    ← replace m1..m9 refs with values
-    │
+parser::parse(input) → Stmt (Assign | Expr)
+    │                       ← recursive-descent parser
+    │                         produces an AST node
     ▼
-parser::parse(input, acc) → Expr
-    │                           ← recursive-descent parser
-    │                             produces an AST
-    ▼
-eval::eval(&amp;Expr) → f64
+eval::eval(&amp;Expr, &amp;Env) → f64   (Value enum from Phase 3)
     │
     ▼
 eval::format_value(n, precision, base) → String
@@ -224,12 +221,12 @@ stdout
 <tr><th>Module</th><th>Responsibility</th></tr>
 </thead>
 <tbody>
-<tr><td><code>main.rs</code></td><td>Parse CLI args, detect stdin mode, dispatch</td></tr>
+<tr><td><code>main.rs</code></td><td>Parse CLI args, detect stdin mode (REPL / pipe / file / arg), dispatch</td></tr>
 <tr><td><code>repl.rs</code></td><td>REPL event loop, pipe line-reader, shared <code>evaluate()</code>, display logic</td></tr>
-<tr><td><code>help.rs</code></td><td>Static help string, interpolates <code>CARGO_PKG_VERSION</code></td></tr>
+<tr><td><code>help.rs</code></td><td>Static help string</td></tr>
+<tr><td><code>env.rs</code></td><td><code>Env</code> type (<code>HashMap&lt;String, f64&gt;</code>), workspace save/load to disk</td></tr>
 <tr><td><code>eval.rs</code></td><td><code>Expr</code> AST, <code>Op</code>, <code>Base</code>; <code>eval()</code>, <code>format_value()</code>, <code>format_number()</code></td></tr>
-<tr><td><code>parser.rs</code></td><td>Tokenizer, recursive-descent parser, <code>parse()</code>, <code>is_partial()</code></td></tr>
-<tr><td><code>memory.rs</code></td><td><code>Memory</code> struct, directive parser, ref expander, file I/O</td></tr>
+<tr><td><code>parser.rs</code></td><td>Tokenizer, recursive-descent parser, <code>parse()</code>, <code>is_partial()</code>, <code>Stmt</code> enum</td></tr>
 </tbody>
 </table>
 </div>
@@ -241,11 +238,15 @@ stdout
 </code></pre>
 <h2 id="design-principles"><a class="header" href="#design-principles">Design principles</a></h2>
 <ul>
-<li><strong>No runtime allocations on the hot path</strong> beyond the input string itself.</li>
-<li><strong><code>crate::eval</code> is dependency-free</strong> — no I/O, no allocations beyond <code>String</code> errors.</li>
+<li><strong>One binary, no runtime.</strong> The release binary is self-contained.
+Every new dependency requires explicit justification.</li>
+<li><strong>The library is pure.</strong> <code>ccalc-engine</code> has no I/O, no terminal codes,
+no <code>rustyline</code>. The binary owns all user-facing interaction.</li>
+<li><strong>Modern MATLAB standard (R2016b+).</strong> Where MATLAB and Octave differ,
+ccalc follows modern MATLAB. Example: <code>'text'</code> is a char array (numeric),
+<code>"text"</code> is a string object.</li>
 <li><strong>Version is defined once</strong> in <code>[workspace.package]</code>; both crates inherit it.</li>
-<li>The engine crate has no knowledge of the terminal or REPL — it only deals with
-strings and numbers.</li>
+<li><strong>No runtime allocations on the hot path</strong> beyond the input string itself.</li>
 </ul>
 
                     </main>

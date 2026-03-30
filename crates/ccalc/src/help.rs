@@ -1,7 +1,7 @@
 pub fn print() {
     println!(
         "\
-ccalc v{ver} — command-line calculator
+ccalc v{ver} — command-line calculator with Octave/MATLAB syntax
 
 USAGE:
     ccalc [OPTIONS]           start interactive REPL
@@ -29,7 +29,7 @@ PIPE / NON-INTERACTIVE MODE:
     p / p<N> (precision), hex / dec / bin / oct / base (number base).
     cls is ignored.
 
-SCRIPT FILES (ccalc < formula.txt):
+SCRIPT FILES (ccalc < formula.txt  or  ccalc script.m):
     Three tools for controlling output in pipe/file mode:
 
     Comments  (% — Octave/MATLAB convention)
@@ -37,30 +37,16 @@ SCRIPT FILES (ccalc < formula.txt):
         10 * 5  % inline comment — expression still evaluates
 
     Semicolon — suppress output of a line
-        0.06 / 12;    evaluates and updates ans, prints nothing
-        rate = ans;   store to variable silently
-        1 + rate;     still updates ans
+        rate = 0.06 / 12;    evaluates and updates ans, prints nothing
+        n = 360;             stores to variable silently
 
-    print — explicit output
-        print                   print current ans value
-        print \"label\"           print label then value (no separator added)
-                                write any punctuation you want in the label:
-                                  print \"Result:\"   →  Result: 42
-                                  print \"Sum =\"      →  Sum = 42
+    disp(expr) — print value without updating ans
+        disp(ans)            print current ans
+        disp(x + 1)          print result of expression
 
-    print after a blank line — section header (label only, no value)
-        Placing print \"label\" right after a blank line prints only the label.
-        Use this for headings between calculation blocks:
-
-            print \"=== Section ===\"
-
-            10 + 5
-            print \"Sum:\"
-
-        Output:
-            === Section ===
-            15
-            Sum: 15
+    fprintf('fmt') — print formatted string
+        fprintf('Done\\n')    print text with newline
+        fprintf(\"val: \")     double quotes also accepted
 
 REPL COMMANDS:
     exit, quit       Quit
@@ -166,20 +152,19 @@ MATH FUNCTIONS:
 VARIABLES:
 
   Assignment
-    name = expr         Evaluate expr, store result in variable; print as \"name = value\"
-    name = expr;        Same, but suppress output
+    name = expr         Evaluate expr and store result (silent — no output)
+    name = expr;        Same (semicolon optional, also silent)
 
   Using variables
     Any defined variable can be used inside expressions by name.
-    ans is the implicit variable — set after every expression.
+    ans is the implicit variable — set after every standalone expression.
 
         [ 0 ]: rate = 0.06 / 12
-        rate = 0.005
-        [ 0.005 ]: 1 + rate
+        [ 0 ]: 1 + rate
         [ 1.005 ]:
 
   Built-in variables
-    ans             Result of last expression (reset to 0 by c)
+    ans             Result of last expression
     pi              3.14159265358979...
     e               2.71828182845904...
 
@@ -243,12 +228,9 @@ EXAMPLES:
 
   Variables — store and reuse:
     [ 0 ]: rate = 0.06 / 12
-    rate = 0.005
-    [ 0.005 ]: n = 360
-    n = 360
-    [ 360 ]: factor = (1 + rate) ^ n
-    factor = 6.0226...
-    [ 6.0226 ]: 200000 * rate * factor / (factor - 1)
+    [ 0 ]: n = 360
+    [ 0 ]: factor = (1 + rate) ^ n
+    [ 0 ]: 200000 * rate * factor / (factor - 1)
     [ 1199.10 ]:
 
   Script file (ccalc < formula.txt):
@@ -257,7 +239,8 @@ EXAMPLES:
     n = 360;               % 30 years in months — silent
     factor = (1 + rate) ^ n;
     200000 * rate * factor / (factor - 1)
-    print \"Monthly payment ($):\"",
+    fprintf('Monthly payment: ')
+    disp(ans)",
         ver = env!("CARGO_PKG_VERSION")
     );
 }

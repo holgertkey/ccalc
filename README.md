@@ -241,23 +241,27 @@ Functions can be nested and combined:
 
 ## Variables
 
-Any identifier can be used as a variable. `ans` is the implicit variable updated after every expression.
+Any identifier can be used as a variable. `ans` is the implicit variable
+updated after every standalone expression.
 
 ### Assignment
 
+Assignment is **silent** in the REPL — no output, prompt stays unchanged:
+
 ```
 [ 0 ]: rate = 0.06 / 12
-rate = 0.005
-[ 0.005 ]: n = 360
-n = 360
+[ 0 ]: n = 360
+[ 0 ]: 200000 * 0.005
+[ 1000 ]:
 ```
+
+In pipe/script mode, assignment without `;` prints `name = value`.
 
 ### Using variables
 
 ```
 [ 0 ]: rate = 0.07
-rate = 0.07
-[ 0.07 ]: 1000 * (1 + rate) ^ 10
+[ 0 ]: 1000 * (1 + rate) ^ 10
 [ 1967.1513573 ]:
 ```
 
@@ -273,15 +277,14 @@ rate = 0.07
 
 ```
 [ 0 ]: rate = 0.05
-rate = 0.05
-[ 0.05 ]: n = 12
+[ 0 ]: n = 12
+[ 0 ]: rate + n
+[ 12.05 ]: who
+ans = 12.05
 n = 12
-[ 12 ]: who
-ans = 12
-n = 12
 rate = 0.05
-[ 12 ]: clear rate
-[ 12 ]: clear
+[ 12.05 ]: clear rate
+[ 12.05 ]: clear
 ```
 
 ---
@@ -463,38 +466,46 @@ pi * 5^2      % pi * r^2, r = 5
 
 ### Semicolon — suppress output
 
-A trailing `;` evaluates the expression and updates `ans`, but prints nothing. Use it to silence intermediate steps.
+A trailing `;` evaluates the expression and updates `ans`, but prints nothing.
+Use it to silence intermediate steps.
 
 ```
 rate = 0.06 / 12;     % monthly rate — silent
 n = 360;              % 30-year term — silent
 factor = (1 + rate) ^ n;
 200000 * rate * factor / (factor - 1)
-print "Monthly payment ($):"
+fprintf('Monthly payment ($): ')
+disp(ans)
 ```
 
-### `print` — explicit output
+### `disp(expr)` — print value
 
-`print` prints the current `ans` value. `print "label"` prints the label followed by the value. Write any punctuation you want directly in the label.
-
-| Command                        | Output                                |
-|--------------------------------|---------------------------------------|
-| `print`                        | `1199.101050304`                      |
-| `print "Monthly payment ($):"` | `Monthly payment ($): 1199.101050304` |
-
-**Section headers** — `print "label"` placed after a blank line prints the label only, without a value. Use this for headings between calculation blocks:
+`disp(expr)` evaluates the expression and prints the result.
+It does **not** update `ans`.
 
 ```
-print "=== Resistors in series ==="
+disp(ans)             % print current ans
+disp(rate * 12)       % print expression result
+```
+
+### `fprintf('fmt')` — print formatted text
+
+`fprintf('fmt')` prints a string with escape sequences.
+No newline is added automatically — include `\n` explicitly.
+
+```
+fprintf('=== Resistors in series ===\n')
 
 100 + 220 + 470
-print "Total resistance (Ohm):"
+fprintf('Total resistance (Ohm): ')
+disp(ans)
 
-print "=== Parallel combination ==="
+fprintf('=== Parallel combination ===\n')
 
 1/100 + 1/220;
 ^ -1
-print "Parallel resistance (Ohm):"
+fprintf('Parallel resistance (Ohm): ')
+disp(ans)
 ```
 
 Output:

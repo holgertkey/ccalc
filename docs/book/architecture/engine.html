@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "../searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9b0a7278.js"></script>
+        <script src="../toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,33 +182,33 @@
                     <main>
                         <h1 id="engine-crate-ccalc-engine"><a class="header" href="#engine-crate-ccalc-engine">Engine Crate (<code>ccalc-engine</code>)</a></h1>
 <p>The <code>ccalc-engine</code> crate is a pure computation library with no I/O dependencies
-beyond file access for memory persistence. It exposes three public modules.</p>
+beyond file access for workspace persistence. It exposes three public modules.</p>
 <h2 id="public-api"><a class="header" href="#public-api">Public API</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Parse an expression string into an AST
-pub fn parser::parse(input: &amp;str, accumulator: f64) -&gt; Result&lt;Expr, String&gt;
+</span>// Parse an input string into a statement (assignment or expression)
+pub fn parser::parse(input: &amp;str) -&gt; Result&lt;Stmt, String&gt;
 
 // Check whether input is a partial expression (starts with an operator)
 pub fn parser::is_partial(input: &amp;str) -&gt; bool
 
-// Evaluate an AST to a float
-pub fn eval::eval(expr: &amp;Expr) -&gt; Result&lt;f64, String&gt;
+// Evaluate an AST node given a variable environment
+pub fn eval::eval(expr: &amp;Expr, env: &amp;Env) -&gt; Result&lt;f64, String&gt;
+// Note: return type migrates to Result&lt;Value, String&gt; in Phase 3
 
-// Format a number for user-facing display
+// Format a number for user-facing display (respects base and precision)
 pub fn eval::format_value(n: f64, precision: usize, base: Base) -&gt; String
 
-// Format a number for internal use (always decimal, for re-parsing)
+// Format a number for internal use (always decimal)
 pub fn eval::format_number(n: f64) -&gt; String
 
-// Memory cell store + persistence
-pub struct memory::Memory { ... }
+// Variable environment: maps names to scalar values
+// Migrates to HashMap&lt;String, Value&gt; in Phase 3
+pub type env::Env = HashMap&lt;String, f64&gt;;
 
-// Parse a trailing memory directive from an expression string
-pub fn memory::extract_directive(input: &amp;str) -&gt; (&amp;str, Option&lt;Directive&gt;)
-
-// Replace m1..m9 references with their numeric values
-pub fn memory::expand_memory_refs(input: &amp;str, memory: &amp;Memory) -&gt; (String, Option&lt;String&gt;)
+// Save / load workspace to ~/.config/ccalc/workspace.toml
+pub fn env::save_workspace_default(env: &amp;Env) -&gt; Result&lt;(), String&gt;
+pub fn env::load_workspace_default() -&gt; Result&lt;Env, String&gt;
 <span class="boring">}</span></code></pre>
 <h2 id="why-a-separate-crate"><a class="header" href="#why-a-separate-crate">Why a separate crate?</a></h2>
 <p>The engine crate provides a stable, testable boundary between computation logic

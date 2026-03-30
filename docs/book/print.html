@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4d41bee8.js";
+            window.path_to_searchindex_js = "searchindex-1dd5d310.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-9b0a7278.js"></script>
+        <script src="toc-90c69fb2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -179,8 +179,11 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="ccalc"><a class="header" href="#ccalc">ccalc</a></h1>
-<p><code>ccalc</code> is a command-line calculator with an accumulator, memory cells,
-multi-base arithmetic, and script file support.</p>
+<p>A fast terminal calculator with Octave/MATLAB syntax and script support —
+one binary, no runtime.</p>
+<p>Octave is hundreds of megabytes. Python requires a runtime. ccalc is a
+single self-contained binary that starts instantly and works anywhere:
+interactive sessions, shell scripts, CI pipelines, Docker containers.</p>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
 <pre><code class="language-sh"># Interactive REPL
 ccalc
@@ -188,9 +191,26 @@ ccalc
 # Single expression
 ccalc "2 ^ 32"
 
+# Script file
+ccalc script.m
+
 # Pipe mode
 echo "sqrt(2)" | ccalc
 </code></pre>
+<h2 id="who-is-it-for"><a class="header" href="#who-is-it-for">Who is it for?</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>User</th><th>Typical use</th></tr>
+</thead>
+<tbody>
+<tr><td>Embedded / systems engineer</td><td>Arithmetic, hex/bin conversions, bit masks</td></tr>
+<tr><td>DevOps / SRE</td><td>Quick calculations in scripts and pipelines</td></tr>
+<tr><td>Scientist / student</td><td>Interactive session with variables and math functions</td></tr>
+<tr><td>MATLAB / Octave user</td><td>Familiar syntax, no heavy installation</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="project-structure"><a class="header" href="#project-structure">Project structure</a></h2>
 <div class="table-wrapper">
 <table>
@@ -199,12 +219,16 @@ echo "sqrt(2)" | ccalc
 </thead>
 <tbody>
 <tr><td><code>crates/ccalc</code></td><td>CLI binary: argument parsing, REPL, pipe mode</td></tr>
-<tr><td><code>crates/ccalc-engine</code></td><td>Library: tokenizer, parser, AST evaluator, memory cells</td></tr>
+<tr><td><code>crates/ccalc-engine</code></td><td>Library: tokenizer, parser, AST evaluator, variable environment</td></tr>
 </tbody>
 </table>
 </div>
-<p>The engine crate is the foundation for the upcoming Octave/MATLAB
-compatibility layer.</p>
+<p>The engine crate is the computation foundation. It has no I/O dependencies
+and is the target for all Octave/MATLAB compatibility work (Phases 1–10).</p>
+<h2 id="compatibility-standard"><a class="header" href="#compatibility-standard">Compatibility standard</a></h2>
+<p>Where MATLAB and Octave differ, ccalc follows the <strong>modern MATLAB standard
+(R2016b+)</strong>. See <a href="#architecture-overview">Architecture → Overview</a> for
+design principles.</p>
 <h2 id="source"><a class="header" href="#source">Source</a></h2>
 <ul>
 <li>Repository: <a href="https://github.com/holgertkey/ccalc">https://github.com/holgertkey/ccalc</a></li>
@@ -219,15 +243,15 @@ cd ccalc
 cargo build --release
 # binary: target/release/ccalc
 </code></pre>
-<h2 id="three-usage-modes"><a class="header" href="#three-usage-modes">Three usage modes</a></h2>
+<h2 id="usage-modes"><a class="header" href="#usage-modes">Usage modes</a></h2>
 <h3 id="interactive-repl"><a class="header" href="#interactive-repl">Interactive REPL</a></h3>
 <pre><code class="language-sh">ccalc
 </code></pre>
-<p>A prompt shows the current accumulator value. Type an expression and press Enter.</p>
+<p>A prompt shows the current value of <code>ans</code>. Type an expression and press Enter.</p>
 <pre><code>[ 0 ]: 2 ^ 32
 [ 4294967296 ]: / 1024
 [ 4194304 ]: sqrt()
-[ 2048 ]: q
+[ 2048 ]: exit
 </code></pre>
 <h3 id="single-expression-argument-mode"><a class="header" href="#single-expression-argument-mode">Single expression (argument mode)</a></h3>
 <pre><code class="language-sh">ccalc "EXPR"
@@ -239,9 +263,14 @@ cargo build --release
 $ ccalc "sqrt(2)"
 1.4142135624
 </code></pre>
+<h3 id="script-file"><a class="header" href="#script-file">Script file</a></h3>
+<p>Pass a <code>.m</code> or <code>.ccalc</code> file as an argument:</p>
+<pre><code class="language-sh">ccalc script.m
+ccalc examples/mortgage.ccalc
+</code></pre>
 <h3 id="pipe--non-interactive-mode"><a class="header" href="#pipe--non-interactive-mode">Pipe / non-interactive mode</a></h3>
-<p>When stdin is not a terminal, ccalc reads lines one by one, prints one result per
-line, and carries the accumulator across lines.</p>
+<p>When stdin is not a terminal, ccalc reads lines one by one and prints one result
+per line. <code>ans</code> carries over across lines.</p>
 <pre><code class="language-sh">$ echo "sin(pi / 6)" | ccalc
 0.5
 
@@ -249,6 +278,8 @@ $ printf "100\n/ 4\n+ 5" | ccalc
 100
 25
 30
+
+$ ccalc &lt; formula.txt
 </code></pre>
 <h2 id="command-line-options"><a class="header" href="#command-line-options">Command-line options</a></h2>
 <div class="table-wrapper">
@@ -266,14 +297,14 @@ $ printf "100\n/ 4\n+ 5" | ccalc
 <h1 id="repl-mode"><a class="header" href="#repl-mode">REPL Mode</a></h1>
 <p>Start with <code>ccalc</code> (no arguments, stdin is a terminal).</p>
 <h2 id="prompt"><a class="header" href="#prompt">Prompt</a></h2>
-<p>The prompt always shows the current accumulator:</p>
+<p>The prompt always shows the current value of <code>ans</code>:</p>
 <pre><code>[ 0 ]:
 [ 42 ]:
 [ 0xFF ]:
 </code></pre>
-<h2 id="accumulator"><a class="header" href="#accumulator">Accumulator</a></h2>
-<p>Every expression result becomes the new accumulator. Expressions that start with
-an operator use the accumulator as the left-hand operand (<strong>partial expressions</strong>):</p>
+<h2 id="ans"><a class="header" href="#ans">ans</a></h2>
+<p>Every expression result is stored in <code>ans</code>. Expressions that start with
+an operator use <code>ans</code> as the left-hand operand (<strong>partial expressions</strong>):</p>
 <pre><code>[ 0 ]: 100
 [ 100 ]: * 2
 [ 200 ]: + 50
@@ -287,17 +318,17 @@ an operator use the accumulator as the left-hand operand (<strong>partial expres
 <tr><th>Command</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>q</code></td><td>Quit</td></tr>
-<tr><td><code>c</code></td><td>Clear accumulator (reset to 0)</td></tr>
+<tr><td><code>exit</code>, <code>quit</code></td><td>Quit</td></tr>
 <tr><td><code>cls</code></td><td>Clear the screen</td></tr>
+<tr><td><code>who</code></td><td>Show all defined variables</td></tr>
+<tr><td><code>clear</code></td><td>Clear all variables</td></tr>
+<tr><td><code>clear &lt;name&gt;</code></td><td>Clear a single variable</td></tr>
 <tr><td><code>p</code></td><td>Show current decimal precision</td></tr>
 <tr><td><code>p&lt;N&gt;</code></td><td>Set precision to N decimal places (0–15)</td></tr>
 <tr><td><code>hex</code> / <code>dec</code> / <code>bin</code> / <code>oct</code></td><td>Switch display base</td></tr>
-<tr><td><code>base</code></td><td>Show accumulator in all four bases</td></tr>
-<tr><td><code>m</code></td><td>Show all non-zero memory cells</td></tr>
-<tr><td><code>mc</code></td><td>Clear all memory cells</td></tr>
-<tr><td><code>ms</code></td><td>Save memory cells to file</td></tr>
-<tr><td><code>ml</code></td><td>Load memory cells from file</td></tr>
+<tr><td><code>base</code></td><td>Show ans in all four bases</td></tr>
+<tr><td><code>ws</code></td><td>Save workspace to file</td></tr>
+<tr><td><code>wl</code></td><td>Load workspace from file</td></tr>
 </tbody>
 </table>
 </div>
@@ -318,7 +349,7 @@ an operator use the accumulator as the left-hand operand (<strong>partial expres
 </table>
 </div>
 <h2 id="silencing-a-line"><a class="header" href="#silencing-a-line">Silencing a line</a></h2>
-<p>Append <code>;</code> to suppress output while still updating the accumulator:</p>
+<p>Append <code>;</code> to suppress output while still updating <code>ans</code>:</p>
 <pre><code>[ 0 ]: 0.06 / 12;
 [ 0.005 ]:
 </code></pre>
@@ -328,61 +359,70 @@ an operator use the accumulator as the left-hand operand (<strong>partial expres
 session.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="pipe--script-mode"><a class="header" href="#pipe--script-mode">Pipe &amp; Script Mode</a></h1>
-<p>When stdin is not a terminal (pipe or file redirect), ccalc runs in
-non-interactive mode: no prompts, one result printed per line.</p>
+<p>When stdin is not a terminal (pipe or file redirect), or when a script file is
+passed as an argument, ccalc runs in non-interactive mode: no prompts, one
+result printed per line.</p>
 <h2 id="pipe"><a class="header" href="#pipe">Pipe</a></h2>
 <pre><code class="language-sh">echo "1 + 1" | ccalc
 printf "100\n/ 4\n+ 5" | ccalc
 </code></pre>
 <h2 id="script-files"><a class="header" href="#script-files">Script files</a></h2>
+<p>Pass a file as an argument:</p>
+<pre><code class="language-sh">ccalc script.m
+ccalc examples/mortgage.ccalc
+</code></pre>
+<p>Or redirect stdin:</p>
 <pre><code class="language-sh">ccalc &lt; formula.txt
 </code></pre>
 <h3 id="comments"><a class="header" href="#comments">Comments</a></h3>
-<pre><code># full-line comment — line is skipped entirely
-10 * 5  # inline comment — expression still evaluates
+<p><code>%</code> starts a comment (Octave/MATLAB convention):</p>
+<pre><code>% full-line comment — line is skipped entirely
+10 * 5  % inline comment — expression still evaluates
 </code></pre>
 <h3 id="semicolon--suppress-output"><a class="header" href="#semicolon--suppress-output">Semicolon — suppress output</a></h3>
-<p>A trailing <code>;</code> evaluates the line and updates the accumulator, but prints nothing:</p>
-<pre><code>0.06 / 12;       # compute monthly rate, silently
-m1;              # store it, silently
-1 + m1           # this line is printed
+<p>A trailing <code>;</code> evaluates the line and updates <code>ans</code>, but prints nothing:</p>
+<pre><code>rate = 0.06 / 12;    % compute monthly rate, silently
+n = 360;             % term in months, silently
+factor = (1 + rate) ^ n;
 </code></pre>
-<h3 id="print--explicit-output"><a class="header" href="#print--explicit-output"><code>print</code> — explicit output</a></h3>
-<pre><code>print              # print current accumulator value
-print "label"      # print label then value
+<h3 id="dispexpr--print-value"><a class="header" href="#dispexpr--print-value"><code>disp(expr)</code> — print value</a></h3>
+<p><code>disp(expr)</code> evaluates the expression and prints the result.
+It does <strong>not</strong> update <code>ans</code>.</p>
+<pre><code>disp(ans)               % print current ans value
+disp(rate * 12)         % print expression result
 </code></pre>
-<p>The label is the full quoted string. Write any punctuation you want inside it:</p>
-<pre><code>print "Result:"    →  Result: 42
-print "Sum ="      →  Sum = 42
-</code></pre>
-<p><strong>Section headers</strong> — <code>print "label"</code> placed right after a blank line (or at the
-very start of the file) prints the label only, without a value:</p>
-<pre><code>print "=== Monthly mortgage ==="
-
-200000 * 0.005
-print "First payment:"
+<h3 id="fprintffmt--print-formatted-text"><a class="header" href="#fprintffmt--print-formatted-text"><code>fprintf('fmt')</code> — print formatted text</a></h3>
+<p><code>fprintf('fmt')</code> prints a string with escape sequences (<code>\n</code>, <code>\t</code>, <code>\\</code>).
+No newline is added automatically — include <code>\n</code> explicitly.</p>
+<pre><code>fprintf('=== Monthly mortgage ===\n')
+fprintf('Result: ')
+disp(ans)
 </code></pre>
 <p>Output:</p>
 <pre><code>=== Monthly mortgage ===
-1000
-First payment: 1000
+Result: 1199.1010503
 </code></pre>
 <h3 id="supported-commands-in-pipe-mode"><a class="header" href="#supported-commands-in-pipe-mode">Supported commands in pipe mode</a></h3>
-<p>All REPL commands except <code>cls</code> and <code>m</code> (which are ignored):
-<code>q</code>, <code>c</code>, <code>mc</code>, <code>mc[1-9]</code>, <code>m[1-9]</code>, <code>p</code>, <code>p&lt;N&gt;</code>, <code>hex</code>, <code>dec</code>, <code>bin</code>, <code>oct</code>, <code>base</code>.</p>
+<p>All REPL commands except <code>cls</code> (which is ignored):
+<code>exit</code>, <code>quit</code>, <code>who</code>, <code>clear</code>, <code>clear &lt;name&gt;</code>, <code>ws</code>, <code>wl</code>,
+<code>p</code>, <code>p&lt;N&gt;</code>, <code>hex</code>, <code>dec</code>, <code>bin</code>, <code>oct</code>, <code>base</code>.</p>
 <h2 id="example--mortgage-script"><a class="header" href="#example--mortgage-script">Example — mortgage script</a></h2>
-<pre><code># Monthly mortgage payment
-# Principal: 200 000, annual rate: 6%, term: 30 years
+<pre><code>% Monthly mortgage payment
+% Principal: 200 000, annual rate: 6%, term: 30 years
 
-0.06 / 12;             # monthly rate r
-m1;
-1 + m1;                # (1 + r)
-^ 360;                 # (1 + r)^360
-m2;
-200000 * m1 * m2;      # numerator
-m3;
-m3 / (m2 - 1)          # monthly payment
-print "Monthly payment ($):"
+rate = 0.06 / 12;         % monthly interest rate
+n = 360;                  % 30 years * 12 months
+p = 200000;               % principal
+
+factor = (1 + rate) ^ n;
+
+p * rate * factor / (factor - 1)
+fprintf('Monthly payment ($): ')
+disp(ans)
+</code></pre>
+<p>Output:</p>
+<pre><code>1199.1010503
+Monthly payment ($): 1199.1010503
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="arithmetic--operators"><a class="header" href="#arithmetic--operators">Arithmetic &amp; Operators</a></h1>
@@ -461,7 +501,7 @@ print "Monthly payment ($):"
 </table>
 </div>
 <h2 id="empty-argument-shorthand"><a class="header" href="#empty-argument-shorthand">Empty-argument shorthand</a></h2>
-<p>Calling a function with empty parentheses uses the <strong>accumulator</strong> as the argument:</p>
+<p>Calling a function with empty parentheses uses <strong>ans</strong> as the argument:</p>
 <pre><code>[ 144 ]: sqrt()      →  12     (same as sqrt(144))
 [ -7 ]:  abs()       →   7
 [ 0 ]:   sin()       →   0
@@ -475,14 +515,13 @@ print "Monthly payment ($):"
 <tbody>
 <tr><td><code>pi</code></td><td>3.14159265358979…</td></tr>
 <tr><td><code>e</code></td><td>2.71828182845904…</td></tr>
-<tr><td><code>acc</code></td><td>Current accumulator value (explicit alias)</td></tr>
+<tr><td><code>ans</code></td><td>Result of last expression</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>acc</code> is most useful in expressions where you need the accumulator
-mid-expression without making it a partial expression:</p>
-<pre><code>[ 9 ]: acc * 2 + 1    →  19
-[ 9 ]: sqrt(acc)      →   3
+<p><code>ans</code> can appear anywhere in an expression:</p>
+<pre><code>[ 9 ]: ans * 2 + 1    →  19
+[ 9 ]: sqrt(ans)      →   3
 </code></pre>
 <h2 id="nesting"><a class="header" href="#nesting">Nesting</a></h2>
 <p>Functions can be nested freely:</p>
@@ -568,57 +607,59 @@ to the active base before the result is shown:</p>
 [ 0b10010 ]:
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="memory-cells"><a class="header" href="#memory-cells">Memory Cells</a></h1>
-<p>ccalc has nine named memory cells: <strong>m1</strong> through <strong>m9</strong>.</p>
-<h2 id="storing"><a class="header" href="#storing">Storing</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Syntax</th><th>Action</th></tr>
-</thead>
-<tbody>
-<tr><td><code>m[1-9]</code></td><td>Store current accumulator into cell</td></tr>
-<tr><td><code>expr m[1-9]</code></td><td>Evaluate expression, store result into cell</td></tr>
-</tbody>
-</table>
-</div>
+<h1 id="variables"><a class="header" href="#variables">Variables</a></h1>
+<p>ccalc supports named variables. Any valid identifier can store a value.</p>
+<h2 id="assignment"><a class="header" href="#assignment">Assignment</a></h2>
+<p>Use <code>name = expr</code> to assign. Assignment is <strong>silent</strong> — no output is produced
+and <code>ans</code> is not updated:</p>
+<pre><code>[ 0 ]: rate = 0.06 / 12
+[ 0 ]: n = 360
+[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
+</code></pre>
+<p>Append <code>;</code> to assign silently in pipe/script mode (redundant in REPL, but
+consistent with Octave/MATLAB style):</p>
+<pre><code>rate = 0.06 / 12;
+n = 360;
+</code></pre>
+<p>In <strong>pipe/script mode</strong>, assignment without <code>;</code> prints <code>name = value</code>:</p>
+<pre><code>rate = 0.06 / 12
+</code></pre>
+<pre><code>rate = 0.005
+</code></pre>
+<h2 id="using-variables"><a class="header" href="#using-variables">Using variables</a></h2>
+<p>Any defined variable can appear inside an expression:</p>
+<pre><code>[ 0 ]: rate = 0.07
+[ 0 ]: 1000 * (1 + rate) ^ 10
+[ 1967.1513573 ]:
+</code></pre>
+<h2 id="ans-1"><a class="header" href="#ans-1">ans</a></h2>
+<p><code>ans</code> is the implicit result variable — set automatically after every
+standalone expression (not after assignments). It is initialized to <code>0</code>
+at startup.</p>
+<p>Expressions starting with an operator use <code>ans</code> as the left-hand operand:</p>
 <pre><code>[ 0 ]: 100
-[ 100 ]: m1           # m1 = 100
-[ 100 ]: (1 + 1) * 3 m2   # m2 = 6
+[ 100 ]: / 4
+[ 25 ]: + 5
+[ 30 ]:
 </code></pre>
-<h2 id="recalling"><a class="header" href="#recalling">Recalling</a></h2>
-<p>Use <code>m[1-9]</code> inside any expression — it is replaced with the cell’s value:</p>
-<pre><code>[ 0 ]: m1 + m2        →  106    (100 + 6)
-[ 0 ]: sqrt(m1)       →   10
+<p>Empty-argument function calls use <code>ans</code> as the argument:</p>
+<pre><code>[ 144 ]: sqrt()      →  12     (same as sqrt(144))
 </code></pre>
-<h2 id="compound-assignment"><a class="header" href="#compound-assignment">Compound assignment</a></h2>
-<p>Combine a store with an arithmetic operation in one step.
-The result is written back to the cell <strong>and</strong> becomes the new accumulator.</p>
+<h2 id="constants-1"><a class="header" href="#constants-1">Constants</a></h2>
+<p><code>pi</code> and <code>e</code> are pre-defined read-only constants:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Syntax</th><th>Operation</th></tr>
+<tr><th>Name</th><th>Value</th></tr>
 </thead>
 <tbody>
-<tr><td><code>expr m[1-9]+</code></td><td>cell += expr</td></tr>
-<tr><td><code>expr m[1-9]-</code></td><td>cell -= expr</td></tr>
-<tr><td><code>expr m[1-9]*</code></td><td>cell *= expr</td></tr>
-<tr><td><code>expr m[1-9]/</code></td><td>cell /= expr</td></tr>
-<tr><td><code>expr m[1-9]%</code></td><td>cell %= expr</td></tr>
-<tr><td><code>expr m[1-9]^</code></td><td>cell ^= expr</td></tr>
+<tr><td><code>pi</code></td><td>3.14159265358979…</td></tr>
+<tr><td><code>e</code></td><td>2.71828182845904…</td></tr>
 </tbody>
 </table>
 </div>
-<pre><code>[ 0 ]: 100 m1         # m1 = 100
-[ 100 ]: 2 m1*        # m1 = 200; accumulator = 200
-[ 200 ]: 50 m1-       # m1 = 150; accumulator = 150
-[ 150 ]: 3 m1/        # m1 = 50;  accumulator = 50
-</code></pre>
-<h2 id="copying-a-cell"><a class="header" href="#copying-a-cell">Copying a cell</a></h2>
-<p><code>expr m[1-9]</code> stores the expression result into the cell.
-To copy m1 into m2, use the cell value as the expression:</p>
-<pre><code>[ 0 ]: m1 m2          # m2 = value of m1
-</code></pre>
 <h2 id="view-and-clear"><a class="header" href="#view-and-clear">View and clear</a></h2>
 <div class="table-wrapper">
 <table>
@@ -626,40 +667,59 @@ To copy m1 into m2, use the cell value as the expression:</p>
 <tr><th>Command</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>m</code></td><td>Show all non-zero cells</td></tr>
-<tr><td><code>mc</code></td><td>Clear all cells</td></tr>
-<tr><td><code>mc[1-9]</code></td><td>Clear a specific cell</td></tr>
+<tr><td><code>who</code></td><td>Show all defined variables and their values</td></tr>
+<tr><td><code>clear</code></td><td>Clear all variables</td></tr>
+<tr><td><code>clear name</code></td><td>Clear a single variable by name</td></tr>
 </tbody>
 </table>
 </div>
-<pre><code>[ 50 ]: m
-m1: 50
-m2: 6
-[ 50 ]: mc1
-[ 50 ]: m
-m2: 6
-[ 50 ]: mc
-[ 50 ]: m
-(nothing)
+<pre><code>[ 0 ]: x = 10
+[ 0 ]: y = 3.14
+[ 0 ]: x + y
+[ 13.14 ]: who
+ans = 13.14
+x = 10
+y = 3.14
+[ 13.14 ]: clear x
+[ 13.14 ]: who
+ans = 13.14
+y = 3.14
+[ 13.14 ]: clear
 </code></pre>
-<h2 id="persistence"><a class="header" href="#persistence">Persistence</a></h2>
+<h2 id="workspace-persistence"><a class="header" href="#workspace-persistence">Workspace persistence</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Command</th><th>Action</th></tr>
 </thead>
 <tbody>
-<tr><td><code>ms</code></td><td>Save cells to <code>~/.config/ccalc/memory.toml</code></td></tr>
-<tr><td><code>ml</code></td><td>Load cells from file (clears current cells first)</td></tr>
+<tr><td><code>ws</code></td><td>Save all variables to <code>~/.config/ccalc/workspace.toml</code></td></tr>
+<tr><td><code>wl</code></td><td>Load variables from file (replaces current workspace)</td></tr>
 </tbody>
 </table>
 </div>
-<p>The file is plain text in TOML-like format:</p>
-<pre><code>m1 = 100
-m3 = 3.14
-m9 = -7.5
+<p>The workspace file is plain text, one <code>name = value</code> entry per line:</p>
+<pre><code>ans = 13.14
+n = 360
+rate = 0.005
 </code></pre>
-<p>Cells that are zero are not written to the file.</p>
+<h2 id="example--monthly-mortgage"><a class="header" href="#example--monthly-mortgage">Example — monthly mortgage</a></h2>
+<pre><code>% REPL session
+[ 0 ]: rate = 0.06 / 12
+[ 0 ]: n = 360
+[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.10 ]:
+</code></pre>
+<p>As a script file (pipe mode, assignments print unless <code>;</code> is used):</p>
+<pre><code>% Monthly mortgage payment
+rate = 0.06 / 12;
+n = 360;
+factor = (1 + rate) ^ n;
+200000 * rate * factor / (factor - 1)
+fprintf('Monthly payment ($): ')
+disp(ans)
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="precision"><a class="header" href="#precision">Precision</a></h1>
 <p>The <strong>precision</strong> setting controls how many decimal places are shown in the
@@ -711,23 +771,20 @@ always show the rounded integer value.</p>
 │   └── ccalc-engine/           ← library crate (computation)
 │       └── src/
 │           ├── lib.rs          ← public API
-│           ├── eval.rs         ← AST + evaluator + formatters
-│           ├── parser.rs       ← tokenizer + recursive-descent parser
-│           └── memory.rs       ← memory cells + persistence
+│           ├── env.rs          ← Env type, workspace save/load
+│           ├── eval.rs         ← AST + evaluator + formatters + Base enum
+│           └── parser.rs       ← tokenizer + recursive-descent parser, Stmt enum
 └── docs/                       ← this mdBook
 </code></pre>
 <h2 id="data-flow"><a class="header" href="#data-flow">Data flow</a></h2>
 <pre><code>User input (String)
     │
     ▼
-memory::expand_memory_refs()    ← replace m1..m9 refs with values
-    │
+parser::parse(input) → Stmt (Assign | Expr)
+    │                       ← recursive-descent parser
+    │                         produces an AST node
     ▼
-parser::parse(input, acc) → Expr
-    │                           ← recursive-descent parser
-    │                             produces an AST
-    ▼
-eval::eval(&amp;Expr) → f64
+eval::eval(&amp;Expr, &amp;Env) → f64   (Value enum from Phase 3)
     │
     ▼
 eval::format_value(n, precision, base) → String
@@ -742,12 +799,12 @@ stdout
 <tr><th>Module</th><th>Responsibility</th></tr>
 </thead>
 <tbody>
-<tr><td><code>main.rs</code></td><td>Parse CLI args, detect stdin mode, dispatch</td></tr>
+<tr><td><code>main.rs</code></td><td>Parse CLI args, detect stdin mode (REPL / pipe / file / arg), dispatch</td></tr>
 <tr><td><code>repl.rs</code></td><td>REPL event loop, pipe line-reader, shared <code>evaluate()</code>, display logic</td></tr>
-<tr><td><code>help.rs</code></td><td>Static help string, interpolates <code>CARGO_PKG_VERSION</code></td></tr>
+<tr><td><code>help.rs</code></td><td>Static help string</td></tr>
+<tr><td><code>env.rs</code></td><td><code>Env</code> type (<code>HashMap&lt;String, f64&gt;</code>), workspace save/load to disk</td></tr>
 <tr><td><code>eval.rs</code></td><td><code>Expr</code> AST, <code>Op</code>, <code>Base</code>; <code>eval()</code>, <code>format_value()</code>, <code>format_number()</code></td></tr>
-<tr><td><code>parser.rs</code></td><td>Tokenizer, recursive-descent parser, <code>parse()</code>, <code>is_partial()</code></td></tr>
-<tr><td><code>memory.rs</code></td><td><code>Memory</code> struct, directive parser, ref expander, file I/O</td></tr>
+<tr><td><code>parser.rs</code></td><td>Tokenizer, recursive-descent parser, <code>parse()</code>, <code>is_partial()</code>, <code>Stmt</code> enum</td></tr>
 </tbody>
 </table>
 </div>
@@ -759,42 +816,46 @@ stdout
 </code></pre>
 <h2 id="design-principles"><a class="header" href="#design-principles">Design principles</a></h2>
 <ul>
-<li><strong>No runtime allocations on the hot path</strong> beyond the input string itself.</li>
-<li><strong><code>crate::eval</code> is dependency-free</strong> — no I/O, no allocations beyond <code>String</code> errors.</li>
+<li><strong>One binary, no runtime.</strong> The release binary is self-contained.
+Every new dependency requires explicit justification.</li>
+<li><strong>The library is pure.</strong> <code>ccalc-engine</code> has no I/O, no terminal codes,
+no <code>rustyline</code>. The binary owns all user-facing interaction.</li>
+<li><strong>Modern MATLAB standard (R2016b+).</strong> Where MATLAB and Octave differ,
+ccalc follows modern MATLAB. Example: <code>'text'</code> is a char array (numeric),
+<code>"text"</code> is a string object.</li>
 <li><strong>Version is defined once</strong> in <code>[workspace.package]</code>; both crates inherit it.</li>
-<li>The engine crate has no knowledge of the terminal or REPL — it only deals with
-strings and numbers.</li>
+<li><strong>No runtime allocations on the hot path</strong> beyond the input string itself.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="engine-crate-ccalc-engine"><a class="header" href="#engine-crate-ccalc-engine">Engine Crate (<code>ccalc-engine</code>)</a></h1>
 <p>The <code>ccalc-engine</code> crate is a pure computation library with no I/O dependencies
-beyond file access for memory persistence. It exposes three public modules.</p>
+beyond file access for workspace persistence. It exposes three public modules.</p>
 <h2 id="public-api"><a class="header" href="#public-api">Public API</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Parse an expression string into an AST
-pub fn parser::parse(input: &amp;str, accumulator: f64) -&gt; Result&lt;Expr, String&gt;
+</span>// Parse an input string into a statement (assignment or expression)
+pub fn parser::parse(input: &amp;str) -&gt; Result&lt;Stmt, String&gt;
 
 // Check whether input is a partial expression (starts with an operator)
 pub fn parser::is_partial(input: &amp;str) -&gt; bool
 
-// Evaluate an AST to a float
-pub fn eval::eval(expr: &amp;Expr) -&gt; Result&lt;f64, String&gt;
+// Evaluate an AST node given a variable environment
+pub fn eval::eval(expr: &amp;Expr, env: &amp;Env) -&gt; Result&lt;f64, String&gt;
+// Note: return type migrates to Result&lt;Value, String&gt; in Phase 3
 
-// Format a number for user-facing display
+// Format a number for user-facing display (respects base and precision)
 pub fn eval::format_value(n: f64, precision: usize, base: Base) -&gt; String
 
-// Format a number for internal use (always decimal, for re-parsing)
+// Format a number for internal use (always decimal)
 pub fn eval::format_number(n: f64) -&gt; String
 
-// Memory cell store + persistence
-pub struct memory::Memory { ... }
+// Variable environment: maps names to scalar values
+// Migrates to HashMap&lt;String, Value&gt; in Phase 3
+pub type env::Env = HashMap&lt;String, f64&gt;;
 
-// Parse a trailing memory directive from an expression string
-pub fn memory::extract_directive(input: &amp;str) -&gt; (&amp;str, Option&lt;Directive&gt;)
-
-// Replace m1..m9 references with their numeric values
-pub fn memory::expand_memory_refs(input: &amp;str, memory: &amp;Memory) -&gt; (String, Option&lt;String&gt;)
+// Save / load workspace to ~/.config/ccalc/workspace.toml
+pub fn env::save_workspace_default(env: &amp;Env) -&gt; Result&lt;(), String&gt;
+pub fn env::load_workspace_default() -&gt; Result&lt;Env, String&gt;
 <span class="boring">}</span></code></pre>
 <h2 id="why-a-separate-crate"><a class="header" href="#why-a-separate-crate">Why a separate crate?</a></h2>
 <p>The engine crate provides a stable, testable boundary between computation logic
@@ -878,15 +939,16 @@ pub fn is_partial(input: &amp;str) -&gt; bool
 <span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="evaluator-evalrs"><a class="header" href="#evaluator-evalrs">Evaluator (<code>eval.rs</code>)</a></h1>
-<p>The evaluator walks an <code>Expr</code> AST and produces an <code>f64</code> result.</p>
+<p>The evaluator walks an <code>Expr</code> AST and produces an <code>f64</code> result, given a variable environment.</p>
 <h2 id="ast-types"><a class="header" href="#ast-types">AST types</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub enum Expr {
     Number(f64),
+    Var(String),                     // variable lookup
     UnaryMinus(Box&lt;Expr&gt;),
     BinOp(Box&lt;Expr&gt;, Op, Box&lt;Expr&gt;),
-    Call(String, Box&lt;Expr&gt;),     // single-argument function call
+    Call(String, Box&lt;Expr&gt;),         // single-argument function call
 }
 
 pub enum Op {
@@ -897,7 +959,7 @@ pub enum Op {
 <p><code>Call</code> currently accepts exactly one argument. Phase 2 (multi-argument
 functions) will extend this to <code>Call(String, Vec&lt;Expr&gt;)</code>.</p>
 </blockquote>
-<h2 id="evalexpr-semantics"><a class="header" href="#evalexpr-semantics"><code>eval(expr)</code> semantics</a></h2>
+<h2 id="evalexpr-env-semantics"><a class="header" href="#evalexpr-env-semantics"><code>eval(expr, env)</code> semantics</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -905,6 +967,7 @@ functions) will extend this to <code>Call(String, Vec&lt;Expr&gt;)</code>.</p>
 </thead>
 <tbody>
 <tr><td><code>Number(n)</code></td><td>Returns <code>n</code></td></tr>
+<tr><td><code>Var(name)</code></td><td>Looks up <code>name</code> in <code>env</code>; <code>Err</code> if not defined</td></tr>
 <tr><td><code>UnaryMinus(e)</code></td><td>Returns <code>-eval(e)</code></td></tr>
 <tr><td><code>BinOp(l, Div, r)</code></td><td>Returns <code>Err</code> if <code>r == 0.0</code></td></tr>
 <tr><td><code>BinOp(l, Mod, r)</code></td><td>Returns <code>Err</code> if <code>r == 0.0</code></td></tr>
@@ -928,8 +991,7 @@ functions) will extend this to <code>Call(String, Vec&lt;Expr&gt;)</code>.</p>
 <li>Floats: up to 10 significant fractional digits, trailing zeros trimmed</li>
 <li>Very large / very small: scientific notation to preserve value</li>
 </ul>
-<p>This function is used by <code>memory::expand_memory_refs</code> to substitute cell values
-into expression strings before re-parsing.</p>
+<p>This function is used by <code>repl.rs</code> when displaying partial-expression context.</p>
 <h2 id="base-enum"><a class="header" href="#base-enum"><code>Base</code> enum</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -940,8 +1002,8 @@ pub enum Base { Dec, Hex, Bin, Oct }
 <code>format_value</code> at output time, and switched by commands (<code>hex</code>, <code>dec</code>, …).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="octave-compatibility-roadmap"><a class="header" href="#octave-compatibility-roadmap">Octave Compatibility Roadmap</a></h1>
-<p>ccalc is being extended to support Octave/MATLAB syntax in the engine crate.
-The work is divided into 9 phases in order of architectural importance.</p>
+<p>ccalc aims for maximum practical compatibility with Octave/MATLAB <code>.m</code> files.
+The work is divided into phases in order of architectural dependency.</p>
 <h2 id="phase-summary"><a class="header" href="#phase-summary">Phase summary</a></h2>
 <div class="table-wrapper">
 <table>
@@ -949,8 +1011,8 @@ The work is divided into 9 phases in order of architectural importance.</p>
 <tr><th>Phase</th><th>Goal</th><th>Status</th></tr>
 </thead>
 <tbody>
-<tr><td>1</td><td>Variables and assignment (<code>x = 5</code>, <code>who</code>, <code>clear</code>)</td><td>Planned</td></tr>
-<tr><td>2</td><td>Multi-argument functions (<code>atan2</code>, <code>mod</code>, <code>max</code>)</td><td>Planned</td></tr>
+<tr><td>1</td><td>Variables and assignment (<code>x = 5</code>, <code>who</code>, <code>clear</code>, <code>ws</code>/<code>wl</code>)</td><td>✅ Done</td></tr>
+<tr><td>2</td><td>Multi-argument functions (<code>atan2</code>, <code>mod</code>, <code>max</code>, <code>min</code>)</td><td>Planned</td></tr>
 <tr><td>3</td><td>Matrix literals (<code>[1 2 3]</code>, <code>[1; 2; 3]</code>)</td><td>Planned</td></tr>
 <tr><td>4</td><td>Matrix operations (<code>A * B</code>, <code>A'</code>, <code>A .* B</code>)</td><td>Planned</td></tr>
 <tr><td>5</td><td>Range operator (<code>1:5</code>, <code>1:2:10</code>, <code>linspace</code>)</td><td>Planned</td></tr>
@@ -958,63 +1020,76 @@ The work is divided into 9 phases in order of architectural importance.</p>
 <tr><td>7</td><td>Comparison and logical operators (<code>==</code>, <code>~=</code>, <code>&amp;&amp;</code>)</td><td>Planned</td></tr>
 <tr><td>8</td><td>Control flow (<code>if</code>, <code>for</code>, <code>while</code> in <code>.m</code> files)</td><td>Planned</td></tr>
 <tr><td>9</td><td>User-defined functions (<code>function y = f(x) … end</code>)</td><td>Planned</td></tr>
+<tr><td>10</td><td>String data types (<code>'char array'</code>, <code>"string object"</code>)</td><td>Planned</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="key-architectural-decisions"><a class="header" href="#key-architectural-decisions">Key architectural decisions</a></h2>
-<p><strong>Phase 1</strong> introduces <code>Value</code> (replacing bare <code>f64</code>) and <code>Env</code> (variable
-environment), which are load-bearing for every subsequent phase.</p>
-<p><strong>Phase 3</strong> adds <code>ndarray</code> as the first external computation dependency.</p>
+<p><strong>Phase 1</strong> introduced <code>Env</code> (<code>HashMap&lt;String, f64&gt;</code>) and <code>Stmt</code>
+(assignment vs expression), which are load-bearing for every subsequent phase.</p>
+<p><strong>Phase 2</strong> migrates <code>Expr::Call(String, Box&lt;Expr&gt;)</code> to
+<code>Expr::Call(String, Vec&lt;Expr&gt;)</code> and introduces a function registry
+(<code>HashMap&lt;&amp;str, BuiltinFn&gt;</code>). The evaluator will no longer hard-code function
+names.</p>
+<p><strong>Phase 3</strong> adds <code>ndarray</code> and a <code>Value</code> enum (<code>Scalar(f64)</code> | <code>Matrix(...)</code>),
+migrating <code>Env</code> from <code>f64</code> to <code>Value</code>.</p>
 <p><strong>Phase 6</strong> resolves the syntactic ambiguity between <code>f(x)</code> (function call)
-and <code>A(i)</code> (matrix indexing) by checking <code>Env</code> at parse/eval time.</p>
+and <code>A(i)</code> (matrix indexing) by checking <code>Env</code> at eval time.</p>
 <p><strong>Phase 8</strong> adds multi-line input buffering to the REPL for unclosed
 <code>if</code>/<code>for</code>/<code>while</code>/<code>end</code> blocks.</p>
+<p><strong>Phase 10</strong> adds two distinct string types following the modern MATLAB
+standard: <code>'text'</code> (char array, numeric-compatible) and <code>"text"</code> (string
+object).</p>
 <h2 id="compatibility-notes"><a class="header" href="#compatibility-notes">Compatibility notes</a></h2>
 <ul>
-<li><code>%</code> is already <strong>modulo</strong> in ccalc; in Octave <code>%</code> starts a comment.
-Resolution deferred to Phase 8 (scripting).</li>
-<li>The accumulator (<code>acc</code>) and memory cells (m1–m9) coexist with Octave
-variables throughout all phases.</li>
-<li>Rarely-used Octave features are left unimplemented until clearly needed.</li>
+<li><code>%</code> is a <strong>comment</strong> character (Octave/MATLAB convention). It terminates
+tokenization at that point. This is already implemented.</li>
+<li><code>ans</code> is the sole implicit variable (Octave/MATLAB convention). The old
+accumulator (<code>acc</code>) and memory cells (<code>m1</code>–<code>m9</code>) were removed in Phase 1.</li>
+<li>1-based indexing for matrices (Octave/MATLAB convention) — implemented in Phase 6.</li>
+<li>Where MATLAB and Octave differ, ccalc follows the <strong>modern MATLAB standard
+(R2016b+)</strong>.</li>
+<li>Full toolbox compatibility (Signal Processing, Optimization, etc.) is
+out of scope.</li>
 </ul>
-<p>See individual phase pages for detailed implementation plans.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="phase-1--variables-and-assignment"><a class="header" href="#phase-1--variables-and-assignment">Phase 1 — Variables and Assignment</a></h1>
+<p><strong>Status: ✅ Done</strong> (v0.7.0)</p>
 <p><strong>Goal</strong>: <code>x = 5</code>, then <code>x + 1</code> → <code>6</code></p>
-<h2 id="what-changes"><a class="header" href="#what-changes">What changes</a></h2>
-<h3 id="new-value-type"><a class="header" href="#new-value-type">New <code>Value</code> type</a></h3>
-<p>Replace bare <code>f64</code> in the evaluator with an enum that can grow:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub enum Value {
-    Scalar(f64),
-    // Matrix(Array2&lt;f64&gt;) — added in Phase 3
-}
-<span class="boring">}</span></code></pre>
+<h2 id="what-was-implemented"><a class="header" href="#what-was-implemented">What was implemented</a></h2>
 <h3 id="variable-environment-env"><a class="header" href="#variable-environment-env">Variable environment (<code>Env</code>)</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub type Env = HashMap&lt;String, Value&gt;;
+</span>pub type Env = HashMap&lt;String, f64&gt;;
 <span class="boring">}</span></code></pre>
-<p><code>eval</code> gains a <code>&amp;mut Env</code> parameter. The REPL holds one <code>Env</code> per session.</p>
+<p><code>eval</code> takes <code>&amp;Env</code>. The REPL holds one <code>Env</code> per session, initialized with
+<code>ans = 0.0</code> on startup.</p>
 <h3 id="assignment-statement"><a class="header" href="#assignment-statement">Assignment statement</a></h3>
-<p><code>x = expr</code> is a new statement type, separate from an expression:</p>
+<p><code>x = expr</code> is a top-level statement, separate from an expression:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub enum Stmt {
     Assign(String, Expr),   // x = expr
-    Expr(Expr),             // standalone expression
+    Expr(Expr),             // standalone expression → stored in ans
 }
 <span class="boring">}</span></code></pre>
-<p>The parser’s top-level entry point returns <code>Stmt</code> instead of <code>Expr</code>.</p>
 <h3 id="variable-lookup-in-expressions"><a class="header" href="#variable-lookup-in-expressions">Variable lookup in expressions</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Expr::Var(String)   // new variant
+</span>Expr::Var(String)
 <span class="boring">}</span></code></pre>
 <p>When the evaluator encounters <code>Var(name)</code>, it looks up <code>name</code> in <code>Env</code>.
-Unknown names produce an error (as before for unknown identifiers).</p>
-<h3 id="new-commands"><a class="header" href="#new-commands">New commands</a></h3>
+Unknown names produce an error.</p>
+<h3 id="ans--implicit-last-result"><a class="header" href="#ans--implicit-last-result"><code>ans</code> — implicit last result</a></h3>
+<p><code>ans</code> is the reserved name for the result of the last standalone expression.
+It is initialized to <code>0.0</code> on startup and updated after every expression
+that is not assigned to a named variable — exactly as in Octave/MATLAB.</p>
+<p>Partial expressions (starting with an operator) automatically prepend <code>ans</code>:</p>
+<pre><code>[ 100 ]: / 4
+[ 25 ]: + 5
+[ 30 ]:
+</code></pre>
+<h3 id="commands-1"><a class="header" href="#commands-1">Commands</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1022,27 +1097,28 @@ Unknown names produce an error (as before for unknown identifiers).</p>
 </thead>
 <tbody>
 <tr><td><code>who</code></td><td>List all variables and their values</td></tr>
-<tr><td><code>clear x</code></td><td>Delete variable <code>x</code> from <code>Env</code></td></tr>
-<tr><td><code>clear</code></td><td>Delete all variables</td></tr>
+<tr><td><code>clear</code></td><td>Delete all variables (reinitializes <code>ans = 0</code>)</td></tr>
+<tr><td><code>clear x</code></td><td>Delete variable <code>x</code></td></tr>
+<tr><td><code>ws</code></td><td>Save workspace to <code>~/.config/ccalc/workspace.toml</code></td></tr>
+<tr><td><code>wl</code></td><td>Load workspace from file</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="variable-name-as-expression"><a class="header" href="#variable-name-as-expression">Variable-name-as-expression</a></h3>
-<p>Typing a variable name alone prints its value in Octave style:</p>
-<pre><code>&gt;&gt; x = 5
-x = 5
-&gt;&gt; x
-x = 5
-</code></pre>
-<h2 id="coexistence-with-existing-features"><a class="header" href="#coexistence-with-existing-features">Coexistence with existing features</a></h2>
+<h3 id="workspace-persistence-1"><a class="header" href="#workspace-persistence-1">Workspace persistence</a></h3>
+<p>Variables are saved and loaded via <code>env::save_workspace_default()</code> /
+<code>load_workspace_default()</code>. The file format is plain <code>name = value</code> lines.</p>
+<h2 id="what-was-removed-in-this-phase"><a class="header" href="#what-was-removed-in-this-phase">What was removed in this phase</a></h2>
 <ul>
-<li><code>acc</code> and <code>m1</code>–<code>m9</code> remain unchanged.</li>
-<li><code>pi</code> and <code>e</code> continue to work as before (resolved before <code>Env</code> lookup).</li>
-<li>Partial expressions (<code>+ 5</code>, <code>* 2</code>) still use the accumulator.</li>
+<li><strong><code>acc</code></strong> (old accumulator) — replaced by <code>ans</code>.</li>
+<li><strong><code>m1</code>–<code>m9</code></strong> (memory cells) — replaced by named variables.</li>
+<li><strong><code>c</code> command</strong> — replaced by <code>clear</code>.</li>
 </ul>
-<h2 id="key-constraint"><a class="header" href="#key-constraint">Key constraint</a></h2>
-<p><code>eval</code> currently takes no mutable state. After this phase it takes
-<code>&amp;mut Env</code>. All call sites in <code>repl.rs</code> must be updated.</p>
+<h2 id="octavematlab-alignment"><a class="header" href="#octavematlab-alignment">Octave/MATLAB alignment</a></h2>
+<ul>
+<li><code>ans</code> follows Octave/MATLAB convention exactly.</li>
+<li><code>pi</code> and <code>e</code> are resolved in the parser (not stored in <code>Env</code>).</li>
+<li><code>%</code> terminates tokenization — everything after <code>%</code> on a line is a comment.</li>
+</ul>
 
                     </main>
 
