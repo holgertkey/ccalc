@@ -194,9 +194,7 @@ pub fn run() {
                 };
                 if !silent {
                     match result {
-                        EvalResult::Assigned(name, v) => {
-                            println!("{} = {}", name, format_value(v, precision, base));
-                        }
+                        EvalResult::Assigned(_, _) => {}
                         EvalResult::Value(_) => {
                             // Show expanded expression only for plain expressions
                             let to_show: Option<&str> = if let Some(ref s) = base_display {
