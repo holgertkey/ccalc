@@ -1,263 +1,373 @@
-pub fn print() {
+/// Entry point for all help output.
+///
+/// - `None`       → brief usage (for `-h` / `--help` flag)
+/// - `Some("")`   → one-screen cheatsheet (REPL `help`)
+/// - `Some(topic)`→ detailed section (REPL `help <topic>`)
+pub fn print(topic: Option<&str>) {
+    match topic {
+        None => print_usage(),
+        Some("" | "help") => print_cheatsheet(),
+        Some("syntax") => print_syntax(),
+        Some("functions" | "fn" | "func") => print_functions(),
+        Some("bases" | "base") => print_bases(),
+        Some("vars" | "variables") => print_vars(),
+        Some("script" | "pipe") => print_script(),
+        Some("examples" | "ex") => print_examples(),
+        Some(unknown) => {
+            eprintln!("Unknown help topic: '{unknown}'");
+            eprintln!(
+                "Available topics: syntax  functions  bases  vars  script  examples"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// -h / --help  (CLI flag — modes and options only)
+// ---------------------------------------------------------------------------
+
+fn print_usage() {
     println!(
         "\
-ccalc v{ver} — command-line calculator with Octave/MATLAB syntax
+ccalc v{ver} — terminal calculator with Octave/MATLAB syntax
 
-USAGE:
-    ccalc [OPTIONS]           start interactive REPL
-    ccalc \"EXPR\"              evaluate expression and print result
-    ccalc script.m            run a script file
-    echo \"EXPR\" | ccalc       pipe mode — silent, result only
-    ccalc < formulas.txt      read expressions from file
+USAGE
+    ccalc                   start interactive REPL
+    ccalc \"EXPR\"            evaluate expression and print result
+    ccalc script.m          run a script file
+    echo \"EXPR\" | ccalc     pipe mode — silent, result only
+    ccalc < formulas.txt    read expressions from a file
 
-OPTIONS:
-    -h, --help       Show this help message
-    -v, --version    Show version information
+OPTIONS
+    -h, --help      show this message
+    -v, --version   show version
 
-PIPE / NON-INTERACTIVE MODE:
-    When stdin is not a terminal (pipe or file redirect), ccalc runs in
-    silent mode: no prompt is shown, one result is printed per line.
-    ans carries over across lines, so you can chain steps:
+Start the REPL and type 'help' for the full reference.",
+        ver = env!("CARGO_PKG_VERSION")
+    );
+}
 
-        printf \"100\\n/ 4\\n+ 5\" | ccalc
-        100
-        25
-        30
+// ---------------------------------------------------------------------------
+// help  (REPL — one-screen cheatsheet)
+// ---------------------------------------------------------------------------
 
-    Commands supported in pipe mode: exit / quit (stop),
-    who, clear, clear <name>, ws, wl,
-    p / p<N> (precision), hex / dec / bin / oct / base (number base).
-    cls is ignored.
+fn print_cheatsheet() {
+    println!(
+        "\
+ccalc v{ver} — terminal calculator with Octave/MATLAB syntax
 
-SCRIPT FILES (ccalc < formula.txt  or  ccalc script.m):
-    Three tools for controlling output in pipe/file mode:
+Operators   + - * / ^        ^ is right-associative
+            2(3+1) → 8       implicit multiplication
+Constants   pi  e  ans
+Partial     [ 100 ]: / 4     starts with operator → uses ans
 
-    Comments  (% — Octave/MATLAB convention)
-        % full-line comment
-        10 * 5  % inline comment — expression still evaluates
+1-arg   sqrt abs floor ceil round sign exp ln log
+        sin cos tan  asin acos atan
+2-arg   atan2(y,x)  mod(a,b)  rem(a,b)  max(a,b)  min(a,b)
+        hypot(a,b)  log(x,base)
+        fn() → fn(ans)
 
-    Semicolon — suppress output of a line
-        rate = 0.06 / 12;    evaluates and updates ans, prints nothing
-        n = 360;             stores to variable silently
+Bases   0xFF  0b1010  0o17    hex dec bin oct base
 
-    disp(expr) — print value without updating ans
-        disp(ans)            print current ans
-        disp(x + 1)          print result of expression
+Vars    x = expr  (silent)    who   clear   clear x
+        ws (save workspace)   wl (load workspace)
 
-    fprintf('fmt') — print formatted string
-        fprintf('Done\\n')    print text with newline
-        fprintf(\"val: \")     double quotes also accepted
+Output  disp(expr)            fprintf('text\\n')
+Prec    p<N>  (0-15 decimal places, default 10)
+REPL    exit  quit  cls
 
-REPL COMMANDS:
-    exit, quit       Quit
-    cls              Clear the screen
-    who              List all defined variables
-    clear            Clear all variables
-    clear <name>     Clear a single variable
-    ws               Save workspace to ~/.config/ccalc/workspace.toml
-    wl               Load workspace from file
-    Ctrl+C, Ctrl+D   Quit
+  help syntax      operators, precedence, implicit multiplication
+  help functions   full function reference with examples
+  help bases       number bases, display switching
+  help vars        variables and workspace
+  help script      pipe/script mode, semicolons, disp, fprintf
+  help examples    practical usage examples",
+        ver = env!("CARGO_PKG_VERSION")
+    );
+}
 
-PRECISION:
-    p                Show current precision (number of decimal places)
-    p<N>             Set precision to N decimal places (0–15, default 10)
+// ---------------------------------------------------------------------------
+// help syntax
+// ---------------------------------------------------------------------------
 
-        [ 0 ]: 1 / 3       → 0.3333333333
-        [ 0 ]: p4
-        [ 0 ]: 1 / 3       → 0.3333
+fn print_syntax() {
+    println!(
+        "\
+SYNTAX
 
-NUMBER BASES:
-    Input literals
-        0xFF           hex integer
-        0b1010         binary integer
-        0o17           octal integer
-
-    Display base commands (apply to prompt and all subsequent results)
-        hex            switch display to hexadecimal
-        dec            switch display to decimal (default)
-        bin            switch display to binary
-        oct            switch display to octal
-
-    Inline base suffix — evaluate expression then switch display base
-        expr hex       e.g. 0xFF + 0b1010 hex  → 0x109
-
-    base               show current ans value in all four bases
-
-        [ 10 ]: base
-        2  - 0b1010
-        8  - 0o12
-        10 - 10
-        16 - 0xA
-
-    Expression conversion — when the current base is non-decimal and the expression
-    contains literals in other bases, the converted expression is shown before the result:
-
-        [ 0x6 ]: 0b11 + 0b11
-        0x3 + 0x3
-        [ 0x6 ]:
-
-        [ 0b110 ]: 2 + 0b110 + 0xa
-        0b10 + 0b110 + 0b1010
-        [ 0b10010 ]:
-
-KEYBOARD SHORTCUTS:
-    ↑ / ↓            Browse input history
-    Ctrl+R           Reverse history search
-    ← → Home End     Cursor movement
-    Ctrl+W           Delete word before cursor
-    Ctrl+U           Clear line
-
-ARITHMETIC:
-    Operators:  +  -  *  /  ^
+Operators
+    +  -  *  /  ^
     Precedence (high to low):  ^  (right-associative)
-                               *  /   (and implicit multiplication)
-                               +  -
-    Grouping:    parentheses, e.g. (3 + 2) * 4
-    Unary minus: -5,  -(3 + 2)
+                                *  /  (and implicit multiplication)
+                                +  -
+    Unary minus:  -5    -(3 + 2)
 
-    The prompt [ value ]: shows ans — the result of the last expression.
-    Expressions starting with an operator use ans as the left-hand operand
-    (partial expressions):
+Grouping
+    (2 + 3) * 4     →  20
 
-        [ 6 ]: * 2         ans = 12
-        [ 12 ]: ^ 2        ans = 144
+Implicit multiplication
+    A number or closing parenthesis immediately before ( triggers *:
+    2(3 + 1)        →   8    (same as 2 * (3 + 1))
+    (2+1)(4-1)      →   9
 
-IMPLICIT MULTIPLICATION:
-    A number or closing parenthesis immediately before ( triggers implicit *:
+Partial expressions
+    An expression starting with an operator uses ans as the left operand:
+    [ 100 ]: / 4      →  25
+    [  25 ]: + 5      →  30
+    [  30 ]: ^ 2      →  900
 
-        2(3 + 1)    →  8     (same as 2 * (3 + 1))
-        (2+1)(4-1)  →  9     (same as (2+1) * (4-1))
+Comments
+    % this is a comment
+    10 * 5  % inline comment — expression still evaluates
 
-CONSTANTS:
-    pi          3.14159265358979...
-    e           2.71828182845904...
-    ans         result of last expression (Octave/MATLAB convention)
+Semicolon
+    Trailing ; suppresses output but still evaluates and updates ans.
+    rate = 0.06 / 12;    silent
+    n = 360;"
+    );
+}
 
-MATH FUNCTIONS (one argument):
-    sqrt(x)     square root
-    abs(x)      absolute value
-    floor(x)    round down to integer
-    ceil(x)     round up to integer
-    round(x)    round to nearest integer
-    sign(x)     sign: -1, 0, or 1
-    log(x)      base-10 logarithm
-    ln(x)       natural logarithm
-    exp(x)      e raised to the power x
-    sin(x)      sine (radians)
-    cos(x)      cosine (radians)
-    tan(x)      tangent (radians)
-    asin(x)     inverse sine (radians)
-    acos(x)     inverse cosine (radians)
-    atan(x)     inverse tangent (radians)
+// ---------------------------------------------------------------------------
+// help functions
+// ---------------------------------------------------------------------------
 
-MATH FUNCTIONS (two arguments):
-    atan2(y, x)    four-quadrant inverse tangent (radians)
-    mod(a, b)      remainder, sign follows divisor  (Octave convention)
-    rem(a, b)      remainder, sign follows dividend
-    max(a, b)      larger of two values
-    min(a, b)      smaller of two values
-    hypot(a, b)    sqrt(a^2 + b^2), numerically stable
-    log(x, base)   logarithm of x to an arbitrary base
+fn print_functions() {
+    println!(
+        "\
+FUNCTIONS
 
-    If called with empty parentheses, ans is used as the sole argument:
-        sqrt()   →   sqrt(ans)
+One-argument
+    sqrt(x)       square root
+    abs(x)        absolute value
+    floor(x)      round down to integer
+    ceil(x)       round up to integer
+    round(x)      round to nearest integer
+    sign(x)       sign: -1, 0, or 1
+    log(x)        base-10 logarithm
+    ln(x)         natural logarithm (base e)
+    exp(x)        e raised to the power x
+    sin(x)        sine (radians)
+    cos(x)        cosine (radians)
+    tan(x)        tangent (radians)
+    asin(x)       inverse sine (radians)
+    acos(x)       inverse cosine (radians)
+    atan(x)       inverse tangent (radians)
 
-VARIABLES:
+Two-argument
+    atan2(y, x)   four-quadrant inverse tangent (radians)
+    mod(a, b)     remainder, sign follows divisor  (Octave convention)
+    rem(a, b)     remainder, sign follows dividend
+    max(a, b)     larger of two values
+    min(a, b)     smaller of two values
+    hypot(a, b)   sqrt(a^2 + b^2), numerically stable
+    log(x, base)  logarithm of x to an arbitrary base
 
-  Assignment
-    name = expr         Evaluate expr and store result (silent — no output)
-    name = expr;        Same (semicolon optional, also silent)
+mod vs rem
+    mod(-1, 3)  →   2    sign of the divisor  (use for angle wrapping)
+    rem(-1, 3)  →  -1    sign of the dividend (IEEE 754 truncation)
 
-  Using variables
-    Any defined variable can be used inside expressions by name.
-    ans is the implicit variable — set after every standalone expression.
+Empty parentheses — ans is passed as the sole argument
+    sqrt()   →   sqrt(ans)
+    abs()    →   abs(ans)
 
-        [ 0 ]: rate = 0.06 / 12
-        [ 0 ]: 1 + rate
-        [ 1.005 ]:
+Nesting
+    sqrt(abs(-16))        →   4
+    max(hypot(3, 4), 6)   →   6
+    floor(log(1000))      →   3
 
-  Built-in variables
-    ans             Result of last expression
-    pi              3.14159265358979...
-    e               2.71828182845904...
+Examples
+    hypot(3, 4)                →   5
+    atan2(1, 1) * 180 / pi     →  45
+    log(8, 2)                  →   3
+    mod(370, 360)              →  10"
+    );
+}
 
-  View and clear
-    who             List all defined variables and their values
-    clear           Clear all variables
-    clear <name>    Clear a single variable by name
+// ---------------------------------------------------------------------------
+// help bases
+// ---------------------------------------------------------------------------
 
-  Workspace persistence
-    ws              Save all variables to ~/.config/ccalc/workspace.toml
-    wl              Load variables from file (replaces current workspace)
+fn print_bases() {
+    println!(
+        "\
+NUMBER BASES
 
-EXAMPLES:
+Input literals — mix freely in any expression
+    0xFF        hexadecimal    (0x or 0X prefix)
+    0b1010      binary         (0b or 0B prefix)
+    0o17        octal          (0o or 0O prefix)
 
-  Single expression (argument mode):
-    $ ccalc \"2 ^ 32\"
-    4294967296
+    0xFF + 0b1010   →  265
 
-    $ ccalc \"sqrt(2)\"
-    1.4142135624
+Display commands
+    hex     switch display to hexadecimal
+    dec     switch display to decimal  (default)
+    bin     switch display to binary
+    oct     switch display to octal
 
-  Pipe mode:
+Inline base suffix — evaluate and switch display in one step
+    0xFF + 0b1010 hex   →   0x109
+
+base — show ans in all four bases at once
+    [ 10 ]: base
+    2  - 0b1010
+    8  - 0o12
+    10 - 10
+    16 - 0xA
+
+Expression conversion
+    When the display base is non-decimal and the expression contains
+    literals in other bases, the converted expression is shown first:
+    [ 0x6 ]: 0b11 + 0b11
+    0x3 + 0x3
+    [ 0x6 ]:"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help vars
+// ---------------------------------------------------------------------------
+
+fn print_vars() {
+    println!(
+        "\
+VARIABLES
+
+Assignment  (silent in REPL — no output, prompt unchanged)
+    x = expr
+    x = expr;      semicolon is optional, same behaviour
+
+Using variables
+    [ 0 ]: rate = 0.06 / 12
+    [ 0 ]: 1 + rate
+    [ 1.005 ]:
+
+Built-in variables
+    ans    result of last expression  (initialized to 0 on startup)
+    pi     3.14159265358979...
+    e      2.71828182845904...
+
+View and clear
+    who            list all defined variables and their values
+    clear          clear all variables  (ans reset to 0)
+    clear name     clear a single variable by name
+
+Workspace persistence
+    ws    save all variables to ~/.config/ccalc/workspace.toml
+    wl    load variables from file  (replaces the current workspace)
+
+    The workspace file is plain text: one 'name = value' per line."
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help script
+// ---------------------------------------------------------------------------
+
+fn print_script() {
+    println!(
+        "\
+PIPE / SCRIPT MODE
+
+Running non-interactively: no prompt, one result printed per line.
+    echo \"2 ^ 10\" | ccalc
+    ccalc script.m
+    ccalc < formulas.txt
+
+Semicolon — suppress output for a line
+    rate = 0.06 / 12;    evaluates and updates ans, prints nothing
+    n = 360;
+
+Comments
+    % full-line comment
+    10 * 5  % inline comment — expression still evaluates
+
+disp(expr) — print value without updating ans
+    disp(ans)
+    disp(rate * 12)
+
+fprintf('fmt') — print a formatted string  (double quotes also work)
+    fprintf('Monthly payment: ')
+    fprintf(\"value: %g\\n\")
+
+Escape sequences inside strings
+    \\n   newline
+    \\t   horizontal tab
+    \\\\   literal backslash
+
+Commands that work in pipe/script mode
+    exit / quit      stop processing
+    who / clear      manage variables
+    ws / wl          workspace save and load
+    p / p<N>         precision
+    hex/dec/bin/oct  display base
+
+Example script
+    % Monthly mortgage payment
+    rate = 0.06 / 12;
+    n = 360;
+    factor = (1 + rate) ^ n;
+    payment = 200000 * rate * factor / (factor - 1);
+    fprintf('Monthly payment ($): ')
+    disp(payment)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help examples
+// ---------------------------------------------------------------------------
+
+fn print_examples() {
+    println!(
+        "\
+EXAMPLES
+
+Single expression
+    $ ccalc \"2 ^ 32\"                →  4294967296
+    $ ccalc \"hypot(3, 4)\"           →  5
+    $ ccalc \"0xFF + 0b1010\"         →  265
+    $ ccalc \"atan2(1,1) * 180 / pi\" →  45
+
+Pipe mode
     $ echo \"sin(pi / 6)\" | ccalc
     0.5
 
-    $ printf \"10\\n+ 5\\n* 2\" | ccalc
-    10
-    15
+    $ printf \"100\\n/ 4\\n+ 5\" | ccalc
+    100
+    25
     30
 
-  Implicit multiplication:
-    [ 0 ]: 2(3 + 1)        ans = 8
-    [ 0 ]: (2+1)(4-1)      ans = 9
+REPL — chained calculations with ans
+    [ 0 ]: 2 ^ 10
+    [ 1024 ]: / 4
+    [ 256 ]: sqrt()
+    [ 16 ]:
 
-  Power:
-    [ 0 ]: 2 ^ 10          ans = 1024
+REPL — variables
+    [ 0 ]: rate = 0.07
+    [ 0 ]: 1000 * (1 + rate) ^ 10
+    [ 1967.1513573 ]:
 
-  Functions and constants:
-    [ 0 ]: sqrt(144)          ans = 12
-    [ 0 ]: sin(pi / 6)        ans = 0.5
-    [ 0 ]: log(1000)          ans = 3
-    [ 0 ]: ln(e)              ans = 1
-    [ 0 ]: hypot(3, 4)        ans = 5
-    [ 0 ]: atan2(1, 1) * 180 / pi   ans = 45
-    [ 0 ]: mod(-1, 3)         ans = 2
-    [ 0 ]: log(8, 2)          ans = 3
+REPL — two-argument functions
+    [ 0 ]: hypot(3, 4)              →  5
+    [ 0 ]: atan2(1, 1) * 180 / pi  →  45
+    [ 0 ]: log(8, 2)                →  3
+    [ 0 ]: mod(-1, 3)               →  2
+    [ 0 ]: max(hypot(3,4), 6)       →  6
 
-  ans and empty-arg calls:
-    [ 4 ]: sqrt()          same as sqrt(4); ans = 2
-    [ 9 ]: sqrt(ans)       same as sqrt(9); ans = 3
-    [ 3 ]: ans * 2         ans = 6
+REPL — number bases
+    [ 0 ]: 0xFF + 0b1010            →  265
+    [ 265 ]: hex
+    [ 0x109 ]: + 0b10               →  0x10B
+    [ 0x10B ]: base
+    2  - 0b100001011
+    8  - 0o413
+    10 - 267
+    16 - 0x10B
 
-  Number bases:
-    [ 0 ]: 0xFF + 0b1010   ans = 265
-    [ 265 ]: hex           switch display to hex
-    [ 0x109 ]: + 0b10      ans = 0x10B
-    [ 0x10B ]: dec         switch back to decimal
-    [ 267 ]:
-    [ 0 ]: 0xFF + 0b1010 hex   inline: evaluate and switch to hex → 0x109
-
-  Precision:
-    [ 0 ]: 1 / 3           0.3333333333
-    [ 0 ]: p4
-    [ 0 ]: 1 / 3           0.3333
-
-  Variables — store and reuse:
-    [ 0 ]: rate = 0.06 / 12
-    [ 0 ]: n = 360
-    [ 0 ]: factor = (1 + rate) ^ n
-    [ 0 ]: 200000 * rate * factor / (factor - 1)
-    [ 1199.10 ]:
-
-  Script file (ccalc < formula.txt):
-    % Monthly mortgage payment
-    rate = 0.06 / 12;      % monthly rate — silent
-    n = 360;               % 30 years in months — silent
-    factor = (1 + rate) ^ n;
-    200000 * rate * factor / (factor - 1)
-    fprintf('Monthly payment: ')
-    disp(ans)",
-        ver = env!("CARGO_PKG_VERSION")
+Script files  (see examples/ directory)
+    ccalc examples/mortgage.ccalc
+    ccalc examples/resistors.ccalc
+    ccalc examples/ac_impedance.ccalc"
     );
 }

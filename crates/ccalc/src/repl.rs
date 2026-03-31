@@ -57,7 +57,7 @@ pub fn run() {
     let history_path = config_dir().join("history");
     rl.load_history(&history_path).ok();
 
-    println!("ccalc v{}", env!("CARGO_PKG_VERSION"));
+    println!("ccalc v{}  (type 'help' for reference)", env!("CARGO_PKG_VERSION"));
     println!();
 
     loop {
@@ -142,7 +142,17 @@ pub fn run() {
                 }
                 continue;
             }
+            "help" | "?" => {
+                crate::help::print(Some(""));
+                continue;
+            }
             _ => {}
+        }
+
+        // help <topic>
+        if let Some(topic) = trimmed.strip_prefix("help ").map(str::trim) {
+            crate::help::print(Some(topic));
+            continue;
         }
 
         // clear <name>
@@ -298,7 +308,7 @@ pub fn run_pipe(reader: impl BufRead) {
                 env.clear();
                 continue;
             }
-            "cls" | "who" => continue, // no-op in pipe mode
+            "cls" | "who" | "help" | "?" => continue, // no-op in pipe mode
             "p" => {
                 println!("precision: {precision}");
                 continue;
@@ -334,6 +344,11 @@ pub fn run_pipe(reader: impl BufRead) {
                 continue;
             }
             _ => {}
+        }
+
+        // help <topic> — no-op in pipe mode
+        if trimmed.starts_with("help ") {
+            continue;
         }
 
         // clear <name>

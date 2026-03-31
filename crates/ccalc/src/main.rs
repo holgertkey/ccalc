@@ -13,7 +13,7 @@ fn main() {
                 return;
             }
             "-h" | "--help" => {
-                help::print();
+                help::print(None);
                 return;
             }
             arg if !arg.starts_with('-') => {
