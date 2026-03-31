@@ -316,6 +316,8 @@ rate = 0.05
 |-----------------------------------|-------------------------------------|
 | `exit`, `quit`                    | Quit                                |
 | `cls`                             | Clear the screen                    |
+| `help`, `?`                       | Show cheatsheet                     |
+| `help <topic>`                    | Detailed help (see below)           |
 | `who`                             | List all defined variables          |
 | `clear`                           | Clear all variables                 |
 | `clear <name>`                    | Clear a single variable             |
@@ -326,6 +328,8 @@ rate = 0.05
 | `ws`                              | Save workspace to disk              |
 | `wl`                              | Load workspace from disk            |
 | Ctrl+C / Ctrl+D                   | Quit                                |
+
+Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `examples`
 
 ## Keyboard shortcuts
 

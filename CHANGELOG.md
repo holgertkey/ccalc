@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0+012] - 2026-03-31
+
+### Added
+
+- **Two-level help system** — `help` prints a one-screen cheatsheet; `help <topic>` shows a detailed section:
+  - `help syntax` — operators, precedence, implicit multiplication, partial expressions
+  - `help functions` — full function reference including `mod` vs `rem` explanation
+  - `help bases` — number base input, display switching, inline suffix, `base` command
+  - `help vars` — variables, assignment, `who`/`clear`/`ws`/`wl`
+  - `help script` — pipe/script mode, `;`, `disp`, `fprintf`, escape sequences
+  - `help examples` — practical usage examples
+- **`?` shortcut** — alias for `help` in the REPL
+- **`-h` / `--help` flag** — now shows usage and modes only (no math reference); full reference accessible via `help` in the REPL
+- **REPL banner** — updated to `ccalc vX.Y.Z  (type 'help' for reference)`
+
+## [0.7.0+011] - 2026-03-31
+
+### Added
+
+- **Phase 2 — Multi-argument functions**: `atan2(y,x)`, `mod(a,b)`, `rem(a,b)`, `max(a,b)`, `min(a,b)`, `hypot(a,b)`, `log(x,base)`
+- **Inverse trig**: `asin(x)`, `acos(x)`, `atan(x)`
+- **`sign(x)`** — returns −1, 0, or 1
+- **`Token::Comma`** — comma is now a valid token; function calls accept comma-separated argument lists: `fn(a, b, c)`
+- **`mod` vs `rem` semantics**: `mod(-1, 3) = 2` (sign follows divisor, Octave convention); `rem(-1, 3) = -1` (sign follows dividend)
+- **`examples/ac_impedance.ccalc`** — demonstrates `hypot`, `atan2`, `mod`, `max`, `min`, `log`, `log(x,base)` in an AC circuit calculation
+
+### Changed
+
+- `Expr::Call(String, Box<Expr>)` → `Expr::Call(String, Vec<Expr>)` — variadic argument list
+- Evaluator dispatch moved from inline `match` to `call_builtin(name, args: &[f64])` using slice pattern matching; one-argument functions are backward-compatible
+
 ## [0.7.0+008] - 2026-03-28
 
 ### Added

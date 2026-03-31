@@ -31,6 +31,8 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 |---|---|
 | `exit`, `quit` | Quit |
 | `cls` | Clear the screen |
+| `help`, `?` | Show cheatsheet |
+| `help <topic>` | Detailed help: `syntax` `functions` `bases` `vars` `script` `examples` |
 | `who` | Show all defined variables |
 | `clear` | Clear all variables |
 | `clear <name>` | Clear a single variable |

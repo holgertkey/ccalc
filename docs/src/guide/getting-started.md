@@ -20,11 +20,14 @@ ccalc
 ```
 
 A prompt shows the current value of `ans`. Type an expression and press Enter.
+Type `help` for a reference, or `help <topic>` for a specific section.
 
 ```
 [ 0 ]: 2 ^ 32
 [ 4294967296 ]: / 1024
 [ 4194304 ]: sqrt()
+[ 2048 ]: help functions
+...
 [ 2048 ]: exit
 ```
 
