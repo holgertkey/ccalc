@@ -24,3 +24,4 @@
 
 - [Roadmap](./octave/roadmap.md)
 - [Phase 1 — Variables](./octave/phase1-variables.md)
+- [Phase 2 — Multi-argument Functions](./octave/phase2-functions.md)

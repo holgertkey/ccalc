@@ -133,20 +133,33 @@ CONSTANTS:
     e           2.71828182845904...
     ans         result of last expression (Octave/MATLAB convention)
 
-MATH FUNCTIONS:
+MATH FUNCTIONS (one argument):
     sqrt(x)     square root
     abs(x)      absolute value
     floor(x)    round down to integer
     ceil(x)     round up to integer
     round(x)    round to nearest integer
+    sign(x)     sign: -1, 0, or 1
     log(x)      base-10 logarithm
     ln(x)       natural logarithm
     exp(x)      e raised to the power x
     sin(x)      sine (radians)
     cos(x)      cosine (radians)
     tan(x)      tangent (radians)
+    asin(x)     inverse sine (radians)
+    acos(x)     inverse cosine (radians)
+    atan(x)     inverse tangent (radians)
 
-    If called with empty parentheses, ans is used as the argument:
+MATH FUNCTIONS (two arguments):
+    atan2(y, x)    four-quadrant inverse tangent (radians)
+    mod(a, b)      remainder, sign follows divisor  (Octave convention)
+    rem(a, b)      remainder, sign follows dividend
+    max(a, b)      larger of two values
+    min(a, b)      smaller of two values
+    hypot(a, b)    sqrt(a^2 + b^2), numerically stable
+    log(x, base)   logarithm of x to an arbitrary base
+
+    If called with empty parentheses, ans is used as the sole argument:
         sqrt()   →   sqrt(ans)
 
 VARIABLES:
@@ -203,10 +216,14 @@ EXAMPLES:
     [ 0 ]: 2 ^ 10          ans = 1024
 
   Functions and constants:
-    [ 0 ]: sqrt(144)       ans = 12
-    [ 0 ]: sin(pi / 6)     ans = 0.5
-    [ 0 ]: log(1000)       ans = 3
-    [ 0 ]: ln(e)           ans = 1
+    [ 0 ]: sqrt(144)          ans = 12
+    [ 0 ]: sin(pi / 6)        ans = 0.5
+    [ 0 ]: log(1000)          ans = 3
+    [ 0 ]: ln(e)              ans = 1
+    [ 0 ]: hypot(3, 4)        ans = 5
+    [ 0 ]: atan2(1, 1) * 180 / pi   ans = 45
+    [ 0 ]: mod(-1, 3)         ans = 2
+    [ 0 ]: log(8, 2)          ans = 3
 
   ans and empty-arg calls:
     [ 4 ]: sqrt()          same as sqrt(4); ans = 2

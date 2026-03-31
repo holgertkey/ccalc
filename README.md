@@ -194,21 +194,39 @@ A number or closing parenthesis immediately before `(` multiplies without an exp
 
 ## Math functions
 
-All functions take a single argument in parentheses. If called with **empty parentheses**, `ans` is used as the argument.
+If called with **empty parentheses**, `ans` is used as the argument.
 
-| Function   | Description       |
-|------------|-------------------|
-| `sqrt(x)`  | Square root       |
-| `abs(x)`   | Absolute value    |
-| `floor(x)` | Round down        |
-| `ceil(x)`  | Round up          |
-| `round(x)` | Round to nearest  |
-| `log(x)`   | Base-10 logarithm |
-| `ln(x)`    | Natural logarithm |
-| `exp(x)`   | *e* raised to *x* |
-| `sin(x)`   | Sine (radians)    |
-| `cos(x)`   | Cosine (radians)  |
-| `tan(x)`   | Tangent (radians) |
+### One-argument
+
+| Function   | Description                      |
+|------------|----------------------------------|
+| `sqrt(x)`  | Square root                      |
+| `abs(x)`   | Absolute value                   |
+| `floor(x)` | Round down to integer            |
+| `ceil(x)`  | Round up to integer              |
+| `round(x)` | Round to nearest integer         |
+| `sign(x)`  | Sign: −1, 0, or 1                |
+| `log(x)`   | Base-10 logarithm                |
+| `ln(x)`    | Natural logarithm (base *e*)     |
+| `exp(x)`   | *e* raised to the power *x*      |
+| `sin(x)`   | Sine (radians)                   |
+| `cos(x)`   | Cosine (radians)                 |
+| `tan(x)`   | Tangent (radians)                |
+| `asin(x)`  | Inverse sine (radians)           |
+| `acos(x)`  | Inverse cosine (radians)         |
+| `atan(x)`  | Inverse tangent (radians)        |
+
+### Two-argument
+
+| Function        | Description                                             |
+|-----------------|---------------------------------------------------------|
+| `atan2(y, x)`   | Four-quadrant inverse tangent (radians)                 |
+| `mod(a, b)`     | Remainder, sign follows divisor (Octave convention)     |
+| `rem(a, b)`     | Remainder, sign follows dividend                        |
+| `max(a, b)`     | Larger of two values                                    |
+| `min(a, b)`     | Smaller of two values                                   |
+| `hypot(a, b)`   | √(a²+b²), numerically stable                           |
+| `log(x, base)`  | Logarithm of *x* to an arbitrary *base*                 |
 
 ```
 [ 0 ]: sqrt(144)
@@ -217,14 +235,17 @@ All functions take a single argument in parentheses. If called with **empty pare
 [ 0 ]: sin(pi / 6)
 [ 0.5 ]:
 
-[ 0 ]: log(1000)
-[ 3 ]:
+[ 0 ]: hypot(3, 4)
+[ 5 ]:
+
+[ 0 ]: atan2(1, 1) * 180 / pi
+[ 45 ]:
+
+[ 0 ]: mod(-1, 3)
+[ 2 ]:
 
 [ 16 ]: sqrt()          same as sqrt(16)
 [ 4 ]:
-
-[ 4 ]: sqrt(ans)        same as sqrt(4)
-[ 2 ]:
 ```
 
 Functions can be nested and combined:
@@ -233,8 +254,8 @@ Functions can be nested and combined:
 [ 0 ]: sqrt(abs(-25))
 [ 5 ]:
 
-[ 0 ]: round(sin(pi / 3) * 100) / 100
-[ 0.87 ]:
+[ 0 ]: max(hypot(3, 4), 6)
+[ 6 ]:
 ```
 
 ---
@@ -523,12 +544,13 @@ Parallel resistance (Ohm): 68.7500002148
 
 The `examples/` directory contains annotated formula files ready to run:
 
-| File                 | Description                                         |
-|----------------------|-----------------------------------------------------|
-| `cylinder.ccalc`     | Volume and surface area of a cylinder               |
-| `mortgage.ccalc`     | Monthly mortgage payment                            |
-| `data_storage.ccalc` | Real GiB capacity of a "500 GB" drive               |
-| `resistors.ccalc`    | Series, parallel resistance, voltage divider, power |
+| File                  | Description                                          |
+|-----------------------|------------------------------------------------------|
+| `cylinder.ccalc`      | Volume and surface area of a cylinder                |
+| `mortgage.ccalc`      | Monthly mortgage payment                             |
+| `data_storage.ccalc`  | Real GiB capacity of a "500 GB" drive                |
+| `resistors.ccalc`     | Series, parallel resistance, voltage divider, power  |
+| `ac_impedance.ccalc`  | AC impedance, phase angle, dB level, bit width       |
 
 ```bash
 ccalc < examples/mortgage.ccalc

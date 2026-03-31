@@ -8,7 +8,7 @@ The work is divided into phases in order of architectural dependency.
 | Phase | Goal | Status |
 |---|---|---|
 | 1 | Variables and assignment (`x = 5`, `who`, `clear`, `ws`/`wl`) | ✅ Done |
-| 2 | Multi-argument functions (`atan2`, `mod`, `max`, `min`) | Planned |
+| 2 | Multi-argument functions (`atan2`, `mod`, `max`, `min`) | ✅ Done |
 | 3 | Matrix literals (`[1 2 3]`, `[1; 2; 3]`) | Planned |
 | 4 | Matrix operations (`A * B`, `A'`, `A .* B`) | Planned |
 | 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | Planned |
@@ -23,10 +23,10 @@ The work is divided into phases in order of architectural dependency.
 **Phase 1** introduced `Env` (`HashMap<String, f64>`) and `Stmt`
 (assignment vs expression), which are load-bearing for every subsequent phase.
 
-**Phase 2** migrates `Expr::Call(String, Box<Expr>)` to
-`Expr::Call(String, Vec<Expr>)` and introduces a function registry
-(`HashMap<&str, BuiltinFn>`). The evaluator will no longer hard-code function
-names.
+**Phase 2** migrated `Expr::Call(String, Box<Expr>)` to
+`Expr::Call(String, Vec<Expr>)` and introduced `call_builtin` dispatch.
+New functions: `atan2`, `mod`, `rem`, `max`, `min`, `hypot`, `log(x,base)`,
+`asin`, `acos`, `atan`, `sign`. Empty args `fn()` still passes `ans`.
 
 **Phase 3** adds `ndarray` and a `Value` enum (`Scalar(f64)` | `Matrix(...)`),
 migrating `Env` from `f64` to `Value`.
