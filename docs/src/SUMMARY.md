@@ -22,6 +22,6 @@
 
 # Octave Compatibility
 
-- [Roadmap](./octave/roadmap.md)
-- [Phase 1 — Variables](./octave/phase1-variables.md)
-- [Phase 2 — Multi-argument Functions](./octave/phase2-functions.md)
+- [Roadmap](./ccalc/roadmap.md)
+- [Phase 1 — Variables](./ccalc/phase1-variables.md)
+- [Phase 2 — Multi-argument Functions](./ccalc/phase2-functions.md)
