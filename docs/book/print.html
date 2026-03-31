@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1dd5d310.js";
+            window.path_to_searchindex_js = "searchindex-16215fbe.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-90c69fb2.js"></script>
+        <script src="toc-a0763bf2.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -247,10 +247,13 @@ cargo build --release
 <h3 id="interactive-repl"><a class="header" href="#interactive-repl">Interactive REPL</a></h3>
 <pre><code class="language-sh">ccalc
 </code></pre>
-<p>A prompt shows the current value of <code>ans</code>. Type an expression and press Enter.</p>
+<p>A prompt shows the current value of <code>ans</code>. Type an expression and press Enter.
+Type <code>help</code> for a reference, or <code>help &lt;topic&gt;</code> for a specific section.</p>
 <pre><code>[ 0 ]: 2 ^ 32
 [ 4294967296 ]: / 1024
 [ 4194304 ]: sqrt()
+[ 2048 ]: help functions
+...
 [ 2048 ]: exit
 </code></pre>
 <h3 id="single-expression-argument-mode"><a class="header" href="#single-expression-argument-mode">Single expression (argument mode)</a></h3>
@@ -320,6 +323,8 @@ an operator use <code>ans</code> as the left-hand operand (<strong>partial expre
 <tbody>
 <tr><td><code>exit</code>, <code>quit</code></td><td>Quit</td></tr>
 <tr><td><code>cls</code></td><td>Clear the screen</td></tr>
+<tr><td><code>help</code>, <code>?</code></td><td>Show cheatsheet</td></tr>
+<tr><td><code>help &lt;topic&gt;</code></td><td>Detailed help: <code>syntax</code> <code>functions</code> <code>bases</code> <code>vars</code> <code>script</code> <code>examples</code></td></tr>
 <tr><td><code>who</code></td><td>Show all defined variables</td></tr>
 <tr><td><code>clear</code></td><td>Clear all variables</td></tr>
 <tr><td><code>clear &lt;name&gt;</code></td><td>Clear a single variable</td></tr>
@@ -479,7 +484,7 @@ Monthly payment ($): 1199.1010503
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="functions--constants"><a class="header" href="#functions--constants">Functions &amp; Constants</a></h1>
-<h2 id="built-in-functions"><a class="header" href="#built-in-functions">Built-in functions</a></h2>
+<h2 id="one-argument-functions"><a class="header" href="#one-argument-functions">One-argument functions</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -491,15 +496,44 @@ Monthly payment ($): 1199.1010503
 <tr><td><code>floor(x)</code></td><td>Round down to integer</td></tr>
 <tr><td><code>ceil(x)</code></td><td>Round up to integer</td></tr>
 <tr><td><code>round(x)</code></td><td>Round to nearest integer</td></tr>
+<tr><td><code>sign(x)</code></td><td>Sign: −1, 0, or 1</td></tr>
 <tr><td><code>log(x)</code></td><td>Base-10 logarithm</td></tr>
 <tr><td><code>ln(x)</code></td><td>Natural logarithm (base <em>e</em>)</td></tr>
 <tr><td><code>exp(x)</code></td><td><em>e</em> raised to the power <em>x</em></td></tr>
 <tr><td><code>sin(x)</code></td><td>Sine (radians)</td></tr>
 <tr><td><code>cos(x)</code></td><td>Cosine (radians)</td></tr>
 <tr><td><code>tan(x)</code></td><td>Tangent (radians)</td></tr>
+<tr><td><code>asin(x)</code></td><td>Inverse sine, result in radians</td></tr>
+<tr><td><code>acos(x)</code></td><td>Inverse cosine, result in radians</td></tr>
+<tr><td><code>atan(x)</code></td><td>Inverse tangent, result in radians</td></tr>
 </tbody>
 </table>
 </div>
+<h2 id="two-argument-functions"><a class="header" href="#two-argument-functions">Two-argument functions</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>atan2(y, x)</code></td><td>Four-quadrant inverse tangent, result in radians</td></tr>
+<tr><td><code>mod(a, b)</code></td><td>Remainder, sign follows the divisor (Octave convention)</td></tr>
+<tr><td><code>rem(a, b)</code></td><td>Remainder, sign follows the dividend</td></tr>
+<tr><td><code>max(a, b)</code></td><td>Larger of two values</td></tr>
+<tr><td><code>min(a, b)</code></td><td>Smaller of two values</td></tr>
+<tr><td><code>hypot(a, b)</code></td><td>Euclidean distance √(a²+b²), numerically stable</td></tr>
+<tr><td><code>log(x, base)</code></td><td>Logarithm of <em>x</em> to an arbitrary <em>base</em></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="mod-vs-rem"><a class="header" href="#mod-vs-rem"><code>mod</code> vs <code>rem</code></a></h3>
+<p>Both compute the remainder after division, but differ in sign when the operands
+have opposite signs:</p>
+<pre><code>mod(-1, 3)   →   2    (result has the sign of 3)
+rem(-1, 3)   →  -1    (result has the sign of -1)
+</code></pre>
+<p>Use <code>mod</code> when you want a value always in <code>[0, b)</code>, e.g. for angle wrapping.
+Use <code>rem</code> when you need the IEEE 754 remainder.</p>
 <h2 id="empty-argument-shorthand"><a class="header" href="#empty-argument-shorthand">Empty-argument shorthand</a></h2>
 <p>Calling a function with empty parentheses uses <strong>ans</strong> as the argument:</p>
 <pre><code>[ 144 ]: sqrt()      →  12     (same as sqrt(144))
@@ -525,14 +559,17 @@ Monthly payment ($): 1199.1010503
 </code></pre>
 <h2 id="nesting"><a class="header" href="#nesting">Nesting</a></h2>
 <p>Functions can be nested freely:</p>
-<pre><code>sqrt(abs(-16))      →   4
-ln(exp(1))          →   1
-floor(sqrt(10))     →   3
+<pre><code>sqrt(abs(-16))          →    4
+ln(exp(1))              →    1
+floor(sqrt(10))         →    3
+max(hypot(3,4), 6)      →    6
 </code></pre>
 <h2 id="functions-in-expressions"><a class="header" href="#functions-in-expressions">Functions in expressions</a></h2>
-<pre><code>sqrt(144) + 3       →  15
-2 * sin(pi / 6)     →   1
-log(1000) ^ 2       →   9
+<pre><code>sqrt(144) + 3           →   15
+2 * sin(pi / 6)         →    1
+log(1000) ^ 2           →    9
+hypot(3, 4) * 2         →   10
+atan2(1, 1) * 180 / pi  →   45
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="number-bases"><a class="header" href="#number-bases">Number Bases</a></h1>
@@ -1012,7 +1049,7 @@ The work is divided into phases in order of architectural dependency.</p>
 </thead>
 <tbody>
 <tr><td>1</td><td>Variables and assignment (<code>x = 5</code>, <code>who</code>, <code>clear</code>, <code>ws</code>/<code>wl</code>)</td><td>✅ Done</td></tr>
-<tr><td>2</td><td>Multi-argument functions (<code>atan2</code>, <code>mod</code>, <code>max</code>, <code>min</code>)</td><td>Planned</td></tr>
+<tr><td>2</td><td>Multi-argument functions (<code>atan2</code>, <code>mod</code>, <code>max</code>, <code>min</code>)</td><td>✅ Done</td></tr>
 <tr><td>3</td><td>Matrix literals (<code>[1 2 3]</code>, <code>[1; 2; 3]</code>)</td><td>Planned</td></tr>
 <tr><td>4</td><td>Matrix operations (<code>A * B</code>, <code>A'</code>, <code>A .* B</code>)</td><td>Planned</td></tr>
 <tr><td>5</td><td>Range operator (<code>1:5</code>, <code>1:2:10</code>, <code>linspace</code>)</td><td>Planned</td></tr>
@@ -1027,10 +1064,10 @@ The work is divided into phases in order of architectural dependency.</p>
 <h2 id="key-architectural-decisions"><a class="header" href="#key-architectural-decisions">Key architectural decisions</a></h2>
 <p><strong>Phase 1</strong> introduced <code>Env</code> (<code>HashMap&lt;String, f64&gt;</code>) and <code>Stmt</code>
 (assignment vs expression), which are load-bearing for every subsequent phase.</p>
-<p><strong>Phase 2</strong> migrates <code>Expr::Call(String, Box&lt;Expr&gt;)</code> to
-<code>Expr::Call(String, Vec&lt;Expr&gt;)</code> and introduces a function registry
-(<code>HashMap&lt;&amp;str, BuiltinFn&gt;</code>). The evaluator will no longer hard-code function
-names.</p>
+<p><strong>Phase 2</strong> migrated <code>Expr::Call(String, Box&lt;Expr&gt;)</code> to
+<code>Expr::Call(String, Vec&lt;Expr&gt;)</code> and introduced <code>call_builtin</code> dispatch.
+New functions: <code>atan2</code>, <code>mod</code>, <code>rem</code>, <code>max</code>, <code>min</code>, <code>hypot</code>, <code>log(x,base)</code>,
+<code>asin</code>, <code>acos</code>, <code>atan</code>, <code>sign</code>. Empty args <code>fn()</code> still passes <code>ans</code>.</p>
 <p><strong>Phase 3</strong> adds <code>ndarray</code> and a <code>Value</code> enum (<code>Scalar(f64)</code> | <code>Matrix(...)</code>),
 migrating <code>Env</code> from <code>f64</code> to <code>Value</code>.</p>
 <p><strong>Phase 6</strong> resolves the syntactic ambiguity between <code>f(x)</code> (function call)
@@ -1119,6 +1156,77 @@ that is not assigned to a named variable — exactly as in Octave/MATLAB.</p>
 <li><code>pi</code> and <code>e</code> are resolved in the parser (not stored in <code>Env</code>).</li>
 <li><code>%</code> terminates tokenization — everything after <code>%</code> on a line is a comment.</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="phase-2--multi-argument-functions"><a class="header" href="#phase-2--multi-argument-functions">Phase 2 — Multi-argument Functions</a></h1>
+<p><strong>Status: ✅ Done</strong> (v0.7.0+011)</p>
+<p><strong>Goal</strong>: <code>atan2(y, x)</code>, <code>mod(a, b)</code>, <code>max(a, b)</code>, <code>hypot(a, b)</code>, …</p>
+<h2 id="what-was-implemented-1"><a class="header" href="#what-was-implemented-1">What was implemented</a></h2>
+<h3 id="exprcall--variadic-arguments"><a class="header" href="#exprcall--variadic-arguments"><code>Expr::Call</code> — variadic arguments</a></h3>
+<p><code>Expr::Call(String, Box&lt;Expr&gt;)</code> was replaced by <code>Expr::Call(String, Vec&lt;Expr&gt;)</code>.
+The parser now handles comma-separated argument lists:</p>
+<pre><code>fn()          →  passes ans (backward-compatible)
+fn(x)         →  single argument
+fn(a, b)      →  two arguments
+fn(a, b, c)   →  three arguments (future use)
+</code></pre>
+<h3 id="call_builtin-dispatcher"><a class="header" href="#call_builtin-dispatcher"><code>call_builtin</code> dispatcher</a></h3>
+<p>The inline <code>match name</code> in the evaluator was replaced by <code>call_builtin(name, args: &amp;[f64])</code>,
+which uses slice pattern matching to dispatch on both the function name and the
+argument count:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>("log", [x])        =&gt; x.log10()
+("log", [x, base])  =&gt; x.log(*base)
+<span class="boring">}</span></code></pre>
+<p>This makes it trivial to add overloaded functions and keeps the evaluator clean.</p>
+<h3 id="new-one-argument-functions"><a class="header" href="#new-one-argument-functions">New one-argument functions</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>asin(x)</code></td><td>Inverse sine (radians)</td></tr>
+<tr><td><code>acos(x)</code></td><td>Inverse cosine (radians)</td></tr>
+<tr><td><code>atan(x)</code></td><td>Inverse tangent (radians)</td></tr>
+<tr><td><code>sign(x)</code></td><td>Sign: −1.0, 0.0, or 1.0</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="new-two-argument-functions"><a class="header" href="#new-two-argument-functions">New two-argument functions</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>atan2(y, x)</code></td><td>Four-quadrant inverse tangent (radians)</td></tr>
+<tr><td><code>mod(a, b)</code></td><td>Remainder, sign follows divisor (Octave/MATLAB <code>mod</code>)</td></tr>
+<tr><td><code>rem(a, b)</code></td><td>Remainder, sign follows dividend (IEEE 754 truncation)</td></tr>
+<tr><td><code>max(a, b)</code></td><td>Larger of two values</td></tr>
+<tr><td><code>min(a, b)</code></td><td>Smaller of two values</td></tr>
+<tr><td><code>hypot(a, b)</code></td><td>√(a²+b²), numerically stable</td></tr>
+<tr><td><code>log(x, base)</code></td><td>Logarithm of x to an arbitrary base</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="mod-vs-rem--sign-convention"><a class="header" href="#mod-vs-rem--sign-convention"><code>mod</code> vs <code>rem</code> — sign convention</a></h3>
+<pre><code>mod( 10,  3)  →   1    rem( 10,  3)  →   1
+mod(-1,   3)  →   2    rem(-1,   3)  →  -1
+mod( 1,  -3)  →  -2    rem( 1,  -3)  →   1
+</code></pre>
+<p><code>mod</code> is implemented as <code>a - b * floor(a / b)</code> — sign follows the divisor.
+<code>rem</code> is implemented as <code>a - b * trunc(a / b)</code> — sign follows the dividend.</p>
+<h2 id="octavematlab-alignment-1"><a class="header" href="#octavematlab-alignment-1">Octave/MATLAB alignment</a></h2>
+<ul>
+<li><code>atan2</code>, <code>mod</code>, <code>rem</code>, <code>max</code>, <code>min</code>, <code>hypot</code> match Octave/MATLAB exactly.</li>
+<li><code>log(x, base)</code> — Octave uses <code>log(x)</code> for the natural log; ccalc keeps
+<code>log(x)</code> as base-10 (legacy). Use <code>ln(x)</code> for natural log, or
+<code>log(x, e)</code> for the two-argument form.</li>
+</ul>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<p>See <code>examples/ac_impedance.ccalc</code> for a practical use of <code>hypot</code>, <code>atan2</code>,
+<code>mod</code>, <code>max</code>, <code>min</code>, <code>log</code>, and <code>log(x, base)</code> in an AC circuit calculation.</p>
 
                     </main>
 
