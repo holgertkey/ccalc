@@ -20,6 +20,7 @@ enum Token {
     Caret,
     LParen,
     RParen,
+    Comma,
 }
 
 fn parse_integer_literal(
@@ -134,6 +135,10 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             }
             ')' => {
                 tokens.push(Token::RParen);
+                chars.next();
+            }
+            ',' => {
+                tokens.push(Token::Comma);
                 chars.next();
             }
             '0'..='9' | '.' => {
@@ -365,17 +370,26 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         Token::Ident(name) => {
             let name = name.clone();
             *pos += 1;
-            // Function call: ident '(' [expr] ')'
+            // Function call: ident '(' [expr (',' expr)*] ')'
             if *pos < tokens.len()
                 && let Token::LParen = &tokens[*pos]
             {
                 *pos += 1;
-                // Empty args: fn() uses ans
-                let arg = if *pos < tokens.len() {
+                // Empty args fn() → pass ans as sole argument
+                let args = if *pos < tokens.len() {
                     if let Token::RParen = &tokens[*pos] {
-                        Box::new(Expr::Var("ans".to_string()))
+                        vec![Expr::Var("ans".to_string())]
                     } else {
-                        Box::new(parse_expr(tokens, pos)?)
+                        let mut list = vec![parse_expr(tokens, pos)?];
+                        while *pos < tokens.len() {
+                            if let Token::Comma = &tokens[*pos] {
+                                *pos += 1;
+                                list.push(parse_expr(tokens, pos)?);
+                            } else {
+                                break;
+                            }
+                        }
+                        list
                     }
                 } else {
                     return Err("Expected closing ')'".to_string());
@@ -386,7 +400,7 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 match &tokens[*pos] {
                     Token::RParen => {
                         *pos += 1;
-                        return Ok(Expr::Call(name, arg));
+                        return Ok(Expr::Call(name, args));
                     }
                     _ => return Err("Expected closing ')'".to_string()),
                 }
@@ -759,6 +773,62 @@ mod tests {
             Stmt::Expr(expr) => assert!(eval(&expr, &env).is_err()),
             _ => panic!("expected Stmt::Expr"),
         }
+    }
+
+    // --- Multi-argument functions ---
+
+    #[test]
+    fn test_fn_atan2() {
+        assert!((calc("atan2(1, 1)") - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
+        assert!((calc("atan2(1, 0)") - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fn_mod() {
+        assert_eq!(calc("mod(10, 3)"), 1.0);
+        assert_eq!(calc("mod(-1, 3)"), 2.0);
+    }
+
+    #[test]
+    fn test_fn_rem() {
+        assert_eq!(calc("rem(10, 3)"), 1.0);
+        assert_eq!(calc("rem(-1, 3)"), -1.0);
+    }
+
+    #[test]
+    fn test_fn_max_min() {
+        assert_eq!(calc("max(3, 7)"), 7.0);
+        assert_eq!(calc("min(3, 7)"), 3.0);
+    }
+
+    #[test]
+    fn test_fn_hypot() {
+        assert_eq!(calc("hypot(3, 4)"), 5.0);
+    }
+
+    #[test]
+    fn test_fn_log_two_arg() {
+        assert!((calc("log(8, 2)") - 3.0).abs() < 1e-10);
+        assert!((calc("log(100, 10)") - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fn_asin_acos_atan() {
+        assert!((calc("asin(1)") - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
+        assert!(calc("acos(1)").abs() < 1e-10);
+        assert!((calc("atan(1)") - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fn_two_arg_with_exprs() {
+        // Arguments can be arbitrary expressions
+        assert_eq!(calc("max(1 + 1, 3)"), 3.0);
+        assert!((calc("hypot(2 + 1, 2 ^ 2)") - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fn_empty_arg_still_uses_ans() {
+        assert_eq!(calc_with_ans("sqrt()", 4.0), 2.0);
     }
 
     // --- Implicit multiplication ---

@@ -6,7 +6,7 @@ pub enum Expr {
     Var(String),
     UnaryMinus(Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
-    Call(String, Box<Expr>),
+    Call(String, Vec<Expr>),
 }
 
 #[derive(Debug)]
@@ -52,23 +52,42 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<f64, String> {
                 Op::Pow => Ok(l.powf(r)),
             }
         }
-        Expr::Call(name, arg) => {
-            let x = eval(arg, env)?;
-            match name.as_str() {
-                "sqrt" => Ok(x.sqrt()),
-                "abs" => Ok(x.abs()),
-                "floor" => Ok(x.floor()),
-                "ceil" => Ok(x.ceil()),
-                "round" => Ok(x.round()),
-                "log" => Ok(x.log10()),
-                "ln" => Ok(x.ln()),
-                "exp" => Ok(x.exp()),
-                "sin" => Ok(x.sin()),
-                "cos" => Ok(x.cos()),
-                "tan" => Ok(x.tan()),
-                _ => Err(format!("Unknown function: '{name}'")),
-            }
+        Expr::Call(name, args) => {
+            let evaled: Result<Vec<f64>, String> = args.iter().map(|a| eval(a, env)).collect();
+            call_builtin(name, &evaled?)
         }
+    }
+}
+
+fn call_builtin(name: &str, args: &[f64]) -> Result<f64, String> {
+    match (name, args) {
+        // 1-argument functions
+        ("sqrt",  [x]) => Ok(x.sqrt()),
+        ("abs",   [x]) => Ok(x.abs()),
+        ("floor", [x]) => Ok(x.floor()),
+        ("ceil",  [x]) => Ok(x.ceil()),
+        ("round", [x]) => Ok(x.round()),
+        ("sign",  [x]) => Ok(x.signum()),
+        // Note: log(x) = log10 (ccalc convention); Octave uses log(x) = ln.
+        // Use ln(x) or log(x, base) for natural/arbitrary-base logarithm.
+        ("log",   [x]) => Ok(x.log10()),
+        ("ln",    [x]) => Ok(x.ln()),
+        ("exp",   [x]) => Ok(x.exp()),
+        ("sin",   [x]) => Ok(x.sin()),
+        ("cos",   [x]) => Ok(x.cos()),
+        ("tan",   [x]) => Ok(x.tan()),
+        ("asin",  [x]) => Ok(x.asin()),
+        ("acos",  [x]) => Ok(x.acos()),
+        ("atan",  [x]) => Ok(x.atan()),
+        // 2-argument functions
+        ("atan2", [y, x])    => Ok(y.atan2(*x)),
+        ("mod",   [a, b])    => Ok(a - b * (a / b).floor()),
+        ("rem",   [a, b])    => Ok(a - b * (a / b).trunc()),
+        ("max",   [a, b])    => Ok(a.max(*b)),
+        ("min",   [a, b])    => Ok(a.min(*b)),
+        ("hypot", [a, b])    => Ok(a.hypot(*b)),
+        ("log",   [x, base]) => Ok(x.log(*base)),
+        _ => Err(format!("Unknown function: '{name}'")),
     }
 }
 
@@ -236,74 +255,160 @@ mod tests {
 
     #[test]
     fn test_eval_call_sqrt() {
-        let expr = Expr::Call("sqrt".to_string(), Box::new(Expr::Number(144.0)));
+        let expr = Expr::Call("sqrt".to_string(), vec![Expr::Number(144.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 12.0);
     }
 
     #[test]
     fn test_eval_call_abs() {
-        let expr = Expr::Call("abs".to_string(), Box::new(Expr::Number(-7.0)));
+        let expr = Expr::Call("abs".to_string(), vec![Expr::Number(-7.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 7.0);
     }
 
     #[test]
     fn test_eval_call_floor() {
-        let expr = Expr::Call("floor".to_string(), Box::new(Expr::Number(3.9)));
+        let expr = Expr::Call("floor".to_string(), vec![Expr::Number(3.9)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
     }
 
     #[test]
     fn test_eval_call_ceil() {
-        let expr = Expr::Call("ceil".to_string(), Box::new(Expr::Number(3.1)));
+        let expr = Expr::Call("ceil".to_string(), vec![Expr::Number(3.1)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 4.0);
     }
 
     #[test]
     fn test_eval_call_round() {
-        let expr = Expr::Call("round".to_string(), Box::new(Expr::Number(3.5)));
+        let expr = Expr::Call("round".to_string(), vec![Expr::Number(3.5)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 4.0);
     }
 
     #[test]
     fn test_eval_call_log() {
-        let expr = Expr::Call("log".to_string(), Box::new(Expr::Number(1000.0)));
+        let expr = Expr::Call("log".to_string(), vec![Expr::Number(1000.0)]);
         assert!((eval(&expr, &empty_env()).unwrap() - 3.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_eval_call_ln() {
-        let expr = Expr::Call("ln".to_string(), Box::new(Expr::Number(1.0)));
+        let expr = Expr::Call("ln".to_string(), vec![Expr::Number(1.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
     }
 
     #[test]
     fn test_eval_call_exp() {
-        let expr = Expr::Call("exp".to_string(), Box::new(Expr::Number(0.0)));
+        let expr = Expr::Call("exp".to_string(), vec![Expr::Number(0.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
     }
 
     #[test]
     fn test_eval_call_sin() {
-        let expr = Expr::Call("sin".to_string(), Box::new(Expr::Number(0.0)));
+        let expr = Expr::Call("sin".to_string(), vec![Expr::Number(0.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
     }
 
     #[test]
     fn test_eval_call_cos() {
-        let expr = Expr::Call("cos".to_string(), Box::new(Expr::Number(0.0)));
+        let expr = Expr::Call("cos".to_string(), vec![Expr::Number(0.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
     }
 
     #[test]
     fn test_eval_call_tan() {
-        let expr = Expr::Call("tan".to_string(), Box::new(Expr::Number(0.0)));
+        let expr = Expr::Call("tan".to_string(), vec![Expr::Number(0.0)]);
         assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
     }
 
     #[test]
     fn test_eval_call_unknown() {
-        let expr = Expr::Call("foo".to_string(), Box::new(Expr::Number(1.0)));
+        let expr = Expr::Call("foo".to_string(), vec![Expr::Number(1.0)]);
         assert!(eval(&expr, &empty_env()).is_err());
+    }
+
+    #[test]
+    fn test_eval_call_atan2() {
+        let expr = Expr::Call(
+            "atan2".to_string(),
+            vec![Expr::Number(1.0), Expr::Number(1.0)],
+        );
+        assert!((eval(&expr, &empty_env()).unwrap() - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_call_mod() {
+        let expr = Expr::Call(
+            "mod".to_string(),
+            vec![Expr::Number(10.0), Expr::Number(3.0)],
+        );
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_eval_call_mod_negative() {
+        // mod(-1, 3) = 2  (sign follows divisor, Octave convention)
+        let expr = Expr::Call(
+            "mod".to_string(),
+            vec![Expr::Number(-1.0), Expr::Number(3.0)],
+        );
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 2.0);
+    }
+
+    #[test]
+    fn test_eval_call_rem() {
+        // rem(-1, 3) = -1  (sign follows dividend)
+        let expr = Expr::Call(
+            "rem".to_string(),
+            vec![Expr::Number(-1.0), Expr::Number(3.0)],
+        );
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), -1.0);
+    }
+
+    #[test]
+    fn test_eval_call_max() {
+        let expr = Expr::Call(
+            "max".to_string(),
+            vec![Expr::Number(3.0), Expr::Number(7.0)],
+        );
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 7.0);
+    }
+
+    #[test]
+    fn test_eval_call_min() {
+        let expr = Expr::Call(
+            "min".to_string(),
+            vec![Expr::Number(3.0), Expr::Number(7.0)],
+        );
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
+    }
+
+    #[test]
+    fn test_eval_call_hypot() {
+        let expr = Expr::Call(
+            "hypot".to_string(),
+            vec![Expr::Number(3.0), Expr::Number(4.0)],
+        );
+        assert_eq!(eval(&expr, &empty_env()).unwrap(), 5.0);
+    }
+
+    #[test]
+    fn test_eval_call_log_two_arg() {
+        // log(8, 2) = 3
+        let expr = Expr::Call(
+            "log".to_string(),
+            vec![Expr::Number(8.0), Expr::Number(2.0)],
+        );
+        assert!((eval(&expr, &empty_env()).unwrap() - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_call_asin_acos_atan() {
+        let env = empty_env();
+        let asin = Expr::Call("asin".to_string(), vec![Expr::Number(1.0)]);
+        assert!((eval(&asin, &env).unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
+        let acos = Expr::Call("acos".to_string(), vec![Expr::Number(1.0)]);
+        assert!(eval(&acos, &env).unwrap().abs() < 1e-10);
+        let atan = Expr::Call("atan".to_string(), vec![Expr::Number(1.0)]);
+        assert!((eval(&atan, &env).unwrap() - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
     }
 
     #[test]
