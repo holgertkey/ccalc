@@ -117,6 +117,64 @@ fn new_env() -> Env {
     env
 }
 
+/// Appends a `% --- Session: YYYY-MM-DD HH:MM:SS UTC ---` line to the history
+/// file before loading it, so the file acts as a timestamped session log.
+/// The `%` prefix makes the line a no-op comment if the user ever recalls it.
+fn append_session_marker(path: &std::path::Path) {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if let Ok(mut f) = OpenOptions::new().append(true).create(true).open(path) {
+        let _ = writeln!(f, "% --- Session: {} ---", format_utc(secs));
+    }
+}
+
+/// Converts a Unix timestamp to a human-readable `YYYY-MM-DD HH:MM:SS UTC` string.
+/// Uses only `std` — no external date/time crate needed.
+fn format_utc(secs: u64) -> String {
+    let s = (secs % 60) as u32;
+    let m = (secs / 60 % 60) as u32;
+    let h = (secs / 3600 % 24) as u32;
+    let mut days = (secs / 86400) as u32;
+
+    let mut year = 1970u32;
+    loop {
+        let y_days = if is_leap_year(year) { 366 } else { 365 };
+        if days < y_days {
+            break;
+        }
+        days -= y_days;
+        year += 1;
+    }
+
+    let month_days = [
+        31u32,
+        if is_leap_year(year) { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    let mut month = 1u32;
+    for &md in &month_days {
+        if days < md {
+            break;
+        }
+        days -= md;
+        month += 1;
+    }
+    let day = days + 1;
+
+    format!("{year:04}-{month:02}-{day:02} {h:02}:{m:02}:{s:02} UTC")
+}
+
+fn is_leap_year(y: u32) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
 fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
     match env.get("ans") {
         Some(Value::Scalar(n)) => format_scalar(*n, precision, base),
@@ -132,6 +190,7 @@ pub fn run() {
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     let history_path = config_dir().join("history");
+    append_session_marker(&history_path);
     rl.load_history(&history_path).ok();
 
     println!("ccalc v{}  (type 'help' for reference)", env!("CARGO_PKG_VERSION"));
