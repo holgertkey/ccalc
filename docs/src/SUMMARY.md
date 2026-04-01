@@ -12,6 +12,7 @@
 - [Number Bases](./guide/number-bases.md)
 - [Variables](./guide/variables.md)
 - [Precision](./guide/precision.md)
+- [Matrices](./guide/matrices.md)
 
 # Architecture
 
@@ -25,3 +26,4 @@
 - [Roadmap](./ccalc/roadmap.md)
 - [Phase 1 — Variables](./ccalc/phase1-variables.md)
 - [Phase 2 — Multi-argument Functions](./ccalc/phase2-functions.md)
+- [Phase 3 — Matrix Literals](./ccalc/phase3-matrices.md)

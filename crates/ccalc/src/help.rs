@@ -12,11 +12,12 @@ pub fn print(topic: Option<&str>) {
         Some("bases" | "base") => print_bases(),
         Some("vars" | "variables") => print_vars(),
         Some("script" | "pipe") => print_script(),
+        Some("matrices" | "matrix" | "mat") => print_matrices(),
         Some("examples" | "ex") => print_examples(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  examples"
+                "Available topics: syntax  functions  bases  vars  script  matrices  examples"
             );
         }
     }
@@ -69,6 +70,9 @@ Partial     [ 100 ]: / 4     starts with operator → uses ans
 
 Bases   0xFF  0b1010  0o17    hex dec bin oct base
 
+Matrix  [1 2 3]   [1;2;3]   [1 2;3 4]
+        2*A   A+B   A/2      scalar ops are element-wise
+
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
@@ -83,6 +87,7 @@ REPL    exit  quit  cls
   help bases       number bases, display switching
   help vars        variables and workspace
   help script      pipe/script mode, semicolons, disp, fprintf
+  help matrices    matrix literals, arithmetic, display
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -129,7 +134,10 @@ Semicolon
 
     Multiple statements on one line (; as separator):
     a = 1; b = 2         a = 1 silent,  b = 2 shown
-    a = 1; b = 2;        both silent"
+    a = 1; b = 2;        both silent
+
+    Inside a matrix literal [ ], ; is always a row separator:
+    [1 2; 3 4]           2×2 matrix — the ; is not a statement separator"
     );
 }
 
@@ -320,6 +328,50 @@ Example script
     payment = 200000 * rate * factor / (factor - 1);
     fprintf('Monthly payment ($): ')
     disp(payment)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help matrices
+// ---------------------------------------------------------------------------
+
+fn print_matrices() {
+    println!(
+        "\
+MATRICES
+
+Literals
+    [1 2 3]           row vector  (1×3)
+    [1; 2; 3]         column vector  (3×1)
+    [1 2; 3 4]        2×2 matrix
+    [1, 2; 3, 4]      commas also separate elements
+
+    Elements can be expressions:
+    [sqrt(4), 2^3]    →  [2, 8]
+
+Arithmetic  (scalar operations are element-wise)
+    2 * A             scale all elements
+    A / 10            divide all elements
+    A + 1             add 1 to all elements
+    A ^ 2             square each element
+    A + B             element-wise addition  (shapes must match)
+    A - B             element-wise subtraction
+
+Display
+    A =
+       1   2
+       3   4
+    Prompt shows size when ans is a matrix:  [ [2×2] ]:
+
+Workspace
+    ws  saves only scalar variables — matrices are not persisted.
+    who shows dimensions:  A = [2×2 double]
+
+Not yet supported
+    A * B             matrix multiplication  (Phase 4)
+    A'                transpose  (Phase 4)
+    A .* B            element-wise product  (Phase 4)
+    A(1,1)            indexing  (Phase 6)"
     );
 }
 
