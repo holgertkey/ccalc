@@ -1,11 +1,29 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Variable environment: maps names to scalar values.
+use ndarray::Array2;
+
+/// A value held in the variable environment.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Scalar(f64),
+    Matrix(Array2<f64>),
+}
+
+impl Value {
+    pub fn as_scalar(&self) -> Option<f64> {
+        match self {
+            Value::Scalar(n) => Some(*n),
+            Value::Matrix(_) => None,
+        }
+    }
+}
+
+/// Variable environment: maps names to values.
 ///
 /// `ans` is the reserved name for the result of the last expression
 /// that was not assigned to a named variable (Octave/MATLAB convention).
-pub type Env = HashMap<String, f64>;
+pub type Env = HashMap<String, Value>;
 
 pub fn config_dir() -> PathBuf {
     dirs::config_dir()
@@ -17,13 +35,16 @@ fn workspace_path() -> PathBuf {
     config_dir().join("workspace.toml")
 }
 
-/// Saves all variables in `env` to `path`.
+/// Saves all scalar variables in `env` to `path`. Matrices are skipped.
 /// Each variable is written as `name = value\n`.
 pub fn save_workspace(env: &Env, path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create config dir: {e}"))?;
     }
-    let mut pairs: Vec<(&String, &f64)> = env.iter().collect();
+    let mut pairs: Vec<(&String, f64)> = env
+        .iter()
+        .filter_map(|(k, v)| v.as_scalar().map(|s| (k, s)))
+        .collect();
     pairs.sort_by_key(|(k, _)| k.as_str());
     let mut content = String::new();
     for (name, val) in pairs {
@@ -49,7 +70,7 @@ pub fn load_workspace(path: &Path) -> Result<Env, String> {
             if is_valid_ident(key)
                 && let Ok(v) = val.parse::<f64>()
             {
-                env.insert(key.to_string(), v);
+                env.insert(key.to_string(), Value::Scalar(v));
             }
         }
     }
@@ -80,15 +101,15 @@ mod tests {
     fn test_save_load_roundtrip() {
         let path = std::env::temp_dir().join("ccalc_test_workspace_roundtrip.toml");
         let mut env = Env::new();
-        env.insert("x".to_string(), 42.0);
-        env.insert("y".to_string(), -3.14);
-        env.insert("ans".to_string(), 10.0);
+        env.insert("x".to_string(), Value::Scalar(42.0));
+        env.insert("y".to_string(), Value::Scalar(-3.14));
+        env.insert("ans".to_string(), Value::Scalar(10.0));
         save_workspace(&env, &path).unwrap();
 
         let loaded = load_workspace(&path).unwrap();
-        assert_eq!(loaded.get("x"), Some(&42.0));
-        assert_eq!(loaded.get("y"), Some(&-3.14));
-        assert_eq!(loaded.get("ans"), Some(&10.0));
+        assert_eq!(loaded.get("x"), Some(&Value::Scalar(42.0)));
+        assert_eq!(loaded.get("y"), Some(&Value::Scalar(-3.14)));
+        assert_eq!(loaded.get("ans"), Some(&Value::Scalar(10.0)));
         std::fs::remove_file(&path).ok();
     }
 
@@ -113,7 +134,7 @@ mod tests {
         let path = std::env::temp_dir().join("ccalc_test_workspace_invalid.toml");
         std::fs::write(&path, "# comment\n\nx = 5\n1bad = 9\ngood = abc\n").unwrap();
         let env = load_workspace(&path).unwrap();
-        assert_eq!(env.get("x"), Some(&5.0));
+        assert_eq!(env.get("x"), Some(&Value::Scalar(5.0)));
         assert!(!env.contains_key("1bad"));
         assert!(!env.contains_key("good")); // value not a float
         std::fs::remove_file(&path).ok();
@@ -130,5 +151,19 @@ mod tests {
         assert!(!is_valid_ident(""));
         assert!(!is_valid_ident("a b"));
         assert!(!is_valid_ident("a-b"));
+    }
+
+    #[test]
+    fn test_save_skips_matrices() {
+        use ndarray::array;
+        let path = std::env::temp_dir().join("ccalc_test_workspace_matrix_skip.toml");
+        let mut env = Env::new();
+        env.insert("x".to_string(), Value::Scalar(5.0));
+        env.insert("m".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        save_workspace(&env, &path).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("x = 5"));
+        assert!(!content.contains("m"));
+        std::fs::remove_file(&path).ok();
     }
 }

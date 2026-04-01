@@ -1,4 +1,6 @@
-use crate::env::Env;
+use ndarray::Array2;
+
+use crate::env::{Env, Value};
 
 #[derive(Debug)]
 pub enum Expr {
@@ -7,6 +9,7 @@ pub enum Expr {
     UnaryMinus(Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
     Call(String, Vec<Expr>),
+    Matrix(Vec<Vec<Expr>>),
 }
 
 #[derive(Debug)]
@@ -27,68 +30,167 @@ pub enum Base {
     Oct,
 }
 
-pub fn eval(expr: &Expr, env: &Env) -> Result<f64, String> {
+pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
     match expr {
-        Expr::Number(n) => Ok(*n),
+        Expr::Number(n) => Ok(Value::Scalar(*n)),
         Expr::Var(name) => env
             .get(name)
-            .copied()
+            .cloned()
             .ok_or_else(|| format!("Undefined variable: '{name}'")),
-        Expr::UnaryMinus(e) => Ok(-eval(e, env)?),
+        Expr::UnaryMinus(e) => match eval(e, env)? {
+            Value::Scalar(n) => Ok(Value::Scalar(-n)),
+            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
+        },
         Expr::BinOp(left, op, right) => {
             let l = eval(left, env)?;
             let r = eval(right, env)?;
-            match op {
-                Op::Add => Ok(l + r),
-                Op::Sub => Ok(l - r),
-                Op::Mul => Ok(l * r),
-                Op::Div => {
-                    if r == 0.0 {
-                        Err("Division by zero".to_string())
-                    } else {
-                        Ok(l / r)
-                    }
-                }
-                Op::Pow => Ok(l.powf(r)),
-            }
+            eval_binop(l, op, r)
         }
         Expr::Call(name, args) => {
-            let evaled: Result<Vec<f64>, String> = args.iter().map(|a| eval(a, env)).collect();
+            let evaled: Result<Vec<Value>, String> = args.iter().map(|a| eval(a, env)).collect();
             call_builtin(name, &evaled?)
+        }
+        Expr::Matrix(rows) => {
+            if rows.is_empty() {
+                // Empty matrix: 0x0
+                let m = Array2::<f64>::zeros((0, 0));
+                return Ok(Value::Matrix(m));
+            }
+            let nrows = rows.len();
+            let ncols = rows[0].len();
+            // Validate all rows have the same number of columns
+            for (i, row) in rows.iter().enumerate() {
+                if row.len() != ncols {
+                    return Err(format!(
+                        "Matrix row {} has {} elements, expected {}",
+                        i,
+                        row.len(),
+                        ncols
+                    ));
+                }
+            }
+            let mut flat = Vec::with_capacity(nrows * ncols);
+            for row in rows {
+                for elem_expr in row {
+                    match eval(elem_expr, env)? {
+                        Value::Scalar(n) => flat.push(n),
+                        Value::Matrix(_) => {
+                            return Err(
+                                "Matrix elements must be scalars (nested matrices not supported)"
+                                    .to_string(),
+                            );
+                        }
+                    }
+                }
+            }
+            let m = Array2::from_shape_vec((nrows, ncols), flat)
+                .map_err(|e| format!("Matrix shape error: {e}"))?;
+            Ok(Value::Matrix(m))
         }
     }
 }
 
-fn call_builtin(name: &str, args: &[f64]) -> Result<f64, String> {
-    match (name, args) {
-        // 1-argument functions
-        ("sqrt",  [x]) => Ok(x.sqrt()),
-        ("abs",   [x]) => Ok(x.abs()),
-        ("floor", [x]) => Ok(x.floor()),
-        ("ceil",  [x]) => Ok(x.ceil()),
-        ("round", [x]) => Ok(x.round()),
-        ("sign",  [x]) => Ok(x.signum()),
-        // Note: log(x) = log10 (ccalc convention); Octave uses log(x) = ln.
-        // Use ln(x) or log(x, base) for natural/arbitrary-base logarithm.
-        ("log",   [x]) => Ok(x.log10()),
-        ("ln",    [x]) => Ok(x.ln()),
-        ("exp",   [x]) => Ok(x.exp()),
-        ("sin",   [x]) => Ok(x.sin()),
-        ("cos",   [x]) => Ok(x.cos()),
-        ("tan",   [x]) => Ok(x.tan()),
-        ("asin",  [x]) => Ok(x.asin()),
-        ("acos",  [x]) => Ok(x.acos()),
-        ("atan",  [x]) => Ok(x.atan()),
-        // 2-argument functions
-        ("atan2", [y, x])    => Ok(y.atan2(*x)),
-        ("mod",   [a, b])    => Ok(a - b * (a / b).floor()),
-        ("rem",   [a, b])    => Ok(a - b * (a / b).trunc()),
-        ("max",   [a, b])    => Ok(a.max(*b)),
-        ("min",   [a, b])    => Ok(a.min(*b)),
-        ("hypot", [a, b])    => Ok(a.hypot(*b)),
-        ("log",   [x, base]) => Ok(x.log(*base)),
-        _ => Err(format!("Unknown function: '{name}'")),
+fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
+    match (l, r) {
+        (Value::Scalar(lv), Value::Scalar(rv)) => {
+            let result = match op {
+                Op::Add => lv + rv,
+                Op::Sub => lv - rv,
+                Op::Mul => lv * rv,
+                Op::Div => {
+                    if rv == 0.0 {
+                        return Err("Division by zero".to_string());
+                    }
+                    lv / rv
+                }
+                Op::Pow => lv.powf(rv),
+            };
+            Ok(Value::Scalar(result))
+        }
+        (Value::Matrix(lm), Value::Matrix(rm)) => {
+            if lm.shape() != rm.shape() {
+                return Err(format!(
+                    "Matrix size mismatch: {}x{} vs {}x{}",
+                    lm.nrows(),
+                    lm.ncols(),
+                    rm.nrows(),
+                    rm.ncols()
+                ));
+            }
+            match op {
+                Op::Add => Ok(Value::Matrix(&lm + &rm)),
+                Op::Sub => Ok(Value::Matrix(&lm - &rm)),
+                Op::Mul => Err(
+                    "Matrix-matrix multiplication requires Phase 4".to_string(),
+                ),
+                Op::Div => Err("Matrix-matrix division is not supported".to_string()),
+                Op::Pow => Err("Matrix-matrix power is not supported".to_string()),
+            }
+        }
+        (Value::Scalar(s), Value::Matrix(m)) => match op {
+            Op::Add => Ok(Value::Matrix(s + &m)),
+            Op::Sub => Ok(Value::Matrix(m.mapv(|x| s - x))),
+            Op::Mul => Ok(Value::Matrix(s * &m)),
+            Op::Div => Err("Scalar / Matrix is not supported".to_string()),
+            Op::Pow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
+        },
+        (Value::Matrix(m), Value::Scalar(s)) => match op {
+            Op::Add => Ok(Value::Matrix(&m + s)),
+            Op::Sub => Ok(Value::Matrix(&m - s)),
+            Op::Mul => Ok(Value::Matrix(&m * s)),
+            Op::Div => Ok(Value::Matrix(m.mapv(|x| x / s))),
+            Op::Pow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
+        },
     }
+}
+
+fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
+    match v {
+        Value::Scalar(n) => Ok(*n),
+        Value::Matrix(_) => Err(format!(
+            "Function '{fname}' argument {pos} must be a scalar, got a matrix"
+        )),
+    }
+}
+
+fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
+    let result = match (name, args.len()) {
+        // 1-argument functions
+        ("sqrt",  1) => scalar_arg(&args[0], name, 1)?.sqrt(),
+        ("abs",   1) => scalar_arg(&args[0], name, 1)?.abs(),
+        ("floor", 1) => scalar_arg(&args[0], name, 1)?.floor(),
+        ("ceil",  1) => scalar_arg(&args[0], name, 1)?.ceil(),
+        ("round", 1) => scalar_arg(&args[0], name, 1)?.round(),
+        ("sign",  1) => scalar_arg(&args[0], name, 1)?.signum(),
+        // Note: log(x) = log10; use ln(x) for natural logarithm.
+        ("log",   1) => scalar_arg(&args[0], name, 1)?.log10(),
+        ("ln",    1) => scalar_arg(&args[0], name, 1)?.ln(),
+        ("exp",   1) => scalar_arg(&args[0], name, 1)?.exp(),
+        ("sin",   1) => scalar_arg(&args[0], name, 1)?.sin(),
+        ("cos",   1) => scalar_arg(&args[0], name, 1)?.cos(),
+        ("tan",   1) => scalar_arg(&args[0], name, 1)?.tan(),
+        ("asin",  1) => scalar_arg(&args[0], name, 1)?.asin(),
+        ("acos",  1) => scalar_arg(&args[0], name, 1)?.acos(),
+        ("atan",  1) => scalar_arg(&args[0], name, 1)?.atan(),
+        // 2-argument functions
+        ("atan2", 2) => scalar_arg(&args[0], name, 1)?.atan2(scalar_arg(&args[1], name, 2)?),
+        ("mod",   2) => {
+            let a = scalar_arg(&args[0], name, 1)?;
+            let b = scalar_arg(&args[1], name, 2)?;
+            a - b * (a / b).floor()
+        }
+        ("rem",   2) => {
+            let a = scalar_arg(&args[0], name, 1)?;
+            let b = scalar_arg(&args[1], name, 2)?;
+            a - b * (a / b).trunc()
+        }
+        ("max",   2) => scalar_arg(&args[0], name, 1)?.max(scalar_arg(&args[1], name, 2)?),
+        ("min",   2) => scalar_arg(&args[0], name, 1)?.min(scalar_arg(&args[1], name, 2)?),
+        ("hypot", 2) => scalar_arg(&args[0], name, 1)?.hypot(scalar_arg(&args[1], name, 2)?),
+        ("log",   2) => scalar_arg(&args[0], name, 1)?.log(scalar_arg(&args[1], name, 2)?),
+        _ => return Err(format!("Unknown function: '{name}'")),
+    };
+    Ok(Value::Scalar(result))
 }
 
 /// Formats a number for display: integers without decimal point,
@@ -105,12 +207,69 @@ pub fn format_number(n: f64) -> String {
     }
 }
 
-/// Formats a number for user-facing output using the given base and decimal precision.
-pub fn format_value(n: f64, precision: usize, base: Base) -> String {
+/// Formats a scalar `f64` for user-facing output using the given base and decimal precision.
+/// Replaces the old `format_value(f64, ...)` signature for scalar use sites.
+pub fn format_scalar(n: f64, precision: usize, base: Base) -> String {
     match base {
         Base::Dec => format_decimal(n, precision),
         _ => format_non_dec(n, base),
     }
+}
+
+/// Formats a `Value` compactly: scalars as a number string, matrices as `[NxM double]`.
+pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
+    match v {
+        Value::Scalar(n) => format_scalar(*n, precision, base),
+        Value::Matrix(m) => format!("[{}x{} double]", m.nrows(), m.ncols()),
+    }
+}
+
+/// Returns `None` for scalars; `Some(full_string)` for matrices.
+/// The full string is the MATLAB-style column-aligned matrix display.
+pub fn format_value_full(v: &Value, precision: usize) -> Option<String> {
+    match v {
+        Value::Scalar(_) => None,
+        Value::Matrix(m) => Some(format_matrix(m, precision)),
+    }
+}
+
+/// Formats a matrix with right-aligned columns, 3-space indent, 3 spaces between columns.
+fn format_matrix(m: &Array2<f64>, precision: usize) -> String {
+    if m.nrows() == 0 || m.ncols() == 0 {
+        return "   []".to_string();
+    }
+    let ncols = m.ncols();
+    // Format all cells
+    let cells: Vec<Vec<String>> = m
+        .rows()
+        .into_iter()
+        .map(|row| {
+            row.iter()
+                .map(|&x| format_decimal(x, precision))
+                .collect()
+        })
+        .collect();
+    // Compute column widths
+    let col_widths: Vec<usize> = (0..ncols)
+        .map(|c| cells.iter().map(|row| row[c].len()).max().unwrap_or(0))
+        .collect();
+    let mut lines = Vec::new();
+    for row in &cells {
+        let mut line = String::from("   "); // 3-space indent
+        for (c, cell) in row.iter().enumerate() {
+            if c > 0 {
+                line.push_str("   "); // 3 spaces between columns
+            }
+            // Right-align
+            let pad = col_widths[c].saturating_sub(cell.len());
+            for _ in 0..pad {
+                line.push(' ');
+            }
+            line.push_str(cell);
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
 }
 
 /// Formats a number in a non-decimal integer base (hex/bin/oct).
@@ -158,20 +317,28 @@ mod tests {
 
     fn env_with_ans(val: f64) -> Env {
         let mut env = Env::new();
-        env.insert("ans".to_string(), val);
+        env.insert("ans".to_string(), Value::Scalar(val));
         env
+    }
+
+    // Helper to evaluate and extract scalar — panics if result is a matrix.
+    fn eval_s(expr: &Expr, env: &Env) -> f64 {
+        match eval(expr, env).unwrap() {
+            Value::Scalar(n) => n,
+            _ => panic!("expected scalar"),
+        }
     }
 
     #[test]
     fn test_eval_number() {
-        assert_eq!(eval(&Expr::Number(42.0), &empty_env()).unwrap(), 42.0);
+        assert_eq!(eval_s(&Expr::Number(42.0), &empty_env()), 42.0);
     }
 
     #[test]
     fn test_eval_var_found() {
         let mut env = Env::new();
-        env.insert("x".to_string(), 7.0);
-        assert_eq!(eval(&Expr::Var("x".to_string()), &env).unwrap(), 7.0);
+        env.insert("x".to_string(), Value::Scalar(7.0));
+        assert_eq!(eval_s(&Expr::Var("x".to_string()), &env), 7.0);
     }
 
     #[test]
@@ -182,7 +349,7 @@ mod tests {
     #[test]
     fn test_eval_ans() {
         assert_eq!(
-            eval(&Expr::Var("ans".to_string()), &env_with_ans(42.0)).unwrap(),
+            eval_s(&Expr::Var("ans".to_string()), &env_with_ans(42.0)),
             42.0
         );
     }
@@ -194,7 +361,7 @@ mod tests {
             Op::Add,
             Box::new(Expr::Number(2.0)),
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 3.0);
     }
 
     #[test]
@@ -204,7 +371,7 @@ mod tests {
             Op::Sub,
             Box::new(Expr::Number(4.0)),
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 6.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 6.0);
     }
 
     #[test]
@@ -214,7 +381,7 @@ mod tests {
             Op::Mul,
             Box::new(Expr::Number(7.0)),
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 21.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 21.0);
     }
 
     #[test]
@@ -224,7 +391,7 @@ mod tests {
             Op::Div,
             Box::new(Expr::Number(4.0)),
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 2.5);
+        assert_eq!(eval_s(&expr, &empty_env()), 2.5);
     }
 
     #[test]
@@ -240,7 +407,7 @@ mod tests {
     #[test]
     fn test_eval_unary_minus() {
         let expr = Expr::UnaryMinus(Box::new(Expr::Number(5.0)));
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), -5.0);
+        assert_eq!(eval_s(&expr, &empty_env()), -5.0);
     }
 
     #[test]
@@ -250,73 +417,73 @@ mod tests {
             Op::Pow,
             Box::new(Expr::Number(10.0)),
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1024.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 1024.0);
     }
 
     #[test]
     fn test_eval_call_sqrt() {
         let expr = Expr::Call("sqrt".to_string(), vec![Expr::Number(144.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 12.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 12.0);
     }
 
     #[test]
     fn test_eval_call_abs() {
         let expr = Expr::Call("abs".to_string(), vec![Expr::Number(-7.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 7.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 7.0);
     }
 
     #[test]
     fn test_eval_call_floor() {
         let expr = Expr::Call("floor".to_string(), vec![Expr::Number(3.9)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 3.0);
     }
 
     #[test]
     fn test_eval_call_ceil() {
         let expr = Expr::Call("ceil".to_string(), vec![Expr::Number(3.1)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 4.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 4.0);
     }
 
     #[test]
     fn test_eval_call_round() {
         let expr = Expr::Call("round".to_string(), vec![Expr::Number(3.5)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 4.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 4.0);
     }
 
     #[test]
     fn test_eval_call_log() {
         let expr = Expr::Call("log".to_string(), vec![Expr::Number(1000.0)]);
-        assert!((eval(&expr, &empty_env()).unwrap() - 3.0).abs() < 1e-10);
+        assert!((eval_s(&expr, &empty_env()) - 3.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_eval_call_ln() {
         let expr = Expr::Call("ln".to_string(), vec![Expr::Number(1.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 0.0);
     }
 
     #[test]
     fn test_eval_call_exp() {
         let expr = Expr::Call("exp".to_string(), vec![Expr::Number(0.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 1.0);
     }
 
     #[test]
     fn test_eval_call_sin() {
         let expr = Expr::Call("sin".to_string(), vec![Expr::Number(0.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 0.0);
     }
 
     #[test]
     fn test_eval_call_cos() {
         let expr = Expr::Call("cos".to_string(), vec![Expr::Number(0.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 1.0);
     }
 
     #[test]
     fn test_eval_call_tan() {
         let expr = Expr::Call("tan".to_string(), vec![Expr::Number(0.0)]);
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 0.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 0.0);
     }
 
     #[test]
@@ -331,7 +498,7 @@ mod tests {
             "atan2".to_string(),
             vec![Expr::Number(1.0), Expr::Number(1.0)],
         );
-        assert!((eval(&expr, &empty_env()).unwrap() - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
+        assert!((eval_s(&expr, &empty_env()) - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
     }
 
     #[test]
@@ -340,7 +507,7 @@ mod tests {
             "mod".to_string(),
             vec![Expr::Number(10.0), Expr::Number(3.0)],
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 1.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 1.0);
     }
 
     #[test]
@@ -350,7 +517,7 @@ mod tests {
             "mod".to_string(),
             vec![Expr::Number(-1.0), Expr::Number(3.0)],
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 2.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 2.0);
     }
 
     #[test]
@@ -360,7 +527,7 @@ mod tests {
             "rem".to_string(),
             vec![Expr::Number(-1.0), Expr::Number(3.0)],
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), -1.0);
+        assert_eq!(eval_s(&expr, &empty_env()), -1.0);
     }
 
     #[test]
@@ -369,7 +536,7 @@ mod tests {
             "max".to_string(),
             vec![Expr::Number(3.0), Expr::Number(7.0)],
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 7.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 7.0);
     }
 
     #[test]
@@ -378,7 +545,7 @@ mod tests {
             "min".to_string(),
             vec![Expr::Number(3.0), Expr::Number(7.0)],
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 3.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 3.0);
     }
 
     #[test]
@@ -387,7 +554,7 @@ mod tests {
             "hypot".to_string(),
             vec![Expr::Number(3.0), Expr::Number(4.0)],
         );
-        assert_eq!(eval(&expr, &empty_env()).unwrap(), 5.0);
+        assert_eq!(eval_s(&expr, &empty_env()), 5.0);
     }
 
     #[test]
@@ -397,18 +564,18 @@ mod tests {
             "log".to_string(),
             vec![Expr::Number(8.0), Expr::Number(2.0)],
         );
-        assert!((eval(&expr, &empty_env()).unwrap() - 3.0).abs() < 1e-10);
+        assert!((eval_s(&expr, &empty_env()) - 3.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_eval_call_asin_acos_atan() {
         let env = empty_env();
         let asin = Expr::Call("asin".to_string(), vec![Expr::Number(1.0)]);
-        assert!((eval(&asin, &env).unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
+        assert!((eval_s(&asin, &env) - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
         let acos = Expr::Call("acos".to_string(), vec![Expr::Number(1.0)]);
-        assert!(eval(&acos, &env).unwrap().abs() < 1e-10);
+        assert!(eval_s(&acos, &env).abs() < 1e-10);
         let atan = Expr::Call("atan".to_string(), vec![Expr::Number(1.0)]);
-        assert!((eval(&atan, &env).unwrap() - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
+        assert!((eval_s(&atan, &env) - std::f64::consts::FRAC_PI_4).abs() < 1e-10);
     }
 
     #[test]
@@ -438,19 +605,19 @@ mod tests {
 
     #[test]
     fn test_format_value_dec_integer() {
-        assert_eq!(format_value(42.0, 10, Base::Dec), "42");
-        assert_eq!(format_value(-5.0, 10, Base::Dec), "-5");
+        assert_eq!(format_scalar(42.0, 10, Base::Dec), "42");
+        assert_eq!(format_scalar(-5.0, 10, Base::Dec), "-5");
     }
 
     #[test]
     fn test_format_value_dec_float() {
-        assert_eq!(format_value(3.14, 2, Base::Dec), "3.14");
-        assert_eq!(format_value(1.0 / 3.0, 4, Base::Dec), "0.3333");
+        assert_eq!(format_scalar(3.14, 2, Base::Dec), "3.14");
+        assert_eq!(format_scalar(1.0 / 3.0, 4, Base::Dec), "0.3333");
     }
 
     #[test]
     fn test_format_value_dec_sci_large() {
-        let result = format_value(1e20, 2, Base::Dec);
+        let result = format_scalar(1e20, 2, Base::Dec);
         assert!(
             result.contains('e'),
             "expected scientific notation, got: {result}"
@@ -459,7 +626,7 @@ mod tests {
 
     #[test]
     fn test_format_value_dec_sci_small() {
-        let result = format_value(1e-10, 4, Base::Dec);
+        let result = format_scalar(1e-10, 4, Base::Dec);
         assert!(
             result.contains('e'),
             "expected scientific notation, got: {result}"
@@ -468,21 +635,21 @@ mod tests {
 
     #[test]
     fn test_format_value_hex() {
-        assert_eq!(format_value(255.0, 10, Base::Hex), "0xFF");
-        assert_eq!(format_value(256.0, 10, Base::Hex), "0x100");
-        assert_eq!(format_value(0.0, 10, Base::Hex), "0x0");
+        assert_eq!(format_scalar(255.0, 10, Base::Hex), "0xFF");
+        assert_eq!(format_scalar(256.0, 10, Base::Hex), "0x100");
+        assert_eq!(format_scalar(0.0, 10, Base::Hex), "0x0");
     }
 
     #[test]
     fn test_format_value_bin() {
-        assert_eq!(format_value(10.0, 10, Base::Bin), "0b1010");
-        assert_eq!(format_value(1.0, 10, Base::Bin), "0b1");
+        assert_eq!(format_scalar(10.0, 10, Base::Bin), "0b1010");
+        assert_eq!(format_scalar(1.0, 10, Base::Bin), "0b1");
     }
 
     #[test]
     fn test_format_value_oct() {
-        assert_eq!(format_value(8.0, 10, Base::Oct), "0o10");
-        assert_eq!(format_value(255.0, 10, Base::Oct), "0o377");
+        assert_eq!(format_scalar(8.0, 10, Base::Oct), "0o10");
+        assert_eq!(format_scalar(255.0, 10, Base::Oct), "0o377");
     }
 
     #[test]
@@ -493,6 +660,110 @@ mod tests {
 
     #[test]
     fn test_format_value_hex_rounds() {
-        assert_eq!(format_value(255.6, 10, Base::Hex), "0x100");
+        assert_eq!(format_scalar(255.6, 10, Base::Hex), "0x100");
+    }
+
+    // --- Matrix tests ---
+
+    #[test]
+    fn test_eval_matrix_row_vector() {
+        // [1 2 3] — row vector
+        let expr = Expr::Matrix(vec![vec![Expr::Number(1.0), Expr::Number(2.0), Expr::Number(3.0)]]);
+        let env = empty_env();
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[1, 3]);
+                assert_eq!(m[[0, 0]], 1.0);
+                assert_eq!(m[[0, 1]], 2.0);
+                assert_eq!(m[[0, 2]], 3.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_col_vector() {
+        // [1; 2; 3] — column vector
+        let expr = Expr::Matrix(vec![
+            vec![Expr::Number(1.0)],
+            vec![Expr::Number(2.0)],
+            vec![Expr::Number(3.0)],
+        ]);
+        let env = empty_env();
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[3, 1]);
+                assert_eq!(m[[0, 0]], 1.0);
+                assert_eq!(m[[1, 0]], 2.0);
+                assert_eq!(m[[2, 0]], 3.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_2x2() {
+        // [1 2; 3 4]
+        let expr = Expr::Matrix(vec![
+            vec![Expr::Number(1.0), Expr::Number(2.0)],
+            vec![Expr::Number(3.0), Expr::Number(4.0)],
+        ]);
+        let env = empty_env();
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[2, 2]);
+                assert_eq!(m[[0, 0]], 1.0);
+                assert_eq!(m[[0, 1]], 2.0);
+                assert_eq!(m[[1, 0]], 3.0);
+                assert_eq!(m[[1, 1]], 4.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_add() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+        let b = Value::Matrix(array![[5.0, 6.0], [7.0, 8.0]]);
+        let mut env = empty_env();
+        env.insert("a".to_string(), a);
+        env.insert("b".to_string(), b);
+        let expr = Expr::BinOp(
+            Box::new(Expr::Var("a".to_string())),
+            Op::Add,
+            Box::new(Expr::Var("b".to_string())),
+        );
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 6.0);
+                assert_eq!(m[[0, 1]], 8.0);
+                assert_eq!(m[[1, 0]], 10.0);
+                assert_eq!(m[[1, 1]], 12.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_scalar_mul() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+        let mut env = empty_env();
+        env.insert("a".to_string(), a);
+        let expr = Expr::BinOp(
+            Box::new(Expr::Number(2.0)),
+            Op::Mul,
+            Box::new(Expr::Var("a".to_string())),
+        );
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 2.0);
+                assert_eq!(m[[0, 1]], 4.0);
+                assert_eq!(m[[1, 0]], 6.0);
+                assert_eq!(m[[1, 1]], 8.0);
+            }
+            _ => panic!("expected matrix"),
+        }
     }
 }

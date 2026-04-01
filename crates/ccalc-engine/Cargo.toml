@@ -9,3 +9,4 @@ description = "Core computation engine for ccalc: tokenizer, parser, AST evaluat
 
 [dependencies]
 dirs = "5"
+ndarray = "0.16"

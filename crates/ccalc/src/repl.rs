@@ -3,16 +3,16 @@ use std::io::{BufRead, Write};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
-use ccalc_engine::env::{Env, config_dir, load_workspace_default, save_workspace_default};
-use ccalc_engine::eval::{Base, eval, format_number, format_value};
+use ccalc_engine::env::{Env, Value, config_dir, load_workspace_default, save_workspace_default};
+use ccalc_engine::eval::{Base, eval, format_number, format_scalar, format_value_full};
 use ccalc_engine::parser::{Stmt, is_partial, parse};
 
 /// Result of evaluating one input line.
 enum EvalResult {
     /// Assignment `name = expr` was executed; `name` was set to `val`.
-    Assigned(String, f64),
+    Assigned(String, Value),
     /// Standalone expression; result stored in `ans`.
-    Value(f64),
+    Value(Value),
 }
 
 /// Parse and evaluate one input string, updating `env`.
@@ -31,13 +31,13 @@ fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
     match parse(&expanded)? {
         Stmt::Assign(name, expr) => {
             let val = eval(&expr, env)?;
-            env.insert(name.clone(), val);
+            env.insert(name.clone(), val.clone());
             // Assignments do not update ans (MATLAB semantics)
             Ok(EvalResult::Assigned(name, val))
         }
         Stmt::Expr(expr) => {
             let val = eval(&expr, env)?;
-            env.insert("ans".to_string(), val); // always update ans
+            env.insert("ans".to_string(), val.clone()); // always update ans
             Ok(EvalResult::Value(val))
         }
     }
@@ -46,24 +46,31 @@ fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
 /// Splits a raw input line into `(statement, silent)` pairs.
 ///
 /// - Strips inline `%` comments (outside string literals).
-/// - Splits on `;` outside string literals.
+/// - Splits on `;` outside string literals and outside `[...]` brackets.
 /// - `silent = true` when the statement was followed by `;`,
-///   meaning output is suppressed and `ans` is not updated.
+///   meaning output is suppressed.
 fn split_stmts(input: &str) -> Vec<(&str, bool)> {
     let mut semis: Vec<usize> = Vec::new();
     let mut comment_at = input.len();
     let mut in_sq = false;
     let mut in_dq = false;
 
+    let mut bracket_depth: i32 = 0;
     for (i, c) in input.char_indices() {
         match c {
             '\'' if !in_dq => in_sq = !in_sq,
             '"' if !in_sq => in_dq = !in_dq,
-            '%' if !in_sq && !in_dq => {
+            '[' if !in_sq && !in_dq => bracket_depth += 1,
+            ']' if !in_sq && !in_dq => {
+                if bracket_depth > 0 {
+                    bracket_depth -= 1;
+                }
+            }
+            '%' if !in_sq && !in_dq && bracket_depth == 0 => {
                 comment_at = i;
                 break;
             }
-            ';' if !in_sq && !in_dq => semis.push(i),
+            ';' if !in_sq && !in_dq && bracket_depth == 0 => semis.push(i),
             _ => {}
         }
     }
@@ -98,13 +105,24 @@ fn split_stmts(input: &str) -> Vec<(&str, bool)> {
 }
 
 fn ans(env: &Env) -> f64 {
-    env.get("ans").copied().unwrap_or(0.0)
+    match env.get("ans") {
+        Some(Value::Scalar(n)) => *n,
+        _ => 0.0,
+    }
 }
 
 fn new_env() -> Env {
     let mut env = Env::new();
-    env.insert("ans".to_string(), 0.0);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
     env
+}
+
+fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
+    match env.get("ans") {
+        Some(Value::Scalar(n)) => format_scalar(*n, precision, base),
+        Some(Value::Matrix(m)) => format!("[{}×{}]", m.nrows(), m.ncols()),
+        None => "0".to_string(),
+    }
 }
 
 pub fn run() {
@@ -120,7 +138,7 @@ pub fn run() {
     println!();
 
     'repl: loop {
-        let prompt = format!("[ {} ]: ", format_value(ans(&env), precision, base));
+        let prompt = format!("[ {} ]: ", format_prompt_ans(&env, precision, base));
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
@@ -255,19 +273,41 @@ pub fn run() {
                     if !silent {
                         match result {
                             EvalResult::Assigned(name, val) => {
-                                println!("{name} = {}", format_value(val, precision, base));
+                                match &val {
+                                    Value::Matrix(_) => {
+                                        if let Some(full) = format_value_full(&val, precision) {
+                                            println!("{name} =");
+                                            println!("{full}");
+                                            println!();
+                                        }
+                                    }
+                                    Value::Scalar(v) => {
+                                        println!("{name} = {}", format_scalar(*v, precision, base));
+                                    }
+                                }
                             }
                             EvalResult::Value(val) => {
-                                let to_show: Option<&str> = if let Some(ref s) = base_display {
-                                    Some(s.as_str())
-                                } else {
-                                    expanded.as_deref()
-                                };
-                                if let Some(display) = to_show {
-                                    println!("{display}");
-                                }
-                                if show_all_bases {
-                                    print_all_bases(val, precision);
+                                match &val {
+                                    Value::Matrix(_) => {
+                                        if let Some(full) = format_value_full(&val, precision) {
+                                            println!("ans =");
+                                            println!("{full}");
+                                            println!();
+                                        }
+                                    }
+                                    Value::Scalar(v) => {
+                                        let to_show: Option<&str> = if let Some(ref s) = base_display {
+                                            Some(s.as_str())
+                                        } else {
+                                            expanded.as_deref()
+                                        };
+                                        if let Some(display) = to_show {
+                                            println!("{display}");
+                                        }
+                                        if show_all_bases {
+                                            print_all_bases(*v, precision);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -304,17 +344,38 @@ pub fn run_expr(expr: &str) {
     }
     match evaluate(to_eval, &mut env) {
         Ok(result) => {
-            let val = match result {
+            match result {
                 EvalResult::Assigned(name, v) => {
-                    println!("{} = {}", name, format_value(v, 10, base));
+                    match &v {
+                        Value::Matrix(_) => {
+                            if let Some(full) = format_value_full(&v, 10) {
+                                println!("{name} =");
+                                println!("{full}");
+                            }
+                        }
+                        Value::Scalar(n) => {
+                            println!("{} = {}", name, format_scalar(*n, 10, base));
+                        }
+                    }
                     return;
                 }
-                EvalResult::Value(v) => v,
-            };
-            if show_all {
-                print_all_bases(val, 10);
-            } else {
-                println!("{}", format_value(val, 10, base));
+                EvalResult::Value(v) => {
+                    match &v {
+                        Value::Matrix(_) => {
+                            if let Some(full) = format_value_full(&v, 10) {
+                                println!("ans =");
+                                println!("{full}");
+                            }
+                        }
+                        Value::Scalar(n) => {
+                            if show_all {
+                                print_all_bases(*n, 10);
+                            } else {
+                                println!("{}", format_scalar(*n, 10, base));
+                            }
+                        }
+                    }
+                }
             }
         }
         Err(e) => {
@@ -429,19 +490,41 @@ pub fn run_pipe(reader: impl BufRead) {
                     if !silent {
                         match result {
                             EvalResult::Assigned(name, v) => {
-                                println!("{} = {}", name, format_value(v, precision, base));
+                                match &v {
+                                    Value::Matrix(_) => {
+                                        if let Some(full) = format_value_full(&v, precision) {
+                                            println!("{name} =");
+                                            println!("{full}");
+                                            println!();
+                                        }
+                                    }
+                                    Value::Scalar(n) => {
+                                        println!("{} = {}", name, format_scalar(*n, precision, base));
+                                    }
+                                }
                             }
                             EvalResult::Value(v) => {
-                                if show_all {
-                                    let i = v.round() as i64;
-                                    let u = i.unsigned_abs();
-                                    let sign = if i < 0 { "-" } else { "" };
-                                    println!("2  - {}0b{:b}", sign, u);
-                                    println!("8  - {}0o{:o}", sign, u);
-                                    println!("10 - {}", format_value(v, precision, Base::Dec));
-                                    println!("16 - {}0x{:X}", sign, u);
-                                } else {
-                                    println!("{}", format_value(v, precision, base));
+                                match &v {
+                                    Value::Matrix(_) => {
+                                        if let Some(full) = format_value_full(&v, precision) {
+                                            println!("ans =");
+                                            println!("{full}");
+                                            println!();
+                                        }
+                                    }
+                                    Value::Scalar(n) => {
+                                        if show_all {
+                                            let i = n.round() as i64;
+                                            let u = i.unsigned_abs();
+                                            let sign = if i < 0 { "-" } else { "" };
+                                            println!("2  - {}0b{:b}", sign, u);
+                                            println!("8  - {}0o{:o}", sign, u);
+                                            println!("10 - {}", format_scalar(*n, precision, Base::Dec));
+                                            println!("16 - {}0x{:X}", sign, u);
+                                        } else {
+                                            println!("{}", format_scalar(*n, precision, base));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -454,10 +537,13 @@ pub fn run_pipe(reader: impl BufRead) {
 }
 
 fn print_who(env: &Env, precision: usize, base: Base) {
-    let mut vars: Vec<(&String, &f64)> = env.iter().collect();
+    let mut vars: Vec<(&String, &Value)> = env.iter().collect();
     vars.sort_by_key(|(k, _)| k.as_str());
     for (name, val) in vars {
-        println!("{} = {}", name, format_value(*val, precision, base));
+        match val {
+            Value::Scalar(n) => println!("{} = {}", name, format_scalar(*n, precision, base)),
+            Value::Matrix(m) => println!("{} = [{}×{} double]", name, m.nrows(), m.ncols()),
+        }
     }
 }
 
@@ -468,7 +554,7 @@ fn print_all_bases(n: f64, precision: usize) {
     let sign = if i < 0 { "-" } else { "" };
     println!("2  - {}0b{:b}", sign, u);
     println!("8  - {}0o{:o}", sign, u);
-    println!("10 - {}", format_value(n, precision, Base::Dec));
+    println!("10 - {}", format_scalar(n, precision, Base::Dec));
     println!("16 - {}0x{:X}", sign, u);
 }
 
@@ -533,8 +619,8 @@ fn expand_vars_for_display(expr: &str, env: &Env, base: Base) -> Option<String> 
                     break;
                 }
             }
-            if let Some(&val) = env.get(&ident) {
-                result.push_str(&format_for_base(val, base));
+            if let Some(Value::Scalar(val)) = env.get(&ident) {
+                result.push_str(&format_for_base(*val, base));
                 replaced = true;
             } else {
                 result.push_str(&ident);
@@ -729,7 +815,16 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
         eval(&expr, env)
     });
     match result {
-        Ok(v) => println!("{}", format_value(v, precision, base)),
+        Ok(v) => {
+            match &v {
+                Value::Matrix(_) => {
+                    if let Some(full) = format_value_full(&v, precision) {
+                        println!("{full}");
+                    }
+                }
+                Value::Scalar(n) => println!("{}", format_scalar(*n, precision, base)),
+            }
+        }
         Err(e) => eprintln!("Error: {e}"),
     }
 }
@@ -835,6 +930,24 @@ mod tests {
         assert_eq!(
             split_stmts("fprintf('hello; world')"),
             vec![("fprintf('hello; world')", false)]
+        );
+    }
+
+    #[test]
+    fn test_split_stmts_semi_in_matrix_not_split() {
+        // ';' inside '[...]' must not split the statement
+        assert_eq!(
+            split_stmts("[1 2; 3 4]"),
+            vec![("[1 2; 3 4]", false)]
+        );
+    }
+
+    #[test]
+    fn test_split_stmts_matrix_then_semi() {
+        // Matrix literal followed by outer ';'
+        assert_eq!(
+            split_stmts("A = [1 2; 3 4]; B = 5"),
+            vec![("A = [1 2; 3 4]", true), ("B = 5", false)]
         );
     }
 
@@ -1060,7 +1173,7 @@ mod tests {
     #[test]
     fn test_expand_vars_single() {
         let mut env = new_env();
-        env.insert("x".to_string(), 10.0);
+        env.insert("x".to_string(), Value::Scalar(10.0));
         assert_eq!(
             expand_vars_for_display("x + 5", &env, Base::Dec),
             Some("10 + 5".to_string())
@@ -1070,9 +1183,9 @@ mod tests {
     #[test]
     fn test_expand_vars_multiple() {
         let mut env = new_env();
-        env.insert("ans".to_string(), 13.0);
-        env.insert("x".to_string(), 10.0);
-        env.insert("y".to_string(), 20.0);
+        env.insert("ans".to_string(), Value::Scalar(13.0));
+        env.insert("x".to_string(), Value::Scalar(10.0));
+        env.insert("y".to_string(), Value::Scalar(20.0));
         assert_eq!(
             expand_vars_for_display("ans + x + y", &env, Base::Dec),
             Some("13 + 10 + 20".to_string())
@@ -1082,7 +1195,7 @@ mod tests {
     #[test]
     fn test_expand_vars_unknown_ident_preserved() {
         let mut env = new_env();
-        env.insert("x".to_string(), 5.0);
+        env.insert("x".to_string(), Value::Scalar(5.0));
         // sqrt is not in env — should stay as-is
         assert_eq!(
             expand_vars_for_display("sqrt(x)", &env, Base::Dec),
@@ -1093,10 +1206,25 @@ mod tests {
     #[test]
     fn test_expand_vars_in_hex_base() {
         let mut env = new_env();
-        env.insert("x".to_string(), 255.0);
+        env.insert("x".to_string(), Value::Scalar(255.0));
         assert_eq!(
             expand_vars_for_display("x + 1", &env, Base::Hex),
             Some("0xFF + 1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_expand_vars_matrix_not_expanded() {
+        // Build a matrix value via evaluate so we don't need ndarray directly
+        let mut env = new_env();
+        evaluate("[1 2; 3 4]", &mut env).unwrap();
+        // ans is now a matrix — move it to "m"
+        let mat_val = env.get("ans").unwrap().clone();
+        env.insert("m".to_string(), mat_val);
+        // Matrix variables are not substituted in display expressions
+        assert_eq!(
+            expand_vars_for_display("m + 1", &env, Base::Dec),
+            None
         );
     }
 
@@ -1106,16 +1234,16 @@ mod tests {
     fn test_evaluate_simple() {
         let mut env = Env::new();
         let result = evaluate("3 * 4", &mut env).unwrap();
-        assert!(matches!(result, EvalResult::Value(12.0)));
+        assert!(matches!(result, EvalResult::Value(Value::Scalar(12.0))));
         assert_eq!(ans(&env), 12.0);
     }
 
     #[test]
     fn test_evaluate_partial_adds_to_ans() {
         let mut env = Env::new();
-        env.insert("ans".to_string(), 10.0);
+        env.insert("ans".to_string(), Value::Scalar(10.0));
         let result = evaluate("+ 5", &mut env).unwrap();
-        assert!(matches!(result, EvalResult::Value(15.0)));
+        assert!(matches!(result, EvalResult::Value(Value::Scalar(15.0))));
         assert_eq!(ans(&env), 15.0);
     }
 
@@ -1123,28 +1251,29 @@ mod tests {
     fn test_evaluate_assignment() {
         let mut env = Env::new();
         let result = evaluate("x = 7", &mut env).unwrap();
-        assert!(matches!(result, EvalResult::Assigned(ref n, 7.0) if n == "x"));
-        assert_eq!(env.get("x"), Some(&7.0));
+        assert!(
+            matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0)
+        );
+        assert_eq!(env.get("x"), Some(&Value::Scalar(7.0)));
     }
 
     #[test]
     fn test_evaluate_expression_always_updates_ans() {
-        // Expressions always update ans regardless of silent flag — ans update
-        // happens inside evaluate(), silent only controls printing at call site.
-        let mut env = new_env(); // ans = 0.0
+        let mut env = new_env();
         let result = evaluate("3 * 4", &mut env).unwrap();
-        assert!(matches!(result, EvalResult::Value(12.0)));
-        assert_eq!(ans(&env), 12.0); // ans updated
+        assert!(matches!(result, EvalResult::Value(Value::Scalar(12.0))));
+        assert_eq!(ans(&env), 12.0);
     }
 
     #[test]
     fn test_evaluate_assignment_does_not_update_ans() {
-        // Assignments never update ans (MATLAB semantics)
-        let mut env = new_env(); // ans = 0.0
+        let mut env = new_env();
         let result = evaluate("x = 7", &mut env).unwrap();
-        assert!(matches!(result, EvalResult::Assigned(ref n, 7.0) if n == "x"));
-        assert_eq!(env.get("x"), Some(&7.0)); // variable is set
-        assert_eq!(ans(&env), 0.0); // ans unchanged
+        assert!(
+            matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0)
+        );
+        assert_eq!(env.get("x"), Some(&Value::Scalar(7.0)));
+        assert_eq!(ans(&env), 0.0);
     }
 
     #[test]
@@ -1223,7 +1352,14 @@ mod tests {
                         eval(&expr, &env)
                     });
                     match result {
-                        Ok(v) => output.push(format_value(v, precision, base)),
+                        Ok(v) => match &v {
+                            Value::Matrix(_) => {
+                                if let Some(full) = format_value_full(&v, precision) {
+                                    output.push(full);
+                                }
+                            }
+                            Value::Scalar(n) => output.push(format_scalar(*n, precision, base)),
+                        },
                         Err(e) => output.push(format!("Error: {e}")),
                     }
                     continue;
@@ -1255,26 +1391,46 @@ mod tests {
                         if !silent {
                             match result {
                                 EvalResult::Assigned(name, v) => {
-                                    output.push(format!(
-                                        "{} = {}",
-                                        name,
-                                        format_value(v, precision, base)
-                                    ));
+                                    match &v {
+                                        Value::Matrix(_) => {
+                                            if let Some(full) = format_value_full(&v, precision) {
+                                                output.push(format!("{name} ="));
+                                                output.push(full);
+                                            }
+                                        }
+                                        Value::Scalar(n) => {
+                                            output.push(format!(
+                                                "{} = {}",
+                                                name,
+                                                format_scalar(*n, precision, base)
+                                            ));
+                                        }
+                                    }
                                 }
                                 EvalResult::Value(v) => {
-                                    if show_all {
-                                        let i = v.round() as i64;
-                                        let u = i.unsigned_abs();
-                                        let sign = if i < 0 { "-" } else { "" };
-                                        output.push(format!("2  - {}0b{:b}", sign, u));
-                                        output.push(format!("8  - {}0o{:o}", sign, u));
-                                        output.push(format!(
-                                            "10 - {}",
-                                            format_value(v, precision, Base::Dec)
-                                        ));
-                                        output.push(format!("16 - {}0x{:X}", sign, u));
-                                    } else {
-                                        output.push(format_value(v, precision, base));
+                                    match &v {
+                                        Value::Matrix(_) => {
+                                            if let Some(full) = format_value_full(&v, precision) {
+                                                output.push("ans =".to_string());
+                                                output.push(full);
+                                            }
+                                        }
+                                        Value::Scalar(n) => {
+                                            if show_all {
+                                                let i = n.round() as i64;
+                                                let u = i.unsigned_abs();
+                                                let sign = if i < 0 { "-" } else { "" };
+                                                output.push(format!("2  - {}0b{:b}", sign, u));
+                                                output.push(format!("8  - {}0o{:o}", sign, u));
+                                                output.push(format!(
+                                                    "10 - {}",
+                                                    format_scalar(*n, precision, Base::Dec)
+                                                ));
+                                                output.push(format!("16 - {}0x{:X}", sign, u));
+                                            } else {
+                                                output.push(format_scalar(*n, precision, base));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1525,5 +1681,32 @@ mod tests {
         // Verify partial expression uses ans, not a stale accumulator
         let out = pipe_output("ans\n+ 5");
         assert_eq!(out, vec!["0", "5"]);
+    }
+
+    // --- Matrix pipe tests ---
+
+    #[test]
+    fn test_pipe_matrix_assignment() {
+        let out = pipe_output("A = [1 2; 3 4]");
+        // Should show "A =" and the matrix body
+        assert_eq!(out[0], "A =");
+        assert!(out[1].contains("1"));
+        assert!(out[1].contains("2"));
+    }
+
+    #[test]
+    fn test_pipe_matrix_literal() {
+        let out = pipe_output("[1 2 3]");
+        assert_eq!(out[0], "ans =");
+        assert!(out[1].contains("1"));
+    }
+
+    #[test]
+    fn test_pipe_matrix_semicolon_not_split() {
+        // The ';' inside [1 2; 3 4] must not be treated as a statement separator
+        let out = pipe_output("[1 2; 3 4]");
+        assert_eq!(out[0], "ans =");
+        // Two rows of output
+        assert_eq!(out[1].lines().count(), 2);
     }
 }

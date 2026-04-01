@@ -21,6 +21,9 @@ enum Token {
     LParen,
     RParen,
     Comma,
+    LBracket,
+    RBracket,
+    Semicolon,
 }
 
 fn parse_integer_literal(
@@ -139,6 +142,18 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             }
             ',' => {
                 tokens.push(Token::Comma);
+                chars.next();
+            }
+            '[' => {
+                tokens.push(Token::LBracket);
+                chars.next();
+            }
+            ']' => {
+                tokens.push(Token::RBracket);
+                chars.next();
+            }
+            ';' => {
+                tokens.push(Token::Semicolon);
                 chars.next();
             }
             '0'..='9' | '.' => {
@@ -355,7 +370,7 @@ fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     parse_primary(tokens, pos)
 }
 
-// primary = ident '(' expr ')' | ident '(' ')' | '(' expr ')' | number | ident
+// primary = ident '(' expr ')' | ident '(' ')' | '(' expr ')' | '[' matrix ']' | number | ident
 fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos >= tokens.len() {
         return Err("Unexpected end of expression".to_string());
@@ -427,36 +442,83 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 _ => Err("Expected closing ')'".to_string()),
             }
         }
-        _ => Err("Expected number, function, variable, '-', or '('".to_string()),
+        Token::LBracket => {
+            *pos += 1;
+            parse_matrix(tokens, pos)
+        }
+        _ => Err("Expected number, function, variable, '-', '[', or '('".to_string()),
     }
+}
+
+/// Parses the contents of a matrix literal after the opening `[` has been consumed.
+fn parse_matrix(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    // Handle empty matrix []
+    if matches!(tokens.get(*pos), Some(Token::RBracket)) {
+        *pos += 1;
+        return Ok(Expr::Matrix(vec![]));
+    }
+    let mut rows: Vec<Vec<Expr>> = Vec::new();
+    let mut current_row: Vec<Expr> = Vec::new();
+    loop {
+        match tokens.get(*pos) {
+            None => return Err("Expected ']'".to_string()),
+            Some(Token::RBracket) => {
+                *pos += 1;
+                if !current_row.is_empty() {
+                    rows.push(current_row);
+                }
+                break;
+            }
+            Some(Token::Semicolon) => {
+                *pos += 1;
+                if !current_row.is_empty() {
+                    rows.push(std::mem::take(&mut current_row));
+                }
+            }
+            Some(Token::Comma) => {
+                *pos += 1;
+            }
+            _ => {
+                current_row.push(parse_expr(tokens, pos)?);
+            }
+        }
+    }
+    Ok(Expr::Matrix(rows))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::env::Env;
+    use crate::env::{Env, Value};
     use crate::eval::eval;
+
+    fn eval_s(expr: &Expr, env: &Env) -> f64 {
+        match eval(expr, env).unwrap() {
+            Value::Scalar(n) => n,
+            _ => panic!("expected scalar"),
+        }
+    }
 
     fn calc(input: &str) -> f64 {
         let env = Env::new();
         match parse(input).unwrap() {
-            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).unwrap(),
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval_s(&expr, &env),
         }
     }
 
     fn calc_with_ans(input: &str, ans: f64) -> f64 {
         let mut env = Env::new();
-        env.insert("ans".to_string(), ans);
+        env.insert("ans".to_string(), Value::Scalar(ans));
         match parse(input).unwrap() {
-            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).unwrap(),
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval_s(&expr, &env),
         }
     }
 
     fn calc_with_var(input: &str, name: &str, val: f64) -> f64 {
         let mut env = Env::new();
-        env.insert(name.to_string(), val);
+        env.insert(name.to_string(), Value::Scalar(val));
         match parse(input).unwrap() {
-            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).unwrap(),
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval_s(&expr, &env),
         }
     }
 
@@ -556,7 +618,7 @@ mod tests {
         match parse("x = 5").unwrap() {
             Stmt::Assign(name, expr) => {
                 assert_eq!(name, "x");
-                assert_eq!(eval(&expr, &Env::new()).unwrap(), 5.0);
+                assert_eq!(eval_s(&expr, &Env::new()), 5.0);
             }
             _ => panic!("expected Stmt::Assign"),
         }
@@ -567,7 +629,7 @@ mod tests {
         match parse("result = 2 ^ 10 + 1").unwrap() {
             Stmt::Assign(name, expr) => {
                 assert_eq!(name, "result");
-                assert_eq!(eval(&expr, &Env::new()).unwrap(), 1025.0);
+                assert_eq!(eval_s(&expr, &Env::new()), 1025.0);
             }
             _ => panic!("expected Stmt::Assign"),
         }
@@ -855,5 +917,90 @@ mod tests {
     #[test]
     fn test_implicit_mul_chained() {
         assert_eq!(calc("2(3)(4)"), 24.0);
+    }
+
+    // --- Matrix literal tests ---
+
+    #[test]
+    fn test_matrix_empty() {
+        match parse("[]").unwrap() {
+            Stmt::Expr(Expr::Matrix(rows)) => assert!(rows.is_empty()),
+            _ => panic!("expected empty matrix"),
+        }
+    }
+
+    #[test]
+    fn test_matrix_row_vector_commas() {
+        // [1, 2, 3]
+        match parse("[1, 2, 3]").unwrap() {
+            Stmt::Expr(Expr::Matrix(rows)) => {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].len(), 3);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_matrix_row_vector_spaces() {
+        // [1 2 3] — space-separated
+        match parse("[1 2 3]").unwrap() {
+            Stmt::Expr(Expr::Matrix(rows)) => {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].len(), 3);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_matrix_col_vector() {
+        // [1; 2; 3]
+        match parse("[1; 2; 3]").unwrap() {
+            Stmt::Expr(Expr::Matrix(rows)) => {
+                assert_eq!(rows.len(), 3);
+                assert_eq!(rows[0].len(), 1);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_matrix_2x2() {
+        // [1 2; 3 4]
+        match parse("[1 2; 3 4]").unwrap() {
+            Stmt::Expr(Expr::Matrix(rows)) => {
+                assert_eq!(rows.len(), 2);
+                assert_eq!(rows[0].len(), 2);
+                assert_eq!(rows[1].len(), 2);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_matrix_assign() {
+        match parse("A = [1 2; 3 4]").unwrap() {
+            Stmt::Assign(name, Expr::Matrix(rows)) => {
+                assert_eq!(name, "A");
+                assert_eq!(rows.len(), 2);
+            }
+            _ => panic!("expected assign matrix"),
+        }
+    }
+
+    #[test]
+    fn test_matrix_with_expressions() {
+        // [1+1, 2*3]
+        match parse("[1+1, 2*3]").unwrap() {
+            Stmt::Expr(Expr::Matrix(rows)) => {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].len(), 2);
+                let env = Env::new();
+                assert_eq!(eval_s(&rows[0][0], &env), 2.0);
+                assert_eq!(eval_s(&rows[0][1], &env), 6.0);
+            }
+            _ => panic!("expected matrix"),
+        }
     }
 }
