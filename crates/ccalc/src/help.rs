@@ -69,7 +69,9 @@ Partial     [ 100 ]: / 4     starts with operator → uses ans
 
 Bases   0xFF  0b1010  0o17    hex dec bin oct base
 
-Vars    x = expr  (silent)    who   clear   clear x
+Vars    x = expr              shows: x = <val>  (ans unchanged)
+        x = expr;             silent assignment
+        who   clear   clear x
         ws (save workspace)   wl (load workspace)
 
 Output  disp(expr)            fprintf('text\\n')
@@ -121,9 +123,13 @@ Comments
     10 * 5  % inline comment — expression still evaluates
 
 Semicolon
-    Trailing ; suppresses output but still evaluates and updates ans.
-    rate = 0.06 / 12;    silent
-    n = 360;"
+    Trailing ; suppresses output.
+    Expressions — ans is still updated:    0.06 / 12;
+    Assignments — ans is never updated:    rate = 0.06 / 12;
+
+    Multiple statements on one line (; as separator):
+    a = 1; b = 2         a = 1 silent,  b = 2 shown
+    a = 1; b = 2;        both silent"
     );
 }
 
@@ -233,9 +239,9 @@ fn print_vars() {
         "\
 VARIABLES
 
-Assignment  (silent in REPL — no output, prompt unchanged)
-    x = expr
-    x = expr;      semicolon is optional, same behaviour
+Assignment  (never updates ans; ; suppresses display)
+    x = expr       shows: x = <val>
+    x = expr;      silent
 
 Using variables
     [ 0 ]: rate = 0.06 / 12
@@ -274,9 +280,13 @@ Running non-interactively: no prompt, one result printed per line.
     ccalc script.m
     ccalc < formulas.txt
 
-Semicolon — suppress output for a line
-    rate = 0.06 / 12;    evaluates and updates ans, prints nothing
-    n = 360;
+Semicolon — suppress output
+    rate = 0.06 / 12;    silent assignment  (ans unchanged)
+    n = 360;             silent assignment  (ans unchanged)
+    0.06 / 12;           silent expression  (ans = 0.005)
+
+    Assignments never update ans regardless of ;.
+    Expressions always update ans; ; only hides the output.
 
 Comments
     % full-line comment
@@ -345,6 +355,7 @@ REPL — chained calculations with ans
 
 REPL — variables
     [ 0 ]: rate = 0.07
+    rate = 0.07
     [ 0 ]: 1000 * (1 + rate) ^ 10
     [ 1967.1513573 ]:
 

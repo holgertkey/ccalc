@@ -4,32 +4,26 @@ ccalc supports named variables. Any valid identifier can store a value.
 
 ## Assignment
 
-Use `name = expr` to assign. Assignment is **silent** — no output is produced
-and `ans` is not updated:
+Use `name = expr` to assign. Assignments **never update `ans`** (MATLAB semantics).
+
+Without `;`, the result is displayed:
 
 ```
 [ 0 ]: rate = 0.06 / 12
+rate = 0.005
 [ 0 ]: n = 360
+n = 360
 [ 0 ]: factor = (1 + rate) ^ n
+factor = 10.9357
 [ 0 ]: 200000 * rate * factor / (factor - 1)
 [ 1199.10 ]:
 ```
 
-Append `;` to assign silently in pipe/script mode (redundant in REPL, but
-consistent with Octave/MATLAB style):
+Append `;` to suppress output:
 
 ```
 rate = 0.06 / 12;
 n = 360;
-```
-
-In **pipe/script mode**, assignment without `;` prints `name = value`:
-
-```
-rate = 0.06 / 12
-```
-```
-rate = 0.005
 ```
 
 ## Using variables
@@ -38,6 +32,7 @@ Any defined variable can appear inside an expression:
 
 ```
 [ 0 ]: rate = 0.07
+rate = 0.07
 [ 0 ]: 1000 * (1 + rate) ^ 10
 [ 1967.1513573 ]:
 ```
@@ -114,14 +109,14 @@ rate = 0.005
 
 ```
 % REPL session
-[ 0 ]: rate = 0.06 / 12
-[ 0 ]: n = 360
-[ 0 ]: factor = (1 + rate) ^ n
+[ 0 ]: rate = 0.06 / 12;
+[ 0 ]: n = 360;
+[ 0 ]: factor = (1 + rate) ^ n;
 [ 0 ]: 200000 * rate * factor / (factor - 1)
 [ 1199.10 ]:
 ```
 
-As a script file (pipe mode, assignments print unless `;` is used):
+As a script file (assignments print unless `;` suppresses them):
 
 ```
 % Monthly mortgage payment

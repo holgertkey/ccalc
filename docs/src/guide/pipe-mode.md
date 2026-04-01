@@ -37,12 +37,20 @@ ccalc < formula.txt
 
 ### Semicolon — suppress output
 
-A trailing `;` evaluates the line and updates `ans`, but prints nothing:
+A trailing `;` suppresses output. **Expressions** still update `ans`;
+**assignments** never update `ans` regardless of `;`.
 
 ```
-rate = 0.06 / 12;    % compute monthly rate, silently
-n = 360;             % term in months, silently
+rate = 0.06 / 12;    % silent assignment — ans unchanged
+n = 360;             % silent assignment — ans unchanged
 factor = (1 + rate) ^ n;
+```
+
+Multiple `;`-separated statements on one line are also supported:
+
+```
+a = 1; b = 2; c = 3;    % all silent
+a = 1; b = 2            % a = 1 silent, b = 2 printed
 ```
 
 ### `disp(expr)` — print value
