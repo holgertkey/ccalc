@@ -17,6 +17,10 @@ enum EvalResult {
 
 /// Parse and evaluate one input string, updating `env`.
 /// Handles partial expressions (starting with an operator) by prepending `ans`.
+///
+/// MATLAB semantics: expressions always update `ans`; assignments never do.
+/// The caller controls whether output is printed (silent flag), but `ans` is
+/// always updated by expressions regardless of silence.
 fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
     let expanded = if is_partial(input) {
         format!("ans {}", input)
@@ -28,14 +32,69 @@ fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
         Stmt::Assign(name, expr) => {
             let val = eval(&expr, env)?;
             env.insert(name.clone(), val);
+            // Assignments do not update ans (MATLAB semantics)
             Ok(EvalResult::Assigned(name, val))
         }
         Stmt::Expr(expr) => {
             let val = eval(&expr, env)?;
-            env.insert("ans".to_string(), val);
+            env.insert("ans".to_string(), val); // always update ans
             Ok(EvalResult::Value(val))
         }
     }
+}
+
+/// Splits a raw input line into `(statement, silent)` pairs.
+///
+/// - Strips inline `%` comments (outside string literals).
+/// - Splits on `;` outside string literals.
+/// - `silent = true` when the statement was followed by `;`,
+///   meaning output is suppressed and `ans` is not updated.
+fn split_stmts(input: &str) -> Vec<(&str, bool)> {
+    let mut semis: Vec<usize> = Vec::new();
+    let mut comment_at = input.len();
+    let mut in_sq = false;
+    let mut in_dq = false;
+
+    for (i, c) in input.char_indices() {
+        match c {
+            '\'' if !in_dq => in_sq = !in_sq,
+            '"' if !in_sq => in_dq = !in_dq,
+            '%' if !in_sq && !in_dq => {
+                comment_at = i;
+                break;
+            }
+            ';' if !in_sq && !in_dq => semis.push(i),
+            _ => {}
+        }
+    }
+
+    let content = input[..comment_at].trim_end();
+    if content.is_empty() {
+        return Vec::new();
+    }
+
+    let mut result = Vec::new();
+    let mut start = 0;
+
+    for &sc in &semis {
+        if sc >= content.len() {
+            break;
+        }
+        let part = content[start..sc].trim();
+        if !part.is_empty() {
+            result.push((part, true));
+        }
+        start = sc + 1;
+    }
+
+    if start <= content.len() {
+        let last = content[start..].trim();
+        if !last.is_empty() {
+            result.push((last, false));
+        }
+    }
+
+    result
 }
 
 fn ans(env: &Env) -> f64 {
@@ -60,7 +119,7 @@ pub fn run() {
     println!("ccalc v{}  (type 'help' for reference)", env!("CARGO_PKG_VERSION"));
     println!();
 
-    loop {
+    'repl: loop {
         let prompt = format!("[ {} ]: ", format_value(ans(&env), precision, base));
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
@@ -77,154 +136,145 @@ pub fn run() {
         }
         let _ = rl.add_history_entry(trimmed);
 
-        let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
-            (t.trim_end(), true)
-        } else {
-            (trimmed, false)
-        };
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        // Built-in commands
-        match trimmed {
-            "exit" | "quit" => break,
-            "cls" => {
-                clear_screen();
-                continue;
-            }
-            "who" => {
-                print_who(&env, precision, base);
-                continue;
-            }
-            "clear" => {
-                env.clear();
-                continue;
-            }
-            "p" => {
-                println!("precision: {precision}");
-                continue;
-            }
-            "hex" => {
-                base = Base::Hex;
-                continue;
-            }
-            "dec" => {
-                base = Base::Dec;
-                continue;
-            }
-            "bin" => {
-                base = Base::Bin;
-                continue;
-            }
-            "oct" => {
-                base = Base::Oct;
-                continue;
-            }
-            "base" => {
-                print_all_bases(ans(&env), precision);
-                continue;
-            }
-            "ws" => {
-                match save_workspace_default(&env) {
-                    Ok(()) => println!("Workspace saved."),
-                    Err(e) => eprintln!("Error: {e}"),
+        for (stmt, silent) in split_stmts(trimmed) {
+            // Built-in commands
+            match stmt {
+                "exit" | "quit" => break 'repl,
+                "cls" => {
+                    clear_screen();
+                    continue;
                 }
-                continue;
-            }
-            "wl" => {
-                match load_workspace_default() {
-                    Ok(loaded) => {
-                        env = loaded;
-                        println!("Workspace loaded.");
+                "who" => {
+                    print_who(&env, precision, base);
+                    continue;
+                }
+                "clear" => {
+                    env.clear();
+                    continue;
+                }
+                "p" => {
+                    println!("precision: {precision}");
+                    continue;
+                }
+                "hex" => {
+                    base = Base::Hex;
+                    continue;
+                }
+                "dec" => {
+                    base = Base::Dec;
+                    continue;
+                }
+                "bin" => {
+                    base = Base::Bin;
+                    continue;
+                }
+                "oct" => {
+                    base = Base::Oct;
+                    continue;
+                }
+                "base" => {
+                    print_all_bases(ans(&env), precision);
+                    continue;
+                }
+                "ws" => {
+                    match save_workspace_default(&env) {
+                        Ok(()) => println!("Workspace saved."),
+                        Err(e) => eprintln!("Error: {e}"),
                     }
-                    Err(e) => eprintln!("Error: {e}"),
+                    continue;
+                }
+                "wl" => {
+                    match load_workspace_default() {
+                        Ok(loaded) => {
+                            env = loaded;
+                            println!("Workspace loaded.");
+                        }
+                        Err(e) => eprintln!("Error: {e}"),
+                    }
+                    continue;
+                }
+                "help" | "?" => {
+                    crate::help::print(Some(""));
+                    continue;
+                }
+                _ => {}
+            }
+
+            // help <topic>
+            if let Some(topic) = stmt.strip_prefix("help ").map(str::trim) {
+                crate::help::print(Some(topic));
+                continue;
+            }
+
+            // clear <name>
+            if let Some(name) = stmt.strip_prefix("clear ").map(str::trim) {
+                if !name.is_empty() {
+                    env.remove(name);
                 }
                 continue;
             }
-            "help" | "?" => {
-                crate::help::print(Some(""));
+
+            // Precision command: p<N>
+            if let Some(p) = parse_precision_cmd(stmt) {
+                precision = p;
                 continue;
             }
-            _ => {}
-        }
 
-        // help <topic>
-        if let Some(topic) = trimmed.strip_prefix("help ").map(str::trim) {
-            crate::help::print(Some(topic));
-            continue;
-        }
-
-        // clear <name>
-        if let Some(name) = trimmed.strip_prefix("clear ").map(str::trim) {
-            if !name.is_empty() {
-                env.remove(name);
+            // disp(expr) — print value without updating ans
+            if let Some(arg) = parse_disp_cmd(stmt) {
+                handle_disp(arg, &env, precision, base);
+                continue;
             }
-            continue;
-        }
 
-        // Precision command: p<N>
-        if let Some(p) = parse_precision_cmd(trimmed) {
-            precision = p;
-            continue;
-        }
+            // fprintf('fmt') — print formatted string
+            if let Some(arg) = parse_fprintf_cmd(stmt) {
+                handle_fprintf(arg);
+                continue;
+            }
 
-        // disp(expr) — print value without updating ans
-        if let Some(arg) = parse_disp_cmd(trimmed) {
-            handle_disp(arg, &env, precision, base);
-            continue;
-        }
+            // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
+            let (to_eval, base_suffix) = extract_base_suffix(stmt);
+            let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+            if let Some(BaseSuffix::Switch(b)) = base_suffix {
+                base = b;
+            }
 
-        // fprintf('fmt') — print formatted string
-        if let Some(arg) = parse_fprintf_cmd(trimmed) {
-            handle_fprintf(arg);
-            continue;
-        }
+            // Build display string: partial expressions show numeric ans, not the word "ans"
+            let display_str = if is_partial(to_eval) {
+                format!("{} {}", format_for_base(ans(&env), base), to_eval)
+            } else {
+                to_eval.to_string()
+            };
+            // Expand variable references, then apply base conversion on the result
+            let expanded = expand_vars_for_display(&display_str, &env, base);
+            let base_display =
+                format_expr_for_display(expanded.as_deref().unwrap_or(&display_str), base);
 
-        // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
-        let (to_eval, base_suffix) = extract_base_suffix(trimmed);
-        let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
-        if let Some(BaseSuffix::Switch(b)) = base_suffix {
-            base = b;
-        }
-
-        // Build display string: partial expressions show numeric ans, not the word "ans"
-        let display_str = if is_partial(to_eval) {
-            format!("{} {}", format_for_base(ans(&env), base), to_eval)
-        } else {
-            to_eval.to_string()
-        };
-        // Expand variable references, then apply base conversion on the result
-        let expanded = expand_vars_for_display(&display_str, &env, base);
-        let base_display =
-            format_expr_for_display(expanded.as_deref().unwrap_or(&display_str), base);
-
-        match evaluate(to_eval, &mut env) {
-            Ok(result) => {
-                let val = match &result {
-                    EvalResult::Assigned(_, v) | EvalResult::Value(v) => *v,
-                };
-                if !silent {
-                    match result {
-                        EvalResult::Assigned(_, _) => {}
-                        EvalResult::Value(_) => {
-                            // Show expanded expression only for plain expressions
-                            let to_show: Option<&str> = if let Some(ref s) = base_display {
-                                Some(s.as_str())
-                            } else {
-                                expanded.as_deref()
-                            };
-                            if let Some(display) = to_show {
-                                println!("{display}");
+            match evaluate(to_eval, &mut env) {
+                Ok(result) => {
+                    if !silent {
+                        match result {
+                            EvalResult::Assigned(name, val) => {
+                                println!("{name} = {}", format_value(val, precision, base));
                             }
-                            if show_all_bases {
-                                print_all_bases(val, precision);
+                            EvalResult::Value(val) => {
+                                let to_show: Option<&str> = if let Some(ref s) = base_display {
+                                    Some(s.as_str())
+                                } else {
+                                    expanded.as_deref()
+                                };
+                                if let Some(display) = to_show {
+                                    println!("{display}");
+                                }
+                                if show_all_bases {
+                                    print_all_bases(val, precision);
+                                }
                             }
                         }
                     }
                 }
+                Err(e) => eprintln!("Error: {e}"),
             }
-            Err(e) => eprintln!("Error: {e}"),
         }
     }
 
@@ -281,7 +331,7 @@ pub fn run_pipe(reader: impl BufRead) {
     let mut precision: usize = 10;
     let mut base = Base::Dec;
 
-    for line in reader.lines() {
+    'lines: for line in reader.lines() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
@@ -290,126 +340,115 @@ pub fn run_pipe(reader: impl BufRead) {
             }
         };
         let trimmed = line.trim();
-        // Strip inline comments
-        let trimmed = trimmed.split('%').next().unwrap_or("").trim_end();
-        let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
-            (t.trim_end(), true)
-        } else {
-            (trimmed, false)
-        };
-        if trimmed.is_empty() {
-            continue;
-        }
 
-        // Built-in commands (subset relevant in pipe mode)
-        match trimmed {
-            "exit" | "quit" => break,
-            "clear" => {
-                env.clear();
+        for (stmt, silent) in split_stmts(trimmed) {
+            // Built-in commands (subset relevant in pipe mode)
+            match stmt {
+                "exit" | "quit" => break 'lines,
+                "clear" => {
+                    env.clear();
+                    continue;
+                }
+                "cls" | "who" | "help" | "?" => continue, // no-op in pipe mode
+                "p" => {
+                    println!("precision: {precision}");
+                    continue;
+                }
+                "hex" => {
+                    base = Base::Hex;
+                    continue;
+                }
+                "dec" => {
+                    base = Base::Dec;
+                    continue;
+                }
+                "bin" => {
+                    base = Base::Bin;
+                    continue;
+                }
+                "oct" => {
+                    base = Base::Oct;
+                    continue;
+                }
+                "base" => {
+                    print_all_bases(ans(&env), precision);
+                    continue;
+                }
+                "ws" => {
+                    let _ = save_workspace_default(&env);
+                    continue;
+                }
+                "wl" => {
+                    if let Ok(loaded) = load_workspace_default() {
+                        env = loaded;
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+
+            // help <topic> — no-op in pipe mode
+            if stmt.starts_with("help ") {
                 continue;
             }
-            "cls" | "who" | "help" | "?" => continue, // no-op in pipe mode
-            "p" => {
-                println!("precision: {precision}");
-                continue;
-            }
-            "hex" => {
-                base = Base::Hex;
-                continue;
-            }
-            "dec" => {
-                base = Base::Dec;
-                continue;
-            }
-            "bin" => {
-                base = Base::Bin;
-                continue;
-            }
-            "oct" => {
-                base = Base::Oct;
-                continue;
-            }
-            "base" => {
-                print_all_bases(ans(&env), precision);
-                continue;
-            }
-            "ws" => {
-                let _ = save_workspace_default(&env);
-                continue;
-            }
-            "wl" => {
-                if let Ok(loaded) = load_workspace_default() {
-                    env = loaded;
+
+            // clear <name>
+            if let Some(name) = stmt.strip_prefix("clear ").map(str::trim) {
+                if !name.is_empty() {
+                    env.remove(name);
                 }
                 continue;
             }
-            _ => {}
-        }
 
-        // help <topic> — no-op in pipe mode
-        if trimmed.starts_with("help ") {
-            continue;
-        }
-
-        // clear <name>
-        if let Some(name) = trimmed.strip_prefix("clear ").map(str::trim) {
-            if !name.is_empty() {
-                env.remove(name);
+            // Precision command: p<N>
+            if let Some(p) = parse_precision_cmd(stmt) {
+                precision = p;
+                continue;
             }
-            continue;
-        }
 
-        // Precision command: p<N>
-        if let Some(p) = parse_precision_cmd(trimmed) {
-            precision = p;
-            continue;
-        }
+            // disp(expr) — print value without updating ans
+            if let Some(arg) = parse_disp_cmd(stmt) {
+                handle_disp(arg, &env, precision, base);
+                continue;
+            }
 
-        // disp(expr) — print value without updating ans
-        if let Some(arg) = parse_disp_cmd(trimmed) {
-            handle_disp(arg, &env, precision, base);
-            continue;
-        }
+            // fprintf('fmt') — print formatted string
+            if let Some(arg) = parse_fprintf_cmd(stmt) {
+                handle_fprintf(arg);
+                continue;
+            }
 
-        // fprintf('fmt') — print formatted string
-        if let Some(arg) = parse_fprintf_cmd(trimmed) {
-            handle_fprintf(arg);
-            continue;
-        }
+            let (to_eval, base_suffix) = extract_base_suffix(stmt);
+            let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+            if let Some(BaseSuffix::Switch(b)) = base_suffix {
+                base = b;
+            }
 
-        let (to_eval, base_suffix) = extract_base_suffix(trimmed);
-        let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
-        if let Some(BaseSuffix::Switch(b)) = base_suffix {
-            base = b;
-        }
-
-        match evaluate(to_eval, &mut env) {
-            Ok(result) => {
-                if !silent {
-                    let val = match result {
-                        EvalResult::Assigned(name, v) => {
-                            println!("{} = {}", name, format_value(v, precision, base));
-                            v
-                        }
-                        EvalResult::Value(v) => {
-                            if show_all {
-                                let i = v.round() as i64;
-                                let u = i.unsigned_abs();
-                                let sign = if i < 0 { "-" } else { "" };
-                                println!("2  - {}0b{:b}", sign, u);
-                                println!("8  - {}0o{:o}", sign, u);
-                                println!("10 - {}", format_value(v, precision, Base::Dec));
-                                println!("16 - {}0x{:X}", sign, u);
-                            } else {
-                                println!("{}", format_value(v, precision, base));
+            match evaluate(to_eval, &mut env) {
+                Ok(result) => {
+                    if !silent {
+                        match result {
+                            EvalResult::Assigned(name, v) => {
+                                println!("{} = {}", name, format_value(v, precision, base));
                             }
-                            v
+                            EvalResult::Value(v) => {
+                                if show_all {
+                                    let i = v.round() as i64;
+                                    let u = i.unsigned_abs();
+                                    let sign = if i < 0 { "-" } else { "" };
+                                    println!("2  - {}0b{:b}", sign, u);
+                                    println!("8  - {}0o{:o}", sign, u);
+                                    println!("10 - {}", format_value(v, precision, Base::Dec));
+                                    println!("16 - {}0x{:X}", sign, u);
+                                } else {
+                                    println!("{}", format_value(v, precision, base));
+                                }
+                            }
                         }
-                    };
-                    let _ = val;
+                    }
                 }
+                Err(e) => eprintln!("Error: {e}"),
             }
-            Err(e) => eprintln!("Error: {e}"),
         }
     }
 }
@@ -744,6 +783,61 @@ fn clear_screen() {
 mod tests {
     use super::*;
 
+    // --- split_stmts tests ---
+
+    #[test]
+    fn test_split_stmts_single_no_semi() {
+        assert_eq!(split_stmts("a = 1"), vec![("a = 1", false)]);
+    }
+
+    #[test]
+    fn test_split_stmts_single_trailing_semi() {
+        assert_eq!(split_stmts("a = 1;"), vec![("a = 1", true)]);
+    }
+
+    #[test]
+    fn test_split_stmts_two_stmts_last_no_semi() {
+        assert_eq!(
+            split_stmts("a = 1; b = 2"),
+            vec![("a = 1", true), ("b = 2", false)]
+        );
+    }
+
+    #[test]
+    fn test_split_stmts_all_silent() {
+        assert_eq!(
+            split_stmts("a = 1; b = 2; c = 3;"),
+            vec![("a = 1", true), ("b = 2", true), ("c = 3", true)]
+        );
+    }
+
+    #[test]
+    fn test_split_stmts_comment_stripped() {
+        assert_eq!(split_stmts("10; % comment"), vec![("10", true)]);
+        assert_eq!(split_stmts("10 % comment"), vec![("10", false)]);
+    }
+
+    #[test]
+    fn test_split_stmts_empty_input() {
+        assert_eq!(split_stmts(""), Vec::<(&str, bool)>::new());
+        assert_eq!(split_stmts("  % only comment"), Vec::<(&str, bool)>::new());
+    }
+
+    #[test]
+    fn test_split_stmts_whitespace_segments_skipped() {
+        // Double semicolon creates empty segment — should be ignored
+        assert_eq!(split_stmts("a = 1;; b = 2"), vec![("a = 1", true), ("b = 2", false)]);
+    }
+
+    #[test]
+    fn test_split_stmts_semi_in_string_not_split() {
+        // ';' inside a string literal must not split the statement
+        assert_eq!(
+            split_stmts("fprintf('hello; world')"),
+            vec![("fprintf('hello; world')", false)]
+        );
+    }
+
     // --- extract_base_suffix tests ---
 
     #[test]
@@ -1034,6 +1128,26 @@ mod tests {
     }
 
     #[test]
+    fn test_evaluate_expression_always_updates_ans() {
+        // Expressions always update ans regardless of silent flag — ans update
+        // happens inside evaluate(), silent only controls printing at call site.
+        let mut env = new_env(); // ans = 0.0
+        let result = evaluate("3 * 4", &mut env).unwrap();
+        assert!(matches!(result, EvalResult::Value(12.0)));
+        assert_eq!(ans(&env), 12.0); // ans updated
+    }
+
+    #[test]
+    fn test_evaluate_assignment_does_not_update_ans() {
+        // Assignments never update ans (MATLAB semantics)
+        let mut env = new_env(); // ans = 0.0
+        let result = evaluate("x = 7", &mut env).unwrap();
+        assert!(matches!(result, EvalResult::Assigned(ref n, 7.0) if n == "x"));
+        assert_eq!(env.get("x"), Some(&7.0)); // variable is set
+        assert_eq!(ans(&env), 0.0); // ans unchanged
+    }
+
+    #[test]
     fn test_evaluate_sets_base_via_suffix() {
         let mut env = Env::new();
         let mut base = Base::Dec;
@@ -1059,119 +1173,115 @@ mod tests {
         let mut base = Base::Dec;
         let reader = Cursor::new(input);
 
-        for line in reader.lines() {
+        'lines: for line in reader.lines() {
             let line = line.unwrap();
             let trimmed = line.trim();
-            let trimmed = trimmed.split('%').next().unwrap_or("").trim_end();
-            let (trimmed, silent) = if let Some(t) = trimmed.strip_suffix(';') {
-                (t.trim_end(), true)
-            } else {
-                (trimmed, false)
-            };
-            if trimmed.is_empty() {
-                continue;
-            }
-            match trimmed {
-                "exit" | "quit" => break,
-                "clear" => {
-                    env.clear();
+
+            for (stmt, silent) in split_stmts(trimmed) {
+                match stmt {
+                    "exit" | "quit" => break 'lines,
+                    "clear" => {
+                        env.clear();
+                        continue;
+                    }
+                    "cls" | "who" => continue,
+                    "hex" => {
+                        base = Base::Hex;
+                        continue;
+                    }
+                    "dec" => {
+                        base = Base::Dec;
+                        continue;
+                    }
+                    "bin" => {
+                        base = Base::Bin;
+                        continue;
+                    }
+                    "oct" => {
+                        base = Base::Oct;
+                        continue;
+                    }
+                    _ => {}
+                }
+                if let Some(name) = stmt.strip_prefix("clear ").map(str::trim) {
+                    if !name.is_empty() {
+                        env.remove(name);
+                    }
                     continue;
                 }
-                "cls" | "who" => continue,
-                "hex" => {
-                    base = Base::Hex;
+                if let Some(p) = parse_precision_cmd(stmt) {
+                    precision = p;
                     continue;
                 }
-                "dec" => {
-                    base = Base::Dec;
+                // disp(expr) — push formatted value without updating ans
+                if let Some(arg) = parse_disp_cmd(stmt) {
+                    let result = parse(arg.trim()).and_then(|stmt| {
+                        let expr = match stmt {
+                            Stmt::Expr(e) => e,
+                            Stmt::Assign(_, e) => e,
+                        };
+                        eval(&expr, &env)
+                    });
+                    match result {
+                        Ok(v) => output.push(format_value(v, precision, base)),
+                        Err(e) => output.push(format!("Error: {e}")),
+                    }
                     continue;
                 }
-                "bin" => {
-                    base = Base::Bin;
-                    continue;
-                }
-                "oct" => {
-                    base = Base::Oct;
-                    continue;
-                }
-                _ => {}
-            }
-            if let Some(name) = trimmed.strip_prefix("clear ").map(str::trim) {
-                if !name.is_empty() {
-                    env.remove(name);
-                }
-                continue;
-            }
-            if let Some(p) = parse_precision_cmd(trimmed) {
-                precision = p;
-                continue;
-            }
-            // disp(expr) — push formatted value without updating ans
-            if let Some(arg) = parse_disp_cmd(trimmed) {
-                let result = parse(arg.trim()).and_then(|stmt| {
-                    let expr = match stmt {
-                        Stmt::Expr(e) => e,
-                        Stmt::Assign(_, e) => e,
+                // fprintf('fmt') — push processed string
+                if let Some(arg) = parse_fprintf_cmd(stmt) {
+                    let s = arg.trim();
+                    let content = if let Some(inner) =
+                        s.strip_prefix('\'').and_then(|s| s.strip_suffix('\''))
+                    {
+                        process_escapes(inner)
+                    } else if let Some(inner) =
+                        s.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
+                    {
+                        process_escapes(inner)
+                    } else {
+                        "Error: fprintf requires a string literal".to_string()
                     };
-                    eval(&expr, &env)
-                });
-                match result {
-                    Ok(v) => output.push(format_value(v, precision, base)),
-                    Err(e) => output.push(format!("Error: {e}")),
+                    output.push(content);
+                    continue;
                 }
-                continue;
-            }
-            // fprintf('fmt') — push processed string
-            if let Some(arg) = parse_fprintf_cmd(trimmed) {
-                let s = arg.trim();
-                let content = if let Some(inner) =
-                    s.strip_prefix('\'').and_then(|s| s.strip_suffix('\''))
-                {
-                    process_escapes(inner)
-                } else if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-                    process_escapes(inner)
-                } else {
-                    "Error: fprintf requires a string literal".to_string()
-                };
-                output.push(content);
-                continue;
-            }
-            let (to_eval, base_suffix) = extract_base_suffix(trimmed);
-            let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
-            if let Some(BaseSuffix::Switch(b)) = base_suffix {
-                base = b;
-            }
-            match evaluate(to_eval, &mut env) {
-                Ok(result) => {
-                    if !silent {
-                        match result {
-                            EvalResult::Assigned(name, v) => {
-                                output.push(format!(
-                                    "{} = {}",
-                                    name,
-                                    format_value(v, precision, base)
-                                ));
-                            }
-                            EvalResult::Value(v) => {
-                                if show_all {
-                                    let i = v.round() as i64;
-                                    let u = i.unsigned_abs();
-                                    let sign = if i < 0 { "-" } else { "" };
-                                    output.push(format!("2  - {}0b{:b}", sign, u));
-                                    output.push(format!("8  - {}0o{:o}", sign, u));
+                let (to_eval, base_suffix) = extract_base_suffix(stmt);
+                let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
+                if let Some(BaseSuffix::Switch(b)) = base_suffix {
+                    base = b;
+                }
+                match evaluate(to_eval, &mut env) {
+                    Ok(result) => {
+                        if !silent {
+                            match result {
+                                EvalResult::Assigned(name, v) => {
                                     output.push(format!(
-                                        "10 - {}",
-                                        format_value(v, precision, Base::Dec)
+                                        "{} = {}",
+                                        name,
+                                        format_value(v, precision, base)
                                     ));
-                                    output.push(format!("16 - {}0x{:X}", sign, u));
-                                } else {
-                                    output.push(format_value(v, precision, base));
+                                }
+                                EvalResult::Value(v) => {
+                                    if show_all {
+                                        let i = v.round() as i64;
+                                        let u = i.unsigned_abs();
+                                        let sign = if i < 0 { "-" } else { "" };
+                                        output.push(format!("2  - {}0b{:b}", sign, u));
+                                        output.push(format!("8  - {}0o{:o}", sign, u));
+                                        output.push(format!(
+                                            "10 - {}",
+                                            format_value(v, precision, Base::Dec)
+                                        ));
+                                        output.push(format!("16 - {}0x{:X}", sign, u));
+                                    } else {
+                                        output.push(format_value(v, precision, base));
+                                    }
                                 }
                             }
                         }
                     }
+                    Err(e) => output.push(format!("Error: {e}")),
                 }
-                Err(e) => output.push(format!("Error: {e}")),
             }
         }
         output
@@ -1309,26 +1419,59 @@ mod tests {
 
     #[test]
     fn test_pipe_semicolon_suppresses_output() {
+        // ';' suppresses output but ans IS still updated (MATLAB semantics)
         let out = pipe_output("10;\n+ 5");
         assert_eq!(out, vec!["15"]);
     }
 
     #[test]
     fn test_pipe_semicolon_still_updates_ans() {
+        // ';' suppresses output but ans is updated — disp(ans) sees 10
         let out = pipe_output("10;\ndisp(ans)");
         assert_eq!(out, vec!["10"]);
     }
 
     #[test]
     fn test_pipe_semicolon_with_comment() {
+        // Comment stripped; ';' suppresses output but ans is updated
         let out = pipe_output("10; % intermediate\ndisp(ans)");
         assert_eq!(out, vec!["10"]);
     }
 
     #[test]
     fn test_pipe_semicolon_variable_store() {
+        // 7; → ans=7 (silent). x = ans; → x=7, ans unchanged (assignment). x + 3 = 10.
         let out = pipe_output("7;\nx = ans;\nx + 3");
         assert_eq!(out, vec!["10"]);
+    }
+
+    #[test]
+    fn test_pipe_multi_stmt_last_shown() {
+        // Only the last non-silent statement produces output;
+        // assignments never update ans (MATLAB semantics)
+        let out = pipe_output("a = 1; b = 2");
+        assert_eq!(out, vec!["b = 2"]);
+    }
+
+    #[test]
+    fn test_pipe_multi_stmt_all_silent() {
+        // Trailing ';' makes everything silent — no output at all
+        let out = pipe_output("a = 1; b = 2;");
+        assert_eq!(out, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_pipe_multi_stmt_ans_not_updated_by_assignment() {
+        // Assignments never update ans; disp(ans) still sees 0
+        let out = pipe_output("a = 5; b = 10\ndisp(ans)");
+        assert_eq!(out, vec!["b = 10", "0"]);
+    }
+
+    #[test]
+    fn test_pipe_multi_stmt_expr_last() {
+        // Expression as the last non-silent statement updates ans
+        let out = pipe_output("x = 3; x * 2");
+        assert_eq!(out, vec!["6"]);
     }
 
     // --- disp tests ---
