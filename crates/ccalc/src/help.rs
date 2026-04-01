@@ -80,6 +80,8 @@ Vars    x = expr              shows: x = <val>  (ans unchanged)
 
 Output  disp(expr)            fprintf('text\\n')
 Prec    p<N>  (0-15 decimal places, default 10)
+Config  config                show config path and active settings
+        config reload         re-read config.toml and apply changes
 REPL    exit  quit  cls  Ctrl+L (clear screen)
 Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
         Ctrl+W del word  Ctrl+U del to start  Ctrl+K del to end

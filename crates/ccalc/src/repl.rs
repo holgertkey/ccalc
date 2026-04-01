@@ -194,8 +194,10 @@ fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
 
 pub fn run() {
     let mut env = new_env();
-    let mut precision: usize = 10;
-    let mut base = Base::Dec;
+    let config_path = config_dir().join("config.toml");
+    let cfg = crate::config::load_or_create(&config_path);
+    let mut precision: usize = cfg.precision();
+    let mut base = cfg.base();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     let history_path = config_dir().join("history");
@@ -286,7 +288,28 @@ pub fn run() {
                     crate::help::print(Some(""));
                     continue;
                 }
+                "config" => {
+                    println!("config file: {}", config_path.display());
+                    println!("precision:   {precision}");
+                    println!("base:        {}", format_base_name(base));
+                    continue;
+                }
                 _ => {}
+            }
+
+            // config reload
+            if stmt == "config reload" {
+                match crate::config::load(&config_path) {
+                    Ok(cfg) => {
+                        precision = cfg.precision();
+                        base = cfg.base();
+                        println!("Config reloaded.");
+                        println!("precision:   {precision}");
+                        println!("base:        {}", format_base_name(base));
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+                continue;
             }
 
             // help <topic>
@@ -470,7 +493,7 @@ pub fn run_pipe(reader: impl BufRead) {
                     env.clear();
                     continue;
                 }
-                "cls" | "who" | "help" | "?" => continue, // no-op in pipe mode
+                "cls" | "who" | "help" | "?" | "config" => continue, // no-op in pipe mode
                 "p" => {
                     println!("precision: {precision}");
                     continue;
@@ -508,8 +531,8 @@ pub fn run_pipe(reader: impl BufRead) {
                 _ => {}
             }
 
-            // help <topic> — no-op in pipe mode
-            if stmt.starts_with("help ") {
+            // help / config — no-op in pipe mode
+            if stmt.starts_with("help ") || stmt == "config reload" {
                 continue;
             }
 
@@ -840,6 +863,16 @@ fn format_expr_for_display(expr: &str, base: Base) -> Option<String> {
     }
 
     if changed { Some(result) } else { None }
+}
+
+/// Returns the display name of a `Base` value (used in `config` output).
+fn format_base_name(base: Base) -> &'static str {
+    match base {
+        Base::Dec => "dec",
+        Base::Hex => "hex",
+        Base::Bin => "bin",
+        Base::Oct => "oct",
+    }
 }
 
 /// Parses a precision command of the form `p<N>` where N is 0–15.

@@ -44,6 +44,8 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | `wl` | Load workspace from file |
 | `disp(expr)` | Print value without updating `ans` |
 | `fprintf('fmt')` | Print formatted string (`\n`, `\t`, `\\` supported) |
+| `config` | Show config file path and active settings |
+| `config reload` | Re-read `config.toml` and apply changes |
 
 Help topics for `help <topic>`:
 `syntax` `functions` `bases` `vars` `script` `matrices` `examples`

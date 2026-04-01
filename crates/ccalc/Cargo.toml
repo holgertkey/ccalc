@@ -18,3 +18,8 @@ path = "src/main.rs"
 [dependencies]
 rustyline = "14"
 ccalc-engine = { path = "../ccalc-engine" }
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
