@@ -35,3 +35,13 @@ Regardless of precision, the formatter applies these rules:
 
 Precision has no effect when the display base is hex, bin, or oct — those modes
 always show the rounded integer value.
+
+## Persistent default
+
+To change the default precision across all sessions, set it in
+[`config.toml`](./configuration.md):
+
+```toml
+[display]
+precision = 4
+```

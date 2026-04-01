@@ -19,7 +19,9 @@ Mixed-base expressions work naturally:
 
 ## Display base
 
-By default results are shown in decimal. Switch with a command:
+By default results are shown in decimal. Switch with a command (session-local):
+
+
 
 | Command | Effect |
 |---|---|
@@ -29,6 +31,8 @@ By default results are shown in decimal. Switch with a command:
 | `oct` | Octal |
 
 The display base persists until changed and affects both the prompt and all results.
+To make a non-decimal base the default across all sessions, set it in
+[`config.toml`](./configuration.md).
 
 ```
 [ 0 ]: 255

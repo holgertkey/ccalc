@@ -85,6 +85,19 @@ b = 2
 [ 0 ]:
 ```
 
+## Configuration
+
+Settings that persist across sessions (precision, default base) live in
+[`config.toml`](./configuration.md). The `config` command shows the active
+values; `config reload` applies any edits without restarting.
+
+```
+[ 0 ]: config
+config file: /home/user/.config/ccalc/config.toml
+precision:   10
+base:        dec
+```
+
 ## History
 
 Input history is saved to `~/.config/ccalc/history` and restored on the next

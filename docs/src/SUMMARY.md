@@ -12,6 +12,7 @@
 - [Number Bases](./guide/number-bases.md)
 - [Variables](./guide/variables.md)
 - [Precision](./guide/precision.md)
+- [Configuration](./guide/configuration.md)
 - [Matrices](./guide/matrices.md)
 
 # Architecture
