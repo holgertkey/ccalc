@@ -377,13 +377,18 @@ Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `matrices`  `exam
 
 ## Keyboard shortcuts
 
-| Key                | Action                        |
-|--------------------|-------------------------------|
-| ↑ / ↓              | Browse input history          |
-| Ctrl+R             | Reverse history search        |
-| ← / → / Home / End | Cursor movement               |
-| Ctrl+W             | Delete word before cursor     |
-| Ctrl+U             | Clear line                    |
+| Key                | Action                                    |
+|--------------------|-------------------------------------------|
+| ↑ / ↓              | Browse input history                      |
+| Ctrl+R             | Reverse history search                    |
+| ← / → / Home / End | Cursor movement                           |
+| Ctrl+A             | Go to beginning of line                   |
+| Ctrl+E             | Go to end of line                         |
+| Ctrl+W             | Delete word before cursor                 |
+| Ctrl+U             | Delete from cursor to beginning of line   |
+| Ctrl+K             | Delete from cursor to end of line         |
+| Ctrl+L             | Clear screen                              |
+| Ctrl+C / Ctrl+D    | Quit                                      |
 
 ---
 

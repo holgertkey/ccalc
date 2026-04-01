@@ -80,7 +80,9 @@ Vars    x = expr              shows: x = <val>  (ans unchanged)
 
 Output  disp(expr)            fprintf('text\\n')
 Prec    p<N>  (0-15 decimal places, default 10)
-REPL    exit  quit  cls
+REPL    exit  quit  cls  Ctrl+L (clear screen)
+Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
+        Ctrl+W del word  Ctrl+U del to start  Ctrl+K del to end
 
   help syntax      operators, precedence, implicit multiplication
   help functions   full function reference with examples

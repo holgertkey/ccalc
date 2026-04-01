@@ -30,9 +30,9 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | Command | Action |
 |---|---|
 | `exit`, `quit` | Quit |
-| `cls` | Clear the screen |
+| `cls` | Clear the screen (also `Ctrl+L`) |
 | `help`, `?` | Show cheatsheet |
-| `help <topic>` | Detailed help: `syntax` `functions` `bases` `vars` `script` `examples` |
+| `help <topic>` | Detailed help (see topic list below) |
 | `who` | Show all defined variables |
 | `clear` | Clear all variables |
 | `clear <name>` | Clear a single variable |
@@ -42,6 +42,11 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | `base` | Show ans in all four bases |
 | `ws` | Save workspace to file |
 | `wl` | Load workspace from file |
+| `disp(expr)` | Print value without updating `ans` |
+| `fprintf('fmt')` | Print formatted string (`\n`, `\t`, `\\` supported) |
+
+Help topics for `help <topic>`:
+`syntax` `functions` `bases` `vars` `script` `matrices` `examples`
 
 ## Keyboard shortcuts
 
@@ -49,9 +54,13 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 |---|---|
 | `↑` / `↓` | Browse input history |
 | `Ctrl+R` | Reverse history search |
-| `← → Home End` | Cursor movement |
+| `← →` / `Home` / `End` | Cursor movement |
+| `Ctrl+A` | Go to beginning of line |
+| `Ctrl+E` | Go to end of line |
 | `Ctrl+W` | Delete word before cursor |
-| `Ctrl+U` | Clear line |
+| `Ctrl+U` | Delete from cursor to beginning of line |
+| `Ctrl+K` | Delete from cursor to end of line |
+| `Ctrl+L` | Clear screen |
 | `Ctrl+C` / `Ctrl+D` | Quit |
 
 ## Silencing a line
@@ -77,4 +86,14 @@ b = 2
 ## History
 
 Input history is saved to `~/.config/ccalc/history` and restored on the next
-session.
+session. Each session is marked with a timestamp comment:
+
+```
+% --- Session: 2026-04-01 14:22:07 UTC ---
+rate = 0.06 / 12
+n = 360
+% --- Session: 2026-04-01 15:10:44 UTC ---
+hypot(3, 4)
+```
+
+The marker uses `%` so it is harmless if accidentally recalled and executed.
