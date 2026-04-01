@@ -74,7 +74,10 @@ pub fn load_or_create(path: &Path) -> Config {
             let _ = std::fs::create_dir_all(dir);
         }
         if let Err(e) = std::fs::write(path, DEFAULT_CONFIG) {
-            eprintln!("Warning: could not create config file '{}': {e}", path.display());
+            eprintln!(
+                "Warning: could not create config file '{}': {e}",
+                path.display()
+            );
         }
         return Config::default();
     }
