@@ -159,7 +159,10 @@ mod tests {
         let path = std::env::temp_dir().join("ccalc_test_workspace_matrix_skip.toml");
         let mut env = Env::new();
         env.insert("x".to_string(), Value::Scalar(5.0));
-        env.insert("m".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        env.insert(
+            "m".to_string(),
+            Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        );
         save_workspace(&env, &path).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("x = 5"));

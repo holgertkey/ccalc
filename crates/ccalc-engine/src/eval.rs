@@ -120,9 +120,7 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             match op {
                 Op::Add => Ok(Value::Matrix(&lm + &rm)),
                 Op::Sub => Ok(Value::Matrix(&lm - &rm)),
-                Op::Mul => Err(
-                    "Matrix-matrix multiplication requires Phase 4".to_string(),
-                ),
+                Op::Mul => Err("Matrix-matrix multiplication requires Phase 4".to_string()),
                 Op::Div => Err("Matrix-matrix division is not supported".to_string()),
                 Op::Pow => Err("Matrix-matrix power is not supported".to_string()),
             }
@@ -156,38 +154,38 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
 fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
     let result = match (name, args.len()) {
         // 1-argument functions
-        ("sqrt",  1) => scalar_arg(&args[0], name, 1)?.sqrt(),
-        ("abs",   1) => scalar_arg(&args[0], name, 1)?.abs(),
+        ("sqrt", 1) => scalar_arg(&args[0], name, 1)?.sqrt(),
+        ("abs", 1) => scalar_arg(&args[0], name, 1)?.abs(),
         ("floor", 1) => scalar_arg(&args[0], name, 1)?.floor(),
-        ("ceil",  1) => scalar_arg(&args[0], name, 1)?.ceil(),
+        ("ceil", 1) => scalar_arg(&args[0], name, 1)?.ceil(),
         ("round", 1) => scalar_arg(&args[0], name, 1)?.round(),
-        ("sign",  1) => scalar_arg(&args[0], name, 1)?.signum(),
+        ("sign", 1) => scalar_arg(&args[0], name, 1)?.signum(),
         // Note: log(x) = log10; use ln(x) for natural logarithm.
-        ("log",   1) => scalar_arg(&args[0], name, 1)?.log10(),
-        ("ln",    1) => scalar_arg(&args[0], name, 1)?.ln(),
-        ("exp",   1) => scalar_arg(&args[0], name, 1)?.exp(),
-        ("sin",   1) => scalar_arg(&args[0], name, 1)?.sin(),
-        ("cos",   1) => scalar_arg(&args[0], name, 1)?.cos(),
-        ("tan",   1) => scalar_arg(&args[0], name, 1)?.tan(),
-        ("asin",  1) => scalar_arg(&args[0], name, 1)?.asin(),
-        ("acos",  1) => scalar_arg(&args[0], name, 1)?.acos(),
-        ("atan",  1) => scalar_arg(&args[0], name, 1)?.atan(),
+        ("log", 1) => scalar_arg(&args[0], name, 1)?.log10(),
+        ("ln", 1) => scalar_arg(&args[0], name, 1)?.ln(),
+        ("exp", 1) => scalar_arg(&args[0], name, 1)?.exp(),
+        ("sin", 1) => scalar_arg(&args[0], name, 1)?.sin(),
+        ("cos", 1) => scalar_arg(&args[0], name, 1)?.cos(),
+        ("tan", 1) => scalar_arg(&args[0], name, 1)?.tan(),
+        ("asin", 1) => scalar_arg(&args[0], name, 1)?.asin(),
+        ("acos", 1) => scalar_arg(&args[0], name, 1)?.acos(),
+        ("atan", 1) => scalar_arg(&args[0], name, 1)?.atan(),
         // 2-argument functions
         ("atan2", 2) => scalar_arg(&args[0], name, 1)?.atan2(scalar_arg(&args[1], name, 2)?),
-        ("mod",   2) => {
+        ("mod", 2) => {
             let a = scalar_arg(&args[0], name, 1)?;
             let b = scalar_arg(&args[1], name, 2)?;
             a - b * (a / b).floor()
         }
-        ("rem",   2) => {
+        ("rem", 2) => {
             let a = scalar_arg(&args[0], name, 1)?;
             let b = scalar_arg(&args[1], name, 2)?;
             a - b * (a / b).trunc()
         }
-        ("max",   2) => scalar_arg(&args[0], name, 1)?.max(scalar_arg(&args[1], name, 2)?),
-        ("min",   2) => scalar_arg(&args[0], name, 1)?.min(scalar_arg(&args[1], name, 2)?),
+        ("max", 2) => scalar_arg(&args[0], name, 1)?.max(scalar_arg(&args[1], name, 2)?),
+        ("min", 2) => scalar_arg(&args[0], name, 1)?.min(scalar_arg(&args[1], name, 2)?),
         ("hypot", 2) => scalar_arg(&args[0], name, 1)?.hypot(scalar_arg(&args[1], name, 2)?),
-        ("log",   2) => scalar_arg(&args[0], name, 1)?.log(scalar_arg(&args[1], name, 2)?),
+        ("log", 2) => scalar_arg(&args[0], name, 1)?.log(scalar_arg(&args[1], name, 2)?),
         _ => return Err(format!("Unknown function: '{name}'")),
     };
     Ok(Value::Scalar(result))
@@ -243,11 +241,7 @@ fn format_matrix(m: &Array2<f64>, precision: usize) -> String {
     let cells: Vec<Vec<String>> = m
         .rows()
         .into_iter()
-        .map(|row| {
-            row.iter()
-                .map(|&x| format_decimal(x, precision))
-                .collect()
-        })
+        .map(|row| row.iter().map(|&x| format_decimal(x, precision)).collect())
         .collect();
     // Compute column widths
     let col_widths: Vec<usize> = (0..ncols)
@@ -668,7 +662,11 @@ mod tests {
     #[test]
     fn test_eval_matrix_row_vector() {
         // [1 2 3] — row vector
-        let expr = Expr::Matrix(vec![vec![Expr::Number(1.0), Expr::Number(2.0), Expr::Number(3.0)]]);
+        let expr = Expr::Matrix(vec![vec![
+            Expr::Number(1.0),
+            Expr::Number(2.0),
+            Expr::Number(3.0),
+        ]]);
         let env = empty_env();
         match eval(&expr, &env).unwrap() {
             Value::Matrix(m) => {

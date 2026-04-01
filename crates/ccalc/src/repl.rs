@@ -156,7 +156,16 @@ fn format_utc(secs: u64) -> String {
     let month_days = [
         31u32,
         if is_leap_year(year) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month = 1u32;
     for &md in &month_days {
@@ -172,7 +181,7 @@ fn format_utc(secs: u64) -> String {
 }
 
 fn is_leap_year(y: u32) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
 fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
@@ -193,7 +202,10 @@ pub fn run() {
     append_session_marker(&history_path);
     rl.load_history(&history_path).ok();
 
-    println!("ccalc v{}  (type 'help' for reference)", env!("CARGO_PKG_VERSION"));
+    println!(
+        "ccalc v{}  (type 'help' for reference)",
+        env!("CARGO_PKG_VERSION")
+    );
     println!();
 
     'repl: loop {
@@ -331,44 +343,40 @@ pub fn run() {
                 Ok(result) => {
                     if !silent {
                         match result {
-                            EvalResult::Assigned(name, val) => {
-                                match &val {
-                                    Value::Matrix(_) => {
-                                        if let Some(full) = format_value_full(&val, precision) {
-                                            println!("{name} =");
-                                            println!("{full}");
-                                            println!();
-                                        }
-                                    }
-                                    Value::Scalar(v) => {
-                                        println!("{name} = {}", format_scalar(*v, precision, base));
+                            EvalResult::Assigned(name, val) => match &val {
+                                Value::Matrix(_) => {
+                                    if let Some(full) = format_value_full(&val, precision) {
+                                        println!("{name} =");
+                                        println!("{full}");
+                                        println!();
                                     }
                                 }
-                            }
-                            EvalResult::Value(val) => {
-                                match &val {
-                                    Value::Matrix(_) => {
-                                        if let Some(full) = format_value_full(&val, precision) {
-                                            println!("ans =");
-                                            println!("{full}");
-                                            println!();
-                                        }
-                                    }
-                                    Value::Scalar(v) => {
-                                        let to_show: Option<&str> = if let Some(ref s) = base_display {
-                                            Some(s.as_str())
-                                        } else {
-                                            expanded.as_deref()
-                                        };
-                                        if let Some(display) = to_show {
-                                            println!("{display}");
-                                        }
-                                        if show_all_bases {
-                                            print_all_bases(*v, precision);
-                                        }
+                                Value::Scalar(v) => {
+                                    println!("{name} = {}", format_scalar(*v, precision, base));
+                                }
+                            },
+                            EvalResult::Value(val) => match &val {
+                                Value::Matrix(_) => {
+                                    if let Some(full) = format_value_full(&val, precision) {
+                                        println!("ans =");
+                                        println!("{full}");
+                                        println!();
                                     }
                                 }
-                            }
+                                Value::Scalar(v) => {
+                                    let to_show: Option<&str> = if let Some(ref s) = base_display {
+                                        Some(s.as_str())
+                                    } else {
+                                        expanded.as_deref()
+                                    };
+                                    if let Some(display) = to_show {
+                                        println!("{display}");
+                                    }
+                                    if show_all_bases {
+                                        print_all_bases(*v, precision);
+                                    }
+                                }
+                            },
                         }
                     }
                 }
@@ -402,41 +410,34 @@ pub fn run_expr(expr: &str) {
         base = b;
     }
     match evaluate(to_eval, &mut env) {
-        Ok(result) => {
-            match result {
-                EvalResult::Assigned(name, v) => {
-                    match &v {
-                        Value::Matrix(_) => {
-                            if let Some(full) = format_value_full(&v, 10) {
-                                println!("{name} =");
-                                println!("{full}");
-                            }
-                        }
-                        Value::Scalar(n) => {
-                            println!("{} = {}", name, format_scalar(*n, 10, base));
-                        }
-                    }
-                    return;
-                }
-                EvalResult::Value(v) => {
-                    match &v {
-                        Value::Matrix(_) => {
-                            if let Some(full) = format_value_full(&v, 10) {
-                                println!("ans =");
-                                println!("{full}");
-                            }
-                        }
-                        Value::Scalar(n) => {
-                            if show_all {
-                                print_all_bases(*n, 10);
-                            } else {
-                                println!("{}", format_scalar(*n, 10, base));
-                            }
-                        }
+        Ok(result) => match result {
+            EvalResult::Assigned(name, v) => match &v {
+                Value::Matrix(_) => {
+                    if let Some(full) = format_value_full(&v, 10) {
+                        println!("{name} =");
+                        println!("{full}");
                     }
                 }
-            }
-        }
+                Value::Scalar(n) => {
+                    println!("{} = {}", name, format_scalar(*n, 10, base));
+                }
+            },
+            EvalResult::Value(v) => match &v {
+                Value::Matrix(_) => {
+                    if let Some(full) = format_value_full(&v, 10) {
+                        println!("ans =");
+                        println!("{full}");
+                    }
+                }
+                Value::Scalar(n) => {
+                    if show_all {
+                        print_all_bases(*n, 10);
+                    } else {
+                        println!("{}", format_scalar(*n, 10, base));
+                    }
+                }
+            },
+        },
         Err(e) => {
             eprintln!("Error: {e}");
             std::process::exit(1);
@@ -548,44 +549,43 @@ pub fn run_pipe(reader: impl BufRead) {
                 Ok(result) => {
                     if !silent {
                         match result {
-                            EvalResult::Assigned(name, v) => {
-                                match &v {
-                                    Value::Matrix(_) => {
-                                        if let Some(full) = format_value_full(&v, precision) {
-                                            println!("{name} =");
-                                            println!("{full}");
-                                            println!();
-                                        }
-                                    }
-                                    Value::Scalar(n) => {
-                                        println!("{} = {}", name, format_scalar(*n, precision, base));
+                            EvalResult::Assigned(name, v) => match &v {
+                                Value::Matrix(_) => {
+                                    if let Some(full) = format_value_full(&v, precision) {
+                                        println!("{name} =");
+                                        println!("{full}");
+                                        println!();
                                     }
                                 }
-                            }
-                            EvalResult::Value(v) => {
-                                match &v {
-                                    Value::Matrix(_) => {
-                                        if let Some(full) = format_value_full(&v, precision) {
-                                            println!("ans =");
-                                            println!("{full}");
-                                            println!();
-                                        }
-                                    }
-                                    Value::Scalar(n) => {
-                                        if show_all {
-                                            let i = n.round() as i64;
-                                            let u = i.unsigned_abs();
-                                            let sign = if i < 0 { "-" } else { "" };
-                                            println!("2  - {}0b{:b}", sign, u);
-                                            println!("8  - {}0o{:o}", sign, u);
-                                            println!("10 - {}", format_scalar(*n, precision, Base::Dec));
-                                            println!("16 - {}0x{:X}", sign, u);
-                                        } else {
-                                            println!("{}", format_scalar(*n, precision, base));
-                                        }
+                                Value::Scalar(n) => {
+                                    println!("{} = {}", name, format_scalar(*n, precision, base));
+                                }
+                            },
+                            EvalResult::Value(v) => match &v {
+                                Value::Matrix(_) => {
+                                    if let Some(full) = format_value_full(&v, precision) {
+                                        println!("ans =");
+                                        println!("{full}");
+                                        println!();
                                     }
                                 }
-                            }
+                                Value::Scalar(n) => {
+                                    if show_all {
+                                        let i = n.round() as i64;
+                                        let u = i.unsigned_abs();
+                                        let sign = if i < 0 { "-" } else { "" };
+                                        println!("2  - {}0b{:b}", sign, u);
+                                        println!("8  - {}0o{:o}", sign, u);
+                                        println!(
+                                            "10 - {}",
+                                            format_scalar(*n, precision, Base::Dec)
+                                        );
+                                        println!("16 - {}0x{:X}", sign, u);
+                                    } else {
+                                        println!("{}", format_scalar(*n, precision, base));
+                                    }
+                                }
+                            },
                         }
                     }
                 }
@@ -874,16 +874,14 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
         eval(&expr, env)
     });
     match result {
-        Ok(v) => {
-            match &v {
-                Value::Matrix(_) => {
-                    if let Some(full) = format_value_full(&v, precision) {
-                        println!("{full}");
-                    }
+        Ok(v) => match &v {
+            Value::Matrix(_) => {
+                if let Some(full) = format_value_full(&v, precision) {
+                    println!("{full}");
                 }
-                Value::Scalar(n) => println!("{}", format_scalar(*n, precision, base)),
             }
-        }
+            Value::Scalar(n) => println!("{}", format_scalar(*n, precision, base)),
+        },
         Err(e) => eprintln!("Error: {e}"),
     }
 }
@@ -980,7 +978,10 @@ mod tests {
     #[test]
     fn test_split_stmts_whitespace_segments_skipped() {
         // Double semicolon creates empty segment — should be ignored
-        assert_eq!(split_stmts("a = 1;; b = 2"), vec![("a = 1", true), ("b = 2", false)]);
+        assert_eq!(
+            split_stmts("a = 1;; b = 2"),
+            vec![("a = 1", true), ("b = 2", false)]
+        );
     }
 
     #[test]
@@ -995,10 +996,7 @@ mod tests {
     #[test]
     fn test_split_stmts_semi_in_matrix_not_split() {
         // ';' inside '[...]' must not split the statement
-        assert_eq!(
-            split_stmts("[1 2; 3 4]"),
-            vec![("[1 2; 3 4]", false)]
-        );
+        assert_eq!(split_stmts("[1 2; 3 4]"), vec![("[1 2; 3 4]", false)]);
     }
 
     #[test]
@@ -1281,10 +1279,7 @@ mod tests {
         let mat_val = env.get("ans").unwrap().clone();
         env.insert("m".to_string(), mat_val);
         // Matrix variables are not substituted in display expressions
-        assert_eq!(
-            expand_vars_for_display("m + 1", &env, Base::Dec),
-            None
-        );
+        assert_eq!(expand_vars_for_display("m + 1", &env, Base::Dec), None);
     }
 
     // --- evaluate tests ---
@@ -1449,49 +1444,45 @@ mod tests {
                     Ok(result) => {
                         if !silent {
                             match result {
-                                EvalResult::Assigned(name, v) => {
-                                    match &v {
-                                        Value::Matrix(_) => {
-                                            if let Some(full) = format_value_full(&v, precision) {
-                                                output.push(format!("{name} ="));
-                                                output.push(full);
-                                            }
+                                EvalResult::Assigned(name, v) => match &v {
+                                    Value::Matrix(_) => {
+                                        if let Some(full) = format_value_full(&v, precision) {
+                                            output.push(format!("{name} ="));
+                                            output.push(full);
                                         }
-                                        Value::Scalar(n) => {
+                                    }
+                                    Value::Scalar(n) => {
+                                        output.push(format!(
+                                            "{} = {}",
+                                            name,
+                                            format_scalar(*n, precision, base)
+                                        ));
+                                    }
+                                },
+                                EvalResult::Value(v) => match &v {
+                                    Value::Matrix(_) => {
+                                        if let Some(full) = format_value_full(&v, precision) {
+                                            output.push("ans =".to_string());
+                                            output.push(full);
+                                        }
+                                    }
+                                    Value::Scalar(n) => {
+                                        if show_all {
+                                            let i = n.round() as i64;
+                                            let u = i.unsigned_abs();
+                                            let sign = if i < 0 { "-" } else { "" };
+                                            output.push(format!("2  - {}0b{:b}", sign, u));
+                                            output.push(format!("8  - {}0o{:o}", sign, u));
                                             output.push(format!(
-                                                "{} = {}",
-                                                name,
-                                                format_scalar(*n, precision, base)
+                                                "10 - {}",
+                                                format_scalar(*n, precision, Base::Dec)
                                             ));
+                                            output.push(format!("16 - {}0x{:X}", sign, u));
+                                        } else {
+                                            output.push(format_scalar(*n, precision, base));
                                         }
                                     }
-                                }
-                                EvalResult::Value(v) => {
-                                    match &v {
-                                        Value::Matrix(_) => {
-                                            if let Some(full) = format_value_full(&v, precision) {
-                                                output.push("ans =".to_string());
-                                                output.push(full);
-                                            }
-                                        }
-                                        Value::Scalar(n) => {
-                                            if show_all {
-                                                let i = n.round() as i64;
-                                                let u = i.unsigned_abs();
-                                                let sign = if i < 0 { "-" } else { "" };
-                                                output.push(format!("2  - {}0b{:b}", sign, u));
-                                                output.push(format!("8  - {}0o{:o}", sign, u));
-                                                output.push(format!(
-                                                    "10 - {}",
-                                                    format_scalar(*n, precision, Base::Dec)
-                                                ));
-                                                output.push(format!("16 - {}0x{:X}", sign, u));
-                                            } else {
-                                                output.push(format_scalar(*n, precision, base));
-                                            }
-                                        }
-                                    }
-                                }
+                                },
                             }
                         }
                     }
