@@ -4,8 +4,6 @@
 %
 % Usage: ccalc resistors.ccalc
 
-p4
-
 % --- Series combination: R1=100, R2=220, R3=470 ---
 100 + 220 + 470;
 r_series = ans;           % save for reuse

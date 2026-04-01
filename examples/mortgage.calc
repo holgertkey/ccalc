@@ -13,7 +13,6 @@ n = 360;                  % 30 years * 12 months
 p = 200000;               % principal
 
 factor = (1 + rate) ^ n;
-p2                        % 2 decimal places for currency
 
 p * rate * factor / (factor - 1);
 fprintf('Monthly payment ($): ')
