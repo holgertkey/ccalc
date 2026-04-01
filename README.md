@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.7.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.8.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -267,21 +267,23 @@ updated after every standalone expression.
 
 ### Assignment
 
-Assignment is **silent** in the REPL — no output, prompt stays unchanged:
+`name = expr` shows the assigned value and does **not** update `ans`.
+Append `;` to suppress output.
 
 ```
 [ 0 ]: rate = 0.06 / 12
+rate = 0.005
 [ 0 ]: n = 360
+n = 360
 [ 0 ]: 200000 * 0.005
 [ 1000 ]:
 ```
-
-In pipe/script mode, assignment without `;` prints `name = value`.
 
 ### Using variables
 
 ```
 [ 0 ]: rate = 0.07
+rate = 0.07
 [ 0 ]: 1000 * (1 + rate) ^ 10
 [ 1967.1513573 ]:
 ```
@@ -310,6 +312,48 @@ rate = 0.05
 
 ---
 
+## Matrices
+
+Create matrices using bracket syntax. Separate elements with spaces or commas;
+separate rows with `;`:
+
+```
+[ 0 ]: A = [1 2; 3 4]
+A =
+   1   2
+   3   4
+
+[ [2×2] ]: B = [5 6; 7 8]
+B =
+   5   6
+   7   8
+
+[ [2×2] ]: A + B
+ans =
+    6    8
+   10   12
+```
+
+**Scalar operations** are element-wise:
+
+```
+[ [2×2] ]: 2 * A
+ans =
+   2   4
+   6   8
+
+[ [2×2] ]: A / 10
+ans =
+   0.1   0.2
+   0.3   0.4
+```
+
+The REPL prompt shows the matrix dimensions when `ans` is a matrix.
+`who` displays dimensions: `A = [2×2 double]`.
+`ws` saves only scalar variables; matrices are not persisted.
+
+---
+
 ## REPL commands
 
 | Command                           | Action                              |
@@ -329,7 +373,7 @@ rate = 0.05
 | `wl`                              | Load workspace from disk            |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `examples`
+Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `matrices`  `examples`
 
 ## Keyboard shortcuts
 
@@ -458,12 +502,12 @@ Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scien
 ```
 [ 0 ]: rate = 0.06 / 12
 rate = 0.005
-[ 0.005 ]: n = 360
+[ 0 ]: n = 360
 n = 360
-[ 360 ]: factor = (1 + rate) ^ n
-factor = 6.0226...
-[ 6.0226 ]: 200000 * rate * factor / (factor - 1)
-[ 1199.10 ]:
+[ 0 ]: factor = (1 + rate) ^ n
+factor = 10.9357...
+[ 0 ]: 200000 * rate * factor / (factor - 1)
+[ 1199.1010503 ]:
 ```
 
 **Angle conversion** — degrees to radians, then sine:
@@ -582,8 +626,8 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Env type (HashMap<String, f64>), workspace save/load
-    eval.rs      — AST types (Expr, Op) + evaluator + number formatters + Base enum
+    env.rs       — Value enum (Scalar/Matrix), Env type (HashMap<String, Value>), workspace save/load
+    eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base enum
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history
