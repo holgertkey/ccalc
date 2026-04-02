@@ -1,0 +1,100 @@
+% Matrix operations — Phase 4 feature demo
+%
+% Covers: matrix multiply (*), transpose ('), element-wise (.* ./ .^),
+%         and built-ins: zeros, ones, eye, size, numel, trace, det, inv
+%
+% Usage: ccalc matrix_ops.calc
+
+% --- 1. Rotation matrix (2D, 45 degrees) ---
+
+theta = 45 * pi / 180;
+R = [cos(theta), -sin(theta); sin(theta), cos(theta)];
+fprintf('Rotation matrix R (45 deg):\n')
+disp(R)
+
+% For any rotation: det = 1, trace = 2*cos(theta)
+fprintf('det(R) — must be 1:  ')
+disp(det(R))
+fprintf('trace(R) = 2*cos(45): ')
+disp(trace(R))
+
+% --- 2. Rotate a 2D point ---
+
+p = [3; 0];
+q = R * p;
+fprintf('Original point p: ')
+disp(p')
+fprintf('Rotated point  q: ')
+disp(q')
+
+% Verify norm is preserved: p'*p == q'*q
+fprintf('p''*p (norm squared): ')
+disp(p' * p)
+fprintf('q''*q (should match): ')
+disp(q' * q)
+
+% Inverse rotation: R' = R^-1 for orthogonal matrices
+p_back = R' * q;
+fprintf('R'' * q (back to p):\n')
+disp(p_back)
+
+% --- 3. Solving a 2x2 linear system: A*x = b ---
+
+A = [2 1; 5 7];
+b = [11; 13];
+
+x = inv(A) * b;
+fprintf('A:\n')
+disp(A)
+fprintf('b: ')
+disp(b')
+fprintf('Solution x = inv(A)*b: ')
+disp(x')
+
+% Verify: residual A*x - b should be near zero
+r = A * x - b;
+fprintf('Residual ||A*x - b||:\n')
+disp(r' * r)
+
+% --- 4. Element-wise operations on a column vector ---
+
+v = [1; 2; 3; 4];
+fprintf('v'' = ')
+disp(v')
+fprintf('v .^ 2 (each element squared):\n')
+disp(v .^ 2)
+fprintf('v .* v (same via .*):  ')
+disp((v .* v)')
+fprintf('v'' * v (dot product):  ')
+disp(v' * v)
+
+% Scale and normalize elements
+w = v ./ 4;
+fprintf('v ./ 4 = ')
+disp(w')
+
+% --- 5. Special matrices and properties ---
+
+fprintf('zeros(2, 3):\n')
+disp(zeros(2, 3))
+
+fprintf('eye(3):\n')
+disp(eye(3))
+
+% 3x3 matrix with det = 1 (unimodular)
+B = [1 2 3; 0 1 4; 5 6 0];
+fprintf('B:\n')
+disp(B)
+fprintf('det(B):  ')
+disp(det(B))
+fprintf('size(B): ')
+disp(size(B))
+fprintf('numel(B): ')
+disp(numel(B))
+
+% Inverse and verification
+Binv = inv(B);
+fprintf('inv(B):\n')
+disp(Binv)
+fprintf('inv(B) * B — should be identity:\n')
+disp(Binv * B)

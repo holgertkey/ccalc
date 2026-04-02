@@ -58,7 +58,21 @@ fn split_stmts(input: &str) -> Vec<(&str, bool)> {
     let mut bracket_depth: i32 = 0;
     for (i, c) in input.char_indices() {
         match c {
-            '\'' if !in_dq => in_sq = !in_sq,
+            '\'' if !in_dq => {
+                if in_sq {
+                    in_sq = false; // closing string quote
+                } else {
+                    // Transpose operator if preceded by ident char, digit, ')', ']', or another '
+                    // (i.e. the context is "rvalue '"); otherwise it opens a string literal.
+                    let before = input[..i].trim_end_matches(|c: char| c == ' ' || c == '\t');
+                    let is_transpose = before.ends_with(|c: char| {
+                        c.is_alphanumeric() || c == '_' || c == ')' || c == ']' || c == '\''
+                    });
+                    if !is_transpose {
+                        in_sq = true;
+                    }
+                }
+            }
             '"' if !in_sq => in_dq = !in_dq,
             '[' if !in_sq && !in_dq => bracket_depth += 1,
             ']' if !in_sq && !in_dq => {
@@ -1030,6 +1044,24 @@ mod tests {
     fn test_split_stmts_semi_in_matrix_not_split() {
         // ';' inside '[...]' must not split the statement
         assert_eq!(split_stmts("[1 2; 3 4]"), vec![("[1 2; 3 4]", false)]);
+    }
+
+    #[test]
+    fn test_split_stmts_transpose_semi_splits() {
+        // R' * q; — the ';' must not be swallowed by the transpose apostrophe
+        assert_eq!(
+            split_stmts("p = R' * q;"),
+            vec![("p = R' * q", true)]
+        );
+    }
+
+    #[test]
+    fn test_split_stmts_transpose_multi_stmt() {
+        // A'; B — two statements
+        assert_eq!(
+            split_stmts("A'; B"),
+            vec![("A'", true), ("B", false)]
+        );
     }
 
     #[test]
