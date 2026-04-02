@@ -64,15 +64,74 @@ Size must match; otherwise you get an error:
 [1 2] + [1 2 3]   % Error: Matrix size mismatch for '+'
 ```
 
+### Matrix multiplication
+
+`*` between two matrices performs standard matrix multiplication (inner
+dimensions must agree):
+
+```
+A = [1 2; 3 4];
+B = [1 0; 0 1];
+A * B             % → same as A (multiply by identity)
+
+v = [1; 2; 3];
+v' * v            % dot product → 14 (1×3 times 3×1 = 1×1)
+v * v'            % outer product → 3×3 matrix
+```
+
+### Transpose
+
+Postfix `'` transposes a matrix. It binds tighter than any binary operator:
+
+```
+A'                % transpose of A
+[1 2 3]'          % row vector → column vector (3×1)
+R' * R            % for orthogonal R: gives identity
+```
+
+### Element-wise operators
+
+`.*`, `./`, `.^` apply the operation to each pair of corresponding elements
+(shapes must match):
+
+```
+A .* B            % element-wise product  (Hadamard product)
+A ./ B            % element-wise division
+A .^ 2            % square every element
+v .^ 2            % same as v .* v
+```
+
+Note: `*` is matrix multiplication; `.*` is element-wise.
+
 ### What is not yet supported
 
 | Operation | Phase |
 |---|---|
-| Matrix multiplication `A * B` | Phase 4 |
-| Transpose `A'` | Phase 4 |
-| Element-wise `.*` `./` `.^` | Phase 4 |
 | Indexing `A(1,1)` | Phase 6 |
 | Range `1:5` | Phase 5 |
+
+## Built-in functions
+
+| Function        | Description                              |
+|-----------------|------------------------------------------|
+| `zeros(m, n)`   | m×n matrix of zeros                      |
+| `ones(m, n)`    | m×n matrix of ones                       |
+| `eye(n)`        | n×n identity matrix                      |
+| `size(A)`       | `[rows cols]` as a 1×2 row vector        |
+| `size(A, dim)`  | Rows (dim=1) or columns (dim=2) as scalar|
+| `length(A)`     | `max(rows, cols)`                        |
+| `numel(A)`      | Total element count                      |
+| `trace(A)`      | Sum of diagonal elements                 |
+| `det(A)`        | Determinant (square matrices only)       |
+| `inv(A)`        | Inverse (square, non-singular)           |
+
+```
+eye(3)            % 3×3 identity
+det([1 2; 3 4])   % → -2
+inv([1 2; 3 4])   % → 2×2 inverse matrix
+size([1 2 3])     % → [1  3]
+numel(zeros(3,4)) % → 12
+```
 
 ## Display
 

@@ -28,3 +28,4 @@
 - [Phase 1 — Variables](./ccalc/phase1-variables.md)
 - [Phase 2 — Multi-argument Functions](./ccalc/phase2-functions.md)
 - [Phase 3 — Matrix Literals](./ccalc/phase3-matrices.md)
+- [Phase 4 — Matrix Operations](./ccalc/phase4-matrix-ops.md)

@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.8.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.9.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -341,12 +341,38 @@ ans =
 ans =
    2   4
    6   8
-
-[ [2×2] ]: A / 10
-ans =
-   0.1   0.2
-   0.3   0.4
 ```
+
+### Matrix multiplication and transpose
+
+```
+[ [2×2] ]: A * B          matrix multiplication
+[ [2×2] ]: A'             transpose
+[ [2×2] ]: v' * v         dot product (row × column)
+```
+
+### Element-wise operators
+
+```
+[ [2×2] ]: A .* B         element-wise multiply
+[ [2×2] ]: A ./ B         element-wise divide
+[ [2×2] ]: A .^ 2         element-wise power
+```
+
+### Matrix built-ins
+
+| Function        | Description                          |
+|-----------------|--------------------------------------|
+| `zeros(m, n)`   | All-zeros matrix                     |
+| `ones(m, n)`    | All-ones matrix                      |
+| `eye(n)`        | n×n identity matrix                  |
+| `size(A)`       | `[rows cols]` as a 1×2 matrix        |
+| `size(A, dim)`  | Number of rows (dim=1) or cols (dim=2)|
+| `length(A)`     | `max(rows, cols)`                    |
+| `numel(A)`      | Total number of elements             |
+| `trace(A)`      | Sum of diagonal elements             |
+| `det(A)`        | Determinant                          |
+| `inv(A)`        | Inverse matrix                       |
 
 The REPL prompt shows the matrix dimensions when `ans` is a matrix.
 `who` displays dimensions: `A = [2×2 double]`.
@@ -599,11 +625,12 @@ The `examples/` directory contains annotated formula files ready to run:
 
 | File                  | Description                                          |
 |-----------------------|------------------------------------------------------|
-| `cylinder.ccalc`      | Volume and surface area of a cylinder                |
-| `mortgage.ccalc`      | Monthly mortgage payment                             |
-| `data_storage.ccalc`  | Real GiB capacity of a "500 GB" drive                |
-| `resistors.ccalc`     | Series, parallel resistance, voltage divider, power  |
-| `ac_impedance.ccalc`  | AC impedance, phase angle, dB level, bit width       |
+| `cylinder.calc`       | Volume and surface area of a cylinder                |
+| `mortgage.calc`       | Monthly mortgage payment                             |
+| `data_storage.calc`   | Real GiB capacity of a "500 GB" drive                |
+| `resistors.calc`      | Series, parallel resistance, voltage divider, power  |
+| `ac_impedance.calc`   | AC impedance, phase angle, dB level, bit width       |
+| `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops      |
 
 ```bash
 ccalc < examples/mortgage.ccalc

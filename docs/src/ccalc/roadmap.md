@@ -10,7 +10,7 @@ The work is divided into phases in order of architectural dependency.
 | 1 | Variables and assignment (`x = 5`, `who`, `clear`, `ws`/`wl`) | ✅ Done |
 | 2 | Multi-argument functions (`atan2`, `mod`, `max`, `min`) | ✅ Done |
 | 3 | Matrix literals (`[1 2 3]`, `[1; 2; 3]`) | ✅ Done |
-| 4 | Matrix operations (`A * B`, `A'`, `A .* B`) | Planned |
+| 4 | Matrix operations (`A * B`, `A'`, `A .* B`) | ✅ Done |
 | 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | Planned |
 | 6 | Indexing (`A(1,1)`, `v(2:4)`) | Planned |
 | 7 | Comparison and logical operators (`==`, `~=`, `&&`) | Planned |
@@ -33,6 +33,15 @@ migrating `Env` from `f64` to `Value`. Matrix literals `[1 2; 3 4]`,
 element-wise arithmetic with scalars, and matrix `+`/`-` are implemented.
 `split_stmts()` in `repl.rs` became bracket-depth-aware so `;` inside
 `[...]` is parsed as a row separator, not a statement separator.
+
+**Phase 4** adds matrix multiplication (`A * B` via ndarray `.dot()`),
+postfix transpose (`A'` — new token `Apostrophe`, new `Expr::Transpose`),
+and element-wise operators `.*`, `./`, `.^` (new tokens `DotStar`,
+`DotSlash`, `DotCaret`). New built-ins: `zeros(m,n)`, `ones(m,n)`, `eye(n)`,
+`size(A)`, `size(A,dim)`, `length(A)`, `numel(A)`, `trace(A)`, `det(A)`
+(Gaussian elimination), `inv(A)` (Gauss-Jordan). `split_stmts()` updated to
+distinguish transpose `'` from string-literal `'` by left-context.
+`call_builtin` refactored to return `Result<Value, String>` directly.
 
 **Phase 6** resolves the syntactic ambiguity between `f(x)` (function call)
 and `A(i)` (matrix indexing) by checking `Env` at eval time.

@@ -71,7 +71,8 @@ Partial     [ 100 ]: / 4     starts with operator → uses ans
 Bases   0xFF  0b1010  0o17    hex dec bin oct base
 
 Matrix  [1 2 3]   [1;2;3]   [1 2;3 4]
-        2*A   A+B   A/2      scalar ops are element-wise
+        A*B (matmul)  A' (transpose)  A.*B  A./B  A.^n
+        zeros(m,n)  ones(m,n)  eye(n)  size  det  inv  trace
 
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
@@ -354,12 +355,32 @@ Literals
     [sqrt(4), 2^3]    →  [2, 8]
 
 Arithmetic  (scalar operations are element-wise)
+    A + B   A - B     element-wise  (shapes must match)
     2 * A             scale all elements
-    A / 10            divide all elements
-    A + 1             add 1 to all elements
-    A ^ 2             square each element
-    A + B             element-wise addition  (shapes must match)
-    A - B             element-wise subtraction
+    A / 10   A ^ 2    element-wise divide / power
+
+Matrix multiplication and transpose
+    A * B             matrix multiplication  (inner dims must agree)
+    A'                transpose  (postfix, highest precedence)
+    v' * v            dot product  (row × column → scalar-like 1×1)
+    v * v'            outer product  (column × row → matrix)
+
+Element-wise operators  (.* ./ .^ — shapes must match)
+    A .* B            element-wise product  (Hadamard product)
+    A ./ B            element-wise division
+    A .^ 2            element-wise power  (same as A .* A)
+
+Built-in functions
+    zeros(m,n)        m×n matrix of zeros
+    ones(m,n)         m×n matrix of ones
+    eye(n)            n×n identity matrix
+    size(A)           [rows cols] as a 1×2 row vector
+    size(A, dim)      rows (dim=1) or cols (dim=2) as scalar
+    length(A)         max(rows, cols)
+    numel(A)          total element count
+    trace(A)          sum of diagonal elements
+    det(A)            determinant  (square matrices only)
+    inv(A)            inverse  (square, non-singular)
 
 Display
     A =
@@ -372,10 +393,8 @@ Workspace
     who shows dimensions:  A = [2×2 double]
 
 Not yet supported
-    A * B             matrix multiplication  (Phase 4)
-    A'                transpose  (Phase 4)
-    A .* B            element-wise product  (Phase 4)
-    A(1,1)            indexing  (Phase 6)"
+    A(1,1)            indexing  (Phase 6)
+    1:5               range operator  (Phase 5)"
     );
 }
 
@@ -432,9 +451,24 @@ REPL — number bases
     10 - 267
     16 - 0x10B
 
+REPL — matrices
+    [ 0 ]: A = [1 2; 3 4]
+    A =
+       1   2
+       3   4
+    [ [2×2] ]: A'
+    ans =
+       1   3
+       2   4
+    [ [2×2] ]: det(A)
+    [ -2 ]: inv(A)
+    ans =
+       -2    1
+       1.5  -0.5
+
 Script files  (see examples/ directory)
-    ccalc examples/mortgage.ccalc
-    ccalc examples/resistors.ccalc
-    ccalc examples/ac_impedance.ccalc"
+    ccalc examples/mortgage.calc
+    ccalc examples/resistors.calc
+    ccalc examples/matrix_ops.calc"
     );
 }
