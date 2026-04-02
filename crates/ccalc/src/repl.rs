@@ -632,15 +632,90 @@ pub fn run_pipe(reader: impl BufRead) {
     }
 }
 
+/// Lay out `entries` into multi-column lines that fit within `term_width`.
+/// Column-major order (top-to-bottom, then left-to-right), like `ls`.
+/// Returns one string per output line.
+fn who_format_columns(entries: &[String], term_width: usize) -> Vec<String> {
+    if entries.is_empty() {
+        return vec![];
+    }
+    let col_width = entries.iter().map(|s| s.len()).max().unwrap_or(0) + 2;
+    let num_cols = (term_width / col_width).max(1);
+    let num_rows = entries.len().div_ceil(num_cols);
+
+    let mut lines = Vec::with_capacity(num_rows);
+    for row in 0..num_rows {
+        let mut line = String::new();
+        for col in 0..num_cols {
+            let idx = col * num_rows + row;
+            if idx < entries.len() {
+                let is_last_in_row =
+                    col + 1 == num_cols || (col + 1) * num_rows + row >= entries.len();
+                if is_last_in_row {
+                    line.push_str(&entries[idx]);
+                } else {
+                    line.push_str(&format!("{:<width$}", entries[idx], width = col_width));
+                }
+            }
+        }
+        lines.push(line);
+    }
+    lines
+}
+
 fn print_who(env: &Env, precision: usize, base: Base) {
-    let mut vars: Vec<(&String, &Value)> = env.iter().collect();
-    vars.sort_by_key(|(k, _)| k.as_str());
-    for (name, val) in vars {
+    if env.is_empty() {
+        return;
+    }
+
+    println!("Variables visible from the current scope:");
+    println!();
+
+    let term_width: usize = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80);
+
+    // ans always first
+    if let Some(val) = env.get("ans") {
         match val {
-            Value::Scalar(n) => println!("{} = {}", name, format_scalar(*n, precision, base)),
-            Value::Matrix(m) => println!("{} = [{}×{} double]", name, m.nrows(), m.ncols()),
+            Value::Scalar(n) => println!("ans = {}", format_scalar(*n, precision, base)),
+            Value::Matrix(m) => println!("ans = [{}×{} double]", m.nrows(), m.ncols()),
         }
     }
+
+    // Remaining variables sorted alphabetically, scalars and matrices separated
+    let mut scalars: Vec<String> = Vec::new();
+    let mut matrices: Vec<String> = Vec::new();
+
+    let mut others: Vec<(&String, &Value)> = env
+        .iter()
+        .filter(|(k, _)| k.as_str() != "ans")
+        .collect();
+    others.sort_by_key(|(k, _)| k.as_str());
+
+    for (name, val) in others {
+        match val {
+            Value::Scalar(n) => {
+                scalars.push(format!("{} = {}", name, format_scalar(*n, precision, base)));
+            }
+            Value::Matrix(m) => {
+                matrices.push(format!("{} = [{}×{} double]", name, m.nrows(), m.ncols()));
+            }
+        }
+    }
+
+    // Scalars in columns
+    for line in who_format_columns(&scalars, term_width) {
+        println!("{}", line);
+    }
+
+    // Matrices each on its own line at the end
+    for entry in &matrices {
+        println!("{}", entry);
+    }
+
+    println!();
 }
 
 /// Prints a value in all four bases.
@@ -981,6 +1056,51 @@ fn clear_screen() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- who_format_columns tests ---
+
+    #[test]
+    fn test_who_columns_empty() {
+        assert!(who_format_columns(&[], 80).is_empty());
+    }
+
+    #[test]
+    fn test_who_columns_single_entry() {
+        let entries = vec!["x = 3.14".to_string()];
+        assert_eq!(who_format_columns(&entries, 80), vec!["x = 3.14"]);
+    }
+
+    #[test]
+    fn test_who_columns_fits_one_row() {
+        // Each entry "a = 1" is 5 chars, +2 = 7 col_width; 3 entries × 7 = 21 < 80 → one row
+        let entries = vec!["a = 1".to_string(), "b = 2".to_string(), "c = 3".to_string()];
+        let lines = who_format_columns(&entries, 80);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("a = 1"));
+        assert!(lines[0].contains("b = 2"));
+        assert!(lines[0].contains("c = 3"));
+    }
+
+    #[test]
+    fn test_who_columns_wraps_to_two_columns() {
+        // col_width = len("val = 1") + 2 = 9; term_width = 18 → 2 cols, 3 rows
+        let entries: Vec<String> = (1..=6).map(|i| format!("v{} = {}", i, i)).collect();
+        let lines = who_format_columns(&entries, 18);
+        // column-major: col0=[v1,v2,v3], col1=[v4,v5,v6]
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].starts_with("v1 = 1"));
+        assert!(lines[0].contains("v4 = 4"));
+        assert!(lines[1].starts_with("v2 = 2"));
+        assert!(lines[2].starts_with("v3 = 3"));
+    }
+
+    #[test]
+    fn test_who_columns_narrow_terminal_one_col() {
+        // term_width smaller than any entry → max 1 column
+        let entries = vec!["longname = 123".to_string(), "other = 456".to_string()];
+        let lines = who_format_columns(&entries, 5);
+        assert_eq!(lines.len(), 2);
+    }
 
     // --- split_stmts tests ---
 
