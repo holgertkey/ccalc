@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-02
+
+### Added
+
+- **Phase 4 — Matrix operations**:
+  - Matrix multiplication `A * B` (inner-dimension checked, via ndarray `.dot()`)
+  - Postfix transpose `A'` — new `Token::Apostrophe`, `Expr::Transpose`; binds tighter than any binary operator
+  - Element-wise operators `.*`, `./`, `.^` — new tokens `DotStar`, `DotSlash`, `DotCaret`; same precedence as `*`, `/`, `^` respectively
+  - Number tokenizer no longer absorbs `.` before `*`, `/`, `^` (fixes `3.*2` parsing)
+- **Built-ins**: `zeros(m,n)`, `ones(m,n)`, `eye(n)`, `size(A)`, `size(A,dim)`, `length(A)`, `numel(A)`, `trace(A)`, `det(A)`, `inv(A)`
+  - `det` and `inv` use Gaussian / Gauss-Jordan elimination (no external BLAS/LAPACK dependency)
+- **`is_partial`** extended: `.*`, `./`, `.^` prefixes now recognized as partial expressions
+
+### Changed
+
+- `eval_binop`: `Matrix * Matrix` now performs matrix multiplication (was an error); element-wise ops use ndarray broadcast
+- `call_builtin` refactored to return `Result<Value, String>` directly (supports both scalar and matrix return values)
+
 ## [0.8.0] - 2026-04-01
 
 ### Added

@@ -18,6 +18,10 @@ enum Token {
     Star,
     Slash,
     Caret,
+    DotStar,
+    DotSlash,
+    DotCaret,
+    Apostrophe,
     LParen,
     RParen,
     Comma,
@@ -128,6 +132,44 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Caret);
                 chars.next();
             }
+            '\'' => {
+                tokens.push(Token::Apostrophe);
+                chars.next();
+            }
+            '.' => {
+                chars.next();
+                match chars.peek().copied() {
+                    Some('*') => {
+                        chars.next();
+                        tokens.push(Token::DotStar);
+                    }
+                    Some('/') => {
+                        chars.next();
+                        tokens.push(Token::DotSlash);
+                    }
+                    Some('^') => {
+                        chars.next();
+                        tokens.push(Token::DotCaret);
+                    }
+                    Some(d) if d.is_ascii_digit() => {
+                        let mut num_str = String::from(".");
+                        while let Some(&d) = chars.peek() {
+                            if d.is_ascii_digit() {
+                                num_str.push(d);
+                                chars.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        try_consume_sci_exponent(&mut chars, &mut num_str);
+                        let n: f64 = num_str
+                            .parse()
+                            .map_err(|_| format!("Invalid number: '{num_str}'"))?;
+                        tokens.push(Token::Number(n));
+                    }
+                    _ => return Err("Unexpected '.'".to_string()),
+                }
+            }
             '%' => {
                 // '%' starts a comment in Octave/MATLAB — stop tokenizing
                 break;
@@ -156,7 +198,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Semicolon);
                 chars.next();
             }
-            '0'..='9' | '.' => {
+            '0'..='9' => {
                 if c == '0' {
                     chars.next();
                     match chars.peek().copied() {
@@ -178,8 +220,17 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                         _ => {
                             let mut num_str = String::from("0");
                             while let Some(&d) = chars.peek() {
-                                if d.is_ascii_digit() || d == '.' {
+                                if d.is_ascii_digit() {
                                     num_str.push(d);
+                                    chars.next();
+                                } else if d == '.' {
+                                    // Don't eat '.' if followed by *, /, ^ (element-wise ops)
+                                    let mut la = chars.clone();
+                                    la.next();
+                                    if matches!(la.peek(), Some('*') | Some('/') | Some('^')) {
+                                        break;
+                                    }
+                                    num_str.push('.');
                                     chars.next();
                                 } else {
                                     break;
@@ -195,8 +246,17 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 } else {
                     let mut num_str = String::new();
                     while let Some(&d) = chars.peek() {
-                        if d.is_ascii_digit() || d == '.' {
+                        if d.is_ascii_digit() {
                             num_str.push(d);
+                            chars.next();
+                        } else if d == '.' {
+                            // Don't eat '.' if followed by *, /, ^ (element-wise ops)
+                            let mut la = chars.clone();
+                            la.next();
+                            if matches!(la.peek(), Some('*') | Some('/') | Some('^')) {
+                                break;
+                            }
+                            num_str.push('.');
                             chars.next();
                         } else {
                             break;
@@ -261,10 +321,13 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
 /// Returns true if the input looks like a partial expression
 /// (i.e. starts with an operator that needs a left-hand operand).
 pub fn is_partial(input: &str) -> bool {
-    matches!(
-        input.trim_start().chars().next(),
-        Some('+' | '-' | '*' | '/' | '^')
-    )
+    let mut chars = input.trim_start().chars();
+    match chars.next() {
+        Some('+' | '-' | '*' | '/' | '^') => true,
+        // '.*', './', '.^' are element-wise binary operators
+        Some('.') => matches!(chars.next(), Some('*' | '/' | '^')),
+        _ => false,
+    }
 }
 
 /// If `input` matches `"name = rhs"` (not `==`), returns `Some((name, rhs))`.
@@ -316,7 +379,7 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// term = power (('*' | '/') power | '(' expr ')' )*
+// term = power (('*' | '/' | '.*' | './') power | '(' expr ')' )*
 // '(' without an operator triggers implicit multiplication.
 fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     let mut left = parse_power(tokens, pos)?;
@@ -333,6 +396,16 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Div, Box::new(right));
             }
+            Token::DotStar => {
+                *pos += 1;
+                let right = parse_power(tokens, pos)?;
+                left = Expr::BinOp(Box::new(left), Op::ElemMul, Box::new(right));
+            }
+            Token::DotSlash => {
+                *pos += 1;
+                let right = parse_power(tokens, pos)?;
+                left = Expr::BinOp(Box::new(left), Op::ElemDiv, Box::new(right));
+            }
             Token::LParen => {
                 // Implicit multiplication: expr(...)
                 let right = parse_power(tokens, pos)?;
@@ -345,15 +418,23 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// power = unary ('^' power)?   -- right-associative
+// power = unary (('^' | '.^') power)?   -- right-associative
 fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     let base = parse_unary(tokens, pos)?;
-    if *pos < tokens.len()
-        && let Token::Caret = &tokens[*pos]
-    {
-        *pos += 1;
-        let exp = parse_power(tokens, pos)?;
-        return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
+    if *pos < tokens.len() {
+        match &tokens[*pos] {
+            Token::Caret => {
+                *pos += 1;
+                let exp = parse_power(tokens, pos)?;
+                return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
+            }
+            Token::DotCaret => {
+                *pos += 1;
+                let exp = parse_power(tokens, pos)?;
+                return Ok(Expr::BinOp(Box::new(base), Op::ElemPow, Box::new(exp)));
+            }
+            _ => {}
+        }
     }
     Ok(base)
 }
@@ -371,16 +452,17 @@ fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
 }
 
 // primary = ident '(' expr ')' | ident '(' ')' | '(' expr ')' | '[' matrix ']' | number | ident
+// followed by optional postfix transpose: expr '\''*
 fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos >= tokens.len() {
         return Err("Unexpected end of expression".to_string());
     }
 
-    match &tokens[*pos] {
+    let mut expr = match &tokens[*pos] {
         Token::Number(n) => {
             let n = *n;
             *pos += 1;
-            Ok(Expr::Number(n))
+            Expr::Number(n)
         }
         Token::Ident(name) => {
             let name = name.clone();
@@ -415,39 +497,52 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 match &tokens[*pos] {
                     Token::RParen => {
                         *pos += 1;
-                        return Ok(Expr::Call(name, args));
+                        Expr::Call(name, args)
                     }
                     _ => return Err("Expected closing ')'".to_string()),
                 }
-            }
-            // Built-in constants
-            match name.as_str() {
-                "pi" => Ok(Expr::Number(std::f64::consts::PI)),
-                "e" => Ok(Expr::Number(std::f64::consts::E)),
-                // All other identifiers → variable reference (resolved at eval time)
-                _ => Ok(Expr::Var(name)),
+            } else {
+                // Built-in constants
+                match name.as_str() {
+                    "pi" => Expr::Number(std::f64::consts::PI),
+                    "e" => Expr::Number(std::f64::consts::E),
+                    // All other identifiers → variable reference (resolved at eval time)
+                    _ => Expr::Var(name),
+                }
             }
         }
         Token::LParen => {
             *pos += 1;
-            let expr = parse_expr(tokens, pos)?;
+            let inner = parse_expr(tokens, pos)?;
             if *pos >= tokens.len() {
                 return Err("Expected closing ')'".to_string());
             }
             match &tokens[*pos] {
                 Token::RParen => {
                     *pos += 1;
-                    Ok(expr)
+                    inner
                 }
-                _ => Err("Expected closing ')'".to_string()),
+                _ => return Err("Expected closing ')'".to_string()),
             }
         }
         Token::LBracket => {
             *pos += 1;
-            parse_matrix(tokens, pos)
+            parse_matrix(tokens, pos)?
         }
-        _ => Err("Expected number, function, variable, '-', '[', or '('".to_string()),
+        _ => return Err("Expected number, function, variable, '-', '[', or '('".to_string()),
+    };
+
+    // Postfix transpose: ' binds tighter than any binary operator
+    while *pos < tokens.len() {
+        if let Token::Apostrophe = &tokens[*pos] {
+            *pos += 1;
+            expr = Expr::Transpose(Box::new(expr));
+        } else {
+            break;
+        }
     }
+
+    Ok(expr)
 }
 
 /// Parses the contents of a matrix literal after the opening `[` has been consumed.
@@ -1002,5 +1097,113 @@ mod tests {
             }
             _ => panic!("expected matrix"),
         }
+    }
+
+    // --- Phase 4: element-wise operators and transpose ---
+
+    #[test]
+    fn test_elem_mul_scalars() {
+        assert_eq!(calc("3 .* 4"), 12.0);
+    }
+
+    #[test]
+    fn test_elem_div_scalars() {
+        assert_eq!(calc("8 ./ 2"), 4.0);
+    }
+
+    #[test]
+    fn test_elem_pow_scalars() {
+        assert_eq!(calc("2 .^ 10"), 1024.0);
+    }
+
+    #[test]
+    fn test_elem_pow_right_associative() {
+        // 2 .^ 3 .^ 2 == 2 .^ (3 .^ 2) == 2 .^ 9 == 512
+        assert_eq!(calc("2 .^ 3 .^ 2"), 512.0);
+    }
+
+    #[test]
+    fn test_elem_operators_precedence() {
+        // 2 + 3 .* 4 == 2 + 12 == 14 (.* same level as *)
+        assert_eq!(calc("2 + 3 .* 4"), 14.0);
+        assert_eq!(calc("2 .* 3 + 4"), 10.0);
+    }
+
+    #[test]
+    fn test_number_dot_elem_op() {
+        // 3.*4 — '.' should NOT be absorbed into the number 3.
+        assert_eq!(calc("3.*4"), 12.0);
+        assert_eq!(calc("3./2"), 1.5);
+        assert_eq!(calc("2.^3"), 8.0);
+    }
+
+    #[test]
+    fn test_transpose_parse() {
+        // A' should produce Transpose(Var("A"))
+        match parse("A'").unwrap() {
+            Stmt::Expr(Expr::Transpose(inner)) => {
+                assert!(matches!(*inner, Expr::Var(ref n) if n == "A"));
+            }
+            _ => panic!("expected Transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_double() {
+        // A'' should produce Transpose(Transpose(Var("A")))
+        match parse("A''").unwrap() {
+            Stmt::Expr(Expr::Transpose(inner)) => {
+                assert!(matches!(*inner, Expr::Transpose(_)));
+            }
+            _ => panic!("expected double transpose"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_eval() {
+        // [1 2 3]' → column vector, eval to 3x1
+        let env = Env::new();
+        match parse("[1 2 3]'").unwrap() {
+            Stmt::Expr(expr) => match eval(&expr, &env).unwrap() {
+                Value::Matrix(m) => {
+                    assert_eq!(m.shape(), &[3, 1]);
+                    assert_eq!(m[[0, 0]], 1.0);
+                    assert_eq!(m[[1, 0]], 2.0);
+                    assert_eq!(m[[2, 0]], 3.0);
+                }
+                _ => panic!("expected matrix"),
+            },
+            _ => panic!("expected expr"),
+        }
+    }
+
+    #[test]
+    fn test_transpose_matrix_mul() {
+        // v' * v where v = [1;2;3] → scalar 14
+        use ndarray::array;
+        let mut env = Env::new();
+        env.insert(
+            "v".to_string(),
+            Value::Matrix(array![[1.0], [2.0], [3.0]]),
+        );
+        match parse("v' * v").unwrap() {
+            Stmt::Expr(expr) => match eval(&expr, &env).unwrap() {
+                Value::Matrix(m) => {
+                    assert_eq!(m.shape(), &[1, 1]);
+                    assert_eq!(m[[0, 0]], 14.0);
+                }
+                _ => panic!("expected matrix"),
+            },
+            _ => panic!("expected expr"),
+        }
+    }
+
+    #[test]
+    fn test_is_partial_elem_ops() {
+        assert!(is_partial(".* 2"));
+        assert!(is_partial("./ 2"));
+        assert!(is_partial(".^ 2"));
+        assert!(!is_partial(".5"));
+        assert!(!is_partial(". "));
     }
 }

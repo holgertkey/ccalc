@@ -10,6 +10,7 @@ pub enum Expr {
     BinOp(Box<Expr>, Op, Box<Expr>),
     Call(String, Vec<Expr>),
     Matrix(Vec<Vec<Expr>>),
+    Transpose(Box<Expr>),
 }
 
 #[derive(Debug)]
@@ -19,6 +20,9 @@ pub enum Op {
     Mul,
     Div,
     Pow,
+    ElemMul,
+    ElemDiv,
+    ElemPow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -87,6 +91,10 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                 .map_err(|e| format!("Matrix shape error: {e}"))?;
             Ok(Value::Matrix(m))
         }
+        Expr::Transpose(e) => match eval(e, env)? {
+            Value::Scalar(n) => Ok(Value::Scalar(n)),
+            Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
+        },
     }
 }
 
@@ -96,50 +104,86 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             let result = match op {
                 Op::Add => lv + rv,
                 Op::Sub => lv - rv,
-                Op::Mul => lv * rv,
-                Op::Div => {
+                Op::Mul | Op::ElemMul => lv * rv,
+                Op::Div | Op::ElemDiv => {
                     if rv == 0.0 {
                         return Err("Division by zero".to_string());
                     }
                     lv / rv
                 }
-                Op::Pow => lv.powf(rv),
+                Op::Pow | Op::ElemPow => lv.powf(rv),
             };
             Ok(Value::Scalar(result))
         }
-        (Value::Matrix(lm), Value::Matrix(rm)) => {
-            if lm.shape() != rm.shape() {
-                return Err(format!(
-                    "Matrix size mismatch: {}x{} vs {}x{}",
-                    lm.nrows(),
-                    lm.ncols(),
-                    rm.nrows(),
-                    rm.ncols()
-                ));
+        (Value::Matrix(lm), Value::Matrix(rm)) => match op {
+            Op::Add => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(&lm + &rm))
             }
-            match op {
-                Op::Add => Ok(Value::Matrix(&lm + &rm)),
-                Op::Sub => Ok(Value::Matrix(&lm - &rm)),
-                Op::Mul => Err("Matrix-matrix multiplication requires Phase 4".to_string()),
-                Op::Div => Err("Matrix-matrix division is not supported".to_string()),
-                Op::Pow => Err("Matrix-matrix power is not supported".to_string()),
+            Op::Sub => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(&lm - &rm))
             }
-        }
+            Op::Mul => {
+                if lm.ncols() != rm.nrows() {
+                    return Err(format!(
+                        "Inner dimensions must agree: {}x{} * {}x{}",
+                        lm.nrows(),
+                        lm.ncols(),
+                        rm.nrows(),
+                        rm.ncols()
+                    ));
+                }
+                Ok(Value::Matrix(lm.dot(&rm)))
+            }
+            Op::ElemMul => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(&lm * &rm))
+            }
+            Op::ElemDiv => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(&lm / &rm))
+            }
+            Op::ElemPow => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(
+                    ndarray::Zip::from(&lm)
+                        .and(&rm)
+                        .map_collect(|a, b| a.powf(*b)),
+                ))
+            }
+            Op::Div => Err("Matrix / Matrix: use inv(B)*A or A*inv(B)".to_string()),
+            Op::Pow => Err("Matrix ^ Matrix: not supported".to_string()),
+        },
         (Value::Scalar(s), Value::Matrix(m)) => match op {
             Op::Add => Ok(Value::Matrix(s + &m)),
             Op::Sub => Ok(Value::Matrix(m.mapv(|x| s - x))),
-            Op::Mul => Ok(Value::Matrix(s * &m)),
-            Op::Div => Err("Scalar / Matrix is not supported".to_string()),
-            Op::Pow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
+            Op::Mul | Op::ElemMul => Ok(Value::Matrix(s * &m)),
+            Op::Div => Err("Scalar / Matrix: not supported".to_string()),
+            Op::ElemDiv => Err("Scalar ./ Matrix: not supported".to_string()),
+            Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
         },
         (Value::Matrix(m), Value::Scalar(s)) => match op {
             Op::Add => Ok(Value::Matrix(&m + s)),
             Op::Sub => Ok(Value::Matrix(&m - s)),
-            Op::Mul => Ok(Value::Matrix(&m * s)),
-            Op::Div => Ok(Value::Matrix(m.mapv(|x| x / s))),
-            Op::Pow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
+            Op::Mul | Op::ElemMul => Ok(Value::Matrix(&m * s)),
+            Op::Div | Op::ElemDiv => Ok(Value::Matrix(m.mapv(|x| x / s))),
+            Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
         },
     }
+}
+
+fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
+    if lm.shape() != rm.shape() {
+        return Err(format!(
+            "Matrix size mismatch: {}x{} vs {}x{}",
+            lm.nrows(),
+            lm.ncols(),
+            rm.nrows(),
+            rm.ncols()
+        ));
+    }
+    Ok(())
 }
 
 fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
@@ -152,43 +196,205 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
 }
 
 fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
-    let result = match (name, args.len()) {
-        // 1-argument functions
-        ("sqrt", 1) => scalar_arg(&args[0], name, 1)?.sqrt(),
-        ("abs", 1) => scalar_arg(&args[0], name, 1)?.abs(),
-        ("floor", 1) => scalar_arg(&args[0], name, 1)?.floor(),
-        ("ceil", 1) => scalar_arg(&args[0], name, 1)?.ceil(),
-        ("round", 1) => scalar_arg(&args[0], name, 1)?.round(),
-        ("sign", 1) => scalar_arg(&args[0], name, 1)?.signum(),
+    match (name, args.len()) {
+        // --- 1-argument scalar functions ---
+        ("sqrt", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sqrt())),
+        ("abs", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.abs())),
+        ("floor", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.floor())),
+        ("ceil", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ceil())),
+        ("round", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.round())),
+        ("sign", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.signum())),
         // Note: log(x) = log10; use ln(x) for natural logarithm.
-        ("log", 1) => scalar_arg(&args[0], name, 1)?.log10(),
-        ("ln", 1) => scalar_arg(&args[0], name, 1)?.ln(),
-        ("exp", 1) => scalar_arg(&args[0], name, 1)?.exp(),
-        ("sin", 1) => scalar_arg(&args[0], name, 1)?.sin(),
-        ("cos", 1) => scalar_arg(&args[0], name, 1)?.cos(),
-        ("tan", 1) => scalar_arg(&args[0], name, 1)?.tan(),
-        ("asin", 1) => scalar_arg(&args[0], name, 1)?.asin(),
-        ("acos", 1) => scalar_arg(&args[0], name, 1)?.acos(),
-        ("atan", 1) => scalar_arg(&args[0], name, 1)?.atan(),
-        // 2-argument functions
-        ("atan2", 2) => scalar_arg(&args[0], name, 1)?.atan2(scalar_arg(&args[1], name, 2)?),
+        ("log", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.log10())),
+        ("ln", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ln())),
+        ("exp", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.exp())),
+        ("sin", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sin())),
+        ("cos", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.cos())),
+        ("tan", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.tan())),
+        ("asin", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.asin())),
+        ("acos", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.acos())),
+        ("atan", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.atan())),
+        // --- 2-argument scalar functions ---
+        ("atan2", 2) => Ok(Value::Scalar(
+            scalar_arg(&args[0], name, 1)?.atan2(scalar_arg(&args[1], name, 2)?),
+        )),
         ("mod", 2) => {
             let a = scalar_arg(&args[0], name, 1)?;
             let b = scalar_arg(&args[1], name, 2)?;
-            a - b * (a / b).floor()
+            Ok(Value::Scalar(a - b * (a / b).floor()))
         }
         ("rem", 2) => {
             let a = scalar_arg(&args[0], name, 1)?;
             let b = scalar_arg(&args[1], name, 2)?;
-            a - b * (a / b).trunc()
+            Ok(Value::Scalar(a - b * (a / b).trunc()))
         }
-        ("max", 2) => scalar_arg(&args[0], name, 1)?.max(scalar_arg(&args[1], name, 2)?),
-        ("min", 2) => scalar_arg(&args[0], name, 1)?.min(scalar_arg(&args[1], name, 2)?),
-        ("hypot", 2) => scalar_arg(&args[0], name, 1)?.hypot(scalar_arg(&args[1], name, 2)?),
-        ("log", 2) => scalar_arg(&args[0], name, 1)?.log(scalar_arg(&args[1], name, 2)?),
-        _ => return Err(format!("Unknown function: '{name}'")),
-    };
-    Ok(Value::Scalar(result))
+        ("max", 2) => Ok(Value::Scalar(
+            scalar_arg(&args[0], name, 1)?.max(scalar_arg(&args[1], name, 2)?),
+        )),
+        ("min", 2) => Ok(Value::Scalar(
+            scalar_arg(&args[0], name, 1)?.min(scalar_arg(&args[1], name, 2)?),
+        )),
+        ("hypot", 2) => Ok(Value::Scalar(
+            scalar_arg(&args[0], name, 1)?.hypot(scalar_arg(&args[1], name, 2)?),
+        )),
+        ("log", 2) => Ok(Value::Scalar(
+            scalar_arg(&args[0], name, 1)?.log(scalar_arg(&args[1], name, 2)?),
+        )),
+        // --- Matrix constructors ---
+        ("zeros", 2) => {
+            let r = scalar_arg(&args[0], name, 1)? as usize;
+            let c = scalar_arg(&args[1], name, 2)? as usize;
+            Ok(Value::Matrix(Array2::zeros((r, c))))
+        }
+        ("ones", 2) => {
+            let r = scalar_arg(&args[0], name, 1)? as usize;
+            let c = scalar_arg(&args[1], name, 2)? as usize;
+            Ok(Value::Matrix(Array2::ones((r, c))))
+        }
+        ("eye", 1) => {
+            let n = scalar_arg(&args[0], name, 1)? as usize;
+            let mut m = Array2::<f64>::zeros((n, n));
+            for i in 0..n {
+                m[[i, i]] = 1.0;
+            }
+            Ok(Value::Matrix(m))
+        }
+        // --- Matrix properties ---
+        ("size", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Matrix(
+                Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
+            )),
+            Value::Matrix(m) => Ok(Value::Matrix(
+                Array2::from_shape_vec((1, 2), vec![m.nrows() as f64, m.ncols() as f64]).unwrap(),
+            )),
+        },
+        ("size", 2) => {
+            let dim = scalar_arg(&args[1], name, 2)? as usize;
+            match &args[0] {
+                Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+                Value::Matrix(m) => match dim {
+                    1 => Ok(Value::Scalar(m.nrows() as f64)),
+                    2 => Ok(Value::Scalar(m.ncols() as f64)),
+                    _ => Err(format!("size: invalid dimension {dim}, must be 1 or 2")),
+                },
+            }
+        }
+        ("length", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+            Value::Matrix(m) => Ok(Value::Scalar(m.nrows().max(m.ncols()) as f64)),
+        },
+        ("numel", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+            Value::Matrix(m) => Ok(Value::Scalar(m.len() as f64)),
+        },
+        ("trace", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Matrix(m) => {
+                let n = m.nrows().min(m.ncols());
+                Ok(Value::Scalar((0..n).map(|i| m[[i, i]]).sum()))
+            }
+        },
+        ("det", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Matrix(m) => Ok(Value::Scalar(det_matrix(m)?)),
+        },
+        ("inv", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                if *n == 0.0 {
+                    Err("inv: singular (zero scalar)".to_string())
+                } else {
+                    Ok(Value::Scalar(1.0 / n))
+                }
+            }
+            Value::Matrix(m) => Ok(Value::Matrix(inv_matrix(m)?)),
+        },
+        _ => Err(format!("Unknown function: '{name}'")),
+    }
+}
+
+/// Computes determinant of a square matrix via Gaussian elimination.
+fn det_matrix(m: &Array2<f64>) -> Result<f64, String> {
+    let n = m.nrows();
+    if m.ncols() != n {
+        return Err("det: matrix must be square".to_string());
+    }
+    if n == 0 {
+        return Ok(1.0);
+    }
+    let mut a = m.clone();
+    let mut sign: f64 = 1.0;
+    for col in 0..n {
+        let pivot_row = (col..n).find(|&r| a[[r, col]].abs() > 1e-15);
+        match pivot_row {
+            None => return Ok(0.0),
+            Some(p) => {
+                if p != col {
+                    for j in 0..n {
+                        let tmp = a[[p, j]];
+                        a[[p, j]] = a[[col, j]];
+                        a[[col, j]] = tmp;
+                    }
+                    sign = -sign;
+                }
+                let pv = a[[col, col]];
+                for row in (col + 1)..n {
+                    let factor = a[[row, col]] / pv;
+                    for j in col..n {
+                        let val = a[[col, j]] * factor;
+                        a[[row, j]] -= val;
+                    }
+                }
+            }
+        }
+    }
+    Ok(sign * (0..n).map(|i| a[[i, i]]).product::<f64>())
+}
+
+/// Computes inverse of a square matrix via Gauss-Jordan elimination.
+fn inv_matrix(m: &Array2<f64>) -> Result<Array2<f64>, String> {
+    let n = m.nrows();
+    if m.ncols() != n {
+        return Err("inv: matrix must be square".to_string());
+    }
+    let cols = 2 * n;
+    let mut aug = vec![0.0f64; n * cols];
+    for i in 0..n {
+        for j in 0..n {
+            aug[i * cols + j] = m[[i, j]];
+        }
+        aug[i * cols + n + i] = 1.0;
+    }
+    for col in 0..n {
+        let pivot_row = (col..n)
+            .find(|&r| aug[r * cols + col].abs() > 1e-12)
+            .ok_or_else(|| "inv: matrix is singular".to_string())?;
+        if pivot_row != col {
+            for j in 0..cols {
+                aug.swap(col * cols + j, pivot_row * cols + j);
+            }
+        }
+        let pv = aug[col * cols + col];
+        for j in 0..cols {
+            aug[col * cols + j] /= pv;
+        }
+        for row in 0..n {
+            if row == col {
+                continue;
+            }
+            let factor = aug[row * cols + col];
+            for j in 0..cols {
+                let val = aug[col * cols + j] * factor;
+                aug[row * cols + j] -= val;
+            }
+        }
+    }
+    let mut result = Array2::<f64>::zeros((n, n));
+    for i in 0..n {
+        for j in 0..n {
+            result[[i, j]] = aug[i * cols + n + j];
+        }
+    }
+    Ok(result)
 }
 
 /// Formats a number for display: integers without decimal point,
@@ -763,5 +969,236 @@ mod tests {
             }
             _ => panic!("expected matrix"),
         }
+    }
+
+    // --- Phase 4: matrix operations ---
+
+    #[test]
+    fn test_eval_matrix_mul() {
+        use ndarray::array;
+        // [1 2; 3 4] * [1; 1] = [3; 7]
+        let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+        let b = Value::Matrix(array![[1.0], [1.0]]);
+        let mut env = empty_env();
+        env.insert("a".to_string(), a);
+        env.insert("b".to_string(), b);
+        let expr = Expr::BinOp(
+            Box::new(Expr::Var("a".to_string())),
+            Op::Mul,
+            Box::new(Expr::Var("b".to_string())),
+        );
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[2, 1]);
+                assert_eq!(m[[0, 0]], 3.0);
+                assert_eq!(m[[1, 0]], 7.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_mul_inner_mismatch() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[1.0, 2.0]]);
+        let b = Value::Matrix(array![[1.0, 2.0]]);
+        assert!(eval_binop(a, &Op::Mul, b).is_err());
+    }
+
+    #[test]
+    fn test_eval_matrix_elem_mul() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+        let b = Value::Matrix(array![[2.0, 3.0], [4.0, 5.0]]);
+        match eval_binop(a, &Op::ElemMul, b).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 2.0);
+                assert_eq!(m[[0, 1]], 6.0);
+                assert_eq!(m[[1, 0]], 12.0);
+                assert_eq!(m[[1, 1]], 20.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_elem_div() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[6.0, 8.0]]);
+        let b = Value::Matrix(array![[2.0, 4.0]]);
+        match eval_binop(a, &Op::ElemDiv, b).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 3.0);
+                assert_eq!(m[[0, 1]], 2.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_matrix_elem_pow() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[2.0, 3.0]]);
+        let b = Value::Matrix(array![[3.0, 2.0]]);
+        match eval_binop(a, &Op::ElemPow, b).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 8.0);
+                assert_eq!(m[[0, 1]], 9.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_transpose_matrix() {
+        use ndarray::array;
+        let a = Value::Matrix(array![[1.0, 2.0, 3.0]]);
+        let mut env = empty_env();
+        env.insert("a".to_string(), a);
+        let expr = Expr::Transpose(Box::new(Expr::Var("a".to_string())));
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[3, 1]);
+                assert_eq!(m[[0, 0]], 1.0);
+                assert_eq!(m[[1, 0]], 2.0);
+                assert_eq!(m[[2, 0]], 3.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_transpose_scalar() {
+        let expr = Expr::Transpose(Box::new(Expr::Number(5.0)));
+        match eval(&expr, &empty_env()).unwrap() {
+            Value::Scalar(n) => assert_eq!(n, 5.0),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    #[test]
+    fn test_eval_zeros() {
+        let expr = Expr::Call(
+            "zeros".to_string(),
+            vec![Expr::Number(2.0), Expr::Number(3.0)],
+        );
+        match eval(&expr, &empty_env()).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[2, 3]);
+                assert!(m.iter().all(|&x| x == 0.0));
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_ones() {
+        let expr = Expr::Call(
+            "ones".to_string(),
+            vec![Expr::Number(2.0), Expr::Number(2.0)],
+        );
+        match eval(&expr, &empty_env()).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[2, 2]);
+                assert!(m.iter().all(|&x| x == 1.0));
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_eye() {
+        let expr = Expr::Call("eye".to_string(), vec![Expr::Number(3.0)]);
+        match eval(&expr, &empty_env()).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[3, 3]);
+                assert_eq!(m[[0, 0]], 1.0);
+                assert_eq!(m[[1, 1]], 1.0);
+                assert_eq!(m[[2, 2]], 1.0);
+                assert_eq!(m[[0, 1]], 0.0);
+                assert_eq!(m[[1, 0]], 0.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_size() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]));
+        let expr = Expr::Call("size".to_string(), vec![Expr::Var("a".to_string())]);
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[1, 2]);
+                assert_eq!(m[[0, 0]], 2.0);
+                assert_eq!(m[[0, 1]], 3.0);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_length_numel() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]));
+        let len = Expr::Call("length".to_string(), vec![Expr::Var("a".to_string())]);
+        let num = Expr::Call("numel".to_string(), vec![Expr::Var("a".to_string())]);
+        assert_eq!(eval_s(&len, &env), 3.0);
+        assert_eq!(eval_s(&num, &env), 6.0);
+    }
+
+    #[test]
+    fn test_eval_trace() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        let expr = Expr::Call("trace".to_string(), vec![Expr::Var("a".to_string())]);
+        assert_eq!(eval_s(&expr, &env), 5.0);
+    }
+
+    #[test]
+    fn test_eval_det_2x2() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        let expr = Expr::Call("det".to_string(), vec![Expr::Var("a".to_string())]);
+        assert!((eval_s(&expr, &env) - (-2.0)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_det_singular() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]));
+        let expr = Expr::Call("det".to_string(), vec![Expr::Var("a".to_string())]);
+        assert_eq!(eval_s(&expr, &env), 0.0);
+    }
+
+    #[test]
+    fn test_eval_inv_2x2() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
+        match eval(&expr, &env).unwrap() {
+            Value::Matrix(m) => {
+                assert!((m[[0, 0]] - (-2.0)).abs() < 1e-10);
+                assert!((m[[0, 1]] - 1.0).abs() < 1e-10);
+                assert!((m[[1, 0]] - 1.5).abs() < 1e-10);
+                assert!((m[[1, 1]] - (-0.5)).abs() < 1e-10);
+            }
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_eval_inv_singular() {
+        use ndarray::array;
+        let mut env = empty_env();
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]));
+        let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
+        assert!(eval(&expr, &env).is_err());
     }
 }
