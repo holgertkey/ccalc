@@ -1182,10 +1182,7 @@ mod tests {
         // v' * v where v = [1;2;3] → scalar 14
         use ndarray::array;
         let mut env = Env::new();
-        env.insert(
-            "v".to_string(),
-            Value::Matrix(array![[1.0], [2.0], [3.0]]),
-        );
+        env.insert("v".to_string(), Value::Matrix(array![[1.0], [2.0], [3.0]]));
         match parse("v' * v").unwrap() {
             Stmt::Expr(expr) => match eval(&expr, &env).unwrap() {
                 Value::Matrix(m) => {

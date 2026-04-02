@@ -1126,7 +1126,10 @@ mod tests {
     fn test_eval_size() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        );
         let expr = Expr::Call("size".to_string(), vec![Expr::Var("a".to_string())]);
         match eval(&expr, &env).unwrap() {
             Value::Matrix(m) => {
@@ -1142,7 +1145,10 @@ mod tests {
     fn test_eval_length_numel() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        );
         let len = Expr::Call("length".to_string(), vec![Expr::Var("a".to_string())]);
         let num = Expr::Call("numel".to_string(), vec![Expr::Var("a".to_string())]);
         assert_eq!(eval_s(&len, &env), 3.0);
@@ -1153,7 +1159,10 @@ mod tests {
     fn test_eval_trace() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        );
         let expr = Expr::Call("trace".to_string(), vec![Expr::Var("a".to_string())]);
         assert_eq!(eval_s(&expr, &env), 5.0);
     }
@@ -1162,7 +1171,10 @@ mod tests {
     fn test_eval_det_2x2() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        );
         let expr = Expr::Call("det".to_string(), vec![Expr::Var("a".to_string())]);
         assert!((eval_s(&expr, &env) - (-2.0)).abs() < 1e-10);
     }
@@ -1171,7 +1183,10 @@ mod tests {
     fn test_eval_det_singular() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]),
+        );
         let expr = Expr::Call("det".to_string(), vec![Expr::Var("a".to_string())]);
         assert_eq!(eval_s(&expr, &env), 0.0);
     }
@@ -1180,7 +1195,10 @@ mod tests {
     fn test_eval_inv_2x2() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        );
         let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
         match eval(&expr, &env).unwrap() {
             Value::Matrix(m) => {
@@ -1197,7 +1215,10 @@ mod tests {
     fn test_eval_inv_singular() {
         use ndarray::array;
         let mut env = empty_env();
-        env.insert("a".to_string(), Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]));
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]),
+        );
         let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
         assert!(eval(&expr, &env).is_err());
     }

@@ -64,7 +64,7 @@ fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                 } else {
                     // Transpose operator if preceded by ident char, digit, ')', ']', or another '
                     // (i.e. the context is "rvalue '"); otherwise it opens a string literal.
-                    let before = input[..i].trim_end_matches(|c: char| c == ' ' || c == '\t');
+                    let before = input[..i].trim_end_matches([' ', '\t']);
                     let is_transpose = before.ends_with(|c: char| {
                         c.is_alphanumeric() || c == '_' || c == ')' || c == ']' || c == '\''
                     });
@@ -1049,19 +1049,13 @@ mod tests {
     #[test]
     fn test_split_stmts_transpose_semi_splits() {
         // R' * q; — the ';' must not be swallowed by the transpose apostrophe
-        assert_eq!(
-            split_stmts("p = R' * q;"),
-            vec![("p = R' * q", true)]
-        );
+        assert_eq!(split_stmts("p = R' * q;"), vec![("p = R' * q", true)]);
     }
 
     #[test]
     fn test_split_stmts_transpose_multi_stmt() {
         // A'; B — two statements
-        assert_eq!(
-            split_stmts("A'; B"),
-            vec![("A'", true), ("B", false)]
-        );
+        assert_eq!(split_stmts("A'; B"), vec![("A'", true), ("B", false)]);
     }
 
     #[test]
