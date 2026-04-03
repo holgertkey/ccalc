@@ -11,7 +11,7 @@ The work is divided into phases in order of architectural dependency.
 | 2 | Multi-argument functions (`atan2`, `mod`, `max`, `min`) | ✅ Done |
 | 3 | Matrix literals (`[1 2 3]`, `[1; 2; 3]`) | ✅ Done |
 | 4 | Matrix operations (`A * B`, `A'`, `A .* B`) | ✅ Done |
-| 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | Planned |
+| 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | ✅ Done |
 | 6 | Indexing (`A(1,1)`, `v(2:4)`) | Planned |
 | 7 | Comparison and logical operators (`==`, `~=`, `&&`) | Planned |
 | 8 | Control flow (`if`, `for`, `while` in `.m` files) | Planned |
@@ -42,6 +42,12 @@ and element-wise operators `.*`, `./`, `.^` (new tokens `DotStar`,
 (Gaussian elimination), `inv(A)` (Gauss-Jordan). `split_stmts()` updated to
 distinguish transpose `'` from string-literal `'` by left-context.
 `call_builtin` refactored to return `Result<Value, String>` directly.
+
+**Phase 5** adds `Token::Colon` and `Expr::Range(start, step?, stop)`. A new
+`parse_range()` layer sits above `parse_expr()` with lower precedence, so
+`1+1:5` = `2:5`. The `Expr::Matrix` evaluator is updated to concatenate
+row-vector elements horizontally, making `[1:5]` work. New built-in:
+`linspace(a, b, n)`.
 
 **Phase 6** resolves the syntactic ambiguity between `f(x)` (function call)
 and `A(i)` (matrix indexing) by checking `Env` at eval time.

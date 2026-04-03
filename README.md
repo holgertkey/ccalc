@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.9.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.10.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -377,6 +377,36 @@ ans =
 The REPL prompt shows the matrix dimensions when `ans` is a matrix.
 `who` displays dimensions: `A = [2×2 double]`.
 `ws` saves only scalar variables; matrices are not persisted.
+
+### Range operator
+
+Generate row vectors with the `:` operator:
+
+```
+1:5              % [1 2 3 4 5]
+1:2:9            % [1 3 5 7 9]   (start:step:stop)
+0:0.5:2          % [0 0.5 1 1.5 2]
+5:-1:1           % [5 4 3 2 1]
+```
+
+Ranges work inside matrix literals and can be mixed with scalars:
+
+```
+[ 0 ]: v = 1:4
+v =
+   1   2   3   4
+
+[ [1×4] ]: [0, 1:3, 10]
+ans =
+    0   1   2   3   10
+```
+
+`linspace(a, b, n)` generates `n` evenly spaced values between `a` and `b`:
+
+```
+linspace(0, 1, 5)    % [0  0.25  0.5  0.75  1]
+linspace(1, 5, 5)    % [1  2  3  4  5]
+```
 
 ---
 

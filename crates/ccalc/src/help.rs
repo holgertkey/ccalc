@@ -73,6 +73,8 @@ Bases   0xFF  0b1010  0o17    hex dec bin oct base
 Matrix  [1 2 3]   [1;2;3]   [1 2;3 4]
         A*B (matmul)  A' (transpose)  A.*B  A./B  A.^n
         zeros(m,n)  ones(m,n)  eye(n)  size  det  inv  trace
+Range   1:5  →  [1 2 3 4 5]     1:2:9  →  [1 3 5 7 9]
+        linspace(a,b,n)   [1:3, 10]  →  [1 2 3 10]
 
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
@@ -92,7 +94,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help bases       number bases, display switching
   help vars        variables and workspace
   help script      pipe/script mode, semicolons, disp, fprintf
-  help matrices    matrix literals, arithmetic, display
+  help matrices    matrix literals, arithmetic, ranges, display
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -142,7 +144,16 @@ Semicolon
     a = 1; b = 2;        both silent
 
     Inside a matrix literal [ ], ; is always a row separator:
-    [1 2; 3 4]           2×2 matrix — the ; is not a statement separator"
+    [1 2; 3 4]           2×2 matrix — the ; is not a statement separator
+
+Range operator (lowest precedence)
+    a:b               row vector  [a, a+1, ..., b]   (step = 1)
+    a:step:b          row vector with explicit step
+    1:5               →  [1 2 3 4 5]
+    0:0.5:2           →  [0 0.5 1 1.5 2]
+    5:-1:1            →  [5 4 3 2 1]
+    Range is lower precedence than arithmetic:
+    1+1:2+2           →  2:4  →  [2 3 4]"
     );
 }
 
@@ -382,6 +393,21 @@ Built-in functions
     det(A)            determinant  (square matrices only)
     inv(A)            inverse  (square, non-singular)
 
+Range operator
+    a:b               row vector from a to b with step 1
+    a:step:b          row vector with explicit step (may be negative)
+    1:5               →  [1 2 3 4 5]
+    1:2:9             →  [1 3 5 7 9]
+    5:-1:1            →  [5 4 3 2 1]
+    0:0.5:2           →  [0 0.5 1 1.5 2]
+    Ranges work inside [ ]:
+    [1:3, 10]         →  [1 2 3 10]
+    [1:2:7]           →  [1 3 5 7]
+
+linspace
+    linspace(a,b,n)   n evenly spaced values from a to b (inclusive)
+    linspace(0,1,5)   →  [0 0.25 0.5 0.75 1]
+
 Display
     A =
        1   2
@@ -393,8 +419,7 @@ Workspace
     who shows dimensions:  A = [2×2 double]
 
 Not yet supported
-    A(1,1)            indexing  (Phase 6)
-    1:5               range operator  (Phase 5)"
+    A(1,1)            indexing  (Phase 6)"
     );
 }
 

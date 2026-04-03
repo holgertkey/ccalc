@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-03
+
+### Added
+
+- **Phase 5 — Range operator**:
+  - `a:b` — generates a 1×N row vector from `a` to `b` with step 1
+  - `a:step:b` — three-argument form with explicit step (positive or negative)
+  - Arithmetic can be used in range bounds: `1+1:2*3` = `2:6`
+  - Empty range (step in the wrong direction) produces a 1×0 matrix, displayed as `[]`
+  - Ranges work inside matrix literals: `[1:5]` → `[1 2 3 4 5]`, `[1:2:7]` → `[1 3 5 7]`
+  - Ranges can be mixed with scalars in brackets: `[0, 1:3, 10]` → `[0 1 2 3 10]`
+  - `Token::Colon` added to the tokenizer; `Expr::Range` added to the AST
+  - `parse_range()` — new lowest-precedence parser level; `parse()` and `parse_matrix()` updated to use it
+- **`linspace(a, b, n)`** — generates `n` linearly spaced values from `a` to `b` (inclusive)
+
+### Changed
+
+- `Expr::Matrix` evaluator: row elements that evaluate to a `Value::Matrix` (row vector) are now concatenated horizontally into the row, enabling range expressions inside `[...]`
+
 ## [0.9.0] - 2026-04-02
 
 ### Added

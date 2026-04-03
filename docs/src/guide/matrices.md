@@ -108,7 +108,40 @@ Note: `*` is matrix multiplication; `.*` is element-wise.
 | Operation | Phase |
 |---|---|
 | Indexing `A(1,1)` | Phase 6 |
-| Range `1:5` | Phase 5 |
+
+## Range operator
+
+Generate row vectors with the `:` operator. Range has lower precedence than
+arithmetic, so `1+1:5` evaluates as `2:5`.
+
+```
+1:5              % [1 2 3 4 5]
+1:2:9            % [1 3 5 7 9]   (start:step:stop)
+0:0.5:2          % [0 0.5 1 1.5 2]
+5:-1:1           % [5 4 3 2 1]
+5:1              % []   (empty — step in wrong direction)
+```
+
+Ranges work inside matrix literals — they are concatenated horizontally:
+
+```
+[1:4]            % [1 2 3 4]
+[0, 1:3, 10]     % [0 1 2 3 10]
+[1:2:7]          % [1 3 5 7]
+[1:3; 4:6]       % 2×3 matrix: [1 2 3; 4 5 6]
+```
+
+### linspace
+
+`linspace(a, b, n)` generates `n` evenly spaced values from `a` to `b`
+(both endpoints included):
+
+```
+linspace(0, 1, 5)      % [0  0.25  0.5  0.75  1]
+linspace(1, 5, 5)      % [1  2  3  4  5]
+linspace(0, 1, 1)      % [1]   (single element returns b)
+linspace(0, 1, 0)      % []   (empty)
+```
 
 ## Built-in functions
 
