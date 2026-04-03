@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.10.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.11.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -406,6 +406,35 @@ ans =
 ```
 linspace(0, 1, 5)    % [0  0.25  0.5  0.75  1]
 linspace(1, 5, 5)    % [1  2  3  4  5]
+```
+
+### Indexing
+
+All indices are **1-based** (Octave convention). A name that exists as a
+variable always indexes — variables shadow built-in function names.
+
+```
+[ 0 ]: v = 1:5
+v =
+   1   2   3   4   5
+
+[ [1×5] ]: v(3)
+[ 3 ]: v(2:4)
+ans =
+   2   3   4
+
+[ [1×3] ]: A = [1 2 3; 4 5 6; 7 8 9]
+[ [3×3] ]: A(2,3)
+[ 6 ]: A(:,2)
+ans =
+   2
+   5
+   8
+
+[ [3×1] ]: A(1:2, 2:3)
+ans =
+   2   3
+   5   6
 ```
 
 ---

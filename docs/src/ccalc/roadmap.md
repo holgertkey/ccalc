@@ -12,7 +12,7 @@ The work is divided into phases in order of architectural dependency.
 | 3 | Matrix literals (`[1 2 3]`, `[1; 2; 3]`) | ✅ Done |
 | 4 | Matrix operations (`A * B`, `A'`, `A .* B`) | ✅ Done |
 | 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | ✅ Done |
-| 6 | Indexing (`A(1,1)`, `v(2:4)`) | Planned |
+| 6 | Indexing (`A(1,1)`, `v(2:4)`) | ✅ Done |
 | 7 | Comparison and logical operators (`==`, `~=`, `&&`) | Planned |
 | 8 | Control flow (`if`, `for`, `while` in `.m` files) | Planned |
 | 9 | User-defined functions (`function y = f(x) … end`) | Planned |
@@ -49,8 +49,13 @@ distinguish transpose `'` from string-literal `'` by left-context.
 row-vector elements horizontally, making `[1:5]` work. New built-in:
 `linspace(a, b, n)`.
 
-**Phase 6** resolves the syntactic ambiguity between `f(x)` (function call)
-and `A(i)` (matrix indexing) by checking `Env` at eval time.
+**Phase 6** adds `Expr::Colon` and `parse_call_arg()`. The `Expr::Call`
+evaluator checks `Env` first: if the name resolves to a variable, the
+expression is treated as indexing (variables shadow built-in function names,
+matching Octave semantics). `eval_index()` + `resolve_dim()` handle 1D
+(column-major linear) and 2D indexing, all 1-based. A bug fix also landed
+here: range expressions inside grouping parentheses `(a:b)` now parse
+correctly.
 
 **Phase 8** adds multi-line input buffering to the REPL for unclosed
 `if`/`for`/`while`/`end` blocks.

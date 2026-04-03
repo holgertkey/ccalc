@@ -30,3 +30,4 @@
 - [Phase 3 — Matrix Literals](./ccalc/phase3-matrices.md)
 - [Phase 4 — Matrix Operations](./ccalc/phase4-matrix-ops.md)
 - [Phase 5 — Range Operator](./ccalc/phase5-range.md)
+- [Phase 6 — Indexing](./ccalc/phase6-indexing.md)

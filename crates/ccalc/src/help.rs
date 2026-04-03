@@ -75,6 +75,8 @@ Matrix  [1 2 3]   [1;2;3]   [1 2;3 4]
         zeros(m,n)  ones(m,n)  eye(n)  size  det  inv  trace
 Range   1:5  →  [1 2 3 4 5]     1:2:9  →  [1 3 5 7 9]
         linspace(a,b,n)   [1:3, 10]  →  [1 2 3 10]
+Index   v(3)  v(2:4)  v(:)          1-based  (Octave convention)
+        A(i,j)  A(:,j)  A(i,:)  A(1:2, 2:3)
 
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
@@ -414,12 +416,26 @@ Display
        3   4
     Prompt shows size when ans is a matrix:  [ [2×2] ]:
 
+Indexing  (1-based — Octave convention)
+    v(3)              scalar element (3rd)
+    v(2:4)            sub-vector  (elements 2, 3, 4)
+    v(:)              all elements as a column vector
+    A(i,j)            scalar element at row i, column j
+    A(:,j)            entire column j  (result: Nx1)
+    A(i,:)            entire row i     (result: 1xM)
+    A(1:2, 2:3)       submatrix via range indices
+    Variables in env shadow function names (same as Octave):
+    v = [10 20 30]; v(2)  →  20
+
+Display
+    A =
+       1   2
+       3   4
+    Prompt shows size when ans is a matrix:  [ [2×2] ]:
+
 Workspace
     ws  saves only scalar variables — matrices are not persisted.
-    who shows dimensions:  A = [2×2 double]
-
-Not yet supported
-    A(1,1)            indexing  (Phase 6)"
+    who shows dimensions:  A = [2×2 double]"
     );
 }
 
@@ -491,9 +507,33 @@ REPL — matrices
        -2    1
        1.5  -0.5
 
+REPL — ranges and indexing
+    [ 0 ]: v = 1:5
+    v =
+       1   2   3   4   5
+    [ [1×5] ]: v(3)
+    [ 3 ]: v(2:4)
+    ans =
+       2   3   4
+    [ [1×3] ]: A = [1:3; 4:6; 7:9]
+    A =
+       1   2   3
+       4   5   6
+       7   8   9
+    [ [3×3] ]: A(:,2)
+    ans =
+       2
+       5
+       8
+    [ [3×1] ]: A(1:2, 2:3)
+    ans =
+       2   3
+       5   6
+
 Script files  (see examples/ directory)
     ccalc examples/mortgage.calc
     ccalc examples/resistors.calc
-    ccalc examples/matrix_ops.calc"
+    ccalc examples/matrix_ops.calc
+    ccalc examples/sequences.calc"
     );
 }

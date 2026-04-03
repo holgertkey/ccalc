@@ -103,12 +103,6 @@ v .^ 2            % same as v .* v
 
 Note: `*` is matrix multiplication; `.*` is element-wise.
 
-### What is not yet supported
-
-| Operation | Phase |
-|---|---|
-| Indexing `A(1,1)` | Phase 6 |
-
 ## Range operator
 
 Generate row vectors with the `:` operator. Range has lower precedence than
@@ -193,6 +187,43 @@ x = 3.14
 ```
 
 `ws` (workspace save) saves only scalar variables. Matrices are not persisted.
+
+## Indexing
+
+All indices are **1-based** (Octave/MATLAB convention).
+If a name exists as a variable in the workspace, `name(...)` is always
+treated as indexing — variables shadow built-in function names.
+
+### Vector indexing
+
+```
+v = [10 20 30 40 50];
+
+v(3)         % → 30          scalar element
+v(2:4)       % → [20 30 40]  sub-vector via range
+v(:)         % → [10;20;30;40;50]  all elements, column vector
+```
+
+### Matrix indexing
+
+```
+A = [1 2 3; 4 5 6; 7 8 9];
+
+A(2, 3)      % → 6           scalar at row 2, col 3
+A(1, :)      % → [1 2 3]     entire row 1   (1×3)
+A(:, 2)      % → [2;5;8]     entire column 2  (3×1)
+A(1:2, 2:3)  % → [2 3; 5 6]  submatrix
+```
+
+### Index expressions
+
+Index arguments can be arbitrary expressions:
+
+```
+n = size(A, 2);   % number of columns
+A(1, n)           % last element of row 1
+A(1:2, 1+1)       % rows 1-2, column 2
+```
 
 ## Semicolon inside matrix literals
 
