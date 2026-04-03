@@ -4,9 +4,10 @@
 %
 % Usage: ccalc cylinder.ccalc
 
+p2                        % display 2 decimal places
+
 r = 5;                    % radius
 h = 10;                   % height
-p4                        % precision = 4
 
 base_area = pi * r^2;     % pi * r^2
 

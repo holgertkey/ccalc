@@ -4,6 +4,8 @@
 %
 % Usage: ccalc data_storage.ccalc
 
+p2                        % display 2 decimal places
+
 gib = 1024^3;             % bytes in one GiB
 
 500 * 1000^3 / gib;
