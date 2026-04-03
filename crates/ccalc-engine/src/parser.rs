@@ -553,7 +553,7 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         }
         Token::LParen => {
             *pos += 1;
-            let inner = parse_expr(tokens, pos)?;
+            let inner = parse_range(tokens, pos)?;
             if *pos >= tokens.len() {
                 return Err("Expected closing ')'".to_string());
             }

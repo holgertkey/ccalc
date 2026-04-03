@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `Expr::Colon` AST node for the all-elements selector `:`
   - `parse_call_arg()` — parses bare `:` as `Expr::Colon`; otherwise delegates to `parse_range`; all call/index argument positions now use this
 
+### Fixed
+
+- Range expressions inside grouping parentheses now parse correctly: `2 .^ (0:7)` previously failed with "Expected closing ')'" because the `(...)` parser used `parse_expr` instead of `parse_range`
+
 ### Changed
 
 - `Expr::Call` evaluation: if the name resolves to a variable in `Env`, the expression is treated as indexing (variables shadow built-in function names — Octave semantics). Otherwise evaluated as a built-in function call.

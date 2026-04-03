@@ -661,6 +661,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `resistors.calc`      | Series, parallel resistance, voltage divider, power  |
 | `ac_impedance.calc`   | AC impedance, phase angle, dB level, bit width       |
 | `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops      |
+| `sequences.calc`      | Ranges, linspace, indexing, slicing, finite differences |
 
 ```bash
 ccalc < examples/mortgage.ccalc
