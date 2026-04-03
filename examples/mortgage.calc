@@ -8,8 +8,6 @@
 %
 % Usage: ccalc mortgage.ccalc
 
-p2                        % display 2 decimal places
-
 rate = 0.06 / 12;         % monthly interest rate
 n = 360;                  % 30 years * 12 months
 p = 200000;               % principal

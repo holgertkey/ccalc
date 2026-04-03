@@ -225,7 +225,7 @@ If called with **empty parentheses**, `ans` is used as the argument.
 | `rem(a, b)`     | Remainder, sign follows dividend                        |
 | `max(a, b)`     | Larger of two values                                    |
 | `min(a, b)`     | Smaller of two values                                   |
-| `hypot(a, b)`   | √(a²+b²), numerically stable                           |
+| `hypot(a, b)`   | √(a²+b²), numerically stable                            |
 | `log(x, base)`  | Logarithm of *x* to an arbitrary *base*                 |
 
 ```
@@ -361,18 +361,18 @@ ans =
 
 ### Matrix built-ins
 
-| Function        | Description                          |
-|-----------------|--------------------------------------|
-| `zeros(m, n)`   | All-zeros matrix                     |
-| `ones(m, n)`    | All-ones matrix                      |
-| `eye(n)`        | n×n identity matrix                  |
-| `size(A)`       | `[rows cols]` as a 1×2 matrix        |
+| Function        | Description                           |
+|-----------------|---------------------------------------|
+| `zeros(m, n)`   | All-zeros matrix                      |
+| `ones(m, n)`    | All-ones matrix                       |
+| `eye(n)`        | n×n identity matrix                   |
+| `size(A)`       | `[rows cols]` as a 1×2 matrix         |
 | `size(A, dim)`  | Number of rows (dim=1) or cols (dim=2)|
-| `length(A)`     | `max(rows, cols)`                    |
-| `numel(A)`      | Total number of elements             |
-| `trace(A)`      | Sum of diagonal elements             |
-| `det(A)`        | Determinant                          |
-| `inv(A)`        | Inverse matrix                       |
+| `length(A)`     | `max(rows, cols)`                     |
+| `numel(A)`      | Total number of elements              |
+| `trace(A)`      | Sum of diagonal elements              |
+| `det(A)`        | Determinant                           |
+| `inv(A)`        | Inverse matrix                        |
 
 The REPL prompt shows the matrix dimensions when `ans` is a matrix.
 `who` displays dimensions: `A = [2×2 double]`.
@@ -682,14 +682,14 @@ Parallel resistance (Ohm): 68.7500002148
 
 The `examples/` directory contains annotated formula files ready to run:
 
-| File                  | Description                                          |
-|-----------------------|------------------------------------------------------|
-| `cylinder.calc`       | Volume and surface area of a cylinder                |
-| `mortgage.calc`       | Monthly mortgage payment                             |
-| `data_storage.calc`   | Real GiB capacity of a "500 GB" drive                |
-| `resistors.calc`      | Series, parallel resistance, voltage divider, power  |
-| `ac_impedance.calc`   | AC impedance, phase angle, dB level, bit width       |
-| `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops      |
+| File                  | Description                                             |
+|-----------------------|---------------------------------------------------------|
+| `cylinder.calc`       | Volume and surface area of a cylinder                   |
+| `mortgage.calc`       | Monthly mortgage payment                                |
+| `data_storage.calc`   | Real GiB capacity of a "500 GB" drive                   |
+| `resistors.calc`      | Series, parallel resistance, voltage divider, power     |
+| `ac_impedance.calc`   | AC impedance, phase angle, dB level, bit width          |
+| `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops         |
 | `sequences.calc`      | Ranges, linspace, indexing, slicing, finite differences |
 
 ```bash

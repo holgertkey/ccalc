@@ -6,8 +6,6 @@
 %
 % Usage: ccalc ac_impedance.ccalc
 
-p2                % display 2 decimal places
-
 R = 470;          % resistance, Ohm
 f = 1000;         % frequency, Hz
 L = 0.1;          % inductance, H
