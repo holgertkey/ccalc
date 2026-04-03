@@ -14,6 +14,9 @@ pub enum Expr {
     /// Range expression: `start:stop` or `start:step:stop`.
     /// Evaluates to a 1×N row vector.
     Range(Box<Expr>, Option<Box<Expr>>, Box<Expr>),
+    /// Bare `:` used as an all-elements index in `A(:,j)` or `A(i,:)`.
+    /// Only valid as an argument inside an indexing expression.
+    Colon,
 }
 
 #[derive(Debug)]
@@ -54,9 +57,15 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             eval_binop(l, op, r)
         }
         Expr::Call(name, args) => {
+            // If the name resolves to a variable in env, treat as indexing.
+            // Variables shadow built-in function names (Octave semantics).
+            if let Some(val) = env.get(name).cloned() {
+                return eval_index(&val, args, env);
+            }
             let evaled: Result<Vec<Value>, String> = args.iter().map(|a| eval(a, env)).collect();
             call_builtin(name, &evaled?)
         }
+        Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::Matrix(rows) => {
             if rows.is_empty() {
                 let m = Array2::<f64>::zeros((0, 0));
@@ -453,6 +462,152 @@ fn inv_matrix(m: &Array2<f64>) -> Result<Array2<f64>, String> {
         }
     }
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Indexing
+// ---------------------------------------------------------------------------
+
+/// Evaluates `val(args...)` — indexing a variable with one or two index arguments.
+///
+/// Disambiguation rule (Octave semantics): a name that exists in `Env` is always
+/// treated as a variable to be indexed, never as a function call.
+fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
+    match args.len() {
+        0 => Err("Indexing requires at least one index".to_string()),
+        1 => {
+            // v(i), v(1:3), v(:)
+            match val {
+                Value::Scalar(n) => {
+                    // Scalar is a 1×1 matrix — only index 1 (or :) is valid
+                    match resolve_dim(&args[0], 1, env)? {
+                        DimIdx::All | DimIdx::Indices(_) => Ok(Value::Scalar(*n)),
+                    }
+                }
+                Value::Matrix(m) => {
+                    let total = m.nrows() * m.ncols();
+                    match resolve_dim(&args[0], total, env)? {
+                        DimIdx::All => {
+                            // A(:) → column vector, column-major order
+                            let mut flat = Vec::with_capacity(total);
+                            for col in 0..m.ncols() {
+                                for row in 0..m.nrows() {
+                                    flat.push(m[[row, col]]);
+                                }
+                            }
+                            Ok(Value::Matrix(
+                                Array2::from_shape_vec((total, 1), flat).unwrap(),
+                            ))
+                        }
+                        DimIdx::Indices(idxs) => {
+                            // Column-major linear indexing
+                            let nrows = m.nrows();
+                            let ncols_m = m.ncols();
+                            let vals: Result<Vec<f64>, String> = idxs
+                                .iter()
+                                .map(|&i| {
+                                    // i is 0-based, column-major
+                                    let row = i % nrows;
+                                    let col = i / nrows;
+                                    if col >= ncols_m {
+                                        Err(format!("Index {} out of range (1..{})", i + 1, total))
+                                    } else {
+                                        Ok(m[[row, col]])
+                                    }
+                                })
+                                .collect();
+                            let vals = vals?;
+                            if vals.len() == 1 {
+                                Ok(Value::Scalar(vals[0]))
+                            } else {
+                                let n = vals.len();
+                                Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        2 => {
+            // A(i, j), A(:, j), A(i, :), A(:, :)
+            let (nrows, ncols) = match val {
+                Value::Scalar(_) => (1, 1),
+                Value::Matrix(m) => (m.nrows(), m.ncols()),
+            };
+            let row_idx = resolve_dim(&args[0], nrows, env)?;
+            let col_idx = resolve_dim(&args[1], ncols, env)?;
+
+            let rows: Vec<usize> = match row_idx {
+                DimIdx::All => (0..nrows).collect(),
+                DimIdx::Indices(v) => v,
+            };
+            let cols: Vec<usize> = match col_idx {
+                DimIdx::All => (0..ncols).collect(),
+                DimIdx::Indices(v) => v,
+            };
+
+            if rows.len() == 1 && cols.len() == 1 {
+                let v = match val {
+                    Value::Scalar(n) => *n,
+                    Value::Matrix(m) => m[[rows[0], cols[0]]],
+                };
+                Ok(Value::Scalar(v))
+            } else {
+                let out_r = rows.len();
+                let out_c = cols.len();
+                let flat: Vec<f64> = rows
+                    .iter()
+                    .flat_map(|&r| {
+                        cols.iter().map(move |&c| match val {
+                            Value::Scalar(n) => *n,
+                            Value::Matrix(m) => m[[r, c]],
+                        })
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec((out_r, out_c), flat).unwrap(),
+                ))
+            }
+        }
+        n => Err(format!(
+            "Indexing with {n} indices is not supported (max 2)"
+        )),
+    }
+}
+
+/// Resolved index along one dimension. Indices are 0-based.
+enum DimIdx {
+    All,
+    Indices(Vec<usize>),
+}
+
+/// Resolves one index argument for a dimension of size `dim_size`.
+/// `Expr::Colon` → `DimIdx::All`.
+/// Scalar → single 0-based index (validates 1-based bounds).
+/// Row/column vector → multiple 0-based indices.
+fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String> {
+    if matches!(expr, Expr::Colon) {
+        return Ok(DimIdx::All);
+    }
+    let val = eval(expr, env)?;
+    let floats: Vec<f64> = match val {
+        Value::Scalar(n) => vec![n],
+        Value::Matrix(m) => {
+            if m.nrows() > 1 && m.ncols() > 1 {
+                return Err("Index must be a scalar or vector, not a matrix".to_string());
+            }
+            m.iter().copied().collect()
+        }
+    };
+    let mut idxs = Vec::with_capacity(floats.len());
+    for n in floats {
+        let i = n.round() as i64;
+        if i < 1 || i as usize > dim_size {
+            return Err(format!("Index {i} out of range (1..{dim_size})"));
+        }
+        idxs.push(i as usize - 1);
+    }
+    Ok(DimIdx::Indices(idxs))
 }
 
 /// Formats a number for display: integers without decimal point,

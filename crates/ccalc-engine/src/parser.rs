@@ -361,6 +361,17 @@ fn is_valid_ident(s: &str) -> bool {
     }
 }
 
+// call_arg = ':' | range_expr
+// Used when parsing function call / index arguments.
+// A bare ':' at the start of an argument position becomes Expr::Colon (all-elements index).
+fn parse_call_arg(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    if matches!(tokens.get(*pos), Some(Token::Colon)) {
+        *pos += 1;
+        return Ok(Expr::Colon);
+    }
+    parse_range(tokens, pos)
+}
+
 // range_expr = expr (':' expr (':' expr)?)?
 // Range has lower precedence than arithmetic: `1+1:5` = `2:5`.
 // Two-colon form: `a:step:b`; one-colon form: `a:b` (step defaults to 1).
@@ -506,11 +517,11 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                     if let Token::RParen = &tokens[*pos] {
                         vec![Expr::Var("ans".to_string())]
                     } else {
-                        let mut list = vec![parse_expr(tokens, pos)?];
+                        let mut list = vec![parse_call_arg(tokens, pos)?];
                         while *pos < tokens.len() {
                             if let Token::Comma = &tokens[*pos] {
                                 *pos += 1;
-                                list.push(parse_expr(tokens, pos)?);
+                                list.push(parse_call_arg(tokens, pos)?);
                             } else {
                                 break;
                             }
@@ -1356,5 +1367,169 @@ mod tests {
     #[test]
     fn test_linspace_empty() {
         assert_eq!(calc_vec("linspace(0, 1, 0)"), vec![]);
+    }
+
+    // --- Phase 6: Indexing ---
+
+    fn index_env() -> Env {
+        use ndarray::array;
+        let mut env = Env::new();
+        // v = [10 20 30 40 50]  (1×5 row vector)
+        env.insert(
+            "v".to_string(),
+            Value::Matrix(array![[10.0, 20.0, 30.0, 40.0, 50.0]]),
+        );
+        // A = [1 2 3; 4 5 6; 7 8 9]  (3×3)
+        env.insert(
+            "A".to_string(),
+            Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]),
+        );
+        // x = 42  (scalar in env — can be indexed)
+        env.insert("x".to_string(), Value::Scalar(42.0));
+        env
+    }
+
+    fn eval_with(input: &str, env: &Env) -> Value {
+        match parse(input).unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, env).unwrap(),
+        }
+    }
+
+    fn try_eval_with(input: &str, env: &Env) -> Result<Value, String> {
+        match parse(input)? {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, env),
+        }
+    }
+
+    fn scalar_with(input: &str, env: &Env) -> f64 {
+        match eval_with(input, env) {
+            Value::Scalar(n) => n,
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    fn vec_with(input: &str, env: &Env) -> Vec<f64> {
+        match eval_with(input, env) {
+            Value::Matrix(m) => m.iter().copied().collect(),
+            _ => panic!("expected matrix"),
+        }
+    }
+
+    #[test]
+    fn test_index_vector_scalar() {
+        let env = index_env();
+        assert_eq!(scalar_with("v(1)", &env), 10.0);
+        assert_eq!(scalar_with("v(3)", &env), 30.0);
+        assert_eq!(scalar_with("v(5)", &env), 50.0);
+    }
+
+    #[test]
+    fn test_index_vector_range() {
+        let env = index_env();
+        assert_eq!(vec_with("v(2:4)", &env), vec![20.0, 30.0, 40.0]);
+        assert_eq!(vec_with("v(1:3)", &env), vec![10.0, 20.0, 30.0]);
+    }
+
+    #[test]
+    fn test_index_vector_colon() {
+        // v(:) returns column vector
+        let env = index_env();
+        let m = match eval_with("v(:)", &env) {
+            Value::Matrix(m) => m,
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(m.shape(), &[5, 1]);
+        assert_eq!(m[[0, 0]], 10.0);
+        assert_eq!(m[[4, 0]], 50.0);
+    }
+
+    #[test]
+    fn test_index_matrix_scalar() {
+        let env = index_env();
+        assert_eq!(scalar_with("A(1,1)", &env), 1.0);
+        assert_eq!(scalar_with("A(2,3)", &env), 6.0);
+        assert_eq!(scalar_with("A(3,3)", &env), 9.0);
+    }
+
+    #[test]
+    fn test_index_matrix_colon_row() {
+        // A(1,:) → row 1 as 1×3
+        let env = index_env();
+        let m = match eval_with("A(1,:)", &env) {
+            Value::Matrix(m) => m,
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(m.shape(), &[1, 3]);
+        assert_eq!(m[[0, 0]], 1.0);
+        assert_eq!(m[[0, 1]], 2.0);
+        assert_eq!(m[[0, 2]], 3.0);
+    }
+
+    #[test]
+    fn test_index_matrix_colon_col() {
+        // A(:,2) → column 2 as 3×1
+        let env = index_env();
+        let m = match eval_with("A(:,2)", &env) {
+            Value::Matrix(m) => m,
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(m.shape(), &[3, 1]);
+        assert_eq!(m[[0, 0]], 2.0);
+        assert_eq!(m[[1, 0]], 5.0);
+        assert_eq!(m[[2, 0]], 8.0);
+    }
+
+    #[test]
+    fn test_index_submatrix() {
+        // A(1:2, 2:3) → [2 3; 5 6]
+        let env = index_env();
+        let m = match eval_with("A(1:2, 2:3)", &env) {
+            Value::Matrix(m) => m,
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(m.shape(), &[2, 2]);
+        assert_eq!(m[[0, 0]], 2.0);
+        assert_eq!(m[[0, 1]], 3.0);
+        assert_eq!(m[[1, 0]], 5.0);
+        assert_eq!(m[[1, 1]], 6.0);
+    }
+
+    #[test]
+    fn test_index_scalar_in_env() {
+        // Scalar in env can be indexed as 1×1
+        let env = index_env();
+        assert_eq!(scalar_with("x(1)", &env), 42.0);
+        assert_eq!(scalar_with("x(1,1)", &env), 42.0);
+    }
+
+    #[test]
+    fn test_index_out_of_bounds_error() {
+        let env = index_env();
+        assert!(try_eval_with("v(6)", &env).is_err());
+        assert!(try_eval_with("A(4,1)", &env).is_err());
+    }
+
+    #[test]
+    fn test_function_call_not_affected() {
+        // zeros, ones, eye are not in env → treated as function calls
+        let env = Env::new();
+        assert!(matches!(eval_with("zeros(2,2)", &env), Value::Matrix(_)));
+        assert!(matches!(eval_with("eye(3)", &env), Value::Matrix(_)));
+    }
+
+    #[test]
+    fn test_index_with_expr_arg() {
+        // A(1+1, 3) == A(2,3) == 6
+        let env = index_env();
+        assert_eq!(scalar_with("A(1+1, 3)", &env), 6.0);
+    }
+
+    #[test]
+    fn test_colon_standalone_is_error() {
+        // Bare ':' as a standalone expression (not inside an index) is an error at eval time.
+        // parse(":") fails at the parser level (unexpected token).
+        // If it somehow reached eval, Expr::Colon returns an error.
+        let env = Env::new();
+        assert!(try_eval_with(":", &env).is_err());
     }
 }

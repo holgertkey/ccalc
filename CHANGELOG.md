@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-03
+
+### Added
+
+- **Phase 6 — Indexing**:
+  - `v(i)` — 1-based linear indexing of vectors and matrices (column-major)
+  - `v(1:3)` — range as index: extracts sub-vector
+  - `v(:)` — all elements as a column vector (column-major order)
+  - `A(i, j)` — 2D indexing: returns scalar when both indices are scalars
+  - `A(:, j)` — all rows of column `j` → column vector
+  - `A(i, :)` — row `i`, all columns → row vector
+  - `A(1:2, 2:3)` — sub-matrix via range indices
+  - Index expressions can be arbitrary arithmetic: `A(1+1, size(A,2))`
+  - `Expr::Colon` AST node for the all-elements selector `:`
+  - `parse_call_arg()` — parses bare `:` as `Expr::Colon`; otherwise delegates to `parse_range`; all call/index argument positions now use this
+
+### Changed
+
+- `Expr::Call` evaluation: if the name resolves to a variable in `Env`, the expression is treated as indexing (variables shadow built-in function names — Octave semantics). Otherwise evaluated as a built-in function call.
+- Function call argument parsing switched from `parse_expr` to `parse_call_arg`, enabling range expressions as function/index arguments: `linspace(0:1, 5)` now parses (though semantically an error), and `A(1:3, :)` works correctly.
+
 ## [0.10.0] - 2026-04-03
 
 ### Added
