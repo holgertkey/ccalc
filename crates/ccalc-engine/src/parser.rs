@@ -28,6 +28,7 @@ enum Token {
     LBracket,
     RBracket,
     Semicolon,
+    Colon,
 }
 
 fn parse_integer_literal(
@@ -198,6 +199,10 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Semicolon);
                 chars.next();
             }
+            ':' => {
+                tokens.push(Token::Colon);
+                chars.next();
+            }
             '0'..='9' => {
                 if c == '0' {
                     chars.next();
@@ -299,7 +304,7 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
             return Err("Expected expression after '='".to_string());
         }
         let mut pos = 0;
-        let expr = parse_expr(&tokens, &mut pos)?;
+        let expr = parse_range(&tokens, &mut pos)?;
         if pos != tokens.len() {
             return Err("Unexpected token after expression".to_string());
         }
@@ -311,7 +316,7 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
         return Err("Empty expression".to_string());
     }
     let mut pos = 0;
-    let expr = parse_expr(&tokens, &mut pos)?;
+    let expr = parse_range(&tokens, &mut pos)?;
     if pos != tokens.len() {
         return Err("Unexpected token after expression".to_string());
     }
@@ -354,6 +359,30 @@ fn is_valid_ident(s: &str) -> bool {
         Some(c) if c.is_alphabetic() || c == '_' => chars.all(|c| c.is_alphanumeric() || c == '_'),
         _ => false,
     }
+}
+
+// range_expr = expr (':' expr (':' expr)?)?
+// Range has lower precedence than arithmetic: `1+1:5` = `2:5`.
+// Two-colon form: `a:step:b`; one-colon form: `a:b` (step defaults to 1).
+fn parse_range(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let start = parse_expr(tokens, pos)?;
+    if !matches!(tokens.get(*pos), Some(Token::Colon)) {
+        return Ok(start);
+    }
+    *pos += 1;
+    let second = parse_expr(tokens, pos)?;
+    if !matches!(tokens.get(*pos), Some(Token::Colon)) {
+        // a:b form — start:stop with implicit step 1
+        return Ok(Expr::Range(Box::new(start), None, Box::new(second)));
+    }
+    *pos += 1;
+    let third = parse_expr(tokens, pos)?;
+    // a:step:b form
+    Ok(Expr::Range(
+        Box::new(start),
+        Some(Box::new(second)),
+        Box::new(third),
+    ))
 }
 
 // expr = term (('+' | '-') term)*
@@ -574,7 +603,7 @@ fn parse_matrix(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 *pos += 1;
             }
             _ => {
-                current_row.push(parse_expr(tokens, pos)?);
+                current_row.push(parse_range(tokens, pos)?);
             }
         }
     }
@@ -1202,5 +1231,130 @@ mod tests {
         assert!(is_partial(".^ 2"));
         assert!(!is_partial(".5"));
         assert!(!is_partial(". "));
+    }
+
+    // --- Phase 5: Range operator ---
+
+    fn calc_vec(input: &str) -> Vec<f64> {
+        let env = Env::new();
+        match parse(input).unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => match eval(&expr, &env).unwrap() {
+                Value::Matrix(m) => m.iter().copied().collect(),
+                _ => panic!("expected matrix"),
+            },
+        }
+    }
+
+    #[test]
+    fn test_range_simple() {
+        assert_eq!(calc_vec("1:5"), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn test_range_single_element() {
+        assert_eq!(calc_vec("3:3"), vec![3.0]);
+    }
+
+    #[test]
+    fn test_range_with_step() {
+        assert_eq!(calc_vec("1:2:9"), vec![1.0, 3.0, 5.0, 7.0, 9.0]);
+    }
+
+    #[test]
+    fn test_range_float_step() {
+        let v = calc_vec("0:0.5:2");
+        assert_eq!(v.len(), 5);
+        assert!((v[0] - 0.0).abs() < 1e-10);
+        assert!((v[1] - 0.5).abs() < 1e-10);
+        assert!((v[2] - 1.0).abs() < 1e-10);
+        assert!((v[3] - 1.5).abs() < 1e-10);
+        assert!((v[4] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_range_negative_step() {
+        assert_eq!(calc_vec("5:-1:1"), vec![5.0, 4.0, 3.0, 2.0, 1.0]);
+    }
+
+    #[test]
+    fn test_range_empty_wrong_direction() {
+        assert_eq!(calc_vec("5:1"), vec![]);
+    }
+
+    #[test]
+    fn test_range_arithmetic_in_bounds() {
+        // 1+1:2+2 = 2:4
+        assert_eq!(calc_vec("1+1:2+2"), vec![2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_range_inside_brackets() {
+        // [1:4] == [1 2 3 4]
+        assert_eq!(calc_vec("[1:4]"), vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_range_inside_brackets_with_extras() {
+        // [0, 1:3, 10] == [0 1 2 3 10]
+        assert_eq!(calc_vec("[0, 1:3, 10]"), vec![0.0, 1.0, 2.0, 3.0, 10.0]);
+    }
+
+    #[test]
+    fn test_range_step_inside_brackets() {
+        // [1:2:7] == [1 3 5 7]
+        assert_eq!(calc_vec("[1:2:7]"), vec![1.0, 3.0, 5.0, 7.0]);
+    }
+
+    #[test]
+    fn test_range_zero_step_is_error() {
+        let env = Env::new();
+        match parse("1:0:5").unwrap() {
+            Stmt::Expr(expr) => assert!(eval(&expr, &env).is_err()),
+            _ => panic!("expected expr"),
+        }
+    }
+
+    #[test]
+    fn test_range_assign() {
+        let env = Env::new();
+        match parse("v = 1:3").unwrap() {
+            Stmt::Assign(name, expr) => {
+                assert_eq!(name, "v");
+                match eval(&expr, &env).unwrap() {
+                    Value::Matrix(m) => {
+                        assert_eq!(m.shape(), &[1, 3]);
+                        assert_eq!(m[[0, 0]], 1.0);
+                        assert_eq!(m[[0, 2]], 3.0);
+                    }
+                    _ => panic!("expected matrix"),
+                }
+            }
+            _ => panic!("expected assign"),
+        }
+    }
+
+    #[test]
+    fn test_linspace_basic() {
+        let v = calc_vec("linspace(0, 1, 3)");
+        assert_eq!(v.len(), 3);
+        assert!((v[0] - 0.0).abs() < 1e-10);
+        assert!((v[1] - 0.5).abs() < 1e-10);
+        assert!((v[2] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_linspace_integers() {
+        assert_eq!(calc_vec("linspace(1, 5, 5)"), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn test_linspace_single() {
+        // linspace(a, b, 1) returns [b] (MATLAB convention)
+        assert_eq!(calc_vec("linspace(3, 7, 1)"), vec![7.0]);
+    }
+
+    #[test]
+    fn test_linspace_empty() {
+        assert_eq!(calc_vec("linspace(0, 1, 0)"), vec![]);
     }
 }

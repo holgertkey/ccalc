@@ -688,10 +688,8 @@ fn print_who(env: &Env, precision: usize, base: Base) {
     let mut scalars: Vec<String> = Vec::new();
     let mut matrices: Vec<String> = Vec::new();
 
-    let mut others: Vec<(&String, &Value)> = env
-        .iter()
-        .filter(|(k, _)| k.as_str() != "ans")
-        .collect();
+    let mut others: Vec<(&String, &Value)> =
+        env.iter().filter(|(k, _)| k.as_str() != "ans").collect();
     others.sort_by_key(|(k, _)| k.as_str());
 
     for (name, val) in others {
@@ -1073,7 +1071,11 @@ mod tests {
     #[test]
     fn test_who_columns_fits_one_row() {
         // Each entry "a = 1" is 5 chars, +2 = 7 col_width; 3 entries × 7 = 21 < 80 → one row
-        let entries = vec!["a = 1".to_string(), "b = 2".to_string(), "c = 3".to_string()];
+        let entries = vec![
+            "a = 1".to_string(),
+            "b = 2".to_string(),
+            "c = 3".to_string(),
+        ];
         let lines = who_format_columns(&entries, 80);
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("a = 1"));

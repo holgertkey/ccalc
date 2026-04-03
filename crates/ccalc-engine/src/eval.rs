@@ -11,6 +11,9 @@ pub enum Expr {
     Call(String, Vec<Expr>),
     Matrix(Vec<Vec<Expr>>),
     Transpose(Box<Expr>),
+    /// Range expression: `start:stop` or `start:step:stop`.
+    /// Evaluates to a 1×N row vector.
+    Range(Box<Expr>, Option<Box<Expr>>, Box<Expr>),
 }
 
 #[derive(Debug)]
@@ -56,14 +59,31 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         }
         Expr::Matrix(rows) => {
             if rows.is_empty() {
-                // Empty matrix: 0x0
                 let m = Array2::<f64>::zeros((0, 0));
                 return Ok(Value::Matrix(m));
             }
             let nrows = rows.len();
-            let ncols = rows[0].len();
-            // Validate all rows have the same number of columns
-            for (i, row) in rows.iter().enumerate() {
+            // Evaluate all rows; elements may be scalars or row vectors (e.g. from ranges).
+            let mut all_rows: Vec<Vec<f64>> = Vec::with_capacity(nrows);
+            for row in rows {
+                let mut row_vals: Vec<f64> = Vec::new();
+                for elem_expr in row {
+                    match eval(elem_expr, env)? {
+                        Value::Scalar(n) => row_vals.push(n),
+                        Value::Matrix(m) => {
+                            if m.nrows() > 1 {
+                                return Err(
+                                    "Matrix row element must be a scalar or row vector".to_string()
+                                );
+                            }
+                            row_vals.extend(m.iter().copied());
+                        }
+                    }
+                }
+                all_rows.push(row_vals);
+            }
+            let ncols = all_rows[0].len();
+            for (i, row) in all_rows.iter().enumerate() {
                 if row.len() != ncols {
                     return Err(format!(
                         "Matrix row {} has {} elements, expected {}",
@@ -73,20 +93,10 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                     ));
                 }
             }
-            let mut flat = Vec::with_capacity(nrows * ncols);
-            for row in rows {
-                for elem_expr in row {
-                    match eval(elem_expr, env)? {
-                        Value::Scalar(n) => flat.push(n),
-                        Value::Matrix(_) => {
-                            return Err(
-                                "Matrix elements must be scalars (nested matrices not supported)"
-                                    .to_string(),
-                            );
-                        }
-                    }
-                }
+            if ncols == 0 {
+                return Ok(Value::Matrix(Array2::zeros((nrows, 0))));
             }
+            let flat: Vec<f64> = all_rows.into_iter().flatten().collect();
             let m = Array2::from_shape_vec((nrows, ncols), flat)
                 .map_err(|e| format!("Matrix shape error: {e}"))?;
             Ok(Value::Matrix(m))
@@ -95,6 +105,36 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             Value::Scalar(n) => Ok(Value::Scalar(n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
         },
+        Expr::Range(start_expr, step_expr, stop_expr) => {
+            let start = match eval(start_expr, env)? {
+                Value::Scalar(n) => n,
+                Value::Matrix(_) => return Err("Range bounds must be scalars".to_string()),
+            };
+            let stop = match eval(stop_expr, env)? {
+                Value::Scalar(n) => n,
+                Value::Matrix(_) => return Err("Range bounds must be scalars".to_string()),
+            };
+            let step = match step_expr {
+                None => 1.0,
+                Some(s) => match eval(s, env)? {
+                    Value::Scalar(n) => n,
+                    Value::Matrix(_) => return Err("Range step must be a scalar".to_string()),
+                },
+            };
+            if step == 0.0 {
+                return Err("Range step cannot be zero".to_string());
+            }
+            let n_float = (stop - start) / step;
+            if n_float < -1e-10 {
+                // Empty range: step points in the wrong direction
+                return Ok(Value::Matrix(Array2::zeros((1, 0))));
+            }
+            let n = (n_float + 1e-10).floor() as usize + 1;
+            let vals: Vec<f64> = (0..n).map(|i| start + i as f64 * step).collect();
+            let m =
+                Array2::from_shape_vec((1, n), vals).map_err(|e| format!("Range error: {e}"))?;
+            Ok(Value::Matrix(m))
+        }
     }
 }
 
@@ -308,6 +348,24 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
             Value::Matrix(m) => Ok(Value::Matrix(inv_matrix(m)?)),
         },
+        // --- Range / linspace ---
+        ("linspace", 3) => {
+            let a = scalar_arg(&args[0], name, 1)?;
+            let b = scalar_arg(&args[1], name, 2)?;
+            let n = scalar_arg(&args[2], name, 3)? as usize;
+            if n == 0 {
+                return Ok(Value::Matrix(Array2::zeros((1, 0))));
+            }
+            if n == 1 {
+                return Ok(Value::Matrix(
+                    Array2::from_shape_vec((1, 1), vec![b]).unwrap(),
+                ));
+            }
+            let vals: Vec<f64> = (0..n)
+                .map(|i| a + (b - a) * i as f64 / (n - 1) as f64)
+                .collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+        }
         _ => Err(format!("Unknown function: '{name}'")),
     }
 }
