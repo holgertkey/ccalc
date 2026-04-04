@@ -14,9 +14,12 @@ The work is divided into phases in order of architectural dependency.
 | 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | ✅ Done |
 | 6 | Indexing (`A(1,1)`, `v(2:4)`) | ✅ Done |
 | 7 | Comparison and logical operators (`==`, `~=`, `&&`) | ✅ Done |
-| 8 | Control flow (`if`, `for`, `while` in `.m` files) | Planned |
-| 9 | User-defined functions (`function y = f(x) … end`) | Planned |
-| 10 | String data types (`'char array'`, `"string object"`) | Planned |
+| 7.5 | Vector utilities, `end` indexing, `NaN`/`Inf`, `sort`, `find` | Planned |
+| 8 | Complex numbers (`3 + 4i`, `abs(z)`, `angle(z)`) | Planned |
+| 9 | String data types (`'char array'`, `"string object"`) | Planned |
+| 10 | C-style I/O (`fprintf('%.2f\n', x)`, `sprintf`) | Planned |
+| 11 | Control flow (`if`, `for`, `while`, `switch`, `try`/`catch`, `+=`) | Planned |
+| 12 | User-defined functions, multiple return values, `@(x)` lambdas | Planned |
 
 ## Key architectural decisions
 
@@ -64,12 +67,42 @@ element-wise on matrices. New parse levels `parse_logical_or` →
 precedence hierarchy. `Expr::UnaryNot` and `Op::Eq/NotEq/Lt/Gt/LtEq/GtEq/And/Or`
 are added to the AST.
 
-**Phase 8** adds multi-line input buffering to the REPL for unclosed
-`if`/`for`/`while`/`end` blocks.
+**Phase 7.5** adds special floating-point constants (`nan`, `inf` pre-seeded
+in `Env`), `isnan`/`isinf`/`isfinite` built-ins, vector reductions (`sum`,
+`prod`, `cumsum`, `any`, `all`, 1-arg `min`/`max`, `mean`, `norm`), the
+`end` keyword in indexing contexts (`v(end)`, `A(1:end, 2)` — requires a
+new `Expr::End` AST node and context-passing in `eval_index`), and data
+utility functions (`sort`, `reshape`, `fliplr`, `flipud`, `find`, `unique`).
+No new `Value` variants are needed.
 
-**Phase 10** adds two distinct string types following the modern MATLAB
-standard: `'text'` (char array, numeric-compatible) and `"text"` (string
-object).
+**Phase 8** adds `Value::Complex(f64, f64)` as a third `Value` variant.
+No new tokens are required — `4i` already parses as implicit multiplication
+`4 * i`, where `i` is pre-seeded in `Env` as `Complex(0.0, 1.0)`. The phase
+adds complex arithmetic in `eval_binop`, display formatting, and built-ins
+`real`, `imag`, `abs`, `angle`, `conj`, `complex`, `isreal`. Complex matrices
+are out of scope and deferred.
+
+**Phase 9** adds string types: `Value::CharMatrix` (single-quote char arrays,
+numeric-compatible) and `Value::StringMatrix` (double-quote string objects).
+The `'` disambiguation — transpose vs string literal — is resolved by one
+token of left context in the tokenizer.
+
+**Phase 10** adds `fprintf(fmt, ...)` and `sprintf(fmt, ...)` using the
+string infrastructure from Phase 9. The ad-hoc `p`/`p<N>` precision command
+is deprecated and removed in this phase. Placed before control flow so that
+loop scripts have formatted output from the start.
+
+**Phase 11** adds multi-line input buffering to the REPL and six control
+flow constructs: `if`/`elseif`/`else`, `for`, `while`, `switch`
+(scalar and string `case` values; `case {…}` deferred to cell arrays),
+`do...until` (Octave-only), and `try`/`catch` error handling.
+Compound assignment operators (`+=`, `-=`, `*=`, `/=`, `++`, `--`) are
+desugared at parse time — no new AST nodes.
+Multi-value `case {2, 3}` requires cell arrays and is deferred.
+
+**Phase 12** adds user-defined functions with single and multiple return
+values (`[a, b] = f(x)`), and anonymous functions `@(x) expr` (closures).
+Requires Phase 11 for `return`, `break`, and multi-statement bodies.
 
 ## Compatibility notes
 
