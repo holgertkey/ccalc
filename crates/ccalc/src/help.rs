@@ -13,11 +13,12 @@ pub fn print(topic: Option<&str>) {
         Some("vars" | "variables") => print_vars(),
         Some("script" | "pipe") => print_script(),
         Some("matrices" | "matrix" | "mat") => print_matrices(),
+        Some("logic" | "logical" | "comparison") => print_logic(),
         Some("examples" | "ex") => print_examples(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  matrices  examples"
+                "Available topics: syntax  functions  bases  vars  script  matrices  logic  examples"
             );
         }
     }
@@ -59,6 +60,8 @@ ccalc v{ver} — terminal calculator with Octave/MATLAB syntax
 
 Operators   + - * / ^        ^ is right-associative
             2(3+1) → 8       implicit multiplication
+Comparison  ==  ~=  <  >  <=  >=     return 1 (true) or 0 (false)
+Logical     ~expr  &&  ||             NOT, AND, OR
 Constants   pi  e  ans
 Partial     [ 100 ]: / 4     starts with operator → uses ans
 
@@ -97,6 +100,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help vars        variables and workspace
   help script      pipe/script mode, semicolons, disp, fprintf
   help matrices    matrix literals, arithmetic, ranges, display
+  help logic       comparison and logical operators, masks
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -113,13 +117,28 @@ SYNTAX
 
 Operators
     +  -  *  /  ^
-    Precedence (high to low):  ^  (right-associative)
-                                *  /  (and implicit multiplication)
-                                +  -
-    Unary minus:  -5    -(3 + 2)
+    Comparison:   ==  ~=  <  >  <=  >=    (return 1.0 or 0.0)
+    Logical:      ~expr   &&   ||
+
+    Precedence (high to low):
+      postfix '   transpose (matrices)
+      ^           exponentiation (right-associative)
+      unary -  ~  negation, logical NOT
+      *  /  .*  ./  .^   multiply, divide, element-wise
+      +  -        addition, subtraction
+      :           range (a:b, a:step:b)
+      ==  ~=  <  >  <=  >=   comparison (non-associative)
+      &&          short-circuit logical AND
+      ||          short-circuit logical OR
+
+    2 > 1 && 3 > 2     →  1    AND of two comparisons
+    1 + 1 == 2         →  1    arithmetic evaluated first
+    ~0                 →  1    logical NOT
+    v > 3              →  element-wise mask (0/1 matrix)
 
 Grouping
     (2 + 3) * 4     →  20
+    ~(x == 0)       →  negate comparison
 
 Implicit multiplication
     A number or closing parenthesis immediately before ( triggers *:
@@ -148,7 +167,7 @@ Semicolon
     Inside a matrix literal [ ], ; is always a row separator:
     [1 2; 3 4]           2×2 matrix — the ; is not a statement separator
 
-Range operator (lowest precedence)
+Range operator
     a:b               row vector  [a, a+1, ..., b]   (step = 1)
     a:step:b          row vector with explicit step
     1:5               →  [1 2 3 4 5]
@@ -440,6 +459,64 @@ Workspace
 }
 
 // ---------------------------------------------------------------------------
+// help logic
+// ---------------------------------------------------------------------------
+
+fn print_logic() {
+    println!(
+        "\
+COMPARISON AND LOGICAL OPERATORS
+
+Comparison  (return 1.0 = true, 0.0 = false)
+    a == b      equal
+    a ~= b      not equal
+    a <  b      less than
+    a >  b      greater than
+    a <= b      less than or equal
+    a >= b      greater than or equal
+
+Logical
+    ~expr       NOT: 1 if expr == 0, else 0
+    a && b      AND: 1 if both non-zero (scalar or element-wise)
+    a || b      OR:  1 if either non-zero (scalar or element-wise)
+
+Precedence (low to high inside an expression)
+    ||  →  &&  →  comparisons  →  :  →  +/-  →  *//  →  ^  →  unary
+
+Scalar examples
+    3 > 2             →  1
+    3 == 4            →  0
+    5 ~= 5            →  0
+    ~0                →  1
+    ~1                →  0
+    2 > 1 && 3 > 2    →  1
+    0 || 1            →  1
+    ~(3 == 3)         →  0
+
+Arithmetic + comparison
+    1 + 1 == 2        →  1    (arithmetic first, then ==)
+    2 * 3 > 5         →  1
+    2 > 3 || 1 < 2    →  1
+
+Element-wise on matrices
+    v = [1 2 3 4 5]
+    v > 3             →  [0 0 0 1 1]
+    v == 3            →  [0 0 1 0 0]
+    v ~= 3            →  [1 1 0 1 1]
+
+Soft masking — zero out elements that fail a condition
+    v .* (v > 3)      →  [0 0 0 4 5]    keep elements > 3 only
+
+Combining two masks with .*  (element-wise AND)
+    lo = v >= 2;  hi = v <= 4;
+    v .* (lo .* hi)   →  [0 2 3 4 0]
+
+See also: help matrices, help syntax
+Example:  ccalc examples/logic.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // help examples
 // ---------------------------------------------------------------------------
 
@@ -530,10 +607,28 @@ REPL — ranges and indexing
        2   3
        5   6
 
+REPL — comparison and logical operators
+    [ 0 ]: 3 > 2
+    [ 1 ]:
+    [ 0 ]: 5 ~= 5
+    [ 0 ]:
+    [ 0 ]: ~0
+    [ 1 ]:
+    [ 0 ]: 2 > 1 && 3 > 2
+    [ 1 ]:
+    [ 0 ]: v = [1 2 3 4 5];
+    [ 0 ]: v > 3
+    ans =
+       0   0   0   1   1
+    [ [1×5] ]: v .* (v > 3)
+    ans =
+       0   0   0   4   5
+
 Script files  (see examples/ directory)
     ccalc examples/mortgage.calc
     ccalc examples/resistors.calc
     ccalc examples/matrix_ops.calc
-    ccalc examples/sequences.calc"
+    ccalc examples/sequences.calc
+    ccalc examples/logic.calc"
     );
 }

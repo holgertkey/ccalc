@@ -14,6 +14,7 @@
 - [Precision](./guide/precision.md)
 - [Configuration](./guide/configuration.md)
 - [Matrices](./guide/matrices.md)
+- [Comparison & Logical Operators](./guide/logic.md)
 
 # Architecture
 
@@ -31,3 +32,4 @@
 - [Phase 4 — Matrix Operations](./ccalc/phase4-matrix-ops.md)
 - [Phase 5 — Range Operator](./ccalc/phase5-range.md)
 - [Phase 6 — Indexing](./ccalc/phase6-indexing.md)
+- [Phase 7 — Comparison & Logical](./ccalc/phase7-logic.md)

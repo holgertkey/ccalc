@@ -12,11 +12,40 @@
 
 For modulo use the `mod(a, b)` function. `%` is a comment character.
 
+## Comparison operators
+
+Return `1.0` (true) or `0.0` (false). Work element-wise on matrices.
+
+| Operator | Meaning          |
+|----------|------------------|
+| `==`     | Equal            |
+| `~=`     | Not equal        |
+| `<`      | Less than        |
+| `>`      | Greater than     |
+| `<=`     | Less or equal    |
+| `>=`     | Greater or equal |
+
+## Logical operators
+
+| Operator | Meaning         |
+|----------|-----------------|
+| `~expr`  | Logical NOT     |
+| `&&`     | Logical AND     |
+| `\|\|`   | Logical OR      |
+
+See [Comparison & Logical Operators](./logic.md) for full details.
+
 ## Precedence (high → low)
 
-1. `^` — right-associative: `2 ^ 3 ^ 2` = `2 ^ (3 ^ 2)` = `512`
-2. `*`, `/`, implicit multiplication
-3. `+`, `-`
+1. postfix `'` — transpose
+2. `^`, `.^` — right-associative
+3. unary `-`, `~` — negation, logical NOT
+4. `*`, `/`, `.*`, `./`, `.^`, implicit multiplication
+5. `+`, `-`
+6. `:` — range
+7. `==`, `~=`, `<`, `>`, `<=`, `>=` — comparison (non-associative)
+8. `&&` — logical AND
+9. `||` — logical OR (lowest)
 
 Use parentheses to override: `(2 + 3) * 4` → `20`.
 

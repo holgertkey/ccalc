@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.11.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.11.0+001** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -439,6 +439,61 @@ ans =
 
 ---
 
+## Comparison & Logical Operators
+
+Comparison operators return `1` (true) or `0` (false):
+
+| Operator | Meaning           |
+|----------|-------------------|
+| `==`     | Equal             |
+| `~=`     | Not equal         |
+| `<`      | Less than         |
+| `>`      | Greater than      |
+| `<=`     | Less or equal     |
+| `>=`     | Greater or equal  |
+
+Logical operators:
+
+| Operator | Meaning              |
+|----------|----------------------|
+| `~expr`  | Logical NOT (unary)  |
+| `&&`     | Logical AND          |
+| `\|\|`   | Logical OR           |
+
+**Precedence** (low → high): `||` → `&&` → comparisons → `:` → `+`/`-` → `*`/`/` → `^` → unary (`-`, `~`) → primary
+
+```
+[ 0 ]: 3 > 2
+[ 1 ]:
+
+[ 0 ]: 3 == 3
+[ 1 ]:
+
+[ 0 ]: 5 ~= 5
+[ 0 ]:
+
+[ 0 ]: ~0
+[ 1 ]:
+
+[ 0 ]: 2 > 1 && 3 > 2
+[ 1 ]:
+```
+
+**Element-wise on matrices** — comparisons produce a 0/1 mask of the same shape:
+
+```
+[ 0 ]: v = [1 2 3 4 5];
+[ 0 ]: v > 3
+ans =
+   0   0   0   1   1
+
+[ [1×5] ]: v .* (v > 3)    % zero out elements <= 3
+ans =
+   0   0   0   4   5
+```
+
+---
+
 ## REPL commands
 
 | Command                           | Action                              |
@@ -691,6 +746,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `ac_impedance.calc`   | AC impedance, phase angle, dB level, bit width          |
 | `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops         |
 | `sequences.calc`      | Ranges, linspace, indexing, slicing, finite differences |
+| `logic.calc`          | Comparison, logical NOT, `&&`/`\|\|`, masks, soft clipping |
 
 ```bash
 ccalc < examples/mortgage.ccalc

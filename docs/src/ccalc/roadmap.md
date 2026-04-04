@@ -13,7 +13,7 @@ The work is divided into phases in order of architectural dependency.
 | 4 | Matrix operations (`A * B`, `A'`, `A .* B`) | ✅ Done |
 | 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | ✅ Done |
 | 6 | Indexing (`A(1,1)`, `v(2:4)`) | ✅ Done |
-| 7 | Comparison and logical operators (`==`, `~=`, `&&`) | Planned |
+| 7 | Comparison and logical operators (`==`, `~=`, `&&`) | ✅ Done |
 | 8 | Control flow (`if`, `for`, `while` in `.m` files) | Planned |
 | 9 | User-defined functions (`function y = f(x) … end`) | Planned |
 | 10 | String data types (`'char array'`, `"string object"`) | Planned |
@@ -56,6 +56,13 @@ matching Octave semantics). `eval_index()` + `resolve_dim()` handle 1D
 (column-major linear) and 2D indexing, all 1-based. A bug fix also landed
 here: range expressions inside grouping parentheses `(a:b)` now parse
 correctly.
+
+**Phase 7** adds comparison tokens (`==`, `~=`, `<`, `>`, `<=`, `>=`) and
+logical operators (`~`, `&&`, `||`). Comparisons return `0.0`/`1.0` and work
+element-wise on matrices. New parse levels `parse_logical_or` →
+`parse_logical_and` → `parse_comparison` sit above `parse_range` in the
+precedence hierarchy. `Expr::UnaryNot` and `Op::Eq/NotEq/Lt/Gt/LtEq/GtEq/And/Or`
+are added to the AST.
 
 **Phase 8** adds multi-line input buffering to the REPL for unclosed
 `if`/`for`/`while`/`end` blocks.
