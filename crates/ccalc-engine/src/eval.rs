@@ -65,9 +65,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         },
         Expr::UnaryNot(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
-            Value::Matrix(m) => Ok(Value::Matrix(
-                m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }),
-            )),
+            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
         },
         Expr::BinOp(left, op, right) => {
             let l = eval(left, env)?;
@@ -253,10 +251,9 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Div => Err("Scalar / Matrix: not supported".to_string()),
             Op::ElemDiv => Err("Scalar ./ Matrix: not supported".to_string()),
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
-            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq
-            | Op::And | Op::Or => Ok(Value::Matrix(
-                m.mapv(|x| bool_to_f64(cmp_op(op, s, x))),
-            )),
+            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq | Op::And | Op::Or => {
+                Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, s, x)))))
+            }
         },
         (Value::Matrix(m), Value::Scalar(s)) => match op {
             Op::Add => Ok(Value::Matrix(&m + s)),
@@ -264,10 +261,9 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Mul | Op::ElemMul => Ok(Value::Matrix(&m * s)),
             Op::Div | Op::ElemDiv => Ok(Value::Matrix(m.mapv(|x| x / s))),
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
-            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq
-            | Op::And | Op::Or => Ok(Value::Matrix(
-                m.mapv(|x| bool_to_f64(cmp_op(op, x, s))),
-            )),
+            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq | Op::And | Op::Or => {
+                Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, x, s)))))
+            }
         },
     }
 }
@@ -491,7 +487,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("bitnot", 2) => {
             let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
             let bits = scalar_arg(&args[1], name, 2)?;
-            if bits.fract() != 0.0 || bits < 1.0 || bits > 53.0 {
+            if bits.fract() != 0.0 || !(1.0..=53.0).contains(&bits) {
                 return Err(format!(
                     "bitnot: bit-width must be an integer in [1, 53], got {bits}"
                 ));
@@ -517,7 +513,9 @@ fn to_bits(v: f64, fname: &str, pos: usize) -> Result<u64, String> {
         ));
     }
     if v > u64::MAX as f64 {
-        return Err(format!("{fname}: argument {pos} is too large for bitwise operations"));
+        return Err(format!(
+            "{fname}: argument {pos} is too large for bitwise operations"
+        ));
     }
     Ok(v as u64)
 }

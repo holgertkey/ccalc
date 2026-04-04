@@ -30,16 +30,16 @@ enum Token {
     Semicolon,
     Colon,
     // --- Comparison ---
-    EqEq,    // ==
-    NotEq,   // ~=
-    Lt,      // <
-    Gt,      // >
-    LtEq,    // <=
-    GtEq,    // >=
+    EqEq,  // ==
+    NotEq, // ~=
+    Lt,    // <
+    Gt,    // >
+    LtEq,  // <=
+    GtEq,  // >=
     // --- Logical ---
-    AmpAmp,  // &&
-    PipePipe,// ||
-    Tilde,   // ~ (unary NOT)
+    AmpAmp,   // &&
+    PipePipe, // ||
+    Tilde,    // ~ (unary NOT)
 }
 
 fn parse_integer_literal(
@@ -1760,14 +1760,8 @@ mod tests {
     fn test_comparison_matrix_matrix() {
         use ndarray::array;
         let mut env = Env::new();
-        env.insert(
-            "a".to_string(),
-            Value::Matrix(array![[1.0, 5.0, 3.0]]),
-        );
-        env.insert(
-            "b".to_string(),
-            Value::Matrix(array![[2.0, 4.0, 3.0]]),
-        );
+        env.insert("a".to_string(), Value::Matrix(array![[1.0, 5.0, 3.0]]));
+        env.insert("b".to_string(), Value::Matrix(array![[2.0, 4.0, 3.0]]));
         // a == b → [0 0 1]
         let result = match eval_with("a == b", &env) {
             Value::Matrix(m) => m.into_raw_vec(),
@@ -1780,10 +1774,7 @@ mod tests {
     fn test_not_matrix() {
         use ndarray::array;
         let mut env = Env::new();
-        env.insert(
-            "v".to_string(),
-            Value::Matrix(array![[0.0, 1.0, 0.0, 5.0]]),
-        );
+        env.insert("v".to_string(), Value::Matrix(array![[0.0, 1.0, 0.0, 5.0]]));
         let result = match eval_with("~v", &env) {
             Value::Matrix(m) => m.into_raw_vec(),
             _ => panic!("expected matrix"),
@@ -1823,7 +1814,7 @@ mod tests {
     #[test]
     fn test_bitxor() {
         assert_eq!(calc("bitxor(0xFF, 0x0F)"), 240.0);
-        assert_eq!(calc("bitxor(0b1010, 0b1010)"), 0.0);  // XOR with itself = 0
+        assert_eq!(calc("bitxor(0b1010, 0b1010)"), 0.0); // XOR with itself = 0
         assert_eq!(calc("bitxor(0, 255)"), 255.0);
     }
 
@@ -1872,21 +1863,21 @@ mod tests {
     fn test_bitwise_with_hex_literals() {
         // Natural use: combine with hex/bin input literals
         assert_eq!(calc("bitor(0xFF00, 0x00FF)"), 65535.0);
-        assert_eq!(calc("bitand(0xDEAD, 0xFF00)"), 56832.0);  // 0xDE00
-        assert_eq!(calc("bitxor(0xFFFF, 0x0F0F)"), 61680.0);  // 0xF0F0
+        assert_eq!(calc("bitand(0xDEAD, 0xFF00)"), 56832.0); // 0xDE00
+        assert_eq!(calc("bitxor(0xFFFF, 0x0F0F)"), 61680.0); // 0xF0F0
     }
 
     #[test]
     fn test_bitshift_in_expression() {
         // Shift result used in further arithmetic
-        assert_eq!(calc("bitshift(1, 4) + bitshift(1, 0)"), 17.0);  // 16 + 1
+        assert_eq!(calc("bitshift(1, 4) + bitshift(1, 0)"), 17.0); // 16 + 1
         // Building a bitmask: (1 << n) - 1
         assert_eq!(calc("bitshift(1, 8) - 1"), 255.0);
     }
 
     #[test]
     fn test_bitwise_error_negative() {
-        assert!(parse("bitand(-1, 5)").is_ok());  // parses OK
+        assert!(parse("bitand(-1, 5)").is_ok()); // parses OK
         // eval must fail for negative args
         let env = Env::new();
         assert!(match parse("bitand(-1, 5)").unwrap() {
