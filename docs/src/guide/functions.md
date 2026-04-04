@@ -45,6 +45,38 @@ rem(-1, 3)   →  -1    (result has the sign of -1)
 Use `mod` when you want a value always in `[0, b)`, e.g. for angle wrapping.
 Use `rem` when you need the IEEE 754 remainder.
 
+## Bitwise functions
+
+All bitwise functions require **non-negative integer** arguments.
+They pair naturally with hex (`0xFF`), binary (`0b1010`), and octal (`0o17`)
+input literals.
+
+| Function          | Description |
+|-------------------|-------------|
+| `bitand(a, b)`    | Bitwise AND |
+| `bitor(a, b)`     | Bitwise OR  |
+| `bitxor(a, b)`    | Bitwise XOR |
+| `bitshift(a, n)`  | Left shift when `n > 0`; logical right shift when `n < 0`; returns 0 if `|n| ≥ 64` |
+| `bitnot(a)`       | Bitwise NOT within a 32-bit window (Octave `uint32` default) |
+| `bitnot(a, bits)` | Bitwise NOT within an explicit `bits`-wide window (`bits` in [1, 53]) |
+
+```
+bitand(0xFF, 0x0F)      →   15
+bitor(0b1010, 0b0101)   →   15
+bitxor(0xFF, 0x0F)      →  240     (0xF0)
+bitshift(1, 8)          →  256     (1 << 8)
+bitshift(256, -4)       →   16     (256 >> 4)
+bitnot(5, 8)            →  250     (~5 within 8 bits = 0b11111010)
+bitnot(0, 32)           →  4294967295   (0xFFFFFFFF)
+```
+
+Combining shifts and masks:
+
+```
+bitshift(1, 4) - 1      →   15     (0b00001111 — 4-bit all-ones mask)
+bitand(0xDEAD, 0xFF00)  →  56832   (0xDE00 — extract high byte)
+```
+
 ## Empty-argument shorthand
 
 Calling a function with empty parentheses uses **ans** as the argument:

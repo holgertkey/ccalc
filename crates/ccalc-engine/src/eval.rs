@@ -445,8 +445,81 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 .collect();
             Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
         }
+        // --- Bitwise functions ---
+        // All operands are truncated to i64. Results are non-negative integers
+        // returned as f64.  For bitnot the bit-width defines the mask.
+        ("bitand", 2) => {
+            let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
+            let b = to_bits(scalar_arg(&args[1], name, 2)?, name, 2)?;
+            Ok(Value::Scalar((a & b) as f64))
+        }
+        ("bitor", 2) => {
+            let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
+            let b = to_bits(scalar_arg(&args[1], name, 2)?, name, 2)?;
+            Ok(Value::Scalar((a | b) as f64))
+        }
+        ("bitxor", 2) => {
+            let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
+            let b = to_bits(scalar_arg(&args[1], name, 2)?, name, 2)?;
+            Ok(Value::Scalar((a ^ b) as f64))
+        }
+        // bitshift(a, n): n > 0 → left shift; n < 0 → logical right shift.
+        // Shifts of 64 or more return 0.
+        ("bitshift", 2) => {
+            let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
+            let n = scalar_arg(&args[1], name, 2)?;
+            if n.fract() != 0.0 {
+                return Err("bitshift: shift amount must be an integer".to_string());
+            }
+            let n = n as i64;
+            let result: u64 = if n >= 64 || n <= -64 {
+                0
+            } else if n >= 0 {
+                a.wrapping_shl(n as u32)
+            } else {
+                a.wrapping_shr((-n) as u32)
+            };
+            Ok(Value::Scalar(result as f64))
+        }
+        // bitnot(a)        — NOT within 32-bit window (Octave uint32 default)
+        // bitnot(a, bits)  — NOT within explicit bit-width window (1–53)
+        ("bitnot", 1) => {
+            let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
+            let mask: u64 = 0xFFFF_FFFF;
+            Ok(Value::Scalar(((a ^ mask) & mask) as f64))
+        }
+        ("bitnot", 2) => {
+            let a = to_bits(scalar_arg(&args[0], name, 1)?, name, 1)?;
+            let bits = scalar_arg(&args[1], name, 2)?;
+            if bits.fract() != 0.0 || bits < 1.0 || bits > 53.0 {
+                return Err(format!(
+                    "bitnot: bit-width must be an integer in [1, 53], got {bits}"
+                ));
+            }
+            let mask: u64 = (1u64 << bits as u32) - 1;
+            Ok(Value::Scalar(((a ^ mask) & mask) as f64))
+        }
         _ => Err(format!("Unknown function: '{name}'")),
     }
+}
+
+/// Converts an f64 to u64 for bitwise operations.
+/// Requires a non-negative integer value; returns an error otherwise.
+fn to_bits(v: f64, fname: &str, pos: usize) -> Result<u64, String> {
+    if v < 0.0 {
+        return Err(format!(
+            "{fname}: argument {pos} must be non-negative, got {v}"
+        ));
+    }
+    if v.fract() != 0.0 {
+        return Err(format!(
+            "{fname}: argument {pos} must be an integer, got {v}"
+        ));
+    }
+    if v > u64::MAX as f64 {
+        return Err(format!("{fname}: argument {pos} is too large for bitwise operations"));
+    }
+    Ok(v as u64)
 }
 
 /// Computes determinant of a square matrix via Gaussian elimination.

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0+002] - 2026-04-04
+
+### Added
+
+- **Bitwise functions** (Octave-compatible, scalar integer arguments):
+  - `bitand(a, b)` — bitwise AND
+  - `bitor(a, b)` — bitwise OR
+  - `bitxor(a, b)` — bitwise XOR
+  - `bitshift(a, n)` — left shift (`n > 0`) or logical right shift (`n < 0`); returns 0 for `|n| >= 64`
+  - `bitnot(a)` — bitwise NOT within 32-bit window (Octave `uint32` default)
+  - `bitnot(a, bits)` — bitwise NOT within explicit bit-width window (`bits` in `[1, 53]`)
+- All bitwise functions require non-negative integer arguments; non-integers or negatives return an error
+- Natural combination with existing hex/bin/oct input literals: `bitand(0xFF, 0x0F)`, `bitor(0b1010, 0b0101)`
+
 ## [0.11.0+001] - 2026-04-04
 
 ### Added

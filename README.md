@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.11.0+001** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.11.0+002** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -435,6 +435,29 @@ ans =
 ans =
    2   3
    5   6
+```
+
+---
+
+## Bitwise Functions
+
+All require **non-negative integer** arguments — combine naturally with `0xFF`, `0b1010`, `0o17` literals.
+
+| Function          | Description |
+|-------------------|-------------|
+| `bitand(a, b)`    | Bitwise AND |
+| `bitor(a, b)`     | Bitwise OR  |
+| `bitxor(a, b)`    | Bitwise XOR |
+| `bitshift(a, n)`  | Left shift (`n > 0`) / logical right shift (`n < 0`) |
+| `bitnot(a)`       | NOT within 32-bit window |
+| `bitnot(a, bits)` | NOT within `bits`-wide window (1–53) |
+
+```
+[ 0 ]: bitand(0xFF, 0x0F)
+[ 15 ]: bitxor(0xFF, 0x0F)
+[ 240 ]: bitshift(1, 8)
+[ 256 ]: bitnot(5, 8)
+[ 250 ]:
 ```
 
 ---

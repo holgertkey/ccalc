@@ -1802,4 +1802,114 @@ mod tests {
         // A bare `=` (not `==`) inside an expression is a tokenizer error
         assert!(parse("3 = 3").is_err());
     }
+
+    // --- Bitwise functions ---
+
+    #[test]
+    fn test_bitand() {
+        assert_eq!(calc("bitand(0xFF, 0x0F)"), 15.0);
+        assert_eq!(calc("bitand(0b1111, 0b1010)"), 10.0);
+        assert_eq!(calc("bitand(255, 0)"), 0.0);
+        assert_eq!(calc("bitand(255, 255)"), 255.0);
+    }
+
+    #[test]
+    fn test_bitor() {
+        assert_eq!(calc("bitor(0b1010, 0b0101)"), 15.0);
+        assert_eq!(calc("bitor(0, 255)"), 255.0);
+        assert_eq!(calc("bitor(0xFF00, 0x00FF)"), 65535.0);
+    }
+
+    #[test]
+    fn test_bitxor() {
+        assert_eq!(calc("bitxor(0xFF, 0x0F)"), 240.0);
+        assert_eq!(calc("bitxor(0b1010, 0b1010)"), 0.0);  // XOR with itself = 0
+        assert_eq!(calc("bitxor(0, 255)"), 255.0);
+    }
+
+    #[test]
+    fn test_bitshift_left() {
+        assert_eq!(calc("bitshift(1, 8)"), 256.0);
+        assert_eq!(calc("bitshift(1, 0)"), 1.0);
+        assert_eq!(calc("bitshift(3, 4)"), 48.0);
+    }
+
+    #[test]
+    fn test_bitshift_right() {
+        assert_eq!(calc("bitshift(256, -4)"), 16.0);
+        assert_eq!(calc("bitshift(255, -4)"), 15.0);
+        assert_eq!(calc("bitshift(1, -1)"), 0.0);
+    }
+
+    #[test]
+    fn test_bitshift_overflow() {
+        // Shift of 64 or more returns 0
+        assert_eq!(calc("bitshift(1, 64)"), 0.0);
+        assert_eq!(calc("bitshift(255, -64)"), 0.0);
+    }
+
+    #[test]
+    fn test_bitnot_default_32bit() {
+        // bitnot(5) = ~5 within 32-bit window = 4294967290
+        assert_eq!(calc("bitnot(5)"), 4294967290.0);
+        // bitnot(0) = 0xFFFFFFFF
+        assert_eq!(calc("bitnot(0)"), 4294967295.0);
+    }
+
+    #[test]
+    fn test_bitnot_explicit_width() {
+        // bitnot(5, 8): ~5 within 8 bits = 0b11111010 = 250
+        assert_eq!(calc("bitnot(5, 8)"), 250.0);
+        // bitnot(0, 4): ~0 within 4 bits = 0b1111 = 15
+        assert_eq!(calc("bitnot(0, 4)"), 15.0);
+        // bitnot(15, 4): ~15 within 4 bits = 0
+        assert_eq!(calc("bitnot(15, 4)"), 0.0);
+        // bitnot(0, 32) = 0xFFFFFFFF = 4294967295
+        assert_eq!(calc("bitnot(0, 32)"), 4294967295.0);
+    }
+
+    #[test]
+    fn test_bitwise_with_hex_literals() {
+        // Natural use: combine with hex/bin input literals
+        assert_eq!(calc("bitor(0xFF00, 0x00FF)"), 65535.0);
+        assert_eq!(calc("bitand(0xDEAD, 0xFF00)"), 56832.0);  // 0xDE00
+        assert_eq!(calc("bitxor(0xFFFF, 0x0F0F)"), 61680.0);  // 0xF0F0
+    }
+
+    #[test]
+    fn test_bitshift_in_expression() {
+        // Shift result used in further arithmetic
+        assert_eq!(calc("bitshift(1, 4) + bitshift(1, 0)"), 17.0);  // 16 + 1
+        // Building a bitmask: (1 << n) - 1
+        assert_eq!(calc("bitshift(1, 8) - 1"), 255.0);
+    }
+
+    #[test]
+    fn test_bitwise_error_negative() {
+        assert!(parse("bitand(-1, 5)").is_ok());  // parses OK
+        // eval must fail for negative args
+        let env = Env::new();
+        assert!(match parse("bitand(-1, 5)").unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
+        });
+    }
+
+    #[test]
+    fn test_bitwise_error_noninteger() {
+        let env = Env::new();
+        assert!(match parse("bitand(1.5, 2)").unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
+        });
+    }
+
+    #[test]
+    fn test_bitnot_error_invalid_width() {
+        let env = Env::new();
+        assert!(match parse("bitnot(5, 0)").unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
+        });
+        assert!(match parse("bitnot(5, 54)").unwrap() {
+            Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
+        });
+    }
 }

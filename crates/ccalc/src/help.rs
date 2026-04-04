@@ -80,6 +80,8 @@ Range   1:5  →  [1 2 3 4 5]     1:2:9  →  [1 3 5 7 9]
         linspace(a,b,n)   [1:3, 10]  →  [1 2 3 10]
 Index   v(3)  v(2:4)  v(:)          1-based  (Octave convention)
         A(i,j)  A(:,j)  A(i,:)  A(1:2, 2:3)
+Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
+        bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
@@ -225,6 +227,22 @@ Nesting
     sqrt(abs(-16))        →   4
     max(hypot(3, 4), 6)   →   6
     floor(log(1000))      →   3
+
+Bitwise (non-negative integers only; works naturally with 0x/0b/0o literals)
+    bitand(a, b)      bitwise AND
+    bitor(a, b)       bitwise OR
+    bitxor(a, b)      bitwise XOR
+    bitshift(a, n)    left shift (n>0), logical right shift (n<0); 0 if |n|>=64
+    bitnot(a)         NOT in 32-bit window  (Octave uint32 default)
+    bitnot(a, bits)   NOT in explicit bit-width window (bits in [1, 53])
+
+    bitand(0xFF, 0x0F)      →  15
+    bitor(0b1010, 0b0101)   →  15
+    bitxor(0xFF, 0x0F)      →  240
+    bitshift(1, 8)          →  256     (1 << 8)
+    bitshift(256, -4)       →  16      (256 >> 4)
+    bitnot(5, 8)            →  250     (~5 in 8 bits = 0b11111010)
+    bitnot(0, 32)           →  4294967295
 
 Examples
     hypot(3, 4)                →   5
@@ -606,6 +624,15 @@ REPL — ranges and indexing
     ans =
        2   3
        5   6
+
+REPL — bitwise operations (combine with hex/bin literals)
+    [ 0 ]: bitand(0xFF, 0x0F)
+    [ 15 ]: bitor(0b1010, 0b0101)
+    [ 15 ]: bitxor(0xFF, 0x0F)
+    [ 240 ]: bitshift(1, 8)
+    [ 256 ]: bitshift(256, -4)
+    [ 16 ]: bitnot(5, 8)
+    [ 250 ]:
 
 REPL — comparison and logical operators
     [ 0 ]: 3 > 2
