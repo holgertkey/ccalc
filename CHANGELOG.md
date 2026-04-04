@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0+001] - 2026-04-04
+
+### Added
+
+- **Phase 7 — Comparison and logical operators**:
+  - Comparison: `==`, `~=`, `<`, `>`, `<=`, `>=` — return `0.0`/`1.0` (false/true)
+  - Logical NOT: `~expr` — unary, returns 1.0 if operand is zero, else 0.0
+  - Short-circuit logical: `&&` (AND) and `||` (OR) — scalar and element-wise
+  - Element-wise comparison on matrices: `v > 3`, `A == B`
+  - Precedence (low to high): `||` → `&&` → comparisons → range → arithmetic
+  - `~` (logical NOT) at unary level, same precedence as `-`
+  - `Expr::UnaryNot` AST node; `Op::Eq/NotEq/Lt/Gt/LtEq/GtEq/And/Or` variants
+
 ## [0.11.0] - 2026-04-03
 
 ### Added

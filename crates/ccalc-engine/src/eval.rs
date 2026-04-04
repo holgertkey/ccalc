@@ -7,6 +7,8 @@ pub enum Expr {
     Number(f64),
     Var(String),
     UnaryMinus(Box<Expr>),
+    /// Logical NOT: `~expr`. Result is 1.0 if expr == 0.0, else 0.0.
+    UnaryNot(Box<Expr>),
     BinOp(Box<Expr>, Op, Box<Expr>),
     Call(String, Vec<Expr>),
     Matrix(Vec<Vec<Expr>>),
@@ -29,6 +31,16 @@ pub enum Op {
     ElemMul,
     ElemDiv,
     ElemPow,
+    // --- Comparison (element-wise, return 0.0/1.0) ---
+    Eq,
+    NotEq,
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    // --- Short-circuit logical (scalars only) ---
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -50,6 +62,12 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         Expr::UnaryMinus(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
+        },
+        Expr::UnaryNot(e) => match eval(e, env)? {
+            Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
+            Value::Matrix(m) => Ok(Value::Matrix(
+                m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }),
+            )),
         },
         Expr::BinOp(left, op, right) => {
             let l = eval(left, env)?;
@@ -161,6 +179,14 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                     lv / rv
                 }
                 Op::Pow | Op::ElemPow => lv.powf(rv),
+                Op::Eq => bool_to_f64(lv == rv),
+                Op::NotEq => bool_to_f64(lv != rv),
+                Op::Lt => bool_to_f64(lv < rv),
+                Op::Gt => bool_to_f64(lv > rv),
+                Op::LtEq => bool_to_f64(lv <= rv),
+                Op::GtEq => bool_to_f64(lv >= rv),
+                Op::And => bool_to_f64(lv != 0.0 && rv != 0.0),
+                Op::Or => bool_to_f64(lv != 0.0 || rv != 0.0),
             };
             Ok(Value::Scalar(result))
         }
@@ -201,6 +227,22 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                         .map_collect(|a, b| a.powf(*b)),
                 ))
             }
+            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(
+                    ndarray::Zip::from(&lm)
+                        .and(&rm)
+                        .map_collect(|a, b| bool_to_f64(cmp_op(op, *a, *b))),
+                ))
+            }
+            Op::And | Op::Or => {
+                check_same_shape(&lm, &rm)?;
+                Ok(Value::Matrix(
+                    ndarray::Zip::from(&lm)
+                        .and(&rm)
+                        .map_collect(|a, b| bool_to_f64(cmp_op(op, *a, *b))),
+                ))
+            }
             Op::Div => Err("Matrix / Matrix: use inv(B)*A or A*inv(B)".to_string()),
             Op::Pow => Err("Matrix ^ Matrix: not supported".to_string()),
         },
@@ -211,6 +253,10 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Div => Err("Scalar / Matrix: not supported".to_string()),
             Op::ElemDiv => Err("Scalar ./ Matrix: not supported".to_string()),
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
+            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq
+            | Op::And | Op::Or => Ok(Value::Matrix(
+                m.mapv(|x| bool_to_f64(cmp_op(op, s, x))),
+            )),
         },
         (Value::Matrix(m), Value::Scalar(s)) => match op {
             Op::Add => Ok(Value::Matrix(&m + s)),
@@ -218,7 +264,31 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Mul | Op::ElemMul => Ok(Value::Matrix(&m * s)),
             Op::Div | Op::ElemDiv => Ok(Value::Matrix(m.mapv(|x| x / s))),
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
+            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq
+            | Op::And | Op::Or => Ok(Value::Matrix(
+                m.mapv(|x| bool_to_f64(cmp_op(op, x, s))),
+            )),
         },
+    }
+}
+
+#[inline]
+fn bool_to_f64(b: bool) -> f64 {
+    if b { 1.0 } else { 0.0 }
+}
+
+/// Applies a comparison or logical op to two scalar values.
+fn cmp_op(op: &Op, a: f64, b: f64) -> bool {
+    match op {
+        Op::Eq => a == b,
+        Op::NotEq => a != b,
+        Op::Lt => a < b,
+        Op::Gt => a > b,
+        Op::LtEq => a <= b,
+        Op::GtEq => a >= b,
+        Op::And => a != 0.0 && b != 0.0,
+        Op::Or => a != 0.0 || b != 0.0,
+        _ => unreachable!(),
     }
 }
 

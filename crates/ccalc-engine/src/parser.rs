@@ -29,6 +29,17 @@ enum Token {
     RBracket,
     Semicolon,
     Colon,
+    // --- Comparison ---
+    EqEq,    // ==
+    NotEq,   // ~=
+    Lt,      // <
+    Gt,      // >
+    LtEq,    // <=
+    GtEq,    // >=
+    // --- Logical ---
+    AmpAmp,  // &&
+    PipePipe,// ||
+    Tilde,   // ~ (unary NOT)
 }
 
 fn parse_integer_literal(
@@ -203,6 +214,60 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::Colon);
                 chars.next();
             }
+            '=' => {
+                chars.next();
+                if chars.peek().copied() == Some('=') {
+                    chars.next();
+                    tokens.push(Token::EqEq);
+                } else {
+                    return Err("Unexpected '=': use '==' for comparison".to_string());
+                }
+            }
+            '~' => {
+                chars.next();
+                if chars.peek().copied() == Some('=') {
+                    chars.next();
+                    tokens.push(Token::NotEq);
+                } else {
+                    tokens.push(Token::Tilde);
+                }
+            }
+            '<' => {
+                chars.next();
+                if chars.peek().copied() == Some('=') {
+                    chars.next();
+                    tokens.push(Token::LtEq);
+                } else {
+                    tokens.push(Token::Lt);
+                }
+            }
+            '>' => {
+                chars.next();
+                if chars.peek().copied() == Some('=') {
+                    chars.next();
+                    tokens.push(Token::GtEq);
+                } else {
+                    tokens.push(Token::Gt);
+                }
+            }
+            '&' => {
+                chars.next();
+                if chars.peek().copied() == Some('&') {
+                    chars.next();
+                    tokens.push(Token::AmpAmp);
+                } else {
+                    return Err("Use '&&' for logical AND".to_string());
+                }
+            }
+            '|' => {
+                chars.next();
+                if chars.peek().copied() == Some('|') {
+                    chars.next();
+                    tokens.push(Token::PipePipe);
+                } else {
+                    return Err("Use '||' for logical OR".to_string());
+                }
+            }
             '0'..='9' => {
                 if c == '0' {
                     chars.next();
@@ -304,7 +369,7 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
             return Err("Expected expression after '='".to_string());
         }
         let mut pos = 0;
-        let expr = parse_range(&tokens, &mut pos)?;
+        let expr = parse_logical_or(&tokens, &mut pos)?;
         if pos != tokens.len() {
             return Err("Unexpected token after expression".to_string());
         }
@@ -316,7 +381,7 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
         return Err("Empty expression".to_string());
     }
     let mut pos = 0;
-    let expr = parse_range(&tokens, &mut pos)?;
+    let expr = parse_logical_or(&tokens, &mut pos)?;
     if pos != tokens.len() {
         return Err("Unexpected token after expression".to_string());
     }
@@ -328,9 +393,15 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
 pub fn is_partial(input: &str) -> bool {
     let mut chars = input.trim_start().chars();
     match chars.next() {
-        Some('+' | '-' | '*' | '/' | '^') => true,
+        Some('+' | '-' | '*' | '/' | '^' | '<' | '>') => true,
         // '.*', './', '.^' are element-wise binary operators
         Some('.') => matches!(chars.next(), Some('*' | '/' | '^')),
+        // '==' comparison; '~=' not-equal
+        Some('=') => chars.next() == Some('='),
+        Some('~') => chars.next() == Some('='),
+        // '&&', '||' short-circuit logical
+        Some('&') => chars.next() == Some('&'),
+        Some('|') => chars.next() == Some('|'),
         _ => false,
     }
 }
@@ -361,7 +432,7 @@ fn is_valid_ident(s: &str) -> bool {
     }
 }
 
-// call_arg = ':' | range_expr
+// call_arg = ':' | logical_or_expr
 // Used when parsing function call / index arguments.
 // A bare ':' at the start of an argument position becomes Expr::Colon (all-elements index).
 fn parse_call_arg(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
@@ -369,7 +440,47 @@ fn parse_call_arg(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         *pos += 1;
         return Ok(Expr::Colon);
     }
-    parse_range(tokens, pos)
+    parse_logical_or(tokens, pos)
+}
+
+// logical_or = logical_and ('||' logical_and)*
+fn parse_logical_or(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let mut left = parse_logical_and(tokens, pos)?;
+    while matches!(tokens.get(*pos), Some(Token::PipePipe)) {
+        *pos += 1;
+        let right = parse_logical_and(tokens, pos)?;
+        left = Expr::BinOp(Box::new(left), Op::Or, Box::new(right));
+    }
+    Ok(left)
+}
+
+// logical_and = comparison ('&&' comparison)*
+fn parse_logical_and(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let mut left = parse_comparison(tokens, pos)?;
+    while matches!(tokens.get(*pos), Some(Token::AmpAmp)) {
+        *pos += 1;
+        let right = parse_comparison(tokens, pos)?;
+        left = Expr::BinOp(Box::new(left), Op::And, Box::new(right));
+    }
+    Ok(left)
+}
+
+// comparison = range_expr (('==' | '~=' | '<' | '>' | '<=' | '>=') range_expr)?
+// Comparison operators are non-associative (no chaining: `a < b < c` is an error).
+fn parse_comparison(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let left = parse_range(tokens, pos)?;
+    let op = match tokens.get(*pos) {
+        Some(Token::EqEq) => Op::Eq,
+        Some(Token::NotEq) => Op::NotEq,
+        Some(Token::Lt) => Op::Lt,
+        Some(Token::Gt) => Op::Gt,
+        Some(Token::LtEq) => Op::LtEq,
+        Some(Token::GtEq) => Op::GtEq,
+        _ => return Ok(left),
+    };
+    *pos += 1;
+    let right = parse_range(tokens, pos)?;
+    Ok(Expr::BinOp(Box::new(left), op, Box::new(right)))
 }
 
 // range_expr = expr (':' expr (':' expr)?)?
@@ -479,14 +590,22 @@ fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(base)
 }
 
-// unary = '-' unary | primary
+// unary = '-' unary | '~' unary | primary
 fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    if *pos < tokens.len()
-        && let Token::Minus = &tokens[*pos]
-    {
-        *pos += 1;
-        let expr = parse_unary(tokens, pos)?;
-        return Ok(Expr::UnaryMinus(Box::new(expr)));
+    if *pos < tokens.len() {
+        match &tokens[*pos] {
+            Token::Minus => {
+                *pos += 1;
+                let expr = parse_unary(tokens, pos)?;
+                return Ok(Expr::UnaryMinus(Box::new(expr)));
+            }
+            Token::Tilde => {
+                *pos += 1;
+                let expr = parse_unary(tokens, pos)?;
+                return Ok(Expr::UnaryNot(Box::new(expr)));
+            }
+            _ => {}
+        }
     }
     parse_primary(tokens, pos)
 }
@@ -553,7 +672,7 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         }
         Token::LParen => {
             *pos += 1;
-            let inner = parse_range(tokens, pos)?;
+            let inner = parse_logical_or(tokens, pos)?;
             if *pos >= tokens.len() {
                 return Err("Expected closing ')'".to_string());
             }
@@ -614,7 +733,7 @@ fn parse_matrix(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 *pos += 1;
             }
             _ => {
-                current_row.push(parse_range(tokens, pos)?);
+                current_row.push(parse_logical_or(tokens, pos)?);
             }
         }
     }
@@ -1531,5 +1650,156 @@ mod tests {
         // If it somehow reached eval, Expr::Colon returns an error.
         let env = Env::new();
         assert!(try_eval_with(":", &env).is_err());
+    }
+
+    // --- Phase 7: Comparison and logical operators ---
+
+    #[test]
+    fn test_comparison_eq() {
+        assert_eq!(calc("3 == 3"), 1.0);
+        assert_eq!(calc("3 == 4"), 0.0);
+    }
+
+    #[test]
+    fn test_comparison_noteq() {
+        assert_eq!(calc("3 ~= 4"), 1.0);
+        assert_eq!(calc("3 ~= 3"), 0.0);
+    }
+
+    #[test]
+    fn test_comparison_lt_gt() {
+        assert_eq!(calc("2 < 3"), 1.0);
+        assert_eq!(calc("3 < 2"), 0.0);
+        assert_eq!(calc("3 > 2"), 1.0);
+        assert_eq!(calc("2 > 3"), 0.0);
+    }
+
+    #[test]
+    fn test_comparison_le_ge() {
+        assert_eq!(calc("3 <= 3"), 1.0);
+        assert_eq!(calc("4 <= 3"), 0.0);
+        assert_eq!(calc("3 >= 3"), 1.0);
+        assert_eq!(calc("2 >= 3"), 0.0);
+    }
+
+    #[test]
+    fn test_comparison_with_arithmetic() {
+        // comparison has lower precedence than +/-
+        assert_eq!(calc("1 + 1 == 2"), 1.0);
+        assert_eq!(calc("2 * 3 > 5"), 1.0);
+    }
+
+    #[test]
+    fn test_logical_not_scalar() {
+        assert_eq!(calc("~0"), 1.0);
+        assert_eq!(calc("~1"), 0.0);
+        assert_eq!(calc("~5"), 0.0);
+    }
+
+    #[test]
+    fn test_logical_not_of_comparison() {
+        assert_eq!(calc("~(3 == 3)"), 0.0);
+        assert_eq!(calc("~(3 == 4)"), 1.0);
+    }
+
+    #[test]
+    fn test_logical_and() {
+        assert_eq!(calc("1 && 1"), 1.0);
+        assert_eq!(calc("1 && 0"), 0.0);
+        assert_eq!(calc("0 && 1"), 0.0);
+        assert_eq!(calc("0 && 0"), 0.0);
+    }
+
+    #[test]
+    fn test_logical_or() {
+        assert_eq!(calc("1 || 0"), 1.0);
+        assert_eq!(calc("0 || 1"), 1.0);
+        assert_eq!(calc("0 || 0"), 0.0);
+        assert_eq!(calc("1 || 1"), 1.0);
+    }
+
+    #[test]
+    fn test_logical_precedence() {
+        // '&&' binds tighter than '||'
+        assert_eq!(calc("1 || 0 && 0"), 1.0); // 1 || (0 && 0) = 1 || 0 = 1
+        assert_eq!(calc("0 && 0 || 1"), 1.0); // (0 && 0) || 1 = 0 || 1 = 1
+    }
+
+    #[test]
+    fn test_comparison_lower_than_arithmetic() {
+        // `a + b > c` means `(a+b) > c`
+        assert_eq!(calc("2 + 3 > 4"), 1.0);
+        assert_eq!(calc("1 + 1 < 1"), 0.0);
+    }
+
+    #[test]
+    fn test_logical_combined() {
+        // (2 > 1) && (3 > 2) → 1 && 1 = 1
+        assert_eq!(calc("2 > 1 && 3 > 2"), 1.0);
+        // (2 > 3) || (1 < 2) → 0 || 1 = 1
+        assert_eq!(calc("2 > 3 || 1 < 2"), 1.0);
+    }
+
+    #[test]
+    fn test_comparison_matrix_scalar() {
+        use ndarray::array;
+        let mut env = Env::new();
+        env.insert(
+            "v".to_string(),
+            Value::Matrix(array![[1.0, 2.0, 3.0, 4.0, 5.0]]),
+        );
+        // v > 3  → [0 0 0 1 1]
+        let result = match eval_with("v > 3", &env) {
+            Value::Matrix(m) => m.into_raw_vec(),
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(result, vec![0.0, 0.0, 0.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_comparison_matrix_matrix() {
+        use ndarray::array;
+        let mut env = Env::new();
+        env.insert(
+            "a".to_string(),
+            Value::Matrix(array![[1.0, 5.0, 3.0]]),
+        );
+        env.insert(
+            "b".to_string(),
+            Value::Matrix(array![[2.0, 4.0, 3.0]]),
+        );
+        // a == b → [0 0 1]
+        let result = match eval_with("a == b", &env) {
+            Value::Matrix(m) => m.into_raw_vec(),
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(result, vec![0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn test_not_matrix() {
+        use ndarray::array;
+        let mut env = Env::new();
+        env.insert(
+            "v".to_string(),
+            Value::Matrix(array![[0.0, 1.0, 0.0, 5.0]]),
+        );
+        let result = match eval_with("~v", &env) {
+            Value::Matrix(m) => m.into_raw_vec(),
+            _ => panic!("expected matrix"),
+        };
+        assert_eq!(result, vec![1.0, 0.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn test_double_eq_not_assignment() {
+        // `3 == 3` must not be parsed as assignment
+        assert_eq!(calc("3 == 3"), 1.0);
+    }
+
+    #[test]
+    fn test_single_eq_in_expression_is_error() {
+        // A bare `=` (not `==`) inside an expression is a tokenizer error
+        assert!(parse("3 = 3").is_err());
     }
 }
