@@ -656,6 +656,7 @@ Script files  (see examples/ directory)
     ccalc examples/resistors.calc
     ccalc examples/matrix_ops.calc
     ccalc examples/sequences.calc
-    ccalc examples/logic.calc"
+    ccalc examples/logic.calc
+    ccalc examples/bitwise.calc"
     );
 }

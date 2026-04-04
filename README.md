@@ -770,6 +770,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops         |
 | `sequences.calc`      | Ranges, linspace, indexing, slicing, finite differences |
 | `logic.calc`          | Comparison, logical NOT, `&&`/`\|\|`, masks, soft clipping |
+| `bitwise.calc`        | Bitmask construction, register bit fields, RGB colour packing |
 
 ```bash
 ccalc < examples/mortgage.ccalc
