@@ -665,6 +665,8 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 match name.as_str() {
                     "pi" => Expr::Number(std::f64::consts::PI),
                     "e" => Expr::Number(std::f64::consts::E),
+                    "nan" => Expr::Number(f64::NAN),
+                    "inf" => Expr::Number(f64::INFINITY),
                     // All other identifiers → variable reference (resolved at eval time)
                     _ => Expr::Var(name),
                 }
@@ -1908,29 +1910,36 @@ mod tests {
 
     #[test]
     fn test_isnan_scalar() {
-        let mut env = Env::new();
-        env.insert("nan".to_string(), Value::Scalar(f64::NAN));
-        assert_eq!(eval_with("isnan(nan)", &env).as_scalar().unwrap(), 1.0);
-        assert_eq!(eval_with("isnan(0)", &env).as_scalar().unwrap(), 0.0);
-        assert_eq!(eval_with("isnan(1)", &env).as_scalar().unwrap(), 0.0);
+        // nan/inf are parser-level constants, no env setup needed
+        assert_eq!(calc("isnan(nan)"), 1.0);
+        assert_eq!(calc("isnan(0)"), 0.0);
+        assert_eq!(calc("isnan(1)"), 0.0);
     }
 
     #[test]
     fn test_isinf_scalar() {
-        let mut env = Env::new();
-        env.insert("inf".to_string(), Value::Scalar(f64::INFINITY));
-        assert_eq!(eval_with("isinf(inf)", &env).as_scalar().unwrap(), 1.0);
-        assert_eq!(eval_with("isinf(0)", &env).as_scalar().unwrap(), 0.0);
+        assert_eq!(calc("isinf(inf)"), 1.0);
+        assert_eq!(calc("isinf(0)"), 0.0);
+        assert_eq!(calc("isinf(-inf)"), 1.0);
     }
 
     #[test]
     fn test_isfinite_scalar() {
-        let mut env = Env::new();
-        env.insert("nan".to_string(), Value::Scalar(f64::NAN));
-        env.insert("inf".to_string(), Value::Scalar(f64::INFINITY));
-        assert_eq!(eval_with("isfinite(1)", &env).as_scalar().unwrap(), 1.0);
-        assert_eq!(eval_with("isfinite(inf)", &env).as_scalar().unwrap(), 0.0);
-        assert_eq!(eval_with("isfinite(nan)", &env).as_scalar().unwrap(), 0.0);
+        assert_eq!(calc("isfinite(1)"), 1.0);
+        assert_eq!(calc("isfinite(inf)"), 0.0);
+        assert_eq!(calc("isfinite(nan)"), 0.0);
+    }
+
+    #[test]
+    fn test_nan_inf_constants() {
+        // nan/inf parse as constants without being in env
+        assert!(calc("nan").is_nan());
+        assert_eq!(calc("inf"), f64::INFINITY);
+        assert_eq!(calc("-inf"), f64::NEG_INFINITY);
+        // NaN arithmetic
+        assert!(calc("nan + 5").is_nan());
+        // nan == nan is false (IEEE 754)
+        assert_eq!(calc("nan == nan"), 0.0);
     }
 
     #[test]

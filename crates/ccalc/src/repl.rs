@@ -128,8 +128,6 @@ fn ans(env: &Env) -> f64 {
 fn new_env() -> Env {
     let mut env = Env::new();
     env.insert("ans".to_string(), Value::Scalar(0.0));
-    env.insert("nan".to_string(), Value::Scalar(f64::NAN));
-    env.insert("inf".to_string(), Value::Scalar(f64::INFINITY));
     env
 }
 

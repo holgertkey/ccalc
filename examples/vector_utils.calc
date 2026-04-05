@@ -1,0 +1,194 @@
+% vector_utils.calc — Phase 7.5 feature demo
+%
+% Covers: nan/inf constants, isnan/isinf/isfinite,
+%         sum, prod, mean, min, max, norm,
+%         any, all, cumsum, cumprod,
+%         sort, find, unique, reshape, fliplr, flipud,
+%         and 'end' in indexing.
+%
+% Usage: ccalc vector_utils.calc
+
+% --- 1. Special floating-point constants ---
+
+fprintf('=== 1. Special constants ===\n')
+
+fprintf('nan = ')
+disp(nan)
+fprintf('inf = ')
+disp(inf)
+fprintf('-inf = ')
+disp(-inf)
+
+% Predicates
+fprintf('isnan(nan) — should be 1: ')
+disp(isnan(nan))
+fprintf('isinf(inf) — should be 1: ')
+disp(isinf(inf))
+fprintf('isfinite(42) — should be 1: ')
+disp(isfinite(42))
+fprintf('isfinite(nan) — should be 0: ')
+disp(isfinite(nan))
+
+% NaN propagates through arithmetic
+fprintf('nan + 5 = ')
+disp(nan + 5)
+fprintf('nan == nan (always false in IEEE 754): ')
+disp(nan == nan)
+
+% --- 2. Vector reductions ---
+
+fprintf('\n=== 2. Vector reductions ===\n')
+
+% A dataset of 10 measurements
+data = [12.3, 8.7, 15.0, 9.4, 11.2, 14.6, 7.8, 13.1, 10.5, 16.0];
+
+fprintf('data = ')
+disp(data)
+
+fprintf('sum   = ')
+disp(sum(data))
+fprintf('mean  = ')
+disp(mean(data))
+fprintf('min   = ')
+disp(min(data))
+fprintf('max   = ')
+disp(max(data))
+fprintf('norm  = ')
+disp(norm(data))
+
+% L1 norm (sum of absolute values)
+fprintf('L1 norm = ')
+disp(norm(data, 1))
+
+% any / all
+flags = data > 10;
+fprintf('data > 10: ')
+disp(flags)
+fprintf('any(data > 10) — at least one above threshold: ')
+disp(any(flags))
+fprintf('all(data > 10) — all above threshold: ')
+disp(all(flags))
+fprintf('all(data > 5)  — all above 5: ')
+disp(all(data > 5))
+
+% prod — useful for small integer sequences
+n = [1, 2, 3, 4, 5];
+fprintf('\nn! = prod(1:5) = ')
+disp(prod(n))
+
+% Column-wise reductions on a matrix
+M = [1 2 3; 4 5 6];
+fprintf('\nM:\n')
+disp(M)
+fprintf('sum(M)  — column sums: ')
+disp(sum(M))
+fprintf('mean(M) — column means: ')
+disp(mean(M))
+
+% --- 3. Cumulative operations ---
+
+fprintf('\n=== 3. Cumulative operations ===\n')
+
+sales = [120, 95, 140, 110, 130];
+fprintf('Monthly sales: ')
+disp(sales)
+fprintf('Running total (cumsum): ')
+disp(cumsum(sales))
+
+% Compound growth: start with 1000, multiply by growth factors each year
+growth = [1.05, 1.08, 1.03, 1.10, 1.06];
+fprintf('\nGrowth factors: ')
+disp(growth)
+fprintf('Cumulative product: ')
+disp(cumprod(growth))
+
+% Final value after 5 years (starting from 1000)
+fprintf('Portfolio after 5 years (x1000): ')
+disp(1000 * prod(growth))
+
+% --- 4. Sort, find, unique ---
+
+fprintf('\n=== 4. Sort, find, unique ===\n')
+
+v = [5, 3, 8, 1, 9, 2, 7, 4, 6];
+fprintf('v = ')
+disp(v)
+
+sv = sort(v);
+fprintf('sort(v) = ')
+disp(sv)
+
+% find: indices of elements satisfying a condition
+idx = find(v > 5);
+fprintf('find(v > 5) — indices where v > 5: ')
+disp(idx)
+fprintf('v at those indices: ')
+disp(v(idx))
+
+% find with k: just the first two positions above threshold
+fprintf('find(v > 5, 2) — first 2 such indices: ')
+disp(find(v > 5, 2))
+
+% unique: deduplicate and sort
+raw = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5];
+fprintf('\nraw = ')
+disp(raw)
+fprintf('unique(raw) = ')
+disp(unique(raw))
+
+% --- 5. end in indexing ---
+
+fprintf('\n=== 5. end in indexing ===\n')
+
+seq = [10, 20, 30, 40, 50, 60, 70, 80];
+fprintf('seq = ')
+disp(seq)
+
+fprintf('seq(end)         — last element: ')
+disp(seq(end))
+fprintf('seq(end-1)       — second to last: ')
+disp(seq(end - 1))
+fprintf('seq(end-2:end)   — last three: ')
+disp(seq(end - 2:end))
+fprintf('seq(1:2:end)     — every other element: ')
+disp(seq(1:2:end))
+
+% 2D matrix with end
+B = [1 2 3 4; 5 6 7 8; 9 10 11 12];
+fprintf('\nB:\n')
+disp(B)
+fprintf('B(end, :)       — last row: ')
+disp(B(end, :))
+fprintf('B(:, end)       — last column:\n')
+disp(B(:, end))
+fprintf('B(1:end-1, 2:end) — without last row and first column:\n')
+disp(B(1:end - 1, 2:end))
+
+% --- 6. Reshape and flip ---
+
+fprintf('\n=== 6. Reshape and flip ===\n')
+
+r = 1:12;
+fprintf('r = 1:12\n')
+
+% Reshape into 3x4 matrix (column-major, MATLAB order)
+R = reshape(r, 3, 4);
+fprintf('reshape(r, 3, 4):\n')
+disp(R)
+
+% Flip left-right (mirror columns)
+fprintf('fliplr(R):\n')
+disp(fliplr(R))
+
+% Flip up-down (mirror rows)
+fprintf('flipud(R):\n')
+disp(flipud(R))
+
+% Practical: reverse a row vector
+v2 = [1, 2, 3, 4, 5];
+fprintf('fliplr([1 2 3 4 5]) = ')
+disp(fliplr(v2))
+
+% nan matrix constructor
+fprintf('nan(2, 3):\n')
+disp(nan(2, 3))

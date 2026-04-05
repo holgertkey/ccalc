@@ -43,11 +43,7 @@ pub fn save_workspace(env: &Env, path: &Path) -> Result<(), String> {
     }
     let mut pairs: Vec<(&String, f64)> = env
         .iter()
-        .filter_map(|(k, v)| {
-            v.as_scalar()
-                .filter(|n| n.is_finite()) // skip NaN and Inf (re-seeded on startup)
-                .map(|s| (k, s))
-        })
+        .filter_map(|(k, v)| v.as_scalar().map(|s| (k, s)))
         .collect();
     pairs.sort_by_key(|(k, _)| k.as_str());
     let mut content = String::new();
