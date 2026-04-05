@@ -310,6 +310,123 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
     }
 }
 
+/// Applies a scalar function element-wise to a scalar or matrix.
+fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
+    match v {
+        Value::Scalar(n) => Ok(Value::Scalar(f(*n))),
+        Value::Matrix(m) => Ok(Value::Matrix(m.mapv(f))),
+    }
+}
+
+/// Reduces a scalar or matrix to a scalar (for vectors) or 1×N row vector (for M×N matrices).
+///
+/// - Scalar → apply `f` to `[n]`.
+/// - Vector (1×N or N×1) → apply `f` to all elements, return scalar.
+/// - M×N matrix (M>1, N>1) → apply `f` column-wise, return 1×N row vector.
+fn apply_reduction<F>(v: &Value, f: F) -> Result<Value, String>
+where
+    F: Fn(&[f64]) -> f64,
+{
+    match v {
+        Value::Scalar(n) => Ok(Value::Scalar(f(&[*n]))),
+        Value::Matrix(m) => {
+            if m.nrows() == 1 || m.ncols() == 1 {
+                let vals: Vec<f64> = m.iter().copied().collect();
+                Ok(Value::Scalar(f(&vals)))
+            } else {
+                let ncols = m.ncols();
+                let result: Vec<f64> = (0..ncols)
+                    .map(|c| {
+                        let col: Vec<f64> = m.column(c).iter().copied().collect();
+                        f(&col)
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec((1, ncols), result).unwrap(),
+                ))
+            }
+        }
+    }
+}
+
+/// Computes a cumulative scan (cumsum / cumprod) along a vector or column-wise on a matrix.
+///
+/// `combine(accumulator, element) -> new_accumulator` — e.g. `|a, x| a + x` for cumsum.
+fn apply_cumulative<F>(v: &Value, combine: F) -> Result<Value, String>
+where
+    F: Fn(f64, f64) -> f64,
+{
+    match v {
+        Value::Scalar(n) => Ok(Value::Scalar(*n)),
+        Value::Matrix(m) => {
+            let initial = combine(0.0, 0.0); // detect identity: 0+0=0 or 0*0=0
+            // Use 0.0 as additive identity, 1.0 as multiplicative identity.
+            // We detect the identity from f(1.0, 1.0) vs f(0.0, 0.0).
+            let identity = if (combine(1.0, 1.0) - 1.0).abs() < 1e-15 && initial == 0.0 {
+                1.0 // product
+            } else {
+                0.0 // sum
+            };
+            let (nrows, ncols) = (m.nrows(), m.ncols());
+            let mut result = m.clone();
+            if nrows == 1 || ncols == 1 {
+                // Vector: scan along all elements in order
+                let mut acc = identity;
+                for v in result.iter_mut() {
+                    acc = combine(acc, *v);
+                    *v = acc;
+                }
+            } else {
+                // Matrix: scan each column independently
+                for c in 0..ncols {
+                    let mut acc = identity;
+                    for r in 0..nrows {
+                        acc = combine(acc, result[[r, c]]);
+                        result[[r, c]] = acc;
+                    }
+                }
+            }
+            Ok(Value::Matrix(result))
+        }
+    }
+}
+
+/// Returns column-major 1-based indices of non-zero elements, up to `max_k`.
+fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
+    match v {
+        Value::Scalar(n) => {
+            if *n != 0.0 && max_k >= 1 {
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+                ))
+            } else {
+                Ok(Value::Matrix(Array2::zeros((1, 0))))
+            }
+        }
+        Value::Matrix(m) => {
+            let nrows = m.nrows();
+            let total = m.len();
+            let mut idxs: Vec<f64> = Vec::new();
+            for i in 0..total {
+                if idxs.len() >= max_k {
+                    break;
+                }
+                let row = i % nrows;
+                let col = i / nrows;
+                if m[[row, col]] != 0.0 {
+                    idxs.push((i + 1) as f64);
+                }
+            }
+            let n = idxs.len();
+            if n == 0 {
+                Ok(Value::Matrix(Array2::zeros((1, 0))))
+            } else {
+                Ok(Value::Matrix(Array2::from_shape_vec((1, n), idxs).unwrap()))
+            }
+        }
+    }
+}
+
 fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
@@ -495,6 +612,183 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             let mask: u64 = (1u64 << bits as u32) - 1;
             Ok(Value::Scalar(((a ^ mask) & mask) as f64))
         }
+        // --- Special constant predicates (element-wise) ---
+        ("isnan", 1) => apply_elem(&args[0], |x| if x.is_nan() { 1.0 } else { 0.0 }),
+        ("isinf", 1) => apply_elem(&args[0], |x| if x.is_infinite() { 1.0 } else { 0.0 }),
+        ("isfinite", 1) => apply_elem(&args[0], |x| if x.is_finite() { 1.0 } else { 0.0 }),
+        // --- NaN matrix constructors ---
+        ("nan", 1) => {
+            let n = scalar_arg(&args[0], name, 1)? as usize;
+            Ok(Value::Matrix(Array2::from_elem((n, n), f64::NAN)))
+        }
+        ("nan", 2) => {
+            let r = scalar_arg(&args[0], name, 1)? as usize;
+            let c = scalar_arg(&args[1], name, 2)? as usize;
+            Ok(Value::Matrix(Array2::from_elem((r, c), f64::NAN)))
+        }
+        // --- Vector reductions ---
+        // For vectors (1×N or N×1): reduce all elements to scalar.
+        // For M×N matrices (M>1, N>1): reduce column-wise, return 1×N row vector.
+        ("sum", 1) => apply_reduction(&args[0], |v| v.iter().copied().sum()),
+        ("prod", 1) => apply_reduction(&args[0], |v| v.iter().copied().product()),
+        ("any", 1) => apply_reduction(&args[0], |v| {
+            if v.iter().any(|&x| x != 0.0) {
+                1.0
+            } else {
+                0.0
+            }
+        }),
+        ("all", 1) => apply_reduction(&args[0], |v| {
+            if v.iter().all(|&x| x != 0.0) {
+                1.0
+            } else {
+                0.0
+            }
+        }),
+        ("mean", 1) => apply_reduction(&args[0], |v| {
+            if v.is_empty() {
+                f64::NAN
+            } else {
+                v.iter().copied().sum::<f64>() / v.len() as f64
+            }
+        }),
+        // 1-arg min/max: reduce to scalar for vectors, column-wise for matrices.
+        // 2-arg forms (element-wise scalar min/max) are already handled above.
+        ("min", 1) => apply_reduction(&args[0], |v| {
+            v.iter().copied().fold(f64::INFINITY, f64::min)
+        }),
+        ("max", 1) => apply_reduction(&args[0], |v| {
+            v.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+        }),
+        // --- Norms ---
+        ("norm", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+            Value::Matrix(m) => Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt())),
+        },
+        ("norm", 2) => {
+            let p = scalar_arg(&args[1], name, 2)?;
+            match &args[0] {
+                Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+                Value::Matrix(m) => {
+                    if p == f64::INFINITY {
+                        Ok(Value::Scalar(
+                            m.iter().copied().fold(0.0_f64, |acc, x| acc.max(x.abs())),
+                        ))
+                    } else {
+                        Ok(Value::Scalar(
+                            m.iter().map(|x| x.abs().powf(p)).sum::<f64>().powf(1.0 / p),
+                        ))
+                    }
+                }
+            }
+        }
+        // --- Cumulative reductions ---
+        ("cumsum", 1) => apply_cumulative(&args[0], |acc, x| acc + x),
+        ("cumprod", 1) => apply_cumulative(&args[0], |acc, x| acc * x),
+        // --- Sort ---
+        ("sort", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Matrix(m) => {
+                if m.nrows() > 1 && m.ncols() > 1 {
+                    return Err("sort: input must be a vector".to_string());
+                }
+                let mut vals: Vec<f64> = m.iter().copied().collect();
+                vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec(m.raw_dim(), vals).unwrap(),
+                ))
+            }
+        },
+        // --- Reshape ---
+        ("reshape", 3) => {
+            let r = scalar_arg(&args[1], name, 2)? as usize;
+            let c = scalar_arg(&args[2], name, 3)? as usize;
+            match &args[0] {
+                Value::Scalar(n) => {
+                    if r * c != 1 {
+                        return Err(format!("reshape: cannot reshape 1 element into {r}x{c}"));
+                    }
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, 1), vec![*n]).unwrap(),
+                    ))
+                }
+                Value::Matrix(m) => {
+                    let total = m.len();
+                    if r * c != total {
+                        return Err(format!(
+                            "reshape: cannot reshape {total} elements into {r}x{c}"
+                        ));
+                    }
+                    // Column-major order (MATLAB convention)
+                    let flat: Vec<f64> = (0..m.ncols())
+                        .flat_map(|col| (0..m.nrows()).map(move |row| m[[row, col]]))
+                        .collect();
+                    let mut result = Array2::<f64>::zeros((r, c));
+                    for (i, &v) in flat.iter().enumerate() {
+                        result[[i % r, i / r]] = v;
+                    }
+                    Ok(Value::Matrix(result))
+                }
+            }
+        }
+        // --- Flip ---
+        ("fliplr", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Matrix(m) => {
+                let (nrows, ncols) = (m.nrows(), m.ncols());
+                let mut result = m.clone();
+                for r in 0..nrows {
+                    for c in 0..ncols / 2 {
+                        let tmp = result[[r, c]];
+                        result[[r, c]] = result[[r, ncols - 1 - c]];
+                        result[[r, ncols - 1 - c]] = tmp;
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+        },
+        ("flipud", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Matrix(m) => {
+                let (nrows, ncols) = (m.nrows(), m.ncols());
+                let mut result = m.clone();
+                for c in 0..ncols {
+                    for r in 0..nrows / 2 {
+                        let tmp = result[[r, c]];
+                        result[[r, c]] = result[[nrows - 1 - r, c]];
+                        result[[nrows - 1 - r, c]] = tmp;
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+        },
+        // --- Find ---
+        ("find", 1) => find_nonzero(&args[0], usize::MAX),
+        ("find", 2) => {
+            let k = scalar_arg(&args[1], name, 2)?;
+            if k < 0.0 {
+                return Err("find: k must be non-negative".to_string());
+            }
+            find_nonzero(&args[0], k as usize)
+        }
+        // --- Unique ---
+        ("unique", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Matrix(m) => {
+                let mut vals: Vec<f64> = m.iter().copied().collect();
+                vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let mut unique: Vec<f64> = Vec::new();
+                for v in vals {
+                    if unique.last().is_none_or(|&last| last != v) {
+                        unique.push(v);
+                    }
+                }
+                let n = unique.len();
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec((1, n), unique).unwrap(),
+                ))
+            }
+        },
         _ => Err(format!("Unknown function: '{name}'")),
     }
 }
@@ -609,6 +903,14 @@ fn inv_matrix(m: &Array2<f64>) -> Result<Array2<f64>, String> {
 // Indexing
 // ---------------------------------------------------------------------------
 
+/// Creates a copy of `env` with `end` set to `dim_size`.
+/// Used by `eval_index` so that `end` in index expressions resolves to the correct dimension size.
+fn env_with_end(env: &Env, dim_size: usize) -> Env {
+    let mut e = env.clone();
+    e.insert("end".to_string(), Value::Scalar(dim_size as f64));
+    e
+}
+
 /// Evaluates `val(args...)` — indexing a variable with one or two index arguments.
 ///
 /// Disambiguation rule (Octave semantics): a name that exists in `Env` is always
@@ -617,17 +919,18 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
     match args.len() {
         0 => Err("Indexing requires at least one index".to_string()),
         1 => {
-            // v(i), v(1:3), v(:)
+            // v(i), v(1:3), v(:), v(end), v(end-1:end)
             match val {
                 Value::Scalar(n) => {
-                    // Scalar is a 1×1 matrix — only index 1 (or :) is valid
-                    match resolve_dim(&args[0], 1, env)? {
+                    let env1 = env_with_end(env, 1);
+                    match resolve_dim(&args[0], 1, &env1)? {
                         DimIdx::All | DimIdx::Indices(_) => Ok(Value::Scalar(*n)),
                     }
                 }
                 Value::Matrix(m) => {
                     let total = m.nrows() * m.ncols();
-                    match resolve_dim(&args[0], total, env)? {
+                    let env1 = env_with_end(env, total);
+                    match resolve_dim(&args[0], total, &env1)? {
                         DimIdx::All => {
                             // A(:) → column vector, column-major order
                             let mut flat = Vec::with_capacity(total);
@@ -670,13 +973,15 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
             }
         }
         2 => {
-            // A(i, j), A(:, j), A(i, :), A(:, :)
+            // A(i, j), A(:, j), A(i, :), A(:, :), A(end, :), A(1:end, 2)
             let (nrows, ncols) = match val {
                 Value::Scalar(_) => (1, 1),
                 Value::Matrix(m) => (m.nrows(), m.ncols()),
             };
-            let row_idx = resolve_dim(&args[0], nrows, env)?;
-            let col_idx = resolve_dim(&args[1], ncols, env)?;
+            let env_r = env_with_end(env, nrows);
+            let env_c = env_with_end(env, ncols);
+            let row_idx = resolve_dim(&args[0], nrows, &env_r)?;
+            let col_idx = resolve_dim(&args[1], ncols, &env_c)?;
 
             let rows: Vec<usize> = match row_idx {
                 DimIdx::All => (0..nrows).collect(),
