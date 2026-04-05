@@ -2,35 +2,67 @@
 
 ## One-argument functions
 
-| Function   | Description                                          |
-|------------|------------------------------------------------------|
-| `sqrt(x)`  | Square root                                          |
-| `abs(x)`   | Absolute value                                       |
-| `floor(x)` | Round down to integer                                |
-| `ceil(x)`  | Round up to integer                                  |
-| `round(x)` | Round to nearest integer                             |
-| `sign(x)`  | Sign: −1, 0, or 1                                    |
-| `log(x)`   | Base-10 logarithm                                    |
-| `ln(x)`    | Natural logarithm (base *e*)                         |
-| `exp(x)`   | *e* raised to the power *x*                          |
-| `sin(x)`   | Sine (radians)                                       |
-| `cos(x)`   | Cosine (radians)                                     |
-| `tan(x)`   | Tangent (radians)                                    |
-| `asin(x)`  | Inverse sine, result in radians                      |
-| `acos(x)`  | Inverse cosine, result in radians                    |
-| `atan(x)`  | Inverse tangent, result in radians                   |
+| Function   | Description                      | Example                           |
+|------------|----------------------------------|-----------------------------------|
+| `sqrt(x)`  | Square root                      | `sqrt(144)` → `12`                |
+| `abs(x)`   | Absolute value                   | `abs(-7)` → `7`                   |
+| `floor(x)` | Round down to integer            | `floor(2.9)` → `2`                |
+| `ceil(x)`  | Round up to integer              | `ceil(2.1)` → `3`                 |
+| `round(x)` | Round to nearest integer         | `round(2.5)` → `3`                |
+| `sign(x)`  | Sign: −1, 0, or 1                | `sign(-5)` → `-1`                 |
+| `log(x)`   | Base-10 logarithm                | `log(1000)` → `3`                 |
+| `ln(x)`    | Natural logarithm (base *e*)     | `ln(e)` → `1`                     |
+| `exp(x)`   | *e* raised to the power *x*      | `exp(1)` → `2.71828…`             |
+| `sin(x)`   | Sine (radians)                   | `sin(pi/6)` → `0.5`               |
+| `cos(x)`   | Cosine (radians)                 | `cos(0)` → `1`                    |
+| `tan(x)`   | Tangent (radians)                | `tan(pi/4)` → `1`                 |
+| `asin(x)`  | Inverse sine, result in radians  | `asin(1) * 180/pi` → `90`         |
+| `acos(x)`  | Inverse cosine, result in radians| `acos(0) * 180/pi` → `90`         |
+| `atan(x)`  | Inverse tangent, result in radians| `atan(1) * 180/pi` → `45`        |
+
+```
+sqrt(144)           →   12
+abs(-7)             →    7
+floor(2.9)          →    2
+ceil(2.1)           →    3
+round(2.5)          →    3
+sign(-5)            →   -1
+log(1000)           →    3
+ln(e)               →    1
+exp(ln(5))          →    5     (round-trip)
+sin(pi / 6)         →    0.5
+cos(pi / 3)         →    0.5
+tan(pi / 4)         →    1
+asin(0.5) * 180/pi  →   30
+acos(0.5) * 180/pi  →   60
+atan(1)   * 180/pi  →   45
+```
 
 ## Two-argument functions
 
-| Function        | Description                                              |
-|-----------------|----------------------------------------------------------|
-| `atan2(y, x)`   | Four-quadrant inverse tangent, result in radians         |
-| `mod(a, b)`     | Remainder, sign follows the divisor (Octave convention)  |
-| `rem(a, b)`     | Remainder, sign follows the dividend                     |
-| `max(a, b)`     | Larger of two values                                     |
-| `min(a, b)`     | Smaller of two values                                    |
-| `hypot(a, b)`   | Euclidean distance √(a²+b²), numerically stable          |
-| `log(x, base)`  | Logarithm of *x* to an arbitrary *base*                  |
+| Function        | Description                                              | Example                        |
+|-----------------|----------------------------------------------------------|--------------------------------|
+| `atan2(y, x)`   | Four-quadrant inverse tangent, result in radians         | `atan2(1,1)*180/pi` → `45`     |
+| `mod(a, b)`     | Remainder, sign follows the divisor (Octave convention)  | `mod(370, 360)` → `10`         |
+| `rem(a, b)`     | Remainder, sign follows the dividend                     | `rem(-1, 3)` → `-1`            |
+| `max(a, b)`     | Larger of two values                                     | `max(3, 7)` → `7`              |
+| `min(a, b)`     | Smaller of two values                                    | `min(3, 7)` → `3`              |
+| `hypot(a, b)`   | Euclidean distance √(a²+b²), numerically stable          | `hypot(3, 4)` → `5`            |
+| `log(x, base)`  | Logarithm of *x* to an arbitrary *base*                  | `log(8, 2)` → `3`              |
+
+```
+atan2(1, 1) * 180/pi   →   45
+atan2(0, -1) * 180/pi  →  180
+mod(370, 360)          →   10
+mod(-1, 3)             →    2     (result in [0, 3))
+rem(-1, 3)             →   -1     (same sign as dividend)
+max(3, 7)              →    7
+min(3, 7)              →    3
+hypot(3, 4)            →    5
+hypot(5, 12)           →   13
+log(8, 2)              →    3     (log base 2 of 8)
+log(100, 10)           →    2     (same as log(100))
+```
 
 ### `mod` vs `rem`
 
@@ -89,11 +121,22 @@ Calling a function with empty parentheses uses **ans** as the argument:
 
 ## Constants
 
-| Name  | Value                         |
-|-------|-------------------------------|
-| `pi`  | 3.14159265358979…             |
-| `e`   | 2.71828182845904…             |
-| `ans` | Result of last expression     |
+| Name  | Value                                             |
+|-------|---------------------------------------------------|
+| `pi`  | 3.14159265358979…                                 |
+| `e`   | 2.71828182845904…                                 |
+| `nan` | IEEE 754 Not-a-Number — propagates through arithmetic |
+| `inf` | Positive infinity (`-inf` for negative infinity)  |
+| `ans` | Result of last expression                         |
+
+`nan` and `inf` work exactly like numeric literals:
+
+```
+nan + 5         % → NaN
+nan == nan      % → 0   (IEEE 754: NaN is never equal to itself)
+1 / inf         % → 0
+-inf < inf      % → 1
+```
 
 `ans` can appear anywhere in an expression:
 

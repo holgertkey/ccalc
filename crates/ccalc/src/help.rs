@@ -250,11 +250,21 @@ Bitwise (non-negative integers only; works naturally with 0x/0b/0o literals)
     bitnot(5, 8)            →  250     (~5 in 8 bits = 0b11111010)
     bitnot(0, 32)           →  4294967295
 
+Constants
+    pi     3.14159265358979...
+    e      2.71828182845904...
+    nan    IEEE 754 Not-a-Number — propagates through all arithmetic
+           nan + 5  →  NaN     nan == nan  →  0  (always false)
+    inf    positive infinity   -inf for negative
+    ans    result of last expression
+
 Examples
     hypot(3, 4)                →   5
     atan2(1, 1) * 180 / pi     →  45
     log(8, 2)                  →   3
-    mod(370, 360)              →  10"
+    mod(370, 360)              →  10
+
+See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)"
     );
 }
 

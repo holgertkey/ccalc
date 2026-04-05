@@ -14,6 +14,7 @@
 - [Precision](./guide/precision.md)
 - [Configuration](./guide/configuration.md)
 - [Matrices](./guide/matrices.md)
+- [Vector & Data Utilities](./guide/vectors.md)
 - [Comparison & Logical Operators](./guide/logic.md)
 
 # Architecture

@@ -225,6 +225,23 @@ A(1, n)           % last element of row 1
 A(1:2, 1+1)       % rows 1-2, column 2
 ```
 
+### `end` keyword
+
+Inside any index expression, `end` resolves to the size of the dimension
+being indexed. Arithmetic on `end` is supported.
+
+```
+v = [10 20 30 40 50];
+v(end)           % → 50          last element
+v(end-1)         % → 40          second to last
+v(end-2:end)     % → [30 40 50]  last three
+
+A = [1 2 3; 4 5 6; 7 8 9];
+A(end, :)        % → [7 8 9]     last row
+A(:, end)        % → [3;6;9]     last column
+A(1:end-1, 2:end) % → [2 3; 5 6] all but last row, columns 2 onward
+```
+
 ## Semicolon inside matrix literals
 
 The `;` inside `[...]` is always a row separator, never a statement separator:
