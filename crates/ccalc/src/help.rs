@@ -15,10 +15,11 @@ pub fn print(topic: Option<&str>) {
         Some("matrices" | "matrix" | "mat") => print_matrices(),
         Some("logic" | "logical" | "comparison") => print_logic(),
         Some("examples" | "ex") => print_examples(),
+        Some("vectors" | "vector" | "utils") => print_vectors(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  matrices  logic  examples"
+                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  examples"
             );
         }
     }
@@ -62,7 +63,7 @@ Operators   + - * / ^        ^ is right-associative
             2(3+1) → 8       implicit multiplication
 Comparison  ==  ~=  <  >  <=  >=     return 1 (true) or 0 (false)
 Logical     ~expr  &&  ||             NOT, AND, OR
-Constants   pi  e  ans
+Constants   pi  e  ans  nan  inf
 Partial     [ 100 ]: / 4     starts with operator → uses ans
 
 1-arg   sqrt abs floor ceil round sign exp ln log
@@ -78,8 +79,12 @@ Matrix  [1 2 3]   [1;2;3]   [1 2;3 4]
         zeros(m,n)  ones(m,n)  eye(n)  size  det  inv  trace
 Range   1:5  →  [1 2 3 4 5]     1:2:9  →  [1 3 5 7 9]
         linspace(a,b,n)   [1:3, 10]  →  [1 2 3 10]
-Index   v(3)  v(2:4)  v(:)          1-based  (Octave convention)
-        A(i,j)  A(:,j)  A(i,:)  A(1:2, 2:3)
+Index   v(3)  v(2:4)  v(:)  v(end)  v(end-1:end)   1-based
+        A(i,j)  A(:,j)  A(i,:)  A(end,:)  A(1:end-1, 2:end)
+Vector  sum prod mean min max any all norm(v) norm(v,p)
+        cumsum cumprod  sort  find  unique
+        reshape(A,m,n)  fliplr  flipud
+NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -101,7 +106,8 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help bases       number bases, display switching
   help vars        variables and workspace
   help script      pipe/script mode, semicolons, disp, fprintf
-  help matrices    matrix literals, arithmetic, ranges, display
+  help matrices    matrix literals, arithmetic, ranges, indexing
+  help vectors     nan/inf, reductions, sort/find/unique, end, reshape
   help logic       comparison and logical operators, masks
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
@@ -315,6 +321,8 @@ Built-in variables
     ans    result of last expression  (initialized to 0 on startup)
     pi     3.14159265358979...
     e      2.71828182845904...
+    nan    IEEE 754 Not-a-Number  (propagates through arithmetic)
+    inf    positive infinity  (use -inf for negative)
 
 View and clear
     who            list all defined variables and their values
@@ -464,6 +472,12 @@ Indexing  (1-based — Octave convention)
     Variables in env shadow function names (same as Octave):
     v = [10 20 30]; v(2)  →  20
 
+end keyword — resolves to the size of the indexed dimension
+    v(end)            last element
+    v(end-2:end)      last three elements
+    A(end, :)         last row
+    A(1:end-1, 2:end) all rows except last, columns 2 to end
+
 Display
     A =
        1   2
@@ -531,6 +545,91 @@ Combining two masks with .*  (element-wise AND)
 
 See also: help matrices, help syntax
 Example:  ccalc examples/logic.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help vectors
+// ---------------------------------------------------------------------------
+
+fn print_vectors() {
+    println!(
+        "\
+VECTOR UTILITIES & SPECIAL CONSTANTS
+
+Special constants
+    nan    IEEE 754 Not-a-Number — propagates through all arithmetic
+           nan + 5  →  NaN     nan == nan  →  0  (always false)
+    inf    Positive infinity.  Use -inf for negative infinity.
+    nan(n)          n×n matrix of NaN
+    nan(m, n)       m×n matrix of NaN
+
+Predicates  (element-wise — work on scalars and matrices)
+    isnan(x)        1.0 if NaN, else 0.0
+    isinf(x)        1.0 if ±Inf, else 0.0
+    isfinite(x)     1.0 if finite, else 0.0
+
+Reductions
+    For vectors (1×N or N×1) these collapse to a scalar.
+    For M×N matrices (M>1, N>1) they operate column-wise, returning 1×N.
+
+    sum(v)          sum of elements
+    prod(v)         product of elements
+    mean(v)         arithmetic mean
+    min(v)          minimum  (1-arg form; 2-arg min(a,b) still works)
+    max(v)          maximum  (1-arg form)
+    any(v)          1 if any element is non-zero, else 0
+    all(v)          1 if all elements are non-zero, else 0
+    norm(v)         Euclidean (L2) norm
+    norm(v, p)      Lp norm  (norm(v, inf) = max of absolute values)
+
+    sum([1 2 3 4])       →  10
+    sum([1 2; 3 4])      →  [4  6]     (column sums)
+    any([0 1 0])         →  1
+    all([1 2 3] > 0)     →  1
+    norm([3 4])          →  5
+
+Cumulative operations  (return same shape as input)
+    cumsum(v)       cumulative sum
+    cumprod(v)      cumulative product
+
+    cumsum([1 2 3 4])    →  [1  3  6  10]
+    cumprod([1 2 3 4])   →  [1  2  6  24]
+
+Sorting and searching
+    sort(v)             sort ascending  (vectors only)
+    find(v)             1-based column-major indices of non-zero elements
+    find(v, k)          first k non-zero indices
+    unique(v)           sorted unique elements as a 1×N row vector
+
+    sort([3 1 4 1 5])          →  [1  1  3  4  5]
+    find([0 3 0 5])            →  [2  4]
+    find([1 0 2 0 3], 2)       →  [1  3]
+    unique([3 1 4 1 5 9 2 6])  →  [1  2  3  4  5  6  9]
+
+Reshape and flip
+    reshape(A, m, n)    reshape to m×n  (column-major element order)
+    fliplr(v)           reverse column order  (mirror left↔right)
+    flipud(v)           reverse row order    (mirror up↔down)
+
+    reshape(1:6, 2, 3)  →  [1 3 5; 2 4 6]
+    fliplr([1 2 3])     →  [3 2 1]
+    flipud([1;2;3])     →  [3;2;1]
+
+end in index expressions
+    Inside index parentheses, end resolves to the size of that dimension.
+    Arithmetic on end is fully supported.
+
+    v(end)              last element
+    v(end-1)            second to last
+    v(end-2:end)        last three elements
+    v(1:2:end)          every other element (first to last)
+    A(end, :)           last row
+    A(:, end)           last column
+    A(1:end-1, 2:end)   submatrix: all rows except last, col 2 to end
+
+See also: help matrices  help functions
+Example:  ccalc examples/vector_utils.calc"
     );
 }
 
@@ -657,6 +756,7 @@ Script files  (see examples/ directory)
     ccalc examples/matrix_ops.calc
     ccalc examples/sequences.calc
     ccalc examples/logic.calc
-    ccalc examples/bitwise.calc"
+    ccalc examples/bitwise.calc
+    ccalc examples/vector_utils.calc"
     );
 }

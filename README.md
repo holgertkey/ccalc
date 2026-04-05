@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.11.0+002** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.11.0+003** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -178,6 +178,8 @@ A number or closing parenthesis immediately before `(` multiplies without an exp
 |-------|-------------------------------|
 | `pi`  | 3.14159265358979...           |
 | `e`   | 2.71828182845904...           |
+| `nan` | Not-a-Number (IEEE 754 NaN)   |
+| `inf` | Positive infinity             |
 | `ans` | Result of the last expression |
 
 `ans` is the implicit accumulator — it is updated after every expression and can be used anywhere in an expression:
@@ -435,6 +437,91 @@ ans =
 ans =
    2   3
    5   6
+```
+
+---
+
+## Vector & Data Utilities
+
+### Special constants and predicates
+
+| Function / Constant | Description                                    |
+|---------------------|------------------------------------------------|
+| `nan`               | IEEE 754 Not-a-Number (propagates through arithmetic) |
+| `inf`               | Positive infinity (`-inf` for negative)        |
+| `nan(n)`            | n×n matrix filled with NaN                     |
+| `nan(m, n)`         | m×n matrix filled with NaN                     |
+| `isnan(x)`          | 1 if NaN, else 0 (element-wise)                |
+| `isinf(x)`          | 1 if ±Inf, else 0 (element-wise)               |
+| `isfinite(x)`       | 1 if finite, else 0 (element-wise)             |
+
+### Reductions
+
+For **vectors** (1×N or N×1) these return a scalar. For **M×N matrices** (M>1, N>1) they operate column-wise and return a 1×N row vector.
+
+| Function      | Description                             |
+|---------------|-----------------------------------------|
+| `sum(v)`      | Sum of elements                         |
+| `prod(v)`     | Product of elements                     |
+| `mean(v)`     | Arithmetic mean                         |
+| `min(v)`      | Minimum element                         |
+| `max(v)`      | Maximum element                         |
+| `any(v)`      | 1 if any element is non-zero            |
+| `all(v)`      | 1 if all elements are non-zero          |
+| `norm(v)`     | Euclidean (L2) norm                     |
+| `norm(v, p)`  | General Lp norm (`p = inf` supported)   |
+| `cumsum(v)`   | Cumulative sum (same shape as input)    |
+| `cumprod(v)`  | Cumulative product (same shape)         |
+
+### Data manipulation
+
+| Function           | Description                                               |
+|--------------------|-----------------------------------------------------------|
+| `sort(v)`          | Sort ascending (vectors only)                             |
+| `reshape(A, m, n)` | Reshape to m×n, column-major (MATLAB element order)       |
+| `fliplr(v)`        | Reverse column order                                      |
+| `flipud(v)`        | Reverse row order                                         |
+| `find(v)`          | 1-based column-major indices of non-zero elements         |
+| `find(v, k)`       | First `k` non-zero indices                                |
+| `unique(v)`        | Sorted unique elements as a 1×N row vector                |
+
+### `end` in index expressions
+
+Inside `(...)` index positions, `end` resolves to the length of that dimension.
+Arithmetic on `end` is fully supported:
+
+```
+[ 0 ]: v = [10 20 30 40 50];
+[ [1×5] ]: v(end)
+[ 50 ]: v(end-1)
+[ 40 ]: v(3:end)
+ans =
+   30   40   50
+
+[ [1×3] ]: A = [1:4; 5:8; 9:12];
+[ [3×4] ]: A(end, :)
+ans =
+    9   10   11   12
+
+[ [1×4] ]: A(1:end-1, 2:end)
+ans =
+   2   3   4
+   6   7   8
+```
+
+```
+[ 0 ]: data = [3 1 4 1 5 9 2 6];
+[ [1×8] ]: sort(data)
+ans =
+   1   1   2   3   4   5   6   9
+
+[ [1×8] ]: find(data > 4)
+ans =
+   5   6   8
+
+[ [1×3] ]: cumsum(data)
+ans =
+    3   4   8   9   14   23   25   31
 ```
 
 ---
@@ -771,6 +858,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `sequences.calc`      | Ranges, linspace, indexing, slicing, finite differences |
 | `logic.calc`          | Comparison, logical NOT, `&&`/`\|\|`, masks, soft clipping |
 | `bitwise.calc`        | Bitmask construction, register bit fields, RGB colour packing |
+| `vector_utils.calc`   | `nan`/`inf`, reductions, sort/find/unique, `end` indexing, reshape/flip |
 
 ```bash
 ccalc < examples/mortgage.ccalc

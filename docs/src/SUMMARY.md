@@ -33,3 +33,4 @@
 - [Phase 5 — Range Operator](./ccalc/phase5-range.md)
 - [Phase 6 — Indexing](./ccalc/phase6-indexing.md)
 - [Phase 7 — Comparison & Logical](./ccalc/phase7-logic.md)
+- [Phase 7.5 — Vector Utilities](./ccalc/phase75-vector-utils.md)

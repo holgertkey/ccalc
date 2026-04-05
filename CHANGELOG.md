@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.0+003] - 2026-04-05
+
+### Added
+
+- **Phase 7.5 — Special constants, vector utilities, and indexing enhancements**:
+  - `nan` and `inf` as parser-level constants (like `pi`/`e`); `-inf` also works
+  - `isnan(x)`, `isinf(x)`, `isfinite(x)` — element-wise predicates (scalar and matrix)
+  - `nan(n)` / `nan(m, n)` — matrix filled with NaN (complements `zeros`/`ones`)
+  - Vector reductions — for vectors: scalar result; for M×N matrices: 1×N column-wise result:
+    - `sum(v)`, `prod(v)`, `mean(v)`, `min(v)`, `max(v)` (1-arg forms)
+    - `any(v)`, `all(v)` — reduce to 0/1 logical result
+    - `norm(v)` — Euclidean (L2) norm; `norm(v, p)` — general Lp norm
+  - Cumulative operations (same shape as input):
+    - `cumsum(v)` — cumulative sum; `cumprod(v)` — cumulative product
+  - Data manipulation:
+    - `sort(v)` — ascending sort (vectors only)
+    - `reshape(A, m, n)` — reshape with column-major (MATLAB) element order
+    - `fliplr(v)` — reverse column order; `flipud(v)` — reverse row order
+    - `find(v)` — 1-based column-major indices of non-zero elements; `find(v, k)` — first `k`
+    - `unique(v)` — sorted unique elements as a 1×N row vector
+  - `end` keyword in index expressions: resolves to the size of the indexed dimension
+    - `v(end)`, `v(end-1)`, `v(3:end)`, `seq(1:2:end)`, `A(end, :)`, `A(1:end-1, 2:end)`
+    - Arithmetic on `end` is fully supported: `v(end-2:end)`
+- New example file `examples/vector_utils.calc` demonstrating all Phase 7.5 features
+
 ## [0.11.0+002] - 2026-04-04
 
 ### Added
