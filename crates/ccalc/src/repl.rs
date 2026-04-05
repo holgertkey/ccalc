@@ -1051,7 +1051,6 @@ fn clear_screen() {
     std::io::stdout().flush().expect("Failed to flush stdout");
 }
 
-
 #[cfg(test)]
 #[path = "repl_tests.rs"]
 mod tests;

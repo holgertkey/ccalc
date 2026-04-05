@@ -742,7 +742,6 @@ fn parse_matrix(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(Expr::Matrix(rows))
 }
 
-
 #[cfg(test)]
 #[path = "parser_tests.rs"]
 mod tests;

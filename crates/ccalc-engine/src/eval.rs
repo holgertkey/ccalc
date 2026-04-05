@@ -1166,7 +1166,6 @@ fn trim_sci(s: &str) -> String {
     }
 }
 
-
 #[cfg(test)]
 #[path = "eval_tests.rs"]
 mod tests;

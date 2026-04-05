@@ -431,9 +431,7 @@ fn test_evaluate_partial_adds_to_ans() {
 fn test_evaluate_assignment() {
     let mut env = Env::new();
     let result = evaluate("x = 7", &mut env).unwrap();
-    assert!(
-        matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0)
-    );
+    assert!(matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0));
     assert_eq!(env.get("x"), Some(&Value::Scalar(7.0)));
 }
 
@@ -449,9 +447,7 @@ fn test_evaluate_expression_always_updates_ans() {
 fn test_evaluate_assignment_does_not_update_ans() {
     let mut env = new_env();
     let result = evaluate("x = 7", &mut env).unwrap();
-    assert!(
-        matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0)
-    );
+    assert!(matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0));
     assert_eq!(env.get("x"), Some(&Value::Scalar(7.0)));
     assert_eq!(ans(&env), 0.0);
 }
@@ -551,9 +547,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                     s.strip_prefix('\'').and_then(|s| s.strip_suffix('\''))
                 {
                     process_escapes(inner)
-                } else if let Some(inner) =
-                    s.strip_prefix('"').and_then(|s| s.strip_suffix('"'))
-                {
+                } else if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
                     process_escapes(inner)
                 } else {
                     "Error: fprintf requires a string literal".to_string()
