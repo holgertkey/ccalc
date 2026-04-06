@@ -67,9 +67,11 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         Expr::UnaryNot(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
-            Value::Complex(re, im) => {
-                Ok(Value::Scalar(if re == 0.0 && im == 0.0 { 1.0 } else { 0.0 }))
-            }
+            Value::Complex(re, im) => Ok(Value::Scalar(if re == 0.0 && im == 0.0 {
+                1.0
+            } else {
+                0.0
+            })),
         },
         Expr::BinOp(left, op, right) => {
             let l = eval(left, env)?;
@@ -350,7 +352,7 @@ fn complex_binop(re1: f64, im1: f64, op: &Op, re2: f64, im2: f64) -> Result<Valu
                     return Ok(Value::Scalar(1.0));
                 }
                 // positive power: repeated squaring
-                let abs_n = n.unsigned_abs() as u64;
+                let abs_n = n.unsigned_abs();
                 let (mut rr, mut ri) = (1.0_f64, 0.0_f64);
                 let (mut br, mut bi) = (re1, im1);
                 let mut exp = abs_n;
@@ -399,7 +401,11 @@ fn complex_binop(re1: f64, im1: f64, op: &Op, re2: f64, im2: f64) -> Result<Valu
 /// Constructs a `Value::Complex` or collapses to `Value::Scalar` when `im` is exactly zero.
 #[inline]
 fn make_complex(re: f64, im: f64) -> Value {
-    if im == 0.0 { Value::Scalar(re) } else { Value::Complex(re, im) }
+    if im == 0.0 {
+        Value::Scalar(re)
+    } else {
+        Value::Complex(re, im)
+    }
 }
 
 fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {

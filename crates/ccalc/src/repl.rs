@@ -4,7 +4,9 @@ use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
 use ccalc_engine::env::{Env, Value, config_dir, load_workspace_default, save_workspace_default};
-use ccalc_engine::eval::{Base, eval, format_complex, format_number, format_scalar, format_value_full};
+use ccalc_engine::eval::{
+    Base, eval, format_complex, format_number, format_scalar, format_value_full,
+};
 use ccalc_engine::parser::{Stmt, is_partial, parse};
 
 /// Result of evaluating one input line.
@@ -720,7 +722,11 @@ fn print_who(env: &Env, precision: usize, base: Base) {
                 scalars.push(format!("{} = {}", name, format_scalar(*n, precision, base)));
             }
             Value::Complex(re, im) => {
-                scalars.push(format!("{} = {}", name, format_complex(*re, *im, precision)));
+                scalars.push(format!(
+                    "{} = {}",
+                    name,
+                    format_complex(*re, *im, precision)
+                ));
             }
             Value::Matrix(m) => {
                 matrices.push(format!("{} = [{}×{} double]", name, m.nrows(), m.ncols()));

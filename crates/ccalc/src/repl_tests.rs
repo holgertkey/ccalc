@@ -535,9 +535,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                             }
                         }
                         Value::Scalar(n) => output.push(format_scalar(*n, precision, base)),
-                        Value::Complex(re, im) => {
-                            output.push(format_complex(*re, *im, precision))
-                        }
+                        Value::Complex(re, im) => output.push(format_complex(*re, *im, precision)),
                     },
                     Err(e) => output.push(format!("Error: {e}")),
                 }
