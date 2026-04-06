@@ -4,7 +4,7 @@ use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
 use ccalc_engine::env::{Env, Value, config_dir, load_workspace_default, save_workspace_default};
-use ccalc_engine::eval::{Base, eval, format_number, format_scalar, format_value_full};
+use ccalc_engine::eval::{Base, eval, format_complex, format_number, format_scalar, format_value_full};
 use ccalc_engine::parser::{Stmt, is_partial, parse};
 
 /// Result of evaluating one input line.
@@ -128,6 +128,8 @@ fn ans(env: &Env) -> f64 {
 fn new_env() -> Env {
     let mut env = Env::new();
     env.insert("ans".to_string(), Value::Scalar(0.0));
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    env.insert("j".to_string(), Value::Complex(0.0, 1.0));
     env
 }
 
@@ -202,6 +204,7 @@ fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
     match env.get("ans") {
         Some(Value::Scalar(n)) => format_scalar(*n, precision, base),
         Some(Value::Matrix(m)) => format!("[{}×{}]", m.nrows(), m.ncols()),
+        Some(Value::Complex(re, im)) => format_complex(*re, *im, precision),
         None => "0".to_string(),
     }
 }
@@ -391,6 +394,9 @@ pub fn run() {
                                 Value::Scalar(v) => {
                                     println!("{name} = {}", format_scalar(*v, precision, base));
                                 }
+                                Value::Complex(re, im) => {
+                                    println!("{name} = {}", format_complex(*re, *im, precision));
+                                }
                             },
                             EvalResult::Value(val) => match &val {
                                 Value::Matrix(_) => {
@@ -412,6 +418,9 @@ pub fn run() {
                                     if show_all_bases {
                                         print_all_bases(*v, precision);
                                     }
+                                }
+                                Value::Complex(re, im) => {
+                                    println!("{}", format_complex(*re, *im, precision));
                                 }
                             },
                         }
@@ -458,6 +467,9 @@ pub fn run_expr(expr: &str) {
                 Value::Scalar(n) => {
                     println!("{} = {}", name, format_scalar(*n, 10, base));
                 }
+                Value::Complex(re, im) => {
+                    println!("{} = {}", name, format_complex(*re, *im, 10));
+                }
             },
             EvalResult::Value(v) => match &v {
                 Value::Matrix(_) => {
@@ -472,6 +484,9 @@ pub fn run_expr(expr: &str) {
                     } else {
                         println!("{}", format_scalar(*n, 10, base));
                     }
+                }
+                Value::Complex(re, im) => {
+                    println!("{}", format_complex(*re, *im, 10));
                 }
             },
         },
@@ -597,6 +612,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                 Value::Scalar(n) => {
                                     println!("{} = {}", name, format_scalar(*n, precision, base));
                                 }
+                                Value::Complex(re, im) => {
+                                    println!("{} = {}", name, format_complex(*re, *im, precision));
+                                }
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Matrix(_) => {
@@ -621,6 +639,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                     } else {
                                         println!("{}", format_scalar(*n, precision, base));
                                     }
+                                }
+                                Value::Complex(re, im) => {
+                                    println!("{}", format_complex(*re, *im, precision));
                                 }
                             },
                         }
@@ -681,6 +702,7 @@ fn print_who(env: &Env, precision: usize, base: Base) {
         match val {
             Value::Scalar(n) => println!("ans = {}", format_scalar(*n, precision, base)),
             Value::Matrix(m) => println!("ans = [{}×{} double]", m.nrows(), m.ncols()),
+            Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, precision)),
         }
     }
 
@@ -696,6 +718,9 @@ fn print_who(env: &Env, precision: usize, base: Base) {
         match val {
             Value::Scalar(n) => {
                 scalars.push(format!("{} = {}", name, format_scalar(*n, precision, base)));
+            }
+            Value::Complex(re, im) => {
+                scalars.push(format!("{} = {}", name, format_complex(*re, *im, precision)));
             }
             Value::Matrix(m) => {
                 matrices.push(format!("{} = [{}×{} double]", name, m.nrows(), m.ncols()));
@@ -788,11 +813,16 @@ fn expand_vars_for_display(expr: &str, env: &Env, base: Base) -> Option<String> 
                     break;
                 }
             }
-            if let Some(Value::Scalar(val)) = env.get(&ident) {
-                result.push_str(&format_for_base(*val, base));
-                replaced = true;
-            } else {
-                result.push_str(&ident);
+            match env.get(&ident) {
+                Some(Value::Scalar(val)) => {
+                    result.push_str(&format_for_base(*val, base));
+                    replaced = true;
+                }
+                Some(Value::Complex(re, im)) => {
+                    result.push_str(&format_complex(*re, *im, 10));
+                    replaced = true;
+                }
+                _ => result.push_str(&ident),
             }
         } else {
             result.push(c);
@@ -1001,6 +1031,7 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
                 }
             }
             Value::Scalar(n) => println!("{}", format_scalar(*n, precision, base)),
+            Value::Complex(re, im) => println!("{}", format_complex(*re, *im, precision)),
         },
         Err(e) => eprintln!("Error: {e}"),
     }

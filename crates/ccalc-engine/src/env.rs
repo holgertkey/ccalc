@@ -8,13 +8,15 @@ use ndarray::Array2;
 pub enum Value {
     Scalar(f64),
     Matrix(Array2<f64>),
+    /// Complex number `re + im*i`.
+    Complex(f64, f64),
 }
 
 impl Value {
     pub fn as_scalar(&self) -> Option<f64> {
         match self {
             Value::Scalar(n) => Some(*n),
-            Value::Matrix(_) => None,
+            Value::Matrix(_) | Value::Complex(_, _) => None,
         }
     }
 }

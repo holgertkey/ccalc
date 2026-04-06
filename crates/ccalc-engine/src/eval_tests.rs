@@ -711,3 +711,285 @@ fn test_eval_inv_singular() {
     let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
     assert!(eval(&expr, &env).is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8 — Complex numbers
+// ---------------------------------------------------------------------------
+
+fn env_with_ij() -> Env {
+    let mut env = Env::new();
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    env
+}
+
+fn eval_parse(input: &str, env: &Env) -> Result<Value, String> {
+    use crate::parser::{Stmt, parse};
+    let stmt = parse(input)?;
+    let expr = match stmt {
+        Stmt::Expr(e) => e,
+        Stmt::Assign(_, e) => e,
+    };
+    eval(&expr, env)
+}
+
+#[test]
+fn test_complex_imaginary_unit() {
+    let env = env_with_ij();
+    assert_eq!(env.get("i"), Some(&Value::Complex(0.0, 1.0)));
+    assert_eq!(env.get("j"), Some(&Value::Complex(0.0, 1.0)));
+}
+
+#[test]
+fn test_complex_literal_4i() {
+    // 4*i = 0 + 4i
+    let env = env_with_ij();
+    let result = eval_parse("4*i", &env).unwrap();
+    assert_eq!(result, Value::Complex(0.0, 4.0));
+}
+
+#[test]
+fn test_complex_literal_3_plus_4i() {
+    // 3 + 4*i
+    let env = env_with_ij();
+    let result = eval_parse("3 + 4*i", &env).unwrap();
+    assert_eq!(result, Value::Complex(3.0, 4.0));
+}
+
+#[test]
+fn test_complex_add() {
+    let mut env = empty_env();
+    env.insert("z1".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("z2".to_string(), Value::Complex(3.0, 4.0));
+    let result = eval_parse("z1 + z2", &env).unwrap();
+    assert_eq!(result, Value::Complex(4.0, 6.0));
+}
+
+#[test]
+fn test_complex_sub() {
+    let mut env = empty_env();
+    env.insert("z1".to_string(), Value::Complex(5.0, 6.0));
+    env.insert("z2".to_string(), Value::Complex(1.0, 2.0));
+    let result = eval_parse("z1 - z2", &env).unwrap();
+    assert_eq!(result, Value::Complex(4.0, 4.0));
+}
+
+#[test]
+fn test_complex_mul() {
+    // (1+2i)(3+4i) = (3-8) + (4+6)i = -5 + 10i
+    let mut env = empty_env();
+    env.insert("z1".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("z2".to_string(), Value::Complex(3.0, 4.0));
+    let result = eval_parse("z1 * z2", &env).unwrap();
+    assert_eq!(result, Value::Complex(-5.0, 10.0));
+}
+
+#[test]
+fn test_complex_mul_gives_real() {
+    // (1+i)(1-i) = 1 - i + i - i² = 2 + 0i → should collapse to Scalar
+    let mut env = empty_env();
+    env.insert("z1".to_string(), Value::Complex(1.0, 1.0));
+    env.insert("z2".to_string(), Value::Complex(1.0, -1.0));
+    let result = eval_parse("z1 * z2", &env).unwrap();
+    assert_eq!(result, Value::Scalar(2.0));
+}
+
+#[test]
+fn test_complex_div() {
+    // (1+2i)/(1+i) = ((1+2)(1+1) + (2-1)i) ... let's compute:
+    // (1+2i)/(1+i) = ((1*1+2*1) + (2*1-1*1)i) / (1+1) = (3+1i)/2 = 1.5 + 0.5i
+    let mut env = empty_env();
+    env.insert("z1".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("z2".to_string(), Value::Complex(1.0, 1.0));
+    let result = eval_parse("z1 / z2", &env).unwrap();
+    assert_eq!(result, Value::Complex(1.5, 0.5));
+}
+
+#[test]
+fn test_complex_plus_scalar() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("x".to_string(), Value::Scalar(3.0));
+    let result = eval_parse("z + x", &env).unwrap();
+    assert_eq!(result, Value::Complex(4.0, 2.0));
+}
+
+#[test]
+fn test_scalar_plus_complex() {
+    let mut env = empty_env();
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    env.insert("z".to_string(), Value::Complex(1.0, 2.0));
+    let result = eval_parse("x + z", &env).unwrap();
+    assert_eq!(result, Value::Complex(6.0, 2.0));
+}
+
+#[test]
+fn test_complex_unary_minus() {
+    let expr = Expr::UnaryMinus(Box::new(Expr::Var("z".to_string())));
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(3.0, -4.0));
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Complex(-3.0, 4.0));
+}
+
+#[test]
+fn test_complex_unary_not() {
+    let expr = Expr::UnaryNot(Box::new(Expr::Var("z".to_string())));
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(3.0, 4.0));
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Scalar(0.0));
+    env.insert("z".to_string(), Value::Complex(0.0, 0.0));
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Scalar(1.0));
+}
+
+#[test]
+fn test_complex_transpose_is_conjugate() {
+    let expr = Expr::Transpose(Box::new(Expr::Var("z".to_string())));
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(3.0, 4.0));
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Complex(3.0, -4.0));
+}
+
+#[test]
+fn test_complex_eq() {
+    let mut env = empty_env();
+    env.insert("z1".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("z2".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("z3".to_string(), Value::Complex(1.0, 3.0));
+    let eq = eval_parse("z1 == z2", &env).unwrap();
+    assert_eq!(eq, Value::Scalar(1.0));
+    let ne = eval_parse("z1 == z3", &env).unwrap();
+    assert_eq!(ne, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_complex_ordering_error() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(1.0, 2.0));
+    assert!(eval_parse("z > 0", &env).is_err());
+    assert!(eval_parse("z < 0", &env).is_err());
+}
+
+#[test]
+fn test_complex_pow_squared() {
+    // (1+i)^2 = 1 + 2i + i² = 1 + 2i - 1 = 2i
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(1.0, 1.0));
+    let result = eval_parse("z^2", &env).unwrap();
+    // result should be approximately 0 + 2i
+    match result {
+        Value::Complex(re, im) => {
+            assert!((re).abs() < 1e-10, "re = {re}");
+            assert!((im - 2.0).abs() < 1e-10, "im = {im}");
+        }
+        Value::Scalar(n) if n.abs() < 1e-10 => {} // collapsed real near 0
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_builtin_real_imag() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(3.0, 4.0));
+    let re = eval_parse("real(z)", &env).unwrap();
+    let im = eval_parse("imag(z)", &env).unwrap();
+    assert_eq!(re, Value::Scalar(3.0));
+    assert_eq!(im, Value::Scalar(4.0));
+    // imag of a real scalar = 0
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    let im2 = eval_parse("imag(x)", &env).unwrap();
+    assert_eq!(im2, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_builtin_abs_complex() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(3.0, 4.0));
+    let result = eval_parse("abs(z)", &env).unwrap();
+    assert_eq!(result, Value::Scalar(5.0));
+}
+
+#[test]
+fn test_builtin_angle() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(0.0, 1.0)); // i → angle = π/2
+    let result = eval_parse("angle(z)", &env).unwrap();
+    match result {
+        Value::Scalar(n) => assert!((n - std::f64::consts::FRAC_PI_2).abs() < 1e-10),
+        other => panic!("{:?}", other),
+    }
+}
+
+#[test]
+fn test_builtin_conj() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(3.0, 4.0));
+    let result = eval_parse("conj(z)", &env).unwrap();
+    assert_eq!(result, Value::Complex(3.0, -4.0));
+}
+
+#[test]
+fn test_builtin_complex_construct() {
+    let env = empty_env();
+    let result = eval_parse("complex(3, 4)", &env).unwrap();
+    assert_eq!(result, Value::Complex(3.0, 4.0));
+    // im = 0 → Scalar
+    let result2 = eval_parse("complex(5, 0)", &env).unwrap();
+    assert_eq!(result2, Value::Scalar(5.0));
+}
+
+#[test]
+fn test_builtin_isreal() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(1.0, 2.0));
+    env.insert("x".to_string(), Value::Scalar(3.0));
+    assert_eq!(eval_parse("isreal(z)", &env).unwrap(), Value::Scalar(0.0));
+    assert_eq!(eval_parse("isreal(x)", &env).unwrap(), Value::Scalar(1.0));
+}
+
+#[test]
+fn test_format_complex_display() {
+    assert_eq!(format_complex(3.0, 4.0, 10), "3 + 4i");
+    assert_eq!(format_complex(3.0, -4.0, 10), "3 - 4i");
+    assert_eq!(format_complex(0.0, 1.0, 10), "i");
+    assert_eq!(format_complex(0.0, -1.0, 10), "-i");
+    assert_eq!(format_complex(0.0, 2.0, 10), "2i");
+    assert_eq!(format_complex(3.0, 0.0, 10), "3");
+    assert_eq!(format_complex(1.0, 1.0, 10), "1 + i");
+    assert_eq!(format_complex(1.0, -1.0, 10), "1 - i");
+}
+
+#[test]
+fn test_complex_matrix_literal_error() {
+    let env = env_with_ij();
+    // [1+2i] should error since complex in matrix is not supported
+    let result = eval_parse("[1+2*i, 3]", &env);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_scalar_arg_accepts_complex_with_zero_im() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(4.0, 0.0));
+    // sqrt(complex(4, 0)) should work since im == 0
+    let result = eval_parse("sqrt(z)", &env).unwrap();
+    assert_eq!(result, Value::Scalar(2.0));
+}
+
+#[test]
+fn test_complex_pow_zero_base() {
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(0.0, 0.0));
+    // 0^2 = 0
+    let result = eval_parse("z^2", &env).unwrap();
+    assert_eq!(result, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_complex_inv_builtin() {
+    // inv(2+0i) = 0.5
+    let mut env = empty_env();
+    env.insert("z".to_string(), Value::Complex(2.0, 0.0));
+    let result = eval_parse("inv(z)", &env).unwrap();
+    assert_eq!(result, Value::Scalar(0.5));
+}

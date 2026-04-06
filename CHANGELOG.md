@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-04-06
+
+### Added
+
+- **Phase 8 — Complex numbers**:
+  - `Value::Complex(f64, f64)` variant added to the `Value` enum
+  - `i` and `j` pre-seeded in `Env` at startup as `Complex(0.0, 1.0)` (Octave semantics; user can reassign)
+  - **Syntax**: `3 + 4i` works via implicit multiply: `4 * i` → `Complex(0, 4)`, `3 + 4*i` → `Complex(3, 4)`
+  - **Arithmetic**: `+`, `-`, `*`, `/`, `^` / `.^` for all Complex↔Scalar and Complex↔Complex combinations
+  - **Unary operators**: `-z` (negate), `~z` (logical NOT), `z'` (conjugate transpose for scalars)
+  - **Display**: `a + bi`, `a - bi`, `bi`, `a + i`, `a` (when im is exactly 0)
+  - **Comparison**: `==` and `~=` compare both real and imaginary parts; `<`, `>`, `<=`, `>=` return an error
+  - **Logical**: `&&` and `||` treat complex as nonzero when `re ≠ 0` or `im ≠ 0`
+  - **Built-in functions**:
+    - `real(z)` — real part (works on scalars: returns unchanged)
+    - `imag(z)` — imaginary part (returns 0 for real scalars)
+    - `abs(z)` — modulus `sqrt(re²+im²)` (overloads existing scalar and matrix `abs`)
+    - `angle(z)` — argument `atan2(im, re)` in radians
+    - `conj(z)` — complex conjugate `a − bi`
+    - `complex(re, im)` — construct from two reals; collapses to Scalar when im is 0
+    - `isreal(z)` — `1` if `im == 0`, else `0`
+  - **Scope boundary**: matrix literals containing Complex elements return an error
+  - **Workspace**: `ws`/`wl` skip complex variables (same policy as matrices)
+  - `scalar_arg` now accepts `Complex` with `im == 0` as a real scalar for all built-in functions
+
 ## [0.11.0+003] - 2026-04-05
 
 ### Added

@@ -62,10 +62,14 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         Expr::UnaryMinus(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
+            Value::Complex(re, im) => Ok(Value::Complex(-re, -im)),
         },
         Expr::UnaryNot(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
+            Value::Complex(re, im) => {
+                Ok(Value::Scalar(if re == 0.0 && im == 0.0 { 1.0 } else { 0.0 }))
+            }
         },
         Expr::BinOp(left, op, right) => {
             let l = eval(left, env)?;
@@ -103,6 +107,12 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                             }
                             row_vals.extend(m.iter().copied());
                         }
+                        Value::Complex(_, _) => {
+                            return Err(
+                                "Complex elements in matrix literals are not supported yet"
+                                    .to_string(),
+                            );
+                        }
                     }
                 }
                 all_rows.push(row_vals);
@@ -129,21 +139,28 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         Expr::Transpose(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
+            Value::Complex(re, im) => Ok(Value::Complex(re, -im)),
         },
         Expr::Range(start_expr, step_expr, stop_expr) => {
             let start = match eval(start_expr, env)? {
                 Value::Scalar(n) => n,
-                Value::Matrix(_) => return Err("Range bounds must be scalars".to_string()),
+                Value::Matrix(_) | Value::Complex(_, _) => {
+                    return Err("Range bounds must be real scalars".to_string());
+                }
             };
             let stop = match eval(stop_expr, env)? {
                 Value::Scalar(n) => n,
-                Value::Matrix(_) => return Err("Range bounds must be scalars".to_string()),
+                Value::Matrix(_) | Value::Complex(_, _) => {
+                    return Err("Range bounds must be real scalars".to_string());
+                }
             };
             let step = match step_expr {
                 None => 1.0,
                 Some(s) => match eval(s, env)? {
                     Value::Scalar(n) => n,
-                    Value::Matrix(_) => return Err("Range step must be a scalar".to_string()),
+                    Value::Matrix(_) | Value::Complex(_, _) => {
+                        return Err("Range step must be a real scalar".to_string());
+                    }
                 },
             };
             if step == 0.0 {
@@ -165,6 +182,15 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
 
 fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
     match (l, r) {
+        // --- Complex arithmetic ---
+        (Value::Complex(re1, im1), Value::Complex(re2, im2)) => {
+            complex_binop(re1, im1, op, re2, im2)
+        }
+        (Value::Complex(re, im), Value::Scalar(s)) => complex_binop(re, im, op, s, 0.0),
+        (Value::Scalar(s), Value::Complex(re, im)) => complex_binop(s, 0.0, op, re, im),
+        (Value::Complex(_, _), Value::Matrix(_)) | (Value::Matrix(_), Value::Complex(_, _)) => {
+            Err("Operations between complex scalars and matrices are not supported".to_string())
+        }
         (Value::Scalar(lv), Value::Scalar(rv)) => {
             let result = match op {
                 Op::Add => lv + rv,
@@ -288,6 +314,94 @@ fn cmp_op(op: &Op, a: f64, b: f64) -> bool {
     }
 }
 
+/// Performs binary operations on two complex numbers `(re1+im1*i) OP (re2+im2*i)`.
+fn complex_binop(re1: f64, im1: f64, op: &Op, re2: f64, im2: f64) -> Result<Value, String> {
+    match op {
+        Op::Add => Ok(make_complex(re1 + re2, im1 + im2)),
+        Op::Sub => Ok(make_complex(re1 - re2, im1 - im2)),
+        Op::Mul | Op::ElemMul => {
+            // (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+            Ok(make_complex(re1 * re2 - im1 * im2, re1 * im2 + im1 * re2))
+        }
+        Op::Div | Op::ElemDiv => {
+            // (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c²+d²)
+            let denom = re2 * re2 + im2 * im2;
+            if denom == 0.0 {
+                return Err("Division by zero (complex)".to_string());
+            }
+            Ok(make_complex(
+                (re1 * re2 + im1 * im2) / denom,
+                (im1 * re2 - re1 * im2) / denom,
+            ))
+        }
+        Op::Pow | Op::ElemPow => {
+            let r1 = (re1 * re1 + im1 * im1).sqrt();
+            if r1 == 0.0 {
+                if re2 > 0.0 {
+                    return Ok(Value::Scalar(0.0));
+                }
+                return Ok(Value::Complex(f64::NAN, f64::NAN));
+            }
+            // For integer exponents with zero imaginary part, use repeated multiplication
+            // to avoid polar-form floating-point error (e.g. i^2 = -1 exactly).
+            if im2 == 0.0 && re2.fract() == 0.0 && re2.abs() < 1_000_000.0 {
+                let n = re2 as i64;
+                if n == 0 {
+                    return Ok(Value::Scalar(1.0));
+                }
+                // positive power: repeated squaring
+                let abs_n = n.unsigned_abs() as u64;
+                let (mut rr, mut ri) = (1.0_f64, 0.0_f64);
+                let (mut br, mut bi) = (re1, im1);
+                let mut exp = abs_n;
+                while exp > 0 {
+                    if exp & 1 == 1 {
+                        let nr = rr * br - ri * bi;
+                        let ni = rr * bi + ri * br;
+                        rr = nr;
+                        ri = ni;
+                    }
+                    let nr = br * br - bi * bi;
+                    let ni = 2.0 * br * bi;
+                    br = nr;
+                    bi = ni;
+                    exp >>= 1;
+                }
+                if n < 0 {
+                    // invert: 1/(rr+ri*i)
+                    let denom = rr * rr + ri * ri;
+                    return Ok(make_complex(rr / denom, -ri / denom));
+                }
+                return Ok(make_complex(rr, ri));
+            }
+            // General case: via polar form exp((c+di) * ln(a+bi))
+            let theta1 = im1.atan2(re1);
+            let ln_r1 = r1.ln();
+            let exp_re = re2 * ln_r1 - im2 * theta1;
+            let exp_im = im2 * ln_r1 + re2 * theta1;
+            let mag = exp_re.exp();
+            Ok(make_complex(mag * exp_im.cos(), mag * exp_im.sin()))
+        }
+        Op::Eq => Ok(Value::Scalar(bool_to_f64(re1 == re2 && im1 == im2))),
+        Op::NotEq => Ok(Value::Scalar(bool_to_f64(re1 != re2 || im1 != im2))),
+        Op::Lt | Op::Gt | Op::LtEq | Op::GtEq => {
+            Err("Ordering is not defined for complex numbers".to_string())
+        }
+        Op::And => Ok(Value::Scalar(bool_to_f64(
+            (re1 != 0.0 || im1 != 0.0) && (re2 != 0.0 || im2 != 0.0),
+        ))),
+        Op::Or => Ok(Value::Scalar(bool_to_f64(
+            re1 != 0.0 || im1 != 0.0 || re2 != 0.0 || im2 != 0.0,
+        ))),
+    }
+}
+
+/// Constructs a `Value::Complex` or collapses to `Value::Scalar` when `im` is exactly zero.
+#[inline]
+fn make_complex(re: f64, im: f64) -> Value {
+    if im == 0.0 { Value::Scalar(re) } else { Value::Complex(re, im) }
+}
+
 fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
     if lm.shape() != rm.shape() {
         return Err(format!(
@@ -304,6 +418,10 @@ fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
 fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
     match v {
         Value::Scalar(n) => Ok(*n),
+        Value::Complex(re, im) if *im == 0.0 => Ok(*re),
+        Value::Complex(_, _) => Err(format!(
+            "Function '{fname}' argument {pos} must be real, got a complex number"
+        )),
         Value::Matrix(_) => Err(format!(
             "Function '{fname}' argument {pos} must be a scalar, got a matrix"
         )),
@@ -315,6 +433,9 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
     match v {
         Value::Scalar(n) => Ok(Value::Scalar(f(*n))),
         Value::Matrix(m) => Ok(Value::Matrix(m.mapv(f))),
+        Value::Complex(_, _) => {
+            Err("Element-wise real function not applicable to complex values".to_string())
+        }
     }
 }
 
@@ -329,6 +450,7 @@ where
 {
     match v {
         Value::Scalar(n) => Ok(Value::Scalar(f(&[*n]))),
+        Value::Complex(_, _) => Err("Reduction not applicable to complex values".to_string()),
         Value::Matrix(m) => {
             if m.nrows() == 1 || m.ncols() == 1 {
                 let vals: Vec<f64> = m.iter().copied().collect();
@@ -358,6 +480,9 @@ where
 {
     match v {
         Value::Scalar(n) => Ok(Value::Scalar(*n)),
+        Value::Complex(_, _) => {
+            Err("Cumulative reduction not applicable to complex values".to_string())
+        }
         Value::Matrix(m) => {
             let initial = combine(0.0, 0.0); // detect identity: 0+0=0 or 0*0=0
             // Use 0.0 as additive identity, 1.0 as multiplicative identity.
@@ -394,6 +519,15 @@ where
 /// Returns column-major 1-based indices of non-zero elements, up to `max_k`.
 fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
     match v {
+        Value::Complex(re, im) => {
+            if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
+                ))
+            } else {
+                Ok(Value::Matrix(Array2::zeros((1, 0))))
+            }
+        }
         Value::Scalar(n) => {
             if *n != 0.0 && max_k >= 1 {
                 Ok(Value::Matrix(
@@ -431,7 +565,6 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
         ("sqrt", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sqrt())),
-        ("abs", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.abs())),
         ("floor", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.floor())),
         ("ceil", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ceil())),
         ("round", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.round())),
@@ -493,7 +626,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         }
         // --- Matrix properties ---
         ("size", 1) => match &args[0] {
-            Value::Scalar(_) => Ok(Value::Matrix(
+            Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Matrix(
                 Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
             )),
             Value::Matrix(m) => Ok(Value::Matrix(
@@ -503,7 +636,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("size", 2) => {
             let dim = scalar_arg(&args[1], name, 2)? as usize;
             match &args[0] {
-                Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+                Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
                 Value::Matrix(m) => match dim {
                     1 => Ok(Value::Scalar(m.nrows() as f64)),
                     2 => Ok(Value::Scalar(m.ncols() as f64)),
@@ -512,15 +645,16 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
         }
         ("length", 1) => match &args[0] {
-            Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+            Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
             Value::Matrix(m) => Ok(Value::Scalar(m.nrows().max(m.ncols()) as f64)),
         },
         ("numel", 1) => match &args[0] {
-            Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+            Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
             Value::Matrix(m) => Ok(Value::Scalar(m.len() as f64)),
         },
         ("trace", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(re, _) => Ok(Value::Scalar(*re)),
             Value::Matrix(m) => {
                 let n = m.nrows().min(m.ncols());
                 Ok(Value::Scalar((0..n).map(|i| m[[i, i]]).sum()))
@@ -528,6 +662,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         },
         ("det", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(_, _) => Err("det: not applicable to complex scalars".to_string()),
             Value::Matrix(m) => Ok(Value::Scalar(det_matrix(m)?)),
         },
         ("inv", 1) => match &args[0] {
@@ -536,6 +671,15 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                     Err("inv: singular (zero scalar)".to_string())
                 } else {
                     Ok(Value::Scalar(1.0 / n))
+                }
+            }
+            Value::Complex(re, im) => {
+                // 1/(a+bi) = (a-bi)/(a²+b²)
+                let denom = re * re + im * im;
+                if denom == 0.0 {
+                    Err("inv: singular (zero complex)".to_string())
+                } else {
+                    Ok(make_complex(re / denom, -im / denom))
                 }
             }
             Value::Matrix(m) => Ok(Value::Matrix(inv_matrix(m)?)),
@@ -663,12 +807,14 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         // --- Norms ---
         ("norm", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+            Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
             Value::Matrix(m) => Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt())),
         },
         ("norm", 2) => {
             let p = scalar_arg(&args[1], name, 2)?;
             match &args[0] {
                 Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+                Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt().powf(p))),
                 Value::Matrix(m) => {
                     if p == f64::INFINITY {
                         Ok(Value::Scalar(
@@ -688,6 +834,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         // --- Sort ---
         ("sort", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(_, _) => Err("sort: not applicable to complex values".to_string()),
             Value::Matrix(m) => {
                 if m.nrows() > 1 && m.ncols() > 1 {
                     return Err("sort: input must be a vector".to_string());
@@ -712,6 +859,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                         Array2::from_shape_vec((1, 1), vec![*n]).unwrap(),
                     ))
                 }
+                Value::Complex(_, _) => {
+                    Err("reshape: not applicable to complex values".to_string())
+                }
                 Value::Matrix(m) => {
                     let total = m.len();
                     if r * c != total {
@@ -734,6 +884,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         // --- Flip ---
         ("fliplr", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -749,6 +900,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         },
         ("flipud", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -788,6 +940,54 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                     Array2::from_shape_vec((1, n), unique).unwrap(),
                 ))
             }
+            Value::Complex(_, _) => Err("unique: not applicable to complex values".to_string()),
+        },
+        // --- Complex built-ins ---
+        // real(z) — real part; works on scalars too (returns the value unchanged).
+        ("real", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(re, _) => Ok(Value::Scalar(*re)),
+            Value::Matrix(_) => Err("real: not applicable to matrices".to_string()),
+        },
+        // imag(z) — imaginary part; returns 0.0 for real scalars.
+        ("imag", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Scalar(0.0)),
+            Value::Complex(_, im) => Ok(Value::Scalar(*im)),
+            Value::Matrix(_) => Err("imag: not applicable to matrices".to_string()),
+        },
+        // abs(z) — modulus; overloads scalar abs.
+        ("abs", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+            Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
+            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| x.abs()))),
+        },
+        // angle(z) — argument in radians; returns 0 for non-negative reals.
+        ("angle", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(if *n >= 0.0 {
+                0.0
+            } else {
+                std::f64::consts::PI
+            })),
+            Value::Complex(re, im) => Ok(Value::Scalar(im.atan2(*re))),
+            Value::Matrix(_) => Err("angle: not applicable to matrices".to_string()),
+        },
+        // conj(z) — complex conjugate; scalars are unchanged.
+        ("conj", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            Value::Complex(re, im) => Ok(make_complex(*re, -*im)),
+            Value::Matrix(m) => Ok(Value::Matrix(m.clone())),
+        },
+        // complex(re, im) — construct complex from two reals.
+        ("complex", 2) => {
+            let re = scalar_arg(&args[0], name, 1)?;
+            let im = scalar_arg(&args[1], name, 2)?;
+            Ok(make_complex(re, im))
+        }
+        // isreal(z) — 1.0 if imaginary part is zero, 0.0 otherwise.
+        ("isreal", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Scalar(1.0)),
+            Value::Complex(_, im) => Ok(Value::Scalar(if *im == 0.0 { 1.0 } else { 0.0 })),
+            Value::Matrix(_) => Ok(Value::Scalar(1.0)),
         },
         _ => Err(format!("Unknown function: '{name}'")),
     }
@@ -927,6 +1127,12 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                         DimIdx::All | DimIdx::Indices(_) => Ok(Value::Scalar(*n)),
                     }
                 }
+                Value::Complex(re, im) => {
+                    let env1 = env_with_end(env, 1);
+                    match resolve_dim(&args[0], 1, &env1)? {
+                        DimIdx::All | DimIdx::Indices(_) => Ok(Value::Complex(*re, *im)),
+                    }
+                }
                 Value::Matrix(m) => {
                     let total = m.nrows() * m.ncols();
                     let env1 = env_with_end(env, total);
@@ -975,7 +1181,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
         2 => {
             // A(i, j), A(:, j), A(i, :), A(:, :), A(end, :), A(1:end, 2)
             let (nrows, ncols) = match val {
-                Value::Scalar(_) => (1, 1),
+                Value::Scalar(_) | Value::Complex(_, _) => (1, 1),
                 Value::Matrix(m) => (m.nrows(), m.ncols()),
             };
             let env_r = env_with_end(env, nrows);
@@ -993,11 +1199,11 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
             };
 
             if rows.len() == 1 && cols.len() == 1 {
-                let v = match val {
-                    Value::Scalar(n) => *n,
-                    Value::Matrix(m) => m[[rows[0], cols[0]]],
-                };
-                Ok(Value::Scalar(v))
+                match val {
+                    Value::Scalar(n) => Ok(Value::Scalar(*n)),
+                    Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
+                    Value::Matrix(m) => Ok(Value::Scalar(m[[rows[0], cols[0]]])),
+                }
             } else {
                 let out_r = rows.len();
                 let out_c = cols.len();
@@ -1006,6 +1212,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     .flat_map(|&r| {
                         cols.iter().map(move |&c| match val {
                             Value::Scalar(n) => *n,
+                            Value::Complex(re, _) => *re,
                             Value::Matrix(m) => m[[r, c]],
                         })
                     })
@@ -1038,6 +1245,12 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
     let val = eval(expr, env)?;
     let floats: Vec<f64> = match val {
         Value::Scalar(n) => vec![n],
+        Value::Complex(re, im) => {
+            if im != 0.0 {
+                return Err("Index must be real, not complex".to_string());
+            }
+            vec![re]
+        }
         Value::Matrix(m) => {
             if m.nrows() > 1 && m.ncols() > 1 {
                 return Err("Index must be a scalar or vector, not a matrix".to_string());
@@ -1079,19 +1292,52 @@ pub fn format_scalar(n: f64, precision: usize, base: Base) -> String {
     }
 }
 
+/// Formats a complex number `re + im*i` for display.
+///
+/// - `a + 0i` → `a` (pure real)
+/// - `0 + bi` → `bi`
+/// - `a + bi` / `a - bi`
+/// - `im == ±1` suppresses the coefficient: `i`, `-i`, `a + i`, `a - i`
+pub fn format_complex(re: f64, im: f64, precision: usize) -> String {
+    if im == 0.0 {
+        return format_decimal(re, precision);
+    }
+    let im_abs = im.abs();
+    let im_str = if im_abs == 1.0 {
+        String::new()
+    } else {
+        format_decimal(im_abs, precision)
+    };
+    if re == 0.0 {
+        if im < 0.0 {
+            format!("-{}i", im_str)
+        } else {
+            format!("{}i", im_str)
+        }
+    } else {
+        let re_str = format_decimal(re, precision);
+        if im < 0.0 {
+            format!("{} - {}i", re_str, im_str)
+        } else {
+            format!("{} + {}i", re_str, im_str)
+        }
+    }
+}
+
 /// Formats a `Value` compactly: scalars as a number string, matrices as `[NxM double]`.
 pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
     match v {
         Value::Scalar(n) => format_scalar(*n, precision, base),
         Value::Matrix(m) => format!("[{}x{} double]", m.nrows(), m.ncols()),
+        Value::Complex(re, im) => format_complex(*re, *im, precision),
     }
 }
 
-/// Returns `None` for scalars; `Some(full_string)` for matrices.
-/// The full string is the MATLAB-style column-aligned matrix display.
+/// Returns `None` for scalars and complex numbers (displayed inline);
+/// `Some(full_string)` for matrices (MATLAB-style column-aligned display).
 pub fn format_value_full(v: &Value, precision: usize) -> Option<String> {
     match v {
-        Value::Scalar(_) => None,
+        Value::Scalar(_) | Value::Complex(_, _) => None,
         Value::Matrix(m) => Some(format_matrix(m, precision)),
     }
 }
