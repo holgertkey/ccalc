@@ -16,10 +16,11 @@ pub fn print(topic: Option<&str>) {
         Some("logic" | "logical" | "comparison") => print_logic(),
         Some("examples" | "ex") => print_examples(),
         Some("vectors" | "vector" | "utils") => print_vectors(),
+        Some("complex" | "cplx" | "imag") => print_complex(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  examples"
+                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  complex  examples"
             );
         }
     }
@@ -63,7 +64,7 @@ Operators   + - * / ^        ^ is right-associative
             2(3+1) → 8       implicit multiplication
 Comparison  ==  ~=  <  >  <=  >=     return 1 (true) or 0 (false)
 Logical     ~expr  &&  ||             NOT, AND, OR
-Constants   pi  e  ans  nan  inf
+Constants   pi  e  ans  nan  inf  i  j  (imaginary unit)
 Partial     [ 100 ]: / 4     starts with operator → uses ans
 
 1-arg   sqrt abs floor ceil round sign exp ln log
@@ -85,6 +86,9 @@ Vector  sum prod mean min max any all norm(v) norm(v,p)
         cumsum cumprod  sort  find  unique
         reshape(A,m,n)  fliplr  flipud
 NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
+Complex 3+4i  3+4j  complex(re,im)
+        real(z) imag(z) abs(z) angle(z) conj(z) isreal(z)
+        z' = conj(z)  (conjugate transpose for scalars)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -109,6 +113,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help matrices    matrix literals, arithmetic, ranges, indexing
   help vectors     nan/inf, reductions, sort/find/unique, end, reshape
   help logic       comparison and logical operators, masks
+  help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -256,15 +261,28 @@ Constants
     nan    IEEE 754 Not-a-Number — propagates through all arithmetic
            nan + 5  →  NaN     nan == nan  →  0  (always false)
     inf    positive infinity   -inf for negative
+    i, j   imaginary unit: 0 + 1i  (can be reassigned; restart to restore)
     ans    result of last expression
+
+Complex functions  (see also: help complex)
+    real(z)          real part  (real(5) = 5)
+    imag(z)          imaginary part  (imag(5) = 0)
+    abs(z)           modulus sqrt(re²+im²)  (overloads scalar/matrix abs)
+    angle(z)         argument atan2(im, re), in radians
+    conj(z)          complex conjugate  re - im*i
+    complex(re, im)  construct from two real scalars
+    isreal(z)        1 if im == 0, else 0
 
 Examples
     hypot(3, 4)                →   5
     atan2(1, 1) * 180 / pi     →  45
     log(8, 2)                  →   3
     mod(370, 360)              →  10
+    abs(3 + 4*i)               →   5
+    angle(i)                   →   1.5707963...  (π/2)
 
-See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)"
+See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
+          help complex    (full complex number reference)"
     );
 }
 
@@ -333,6 +351,7 @@ Built-in variables
     e      2.71828182845904...
     nan    IEEE 754 Not-a-Number  (propagates through arithmetic)
     inf    positive infinity  (use -inf for negative)
+    i, j   imaginary unit: 0 + 1i  (can be reassigned; restart to restore)
 
 View and clear
     who            list all defined variables and their values
@@ -644,6 +663,81 @@ Example:  ccalc examples/vector_utils.calc"
 }
 
 // ---------------------------------------------------------------------------
+// help complex
+// ---------------------------------------------------------------------------
+
+fn print_complex() {
+    println!(
+        "\
+COMPLEX NUMBERS
+
+Creating complex numbers
+    3 + 4*i          →  3 + 4i    (i is pre-set to the imaginary unit)
+    3 + 4*j          →  3 + 4i    (j is also the imaginary unit)
+    complex(3, 4)    →  3 + 4i    (construct from real and imaginary parts)
+    5*i              →  5i         (pure imaginary)
+    2 - 3*i          →  2 - 3i
+
+    4i works via implicit multiplication: 4 * i.
+    When im is exactly 0, the result collapses to a real scalar.
+
+Arithmetic
+    z1 = 3 + 4*i;  z2 = 1 - 2*i
+    z1 + z2    →  4 + 2i
+    z1 - z2    →  2 + 6i
+    z1 * z2    →  11 - 2i     (ac-bd) + (ad+bc)i
+    z1 / z2    →  -1 + 2i
+    z1 ^ 2     →  -7 + 24i
+    2 * z1     →  6 + 8i
+
+Powers
+    i^2        →  -1          (exact integer exponentiation)
+    i^3        →  -i
+    i^4        →   1
+    (1+i)^-1   →  0.5 - 0.5i
+    i^0.5      →  0.7071... + 0.7071...i   (polar form for non-integers)
+
+Conjugate transpose
+    z = 3 + 4*i
+    z'         →  3 - 4i      (conjugate for complex scalars)
+    conj(z)    →  3 - 4i      (same result)
+
+Polar form
+    abs(z)     →  5           modulus  sqrt(re² + im²)
+    angle(z)   →  0.9272...   argument atan2(im, re), in radians
+
+Built-in functions
+    real(z)          real part                real(3+4i)  →  3
+    imag(z)          imaginary part           imag(3+4i)  →  4
+    abs(z)           modulus                  abs(3+4i)   →  5
+    angle(z)         argument in radians      angle(i)    →  π/2
+    conj(z)          complex conjugate        conj(3+4i)  →  3-4i
+    complex(re, im)  construct               complex(3,4) →  3+4i
+    isreal(z)        1 if im==0, else 0      isreal(5)   →  1
+
+    real(5) = 5  (real of a scalar is itself)
+    imag(5) = 0  (imaginary part of a real scalar is 0)
+
+Comparison
+    ==  and  ~=  compare both real and imaginary parts
+    (3+4i) == (3+4i)   →  1
+    (3+4i) == (3-4i)   →  0
+    <  >  <=  >=  on complex numbers → error (ordering not defined)
+
+Variables i and j
+    i and j are initialized to 0+1i at startup.
+    You can reassign them:  i = 5   (shadows the imaginary unit)
+    Restart ccalc or use complex(0,1) to restore the imaginary unit.
+
+Limitations
+    Complex matrices [1+2i, 3] are not yet supported (returns an error).
+    ws/wl do not persist complex variables (same policy as matrices).
+
+Example: ccalc examples/complex_numbers.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // help examples
 // ---------------------------------------------------------------------------
 
@@ -767,6 +861,7 @@ Script files  (see examples/ directory)
     ccalc examples/sequences.calc
     ccalc examples/logic.calc
     ccalc examples/bitwise.calc
-    ccalc examples/vector_utils.calc"
+    ccalc examples/vector_utils.calc
+    ccalc examples/complex_numbers.calc"
     );
 }

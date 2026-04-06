@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.11.0+003** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.12.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -180,6 +180,7 @@ A number or closing parenthesis immediately before `(` multiplies without an exp
 | `e`   | 2.71828182845904...           |
 | `nan` | Not-a-Number (IEEE 754 NaN)   |
 | `inf` | Positive infinity             |
+| `i`, `j` | Imaginary unit `0 + 1i` (can be reassigned) |
 | `ans` | Result of the last expression |
 
 `ans` is the implicit accumulator — it is updated after every expression and can be used anywhere in an expression:
@@ -604,6 +605,53 @@ ans =
 
 ---
 
+## Complex Numbers
+
+`i` and `j` are pre-set to the imaginary unit `0 + 1i`. Complex numbers
+work with the same operators and functions as real numbers:
+
+```
+[ 0 ]: 3 + 4*i
+[ 3 + 4i ]: abs(ans)
+[ 5 ]: angle(3 + 4*i) * 180/pi
+[ 53.1301023542 ]:
+```
+
+Create, decompose, and manipulate:
+
+```
+z = complex(3, 4)    % 3 + 4i
+real(z)              % 3
+imag(z)              % 4
+conj(z)              % 3 - 4i
+z'                   % 3 - 4i  (conjugate transpose)
+isreal(z)            % 0
+```
+
+Arithmetic works for all combinations of complex and real scalars:
+
+```
+(3 + 4*i) * (1 - 2*i)   % 11 - 2i
+i^2                       % -1    (exact integer exponentiation)
+i^4                       %  1
+```
+
+### Complex built-ins
+
+| Function | Description |
+|----------|-------------|
+| `real(z)` | Real part (`real(5)` → 5) |
+| `imag(z)` | Imaginary part (`imag(5)` → 0) |
+| `abs(z)` | Modulus `sqrt(re²+im²)` |
+| `angle(z)` | Argument `atan2(im, re)`, radians |
+| `conj(z)` | Complex conjugate `re - im*i` |
+| `complex(re, im)` | Construct from two real scalars |
+| `isreal(z)` | `1` if `im == 0`, else `0` |
+
+> **Note:** Complex matrices (`[1+2i, 3]`) are not yet supported.
+
+---
+
 ## REPL commands
 
 | Command                           | Action                              |
@@ -847,18 +895,19 @@ Parallel resistance (Ohm): 68.7500002148
 
 The `examples/` directory contains annotated formula files ready to run:
 
-| File                  | Description                                             |
-|-----------------------|---------------------------------------------------------|
-| `cylinder.calc`       | Volume and surface area of a cylinder                   |
-| `mortgage.calc`       | Monthly mortgage payment                                |
-| `data_storage.calc`   | Real GiB capacity of a "500 GB" drive                   |
-| `resistors.calc`      | Series, parallel resistance, voltage divider, power     |
-| `ac_impedance.calc`   | AC impedance, phase angle, dB level, bit width          |
-| `matrix_ops.calc`     | Rotation, linear system solve, element-wise ops         |
-| `sequences.calc`      | Ranges, linspace, indexing, slicing, finite differences |
-| `logic.calc`          | Comparison, logical NOT, `&&`/`\|\|`, masks, soft clipping |
-| `bitwise.calc`        | Bitmask construction, register bit fields, RGB colour packing |
-| `vector_utils.calc`   | `nan`/`inf`, reductions, sort/find/unique, `end` indexing, reshape/flip |
+| File                    | Description                                             |
+|-------------------------|---------------------------------------------------------|
+| `cylinder.calc`         | Volume and surface area of a cylinder                   |
+| `mortgage.calc`         | Monthly mortgage payment                                |
+| `data_storage.calc`     | Real GiB capacity of a "500 GB" drive                   |
+| `resistors.calc`        | Series, parallel resistance, voltage divider, power     |
+| `ac_impedance.calc`     | AC impedance, phase angle, dB level, bit width          |
+| `matrix_ops.calc`       | Rotation, linear system solve, element-wise ops         |
+| `sequences.calc`        | Ranges, linspace, indexing, slicing, finite differences |
+| `logic.calc`            | Comparison, logical NOT, `&&`/`\|\|`, masks, soft clipping |
+| `bitwise.calc`          | Bitmask construction, register bit fields, RGB colour packing |
+| `vector_utils.calc`     | `nan`/`inf`, reductions, sort/find/unique, `end` indexing, reshape/flip |
+| `complex_numbers.calc`  | Complex arithmetic, polar form, built-ins, AC circuit   |
 
 ```bash
 ccalc < examples/mortgage.ccalc
@@ -886,7 +935,7 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix), Env type (HashMap<String, Value>), workspace save/load
+    env.rs       — Value enum (Scalar/Matrix/Complex), Env type (HashMap<String, Value>), workspace save/load
     eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base enum
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
 Cargo.toml       — workspace manifest (single source of truth for version)

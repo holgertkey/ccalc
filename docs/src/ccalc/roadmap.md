@@ -14,8 +14,8 @@ The work is divided into phases in order of architectural dependency.
 | 5 | Range operator (`1:5`, `1:2:10`, `linspace`) | ✅ Done |
 | 6 | Indexing (`A(1,1)`, `v(2:4)`) | ✅ Done |
 | 7 | Comparison and logical operators (`==`, `~=`, `&&`) | ✅ Done |
-| 7.5 | Vector utilities, `end` indexing, `NaN`/`Inf`, `sort`, `find` | Planned |
-| 8 | Complex numbers (`3 + 4i`, `abs(z)`, `angle(z)`) | Planned |
+| 7.5 | Vector utilities, `end` indexing, `NaN`/`Inf`, `sort`, `find` | ✅ Done |
+| 8 | Complex numbers (`3 + 4i`, `abs(z)`, `angle(z)`) | ✅ Done |
 | 9 | String data types (`'char array'`, `"string object"`) | Planned |
 | 10 | C-style I/O (`fprintf('%.2f\n', x)`, `sprintf`) | Planned |
 | 11 | Control flow (`if`, `for`, `while`, `switch`, `try`/`catch`, `+=`) | Planned |
@@ -67,20 +67,26 @@ element-wise on matrices. New parse levels `parse_logical_or` →
 precedence hierarchy. `Expr::UnaryNot` and `Op::Eq/NotEq/Lt/Gt/LtEq/GtEq/And/Or`
 are added to the AST.
 
-**Phase 7.5** adds special floating-point constants (`nan`, `inf` pre-seeded
-in `Env`), `isnan`/`isinf`/`isfinite` built-ins, vector reductions (`sum`,
-`prod`, `cumsum`, `any`, `all`, 1-arg `min`/`max`, `mean`, `norm`), the
-`end` keyword in indexing contexts (`v(end)`, `A(1:end, 2)` — requires a
-new `Expr::End` AST node and context-passing in `eval_index`), and data
-utility functions (`sort`, `reshape`, `fliplr`, `flipud`, `find`, `unique`).
+**Phase 7.5** adds special floating-point constants (`nan`, `inf` as
+parser-level constants), `isnan`/`isinf`/`isfinite` built-ins, vector
+reductions (`sum`, `prod`, `cumsum`, `any`, `all`, 1-arg `min`/`max`,
+`mean`, `norm`), the `end` keyword in indexing contexts (`v(end)`,
+`A(1:end, 2)` — `env_with_end()` injects the dimension size into a cloned
+env before evaluating index expressions), and data utility functions
+(`sort`, `reshape`, `fliplr`, `flipud`, `find`, `unique`).
 No new `Value` variants are needed.
 
 **Phase 8** adds `Value::Complex(f64, f64)` as a third `Value` variant.
 No new tokens are required — `4i` already parses as implicit multiplication
-`4 * i`, where `i` is pre-seeded in `Env` as `Complex(0.0, 1.0)`. The phase
-adds complex arithmetic in `eval_binop`, display formatting, and built-ins
-`real`, `imag`, `abs`, `angle`, `conj`, `complex`, `isreal`. Complex matrices
-are out of scope and deferred.
+`4 * i`, where `i` and `j` are pre-seeded in `Env` as `Complex(0.0, 1.0)`.
+`complex_binop()` handles all arithmetic combinations; integer powers use
+binary exponentiation for exact results (`i^2 = -1` exactly); non-integer
+powers use the polar form `exp((c+di)·ln(a+bi))`.
+`make_complex(re, im)` collapses to `Scalar(re)` when `im == 0.0` exactly.
+`z'` (conjugate transpose) returns the complex conjugate for scalar complex.
+Built-ins added: `real`, `imag`, `abs` (overloaded), `angle`, `conj`,
+`complex`, `isreal`. `scalar_arg` accepts `Complex` with `im == 0` as a
+real scalar. Complex matrices are out of scope and deferred.
 
 **Phase 9** adds string types: `Value::CharMatrix` (single-quote char arrays,
 numeric-compatible) and `Value::StringMatrix` (double-quote string objects).
