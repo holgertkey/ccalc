@@ -31,9 +31,6 @@ jobs:
         with:
           tool: mdbook
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
       - name: Build book
         run: mdbook build docs
 
