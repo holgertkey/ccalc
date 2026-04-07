@@ -769,7 +769,9 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
             Expr::StringObjLiteral(s)
         }
         _ => {
-            return Err("Expected number, function, variable, string, '-', '[', or '('".to_string());
+            return Err(
+                "Expected number, function, variable, string, '-', '[', or '('".to_string(),
+            );
         }
     };
 
