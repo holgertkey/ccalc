@@ -1537,3 +1537,100 @@ fn test_index_one_to_end() {
         _ => panic!("expected matrix"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 — String tokenizer and parser tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_parse_char_array() {
+    match parse("'hello'").unwrap() {
+        Stmt::Expr(Expr::StrLiteral(s)) => assert_eq!(s, "hello"),
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_string_obj() {
+    match parse("\"hello\"").unwrap() {
+        Stmt::Expr(Expr::StringObjLiteral(s)) => assert_eq!(s, "hello"),
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_char_array_with_escaped_quote() {
+    // 'it''s' should parse as the string "it's"
+    match parse("'it''s'").unwrap() {
+        Stmt::Expr(Expr::StrLiteral(s)) => assert_eq!(s, "it's"),
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_char_array_assignment() {
+    match parse("x = 'hello'").unwrap() {
+        Stmt::Assign(name, Expr::StrLiteral(s)) => {
+            assert_eq!(name, "x");
+            assert_eq!(s, "hello");
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_transpose_after_ident_not_string() {
+    // x' should be transpose of variable x, not a string
+    match parse("x'").unwrap() {
+        Stmt::Expr(Expr::Transpose(inner)) => {
+            assert!(matches!(*inner, Expr::Var(ref s) if s == "x"));
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_char_array_escaped_quote() {
+    // 'A''' (5 chars: opening ', A, '', closing ') → char array containing "A'"
+    // '' inside a string literal is an escaped single quote
+    match parse("'A'''").unwrap() {
+        Stmt::Expr(Expr::StrLiteral(s)) => assert_eq!(s, "A'"),
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_char_array_then_transpose() {
+    // ('abc')' → transpose of a char array (use parens to force grouping)
+    match parse("('abc')'").unwrap() {
+        Stmt::Expr(Expr::Transpose(inner)) => {
+            assert!(matches!(*inner, Expr::StrLiteral(ref s) if s == "abc"));
+        }
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_string_obj_escape_sequences() {
+    // "hello\nworld" should contain a newline
+    match parse("\"hello\\nworld\"").unwrap() {
+        Stmt::Expr(Expr::StringObjLiteral(s)) => assert_eq!(s, "hello\nworld"),
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_empty_char_array() {
+    match parse("''").unwrap() {
+        Stmt::Expr(Expr::StrLiteral(s)) => assert_eq!(s, ""),
+        other => panic!("unexpected: {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_empty_string_obj() {
+    match parse("\"\"").unwrap() {
+        Stmt::Expr(Expr::StringObjLiteral(s)) => assert_eq!(s, ""),
+        other => panic!("unexpected: {:?}", other),
+    }
+}

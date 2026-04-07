@@ -207,6 +207,22 @@ fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
         Some(Value::Scalar(n)) => format_scalar(*n, precision, base),
         Some(Value::Matrix(m)) => format!("[{}×{}]", m.nrows(), m.ncols()),
         Some(Value::Complex(re, im)) => format_complex(*re, *im, precision),
+        Some(Value::Str(s)) => {
+            let display: String = s.chars().take(15).collect();
+            if s.len() > 15 {
+                format!("'{display}...'")
+            } else {
+                format!("'{display}'")
+            }
+        }
+        Some(Value::StringObj(s)) => {
+            let display: String = s.chars().take(15).collect();
+            if s.len() > 15 {
+                format!("\"{display}...\"")
+            } else {
+                format!("\"{display}\"")
+            }
+        }
         None => "0".to_string(),
     }
 }
@@ -399,6 +415,8 @@ pub fn run() {
                                 Value::Complex(re, im) => {
                                     println!("{name} = {}", format_complex(*re, *im, precision));
                                 }
+                                Value::Str(s) => println!("{name} = {s}"),
+                                Value::StringObj(s) => println!("{name} = {s}"),
                             },
                             EvalResult::Value(val) => match &val {
                                 Value::Matrix(_) => {
@@ -424,6 +442,7 @@ pub fn run() {
                                 Value::Complex(re, im) => {
                                     println!("{}", format_complex(*re, *im, precision));
                                 }
+                                Value::Str(s) | Value::StringObj(s) => println!("{s}"),
                             },
                         }
                     }
@@ -472,6 +491,8 @@ pub fn run_expr(expr: &str) {
                 Value::Complex(re, im) => {
                     println!("{} = {}", name, format_complex(*re, *im, 10));
                 }
+                Value::Str(s) => println!("{name} = {s}"),
+                Value::StringObj(s) => println!("{name} = {s}"),
             },
             EvalResult::Value(v) => match &v {
                 Value::Matrix(_) => {
@@ -490,6 +511,7 @@ pub fn run_expr(expr: &str) {
                 Value::Complex(re, im) => {
                     println!("{}", format_complex(*re, *im, 10));
                 }
+                Value::Str(s) | Value::StringObj(s) => println!("{s}"),
             },
         },
         Err(e) => {
@@ -617,6 +639,8 @@ pub fn run_pipe(reader: impl BufRead) {
                                 Value::Complex(re, im) => {
                                     println!("{} = {}", name, format_complex(*re, *im, precision));
                                 }
+                                Value::Str(s) => println!("{name} = {s}"),
+                                Value::StringObj(s) => println!("{name} = {s}"),
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Matrix(_) => {
@@ -645,6 +669,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                 Value::Complex(re, im) => {
                                     println!("{}", format_complex(*re, *im, precision));
                                 }
+                                Value::Str(s) | Value::StringObj(s) => println!("{s}"),
                             },
                         }
                     }
@@ -705,6 +730,8 @@ fn print_who(env: &Env, precision: usize, base: Base) {
             Value::Scalar(n) => println!("ans = {}", format_scalar(*n, precision, base)),
             Value::Matrix(m) => println!("ans = [{}×{} double]", m.nrows(), m.ncols()),
             Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, precision)),
+            Value::Str(s) => println!("ans = {s}"),
+            Value::StringObj(s) => println!("ans = {s}"),
         }
     }
 
@@ -730,6 +757,13 @@ fn print_who(env: &Env, precision: usize, base: Base) {
             }
             Value::Matrix(m) => {
                 matrices.push(format!("{} = [{}×{} double]", name, m.nrows(), m.ncols()));
+            }
+            Value::Str(s) => {
+                let n = s.chars().count();
+                scalars.push(format!("{name} [1×{n} char]"));
+            }
+            Value::StringObj(_) => {
+                scalars.push(format!("{name} [string]"));
             }
         }
     }
@@ -1038,6 +1072,7 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
             }
             Value::Scalar(n) => println!("{}", format_scalar(*n, precision, base)),
             Value::Complex(re, im) => println!("{}", format_complex(*re, *im, precision)),
+            Value::Str(s) | Value::StringObj(s) => println!("{s}"),
         },
         Err(e) => eprintln!("Error: {e}"),
     }

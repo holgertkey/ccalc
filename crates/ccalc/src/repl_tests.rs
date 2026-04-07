@@ -536,6 +536,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                         }
                         Value::Scalar(n) => output.push(format_scalar(*n, precision, base)),
                         Value::Complex(re, im) => output.push(format_complex(*re, *im, precision)),
+                        Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
                     },
                     Err(e) => output.push(format!("Error: {e}")),
                 }
@@ -586,6 +587,8 @@ fn pipe_output(input: &str) -> Vec<String> {
                                         format_complex(*re, *im, precision)
                                     ));
                                 }
+                                Value::Str(s) => output.push(format!("{name} = {s}")),
+                                Value::StringObj(s) => output.push(format!("{name} = {s}")),
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Matrix(_) => {
@@ -613,6 +616,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 Value::Complex(re, im) => {
                                     output.push(format_complex(*re, *im, precision));
                                 }
+                                Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
                             },
                         }
                     }

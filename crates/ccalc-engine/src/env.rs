@@ -10,13 +10,17 @@ pub enum Value {
     Matrix(Array2<f64>),
     /// Complex number `re + im*i`.
     Complex(f64, f64),
+    /// Character array (single-quoted string). Represents a 1×N row of char values.
+    Str(String),
+    /// String object (double-quoted string).
+    StringObj(String),
 }
 
 impl Value {
     pub fn as_scalar(&self) -> Option<f64> {
         match self {
             Value::Scalar(n) => Some(*n),
-            Value::Matrix(_) | Value::Complex(_, _) => None,
+            Value::Matrix(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => None,
         }
     }
 }

@@ -13,6 +13,8 @@ pub enum Stmt {
 enum Token {
     Number(f64),
     Ident(String),
+    Str(String),       // 'text' char array literal
+    StringObj(String), // "text" string object literal
     Plus,
     Minus,
     Star,
@@ -145,8 +147,74 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             '\'' => {
-                tokens.push(Token::Apostrophe);
-                chars.next();
+                // Determine whether this is a transpose operator or a char array literal.
+                // Transpose if preceded by a value-producing token (number, ident, ')', ']', or a previous apostrophe).
+                let is_transpose = matches!(
+                    tokens.last(),
+                    Some(
+                        Token::Number(_)
+                            | Token::Ident(_)
+                            | Token::RParen
+                            | Token::RBracket
+                            | Token::Apostrophe
+                            | Token::Str(_)
+                    )
+                );
+                chars.next(); // consume the opening '
+                if is_transpose {
+                    tokens.push(Token::Apostrophe);
+                } else {
+                    // Parse char array literal; '' inside is an escaped single quote.
+                    let mut content = String::new();
+                    loop {
+                        match chars.next() {
+                            None => return Err("Unterminated string literal".to_string()),
+                            Some('\'') => {
+                                // Check for escaped '' (two single quotes in a row)
+                                if chars.peek().copied() == Some('\'') {
+                                    chars.next();
+                                    content.push('\'');
+                                } else {
+                                    break;
+                                }
+                            }
+                            Some(c) => content.push(c),
+                        }
+                    }
+                    tokens.push(Token::Str(content));
+                }
+            }
+            '"' => {
+                chars.next(); // consume the opening "
+                let mut content = String::new();
+                loop {
+                    match chars.next() {
+                        None => return Err("Unterminated string literal".to_string()),
+                        Some('"') => {
+                            // Check for escaped "" (two double quotes in a row)
+                            if chars.peek().copied() == Some('"') {
+                                chars.next();
+                                content.push('"');
+                            } else {
+                                break;
+                            }
+                        }
+                        Some('\\') => match chars.next() {
+                            Some('n') => content.push('\n'),
+                            Some('t') => content.push('\t'),
+                            Some('\\') => content.push('\\'),
+                            Some('\'') => content.push('\''),
+                            Some('"') => content.push('"'),
+                            Some(other) => {
+                                content.push('\\');
+                                content.push(other);
+                            }
+                            None => return Err("Unterminated string literal".to_string()),
+                        },
+                        Some(c) => content.push(c),
+                    }
+                }
+                tokens.push(Token::StringObj(content));
             }
             '.' => {
                 chars.next();
@@ -690,7 +758,19 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
             *pos += 1;
             parse_matrix(tokens, pos)?
         }
-        _ => return Err("Expected number, function, variable, '-', '[', or '('".to_string()),
+        Token::Str(s) => {
+            let s = s.clone();
+            *pos += 1;
+            Expr::StrLiteral(s)
+        }
+        Token::StringObj(s) => {
+            let s = s.clone();
+            *pos += 1;
+            Expr::StringObjLiteral(s)
+        }
+        _ => {
+            return Err("Expected number, function, variable, string, '-', '[', or '('".to_string());
+        }
     };
 
     // Postfix transpose: ' binds tighter than any binary operator

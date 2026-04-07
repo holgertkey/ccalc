@@ -19,6 +19,10 @@ pub enum Expr {
     /// Bare `:` used as an all-elements index in `A(:,j)` or `A(i,:)`.
     /// Only valid as an argument inside an indexing expression.
     Colon,
+    /// Single-quoted char array literal.
+    StrLiteral(String),
+    /// Double-quoted string object literal.
+    StringObjLiteral(String),
 }
 
 #[derive(Debug)]
@@ -63,6 +67,14 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
             Value::Complex(re, im) => Ok(Value::Complex(-re, -im)),
+            Value::Str(s) => match str_to_numeric(&s) {
+                Value::Scalar(n) => Ok(Value::Scalar(-n)),
+                Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
+                _ => unreachable!(),
+            },
+            Value::StringObj(_) => {
+                Err("Unary minus is not applicable to string objects".to_string())
+            }
         },
         Expr::UnaryNot(e) => match eval(e, env)? {
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
@@ -72,6 +84,14 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             } else {
                 0.0
             })),
+            Value::Str(s) => match str_to_numeric(&s) {
+                Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
+                Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
+                _ => unreachable!(),
+            },
+            Value::StringObj(_) => {
+                Err("Logical NOT is not applicable to string objects".to_string())
+            }
         },
         Expr::BinOp(left, op, right) => {
             let l = eval(left, env)?;
@@ -115,6 +135,11 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                                     .to_string(),
                             );
                         }
+                        Value::Str(_) | Value::StringObj(_) => {
+                            return Err(
+                                "String elements in matrix literals are not supported".to_string()
+                            );
+                        }
                     }
                 }
                 all_rows.push(row_vals);
@@ -142,17 +167,22 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             Value::Scalar(n) => Ok(Value::Scalar(n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
             Value::Complex(re, im) => Ok(Value::Complex(re, -im)),
+            // Transpose of a char array or string object: return as-is (1×N not fully supported)
+            Value::Str(s) => Ok(Value::Str(s)),
+            Value::StringObj(s) => Ok(Value::StringObj(s)),
         },
+        Expr::StrLiteral(s) => Ok(Value::Str(s.clone())),
+        Expr::StringObjLiteral(s) => Ok(Value::StringObj(s.clone())),
         Expr::Range(start_expr, step_expr, stop_expr) => {
             let start = match eval(start_expr, env)? {
                 Value::Scalar(n) => n,
-                Value::Matrix(_) | Value::Complex(_, _) => {
+                Value::Matrix(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => {
                     return Err("Range bounds must be real scalars".to_string());
                 }
             };
             let stop = match eval(stop_expr, env)? {
                 Value::Scalar(n) => n,
-                Value::Matrix(_) | Value::Complex(_, _) => {
+                Value::Matrix(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => {
                     return Err("Range bounds must be real scalars".to_string());
                 }
             };
@@ -160,7 +190,10 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                 None => 1.0,
                 Some(s) => match eval(s, env)? {
                     Value::Scalar(n) => n,
-                    Value::Matrix(_) | Value::Complex(_, _) => {
+                    Value::Matrix(_)
+                    | Value::Complex(_, _)
+                    | Value::Str(_)
+                    | Value::StringObj(_) => {
                         return Err("Range step must be a real scalar".to_string());
                     }
                 },
@@ -184,6 +217,20 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
 
 fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
     match (l, r) {
+        // --- String object operations ---
+        (Value::StringObj(a), Value::StringObj(b)) => match op {
+            Op::Add => Ok(Value::StringObj(a + &b)),
+            Op::Eq => Ok(Value::Scalar(bool_to_f64(a == b))),
+            Op::NotEq => Ok(Value::Scalar(bool_to_f64(a != b))),
+            _ => Err("Operator not supported on string objects".to_string()),
+        },
+        // Char array: convert to numeric, re-dispatch
+        (Value::Str(s), r) => eval_binop(str_to_numeric(&s), op, r),
+        (l, Value::Str(s)) => eval_binop(l, op, str_to_numeric(&s)),
+        // String object mixed with other types: error
+        (Value::StringObj(_), _) | (_, Value::StringObj(_)) => {
+            Err("String object cannot be combined with non-string values".to_string())
+        }
         // --- Complex arithmetic ---
         (Value::Complex(re1, im1), Value::Complex(re2, im2)) => {
             complex_binop(re1, im1, op, re2, im2)
@@ -408,6 +455,52 @@ fn make_complex(re: f64, im: f64) -> Value {
     }
 }
 
+/// Converts a char array string to its numeric representation.
+/// Single char → Scalar(code), multi-char → 1×N Matrix, empty → 1×0 Matrix.
+fn str_to_numeric(s: &str) -> Value {
+    let codes: Vec<f64> = s.chars().map(|c| c as u32 as f64).collect();
+    match codes.len() {
+        0 => Value::Matrix(Array2::zeros((1, 0))),
+        1 => Value::Scalar(codes[0]),
+        n => Value::Matrix(Array2::from_shape_vec((1, n), codes).unwrap()),
+    }
+}
+
+/// Extracts a string slice from a Str or StringObj value.
+fn string_arg<'a>(v: &'a Value, fname: &str, pos: usize) -> Result<&'a str, String> {
+    match v {
+        Value::Str(s) | Value::StringObj(s) => Ok(s.as_str()),
+        _ => Err(format!(
+            "Function '{fname}' argument {pos} must be a string"
+        )),
+    }
+}
+
+/// Processes escape sequences (`\n`, `\t`, `\\`, `\'`, `\"`) in a string.
+fn process_escape_sequences(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('\\') => result.push('\\'),
+                Some('\'') => result.push('\''),
+                Some('"') => result.push('"'),
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
     if lm.shape() != rm.shape() {
         return Err(format!(
@@ -431,6 +524,10 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
         Value::Matrix(_) => Err(format!(
             "Function '{fname}' argument {pos} must be a scalar, got a matrix"
         )),
+        Value::Str(s) if s.chars().count() == 1 => Ok(s.chars().next().unwrap() as u32 as f64),
+        Value::Str(_) | Value::StringObj(_) => Err(format!(
+            "Function '{fname}' argument {pos} must be a scalar, got a string"
+        )),
     }
 }
 
@@ -441,6 +538,9 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
         Value::Matrix(m) => Ok(Value::Matrix(m.mapv(f))),
         Value::Complex(_, _) => {
             Err("Element-wise real function not applicable to complex values".to_string())
+        }
+        Value::Str(_) | Value::StringObj(_) => {
+            Err("Element-wise function not applicable to strings".to_string())
         }
     }
 }
@@ -457,6 +557,9 @@ where
     match v {
         Value::Scalar(n) => Ok(Value::Scalar(f(&[*n]))),
         Value::Complex(_, _) => Err("Reduction not applicable to complex values".to_string()),
+        Value::Str(_) | Value::StringObj(_) => {
+            Err("Reduction not applicable to strings".to_string())
+        }
         Value::Matrix(m) => {
             if m.nrows() == 1 || m.ncols() == 1 {
                 let vals: Vec<f64> = m.iter().copied().collect();
@@ -488,6 +591,9 @@ where
         Value::Scalar(n) => Ok(Value::Scalar(*n)),
         Value::Complex(_, _) => {
             Err("Cumulative reduction not applicable to complex values".to_string())
+        }
+        Value::Str(_) | Value::StringObj(_) => {
+            Err("Cumulative reduction not applicable to strings".to_string())
         }
         Value::Matrix(m) => {
             let initial = combine(0.0, 0.0); // detect identity: 0+0=0 or 0*0=0
@@ -525,6 +631,7 @@ where
 /// Returns column-major 1-based indices of non-zero elements, up to `max_k`.
 fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
     match v {
+        Value::Str(_) | Value::StringObj(_) => Err("find: not applicable to strings".to_string()),
         Value::Complex(re, im) => {
             if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
                 Ok(Value::Matrix(
@@ -638,6 +745,12 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Matrix(m) => Ok(Value::Matrix(
                 Array2::from_shape_vec((1, 2), vec![m.nrows() as f64, m.ncols() as f64]).unwrap(),
             )),
+            Value::Str(s) => Ok(Value::Matrix(
+                Array2::from_shape_vec((1, 2), vec![1.0, s.chars().count() as f64]).unwrap(),
+            )),
+            Value::StringObj(_) => Ok(Value::Matrix(
+                Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
+            )),
         },
         ("size", 2) => {
             let dim = scalar_arg(&args[1], name, 2)? as usize;
@@ -648,15 +761,25 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                     2 => Ok(Value::Scalar(m.ncols() as f64)),
                     _ => Err(format!("size: invalid dimension {dim}, must be 1 or 2")),
                 },
+                Value::Str(s) => match dim {
+                    1 => Ok(Value::Scalar(1.0)),
+                    2 => Ok(Value::Scalar(s.chars().count() as f64)),
+                    _ => Err(format!("size: invalid dimension {dim}")),
+                },
+                Value::StringObj(_) => Ok(Value::Scalar(1.0)),
             }
         }
         ("length", 1) => match &args[0] {
             Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
             Value::Matrix(m) => Ok(Value::Scalar(m.nrows().max(m.ncols()) as f64)),
+            Value::Str(s) => Ok(Value::Scalar(s.chars().count() as f64)),
+            Value::StringObj(_) => Ok(Value::Scalar(1.0)),
         },
         ("numel", 1) => match &args[0] {
             Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
             Value::Matrix(m) => Ok(Value::Scalar(m.len() as f64)),
+            Value::Str(s) => Ok(Value::Scalar(s.chars().count() as f64)),
+            Value::StringObj(_) => Ok(Value::Scalar(1.0)),
         },
         ("trace", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
@@ -665,11 +788,17 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 let n = m.nrows().min(m.ncols());
                 Ok(Value::Scalar((0..n).map(|i| m[[i, i]]).sum()))
             }
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("trace: not applicable to strings".to_string())
+            }
         },
         ("det", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(_, _) => Err("det: not applicable to complex scalars".to_string()),
             Value::Matrix(m) => Ok(Value::Scalar(det_matrix(m)?)),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("det: not applicable to strings".to_string())
+            }
         },
         ("inv", 1) => match &args[0] {
             Value::Scalar(n) => {
@@ -689,6 +818,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 }
             }
             Value::Matrix(m) => Ok(Value::Matrix(inv_matrix(m)?)),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("inv: not applicable to strings".to_string())
+            }
         },
         // --- Range / linspace ---
         ("linspace", 3) => {
@@ -815,6 +947,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
             Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
             Value::Matrix(m) => Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt())),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("norm: not applicable to strings".to_string())
+            }
         },
         ("norm", 2) => {
             let p = scalar_arg(&args[1], name, 2)?;
@@ -832,6 +967,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                         ))
                     }
                 }
+                Value::Str(_) | Value::StringObj(_) => {
+                    Err("norm: not applicable to strings".to_string())
+                }
             }
         }
         // --- Cumulative reductions ---
@@ -841,6 +979,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("sort", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(_, _) => Err("sort: not applicable to complex values".to_string()),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("sort: not applicable to strings".to_string())
+            }
             Value::Matrix(m) => {
                 if m.nrows() > 1 && m.ncols() > 1 {
                     return Err("sort: input must be a vector".to_string());
@@ -868,6 +1009,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 Value::Complex(_, _) => {
                     Err("reshape: not applicable to complex values".to_string())
                 }
+                Value::Str(_) | Value::StringObj(_) => {
+                    Err("reshape: not applicable to strings".to_string())
+                }
                 Value::Matrix(m) => {
                     let total = m.len();
                     if r * c != total {
@@ -891,6 +1035,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("fliplr", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err(format!("{name}: not applicable to strings"))
+            }
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -907,6 +1054,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("flipud", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err(format!("{name}: not applicable to strings"))
+            }
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -947,6 +1097,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 ))
             }
             Value::Complex(_, _) => Err("unique: not applicable to complex values".to_string()),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("unique: not applicable to strings".to_string())
+            }
         },
         // --- Complex built-ins ---
         // real(z) — real part; works on scalars too (returns the value unchanged).
@@ -954,18 +1107,27 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, _) => Ok(Value::Scalar(*re)),
             Value::Matrix(_) => Err("real: not applicable to matrices".to_string()),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("real: not applicable to strings".to_string())
+            }
         },
         // imag(z) — imaginary part; returns 0.0 for real scalars.
         ("imag", 1) => match &args[0] {
             Value::Scalar(_) => Ok(Value::Scalar(0.0)),
             Value::Complex(_, im) => Ok(Value::Scalar(*im)),
             Value::Matrix(_) => Err("imag: not applicable to matrices".to_string()),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("imag: not applicable to strings".to_string())
+            }
         },
         // abs(z) — modulus; overloads scalar abs.
         ("abs", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
             Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| x.abs()))),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("abs: not applicable to strings".to_string())
+            }
         },
         // angle(z) — argument in radians; returns 0 for non-negative reals.
         ("angle", 1) => match &args[0] {
@@ -976,12 +1138,18 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             })),
             Value::Complex(re, im) => Ok(Value::Scalar(im.atan2(*re))),
             Value::Matrix(_) => Err("angle: not applicable to matrices".to_string()),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("angle: not applicable to strings".to_string())
+            }
         },
         // conj(z) — complex conjugate; scalars are unchanged.
         ("conj", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(make_complex(*re, -*im)),
             Value::Matrix(m) => Ok(Value::Matrix(m.clone())),
+            Value::Str(_) | Value::StringObj(_) => {
+                Err("conj: not applicable to strings".to_string())
+            }
         },
         // complex(re, im) — construct complex from two reals.
         ("complex", 2) => {
@@ -994,7 +1162,138 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Scalar(_) => Ok(Value::Scalar(1.0)),
             Value::Complex(_, im) => Ok(Value::Scalar(if *im == 0.0 { 1.0 } else { 0.0 })),
             Value::Matrix(_) => Ok(Value::Scalar(1.0)),
+            // Strings are not real numbers
+            Value::Str(_) | Value::StringObj(_) => Ok(Value::Scalar(0.0)),
         },
+        // --- String built-ins ---
+        // num2str(x) — convert number to char array string
+        ("num2str", 1) => match &args[0] {
+            Value::Str(s) => Ok(Value::Str(s.clone())),
+            Value::StringObj(s) => Ok(Value::Str(s.clone())),
+            Value::Scalar(n) => Ok(Value::Str(format_decimal(*n, 4))),
+            Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, 4))),
+            Value::Matrix(m) => {
+                let s = m
+                    .iter()
+                    .map(|x| format_decimal(*x, 4))
+                    .collect::<Vec<_>>()
+                    .join("  ");
+                Ok(Value::Str(s))
+            }
+        },
+        // num2str(x, N) — N significant digits
+        ("num2str", 2) => {
+            let n = scalar_arg(&args[1], name, 2)? as usize;
+            match &args[0] {
+                Value::Str(s) => Ok(Value::Str(s.clone())),
+                Value::StringObj(s) => Ok(Value::Str(s.clone())),
+                Value::Scalar(v) => Ok(Value::Str(format_decimal(*v, n))),
+                Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, n))),
+                Value::Matrix(m) => {
+                    let s = m
+                        .iter()
+                        .map(|x| format_decimal(*x, n))
+                        .collect::<Vec<_>>()
+                        .join("  ");
+                    Ok(Value::Str(s))
+                }
+            }
+        }
+        // str2double(s) — parse string as f64; return NaN on failure
+        ("str2double", 1) => {
+            let s = string_arg(&args[0], name, 1)?;
+            match s.trim().parse::<f64>() {
+                Ok(n) => Ok(Value::Scalar(n)),
+                Err(_) => Ok(Value::Scalar(f64::NAN)),
+            }
+        }
+        // str2num(s) — parse string as f64; return error on failure
+        ("str2num", 1) => {
+            let s = string_arg(&args[0], name, 1)?;
+            s.trim()
+                .parse::<f64>()
+                .map(Value::Scalar)
+                .map_err(|_| format!("str2num: cannot convert '{}' to number", s.trim()))
+        }
+        // strcat(a, b, ...) — concatenate strings
+        ("strcat", n) if n >= 2 => {
+            let mut result = String::new();
+            let mut any_obj = false;
+            for (i, arg) in args.iter().enumerate() {
+                match arg {
+                    Value::Str(s) => result.push_str(s.trim_end()),
+                    Value::StringObj(s) => {
+                        result.push_str(s);
+                        any_obj = true;
+                    }
+                    _ => return Err(format!("strcat: argument {} must be a string", i + 1)),
+                }
+            }
+            if any_obj {
+                Ok(Value::StringObj(result))
+            } else {
+                Ok(Value::Str(result))
+            }
+        }
+        // ischar(s) — 1.0 if char array, 0.0 otherwise
+        ("ischar", 1) => Ok(Value::Scalar(if matches!(&args[0], Value::Str(_)) {
+            1.0
+        } else {
+            0.0
+        })),
+        // isstring(s) — 1.0 if string object, 0.0 otherwise
+        ("isstring", 1) => Ok(Value::Scalar(if matches!(&args[0], Value::StringObj(_)) {
+            1.0
+        } else {
+            0.0
+        })),
+        // lower(s) — convert to lowercase
+        ("lower", 1) => match &args[0] {
+            Value::Str(s) => Ok(Value::Str(s.to_lowercase())),
+            Value::StringObj(s) => Ok(Value::StringObj(s.to_lowercase())),
+            _ => Err("lower: argument must be a string".to_string()),
+        },
+        // upper(s) — convert to uppercase
+        ("upper", 1) => match &args[0] {
+            Value::Str(s) => Ok(Value::Str(s.to_uppercase())),
+            Value::StringObj(s) => Ok(Value::StringObj(s.to_uppercase())),
+            _ => Err("upper: argument must be a string".to_string()),
+        },
+        // strtrim(s) — trim leading/trailing whitespace
+        ("strtrim", 1) => match &args[0] {
+            Value::Str(s) => Ok(Value::Str(s.trim().to_string())),
+            Value::StringObj(s) => Ok(Value::StringObj(s.trim().to_string())),
+            _ => Err("strtrim: argument must be a string".to_string()),
+        },
+        // strrep(s, old, new) — replace all occurrences
+        ("strrep", 3) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let old = string_arg(&args[1], name, 2)?;
+            let new = string_arg(&args[2], name, 3)?;
+            let result = s.replace(old, new);
+            match &args[0] {
+                Value::StringObj(_) => Ok(Value::StringObj(result)),
+                _ => Ok(Value::Str(result)),
+            }
+        }
+        // strcmp(a, b) — case-sensitive string comparison
+        ("strcmp", 2) => {
+            let a = string_arg(&args[0], name, 1)?;
+            let b = string_arg(&args[1], name, 2)?;
+            Ok(Value::Scalar(bool_to_f64(a == b)))
+        }
+        // strcmpi(a, b) — case-insensitive comparison
+        ("strcmpi", 2) => {
+            let a = string_arg(&args[0], name, 1)?.to_lowercase();
+            let b = string_arg(&args[1], name, 2)?.to_lowercase();
+            Ok(Value::Scalar(bool_to_f64(a == b)))
+        }
+        // sprintf(fmt) — single string arg, process escape sequences
+        ("sprintf", 1) => {
+            let s = string_arg(&args[0], name, 1)?;
+            let result = process_escape_sequences(s);
+            Ok(Value::Str(result))
+        }
         _ => Err(format!("Unknown function: '{name}'")),
     }
 }
@@ -1182,13 +1481,57 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                         }
                     }
                 }
+                Value::Str(s) => {
+                    // Index into a char array — returns char code(s)
+                    let chars: Vec<char> = s.chars().collect();
+                    let total = chars.len();
+                    let env1 = env_with_end(env, total);
+                    match resolve_dim(&args[0], total, &env1)? {
+                        DimIdx::All => {
+                            let codes: Vec<f64> = chars.iter().map(|&c| c as u32 as f64).collect();
+                            if codes.len() == 1 {
+                                Ok(Value::Scalar(codes[0]))
+                            } else {
+                                let n = codes.len();
+                                Ok(Value::Matrix(
+                                    Array2::from_shape_vec((1, n), codes).unwrap(),
+                                ))
+                            }
+                        }
+                        DimIdx::Indices(idxs) => {
+                            let mut selected = String::new();
+                            for &i in &idxs {
+                                if i >= chars.len() {
+                                    return Err(format!("Index {} out of range", i + 1));
+                                }
+                                selected.push(chars[i]);
+                            }
+                            if selected.chars().count() == 1 {
+                                Ok(Value::Scalar(selected.chars().next().unwrap() as u32 as f64))
+                            } else {
+                                Ok(Value::Str(selected))
+                            }
+                        }
+                    }
+                }
+                Value::StringObj(s) => {
+                    // String object indexing — treat as single element
+                    let env1 = env_with_end(env, 1);
+                    match resolve_dim(&args[0], 1, &env1)? {
+                        DimIdx::All | DimIdx::Indices(_) => Ok(Value::StringObj(s.clone())),
+                    }
+                }
             }
         }
         2 => {
             // A(i, j), A(:, j), A(i, :), A(:, :), A(end, :), A(1:end, 2)
+            if matches!(val, Value::Str(_) | Value::StringObj(_)) {
+                return Err("2D indexing not supported for strings".to_string());
+            }
             let (nrows, ncols) = match val {
                 Value::Scalar(_) | Value::Complex(_, _) => (1, 1),
                 Value::Matrix(m) => (m.nrows(), m.ncols()),
+                Value::Str(_) | Value::StringObj(_) => unreachable!(),
             };
             let env_r = env_with_end(env, nrows);
             let env_c = env_with_end(env, ncols);
@@ -1209,6 +1552,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     Value::Scalar(n) => Ok(Value::Scalar(*n)),
                     Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
                     Value::Matrix(m) => Ok(Value::Scalar(m[[rows[0], cols[0]]])),
+                    Value::Str(_) | Value::StringObj(_) => unreachable!(),
                 }
             } else {
                 let out_r = rows.len();
@@ -1220,6 +1564,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                             Value::Scalar(n) => *n,
                             Value::Complex(re, _) => *re,
                             Value::Matrix(m) => m[[r, c]],
+                            Value::Str(_) | Value::StringObj(_) => unreachable!(),
                         })
                     })
                     .collect();
@@ -1262,6 +1607,9 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
                 return Err("Index must be a scalar or vector, not a matrix".to_string());
             }
             m.iter().copied().collect()
+        }
+        Value::Str(_) | Value::StringObj(_) => {
+            return Err("Index must be numeric, not a string".to_string());
         }
     };
     let mut idxs = Vec::with_capacity(floats.len());
@@ -1336,14 +1684,16 @@ pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
         Value::Scalar(n) => format_scalar(*n, precision, base),
         Value::Matrix(m) => format!("[{}x{} double]", m.nrows(), m.ncols()),
         Value::Complex(re, im) => format_complex(*re, *im, precision),
+        Value::Str(s) => s.clone(),
+        Value::StringObj(s) => s.clone(),
     }
 }
 
-/// Returns `None` for scalars and complex numbers (displayed inline);
+/// Returns `None` for scalars, complex numbers, and strings (displayed inline);
 /// `Some(full_string)` for matrices (MATLAB-style column-aligned display).
 pub fn format_value_full(v: &Value, precision: usize) -> Option<String> {
     match v {
-        Value::Scalar(_) | Value::Complex(_, _) => None,
+        Value::Scalar(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => None,
         Value::Matrix(m) => Some(format_matrix(m, precision)),
     }
 }

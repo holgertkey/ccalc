@@ -993,3 +993,237 @@ fn test_complex_inv_builtin() {
     let result = eval_parse("inv(z)", &env).unwrap();
     assert_eq!(result, Value::Scalar(0.5));
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9 — String tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_str_literal_basic() {
+    let env = empty_env();
+    let expr = Expr::StrLiteral("hello".to_string());
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("hello".to_string())));
+}
+
+#[test]
+fn test_string_obj_literal_basic() {
+    let env = empty_env();
+    let expr = Expr::StringObjLiteral("world".to_string());
+    assert_eq!(eval(&expr, &env), Ok(Value::StringObj("world".to_string())));
+}
+
+#[test]
+fn test_str_arithmetic_single_char() {
+    // 'a' + 0 = 97
+    let env = empty_env();
+    let expr = Expr::BinOp(
+        Box::new(Expr::StrLiteral("a".to_string())),
+        Op::Add,
+        Box::new(Expr::Number(0.0)),
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(97.0)));
+}
+
+#[test]
+fn test_str_arithmetic_multi_char() {
+    // 'ab' + 0 = [97, 98] as a row vector
+    use ndarray::array;
+    let env = empty_env();
+    let expr = Expr::BinOp(
+        Box::new(Expr::StrLiteral("ab".to_string())),
+        Op::Add,
+        Box::new(Expr::Number(0.0)),
+    );
+    match eval(&expr, &env).unwrap() {
+        Value::Matrix(m) => assert_eq!(m, array![[97.0, 98.0]]),
+        _ => panic!("expected matrix"),
+    }
+}
+
+#[test]
+fn test_string_obj_concat() {
+    let env = empty_env();
+    let expr = Expr::BinOp(
+        Box::new(Expr::StringObjLiteral("hello".to_string())),
+        Op::Add,
+        Box::new(Expr::StringObjLiteral(" world".to_string())),
+    );
+    assert_eq!(
+        eval(&expr, &env),
+        Ok(Value::StringObj("hello world".to_string()))
+    );
+}
+
+#[test]
+fn test_string_obj_eq() {
+    let env = empty_env();
+    let expr = Expr::BinOp(
+        Box::new(Expr::StringObjLiteral("abc".to_string())),
+        Op::Eq,
+        Box::new(Expr::StringObjLiteral("abc".to_string())),
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_num2str() {
+    let env = empty_env();
+    let expr = Expr::Call("num2str".to_string(), vec![Expr::Number(42.0)]);
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("42".to_string())));
+}
+
+#[test]
+fn test_str2double_valid() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "str2double".to_string(),
+        vec![Expr::StrLiteral("3.14".to_string())],
+    );
+    match eval(&expr, &env).unwrap() {
+        Value::Scalar(n) => assert!((n - 3.14).abs() < 1e-10),
+        _ => panic!("expected scalar"),
+    }
+}
+
+#[test]
+fn test_str2double_invalid() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "str2double".to_string(),
+        vec![Expr::StrLiteral("abc".to_string())],
+    );
+    match eval(&expr, &env).unwrap() {
+        Value::Scalar(n) => assert!(n.is_nan()),
+        _ => panic!("expected scalar"),
+    }
+}
+
+#[test]
+fn test_strcat_char_arrays() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "strcat".to_string(),
+        vec![
+            Expr::StrLiteral("hello".to_string()),
+            Expr::StrLiteral(" world".to_string()),
+        ],
+    );
+    // strcat trims trailing whitespace from char array args per MATLAB behavior
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("hello world".to_string())));
+}
+
+#[test]
+fn test_strcmp_equal() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "strcmp".to_string(),
+        vec![
+            Expr::StrLiteral("abc".to_string()),
+            Expr::StrLiteral("abc".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_strcmp_not_equal() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "strcmp".to_string(),
+        vec![
+            Expr::StrLiteral("abc".to_string()),
+            Expr::StrLiteral("def".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_length_of_str() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "length".to_string(),
+        vec![Expr::StrLiteral("hello".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(5.0)));
+}
+
+#[test]
+fn test_ischar_true() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "ischar".to_string(),
+        vec![Expr::StrLiteral("hi".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_ischar_false_for_number() {
+    let env = empty_env();
+    let expr = Expr::Call("ischar".to_string(), vec![Expr::Number(5.0)]);
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_isstring_true() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "isstring".to_string(),
+        vec![Expr::StringObjLiteral("hi".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_lower_upper() {
+    let env = empty_env();
+    let lower_expr = Expr::Call(
+        "lower".to_string(),
+        vec![Expr::StrLiteral("HELLO".to_string())],
+    );
+    assert_eq!(eval(&lower_expr, &env), Ok(Value::Str("hello".to_string())));
+
+    let upper_expr = Expr::Call(
+        "upper".to_string(),
+        vec![Expr::StrLiteral("hello".to_string())],
+    );
+    assert_eq!(eval(&upper_expr, &env), Ok(Value::Str("HELLO".to_string())));
+}
+
+#[test]
+fn test_strtrim() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "strtrim".to_string(),
+        vec![Expr::StrLiteral("  hello  ".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("hello".to_string())));
+}
+
+#[test]
+fn test_strrep() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "strrep".to_string(),
+        vec![
+            Expr::StrLiteral("hello world".to_string()),
+            Expr::StrLiteral("world".to_string()),
+            Expr::StrLiteral("Rust".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("hello Rust".to_string())));
+}
+
+#[test]
+fn test_strcmpi_case_insensitive() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "strcmpi".to_string(),
+        vec![
+            Expr::StrLiteral("Hello".to_string()),
+            Expr::StrLiteral("hello".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
