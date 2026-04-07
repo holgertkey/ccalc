@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-04-07
+
+### Added
+
+- **Phase 9 — String data types**:
+  - `Value::Str(String)` — char array (single-quoted `'text'`), MATLAB-style, numeric-compatible
+  - `Value::StringObj(String)` — string object (double-quoted `"text"`)
+  - **Tokenizer**: `'` is context-sensitive — transpose after `ident`/`)`/`]`/number/`'`/string token; char array literal otherwise
+  - **Escape sequences**: `''` inside `'...'` = escaped single quote; `\n` `\t` `\\` `\"` inside `"..."`
+  - **Char array arithmetic**: char → ASCII codes before binary ops; single char → Scalar, multi-char → 1×N Matrix
+  - **String object operations**: `+` concatenates; `==` / `~=` compare whole strings; other ops return an error
+  - **AST**: `Expr::StrLiteral(String)` and `Expr::StringObjLiteral(String)` added
+  - **New built-in functions**:
+    - `num2str(x)` / `num2str(x, N)` — convert number to char array with N decimal digits
+    - `str2num(s)` — parse char array as number; error on failure
+    - `str2double(s)` — parse char array as number; returns `NaN` on failure
+    - `strcat(a, b, ...)` — concatenate two or more strings
+    - `strcmp(a, b)` — case-sensitive equality test, returns 0/1
+    - `strcmpi(a, b)` — case-insensitive equality test
+    - `lower(s)` / `upper(s)` — case conversion
+    - `strtrim(s)` — strip leading and trailing whitespace
+    - `strrep(s, old, new)` — replace all occurrences of `old` with `new`
+    - `sprintf(fmt)` — process escape sequences; single-argument form
+    - `ischar(s)` — 1 if char array, else 0
+    - `isstring(s)` — 1 if string object, else 0
+  - **Updated built-ins**: `length`, `numel`, `size` now handle string arguments
+  - **`who`**: shows type annotation — `[1×N char]` for char arrays, `[string]` for string objects
+  - **Workspace**: `ws`/`wl` skip string variables (same policy as matrices and complex)
+  - New example file `examples/strings.calc` covering all Phase 9 features
+
 ## [0.12.0] - 2026-04-06
 
 ### Added

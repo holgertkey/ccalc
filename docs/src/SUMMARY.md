@@ -17,6 +17,7 @@
 - [Vector & Data Utilities](./guide/vectors.md)
 - [Comparison & Logical Operators](./guide/logic.md)
 - [Complex Numbers](./guide/complex.md)
+- [Strings](./guide/strings.md)
 
 # Architecture
 
@@ -37,3 +38,4 @@
 - [Phase 7 — Comparison & Logical](./ccalc/phase7-logic.md)
 - [Phase 7.5 — Vector Utilities](./ccalc/phase75-vector-utils.md)
 - [Phase 8 — Complex Numbers](./ccalc/phase8-complex.md)
+- [Phase 9 — String Data Types](./ccalc/phase9-strings.md)

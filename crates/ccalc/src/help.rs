@@ -17,10 +17,11 @@ pub fn print(topic: Option<&str>) {
         Some("examples" | "ex") => print_examples(),
         Some("vectors" | "vector" | "utils") => print_vectors(),
         Some("complex" | "cplx" | "imag") => print_complex(),
+        Some("strings" | "string" | "str" | "char") => print_strings(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  complex  examples"
+                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  complex  strings  examples"
             );
         }
     }
@@ -89,6 +90,9 @@ NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
 Complex 3+4i  3+4j  complex(re,im)
         real(z) imag(z) abs(z) angle(z) conj(z) isreal(z)
         z' = conj(z)  (conjugate transpose for scalars)
+Strings 'char array'  \"string object\"
+        num2str  str2num  str2double  strcat  strcmp  strcmpi
+        lower  upper  strtrim  strrep  sprintf  ischar  isstring
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -114,6 +118,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help vectors     nan/inf, reductions, sort/find/unique, end, reshape
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
+  help strings     char arrays, string objects, strcmp, num2str, ...
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -281,8 +286,25 @@ Examples
     abs(3 + 4*i)               →   5
     angle(i)                   →   1.5707963...  (π/2)
 
+String functions  (see also: help strings)
+    num2str(x)         number → char array ('3.1416' for pi)
+    num2str(x, N)      number → char array with N decimal digits
+    str2num(s)         char array → number  (error if not parseable)
+    str2double(s)      char array → number  (NaN if not parseable)
+    strcat(a, b, ...)  concatenate two or more strings
+    strcmp(a, b)       1 if equal (case-sensitive), else 0
+    strcmpi(a, b)      1 if equal (case-insensitive), else 0
+    lower(s)           convert to lowercase
+    upper(s)           convert to uppercase
+    strtrim(s)         strip leading and trailing whitespace
+    strrep(s, old, new)  replace all occurrences of old with new
+    sprintf(fmt)       process escape sequences (\\n \\t \\\\); 1-arg form
+    ischar(s)          1 if s is a char array, else 0
+    isstring(s)        1 if s is a string object, else 0
+
 See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
-          help complex    (full complex number reference)"
+          help complex    (full complex number reference)
+          help strings    (char arrays, string objects, full reference)"
     );
 }
 
@@ -738,6 +760,82 @@ Example: ccalc examples/complex_numbers.calc"
 }
 
 // ---------------------------------------------------------------------------
+// help strings
+// ---------------------------------------------------------------------------
+
+fn print_strings() {
+    println!(
+        "\
+STRINGS
+
+Two types — both display as plain text (no surrounding quotes).
+
+Char arrays — single quotes  (MATLAB classic, numeric-compatible)
+    'hello'            →  Str(\"hello\")   1×5 char array
+    'it''s ok'         →  it's ok         '' inside '' = escaped quote
+    length('hello')    →  5
+    size('hello')      →  [1  5]
+    numel('hello')     →  5
+
+    Arithmetic converts chars to their ASCII codes:
+    'a' + 0            →  97
+    'abc' + 1          →  [98  99  100]
+    'abc' == 'aXc'     →  [1  0  1]      element-wise comparison
+
+String objects — double quotes  (modern style, scalar element)
+    \"hello\"            →  StringObj(\"hello\")
+    \"it\"\"s ok\"         →  it\"s ok          \"\" inside \"\" = escaped quote
+    \"a\\n\" + \"b\"         →  a<newline>b      escape sequences in double-quoted strings
+    length(\"hello\")    →  1            scalar element — not a char array
+    \"abc\" + \"def\"       →  \"abcdef\"        + concatenates string objects
+
+Escape sequences inside \"...\"  (also work in fprintf/sprintf)
+    \\n    newline
+    \\t    horizontal tab
+    \\\\    literal backslash
+    \\\"    literal double-quote
+
+String built-in functions
+    num2str(x)          number → char array ('3.1416' for pi)
+    num2str(x, N)       number → char array with N decimal digits
+    str2num(s)          char array → number  (error if not parseable)
+    str2double(s)       char array → number  (NaN if not parseable)
+    strcat(a, b, ...)   concatenate two or more strings
+    strcmp(a, b)        1 if equal (case-sensitive), else 0
+    strcmpi(a, b)       1 if equal (case-insensitive), else 0
+    lower(s)            convert to lowercase
+    upper(s)            convert to uppercase
+    strtrim(s)          strip leading and trailing whitespace
+    strrep(s, old, new) replace all occurrences of old with new
+    sprintf(fmt)        process escape sequences (\\\\n \\\\t ...); 1-arg form
+    ischar(s)           1 if s is a char array, else 0
+    isstring(s)         1 if s is a string object, else 0
+
+Type checking
+    ischar('hello')     →  1
+    isstring(\"hello\")  →  1
+    ischar(\"hello\")    →  0    string object is not a char array
+    ischar(42)          →  0
+
+Practical — building labeled output
+    num2str(4700) + ' Ohm'
+    strcat('R = ', num2str(R), ' kOhm')
+
+Comparison
+    strcmp('abc', 'abc')    →  1
+    strcmpi('ABC', 'abc')   →  1
+    \"hello\" == \"hello\"      →  1
+    \"hello\" == \"world\"      →  0
+
+Workspace
+    ws/wl do not persist string variables (same policy as matrices).
+    who shows: name [1×N char]  or  name [string]
+
+Example: ccalc examples/strings.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // help examples
 // ---------------------------------------------------------------------------
 
@@ -862,6 +960,7 @@ Script files  (see examples/ directory)
     ccalc examples/logic.calc
     ccalc examples/bitwise.calc
     ccalc examples/vector_utils.calc
-    ccalc examples/complex_numbers.calc"
+    ccalc examples/complex_numbers.calc
+    ccalc examples/strings.calc"
     );
 }

@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.12.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.13.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 ---
 
@@ -605,6 +605,61 @@ ans =
 
 ---
 
+## Strings
+
+ccalc supports two string types, matching MATLAB/Octave:
+
+### Char arrays — single quotes
+
+```
+[ 0 ]: greeting = 'Hello!'
+greeting = Hello!
+[ 'Hello!' ]: length(greeting)
+[ 6 ]:
+```
+
+Char arrays are **numeric-compatible** — arithmetic converts each character to its ASCII code:
+
+```
+[ 0 ]: 'a' + 0        % ASCII of 'a'
+[ 97 ]:
+[ 0 ]: 'abc' + 1      % shift each code by 1
+ans =
+   98   99   100
+```
+
+### String objects — double quotes
+
+```
+[ 0 ]: s = "Hello"
+s = Hello
+[ '"Hello"' ]: s + ", World!"
+[ '"Hello, World!"' ]:
+```
+
+String objects use `+` for concatenation.
+
+### String built-ins
+
+| Function | Description |
+|---|---|
+| `num2str(x)` / `num2str(x, N)` | Number → char array (N digits) |
+| `str2num(s)` | Char array → number (error on failure) |
+| `str2double(s)` | Char array → number (NaN on failure) |
+| `strcat(a, b, ...)` | Concatenate strings |
+| `strcmp(a, b)` | Case-sensitive equality → 0/1 |
+| `strcmpi(a, b)` | Case-insensitive equality → 0/1 |
+| `lower(s)` / `upper(s)` | Case conversion |
+| `strtrim(s)` | Strip leading/trailing whitespace |
+| `strrep(s, old, new)` | Find-and-replace |
+| `sprintf(fmt)` | Process escape sequences (`\n`, `\t`, ...) |
+| `ischar(s)` | 1 if char array, else 0 |
+| `isstring(s)` | 1 if string object, else 0 |
+
+`length(s)`, `numel(s)`, and `size(s)` all work on strings.
+
+---
+
 ## Complex Numbers
 
 `i` and `j` are pre-set to the imaginary unit `0 + 1i`. Complex numbers
@@ -908,6 +963,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `bitwise.calc`          | Bitmask construction, register bit fields, RGB colour packing |
 | `vector_utils.calc`     | `nan`/`inf`, reductions, sort/find/unique, `end` indexing, reshape/flip |
 | `complex_numbers.calc`  | Complex arithmetic, polar form, built-ins, AC circuit   |
+| `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
 
 ```bash
 ccalc < examples/mortgage.ccalc
@@ -935,7 +991,7 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix/Complex), Env type (HashMap<String, Value>), workspace save/load
+    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj), Env type (HashMap<String, Value>), workspace save/load
     eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base enum
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
 Cargo.toml       — workspace manifest (single source of truth for version)

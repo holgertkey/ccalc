@@ -16,7 +16,7 @@ The work is divided into phases in order of architectural dependency.
 | 7 | Comparison and logical operators (`==`, `~=`, `&&`) | ✅ Done |
 | 7.5 | Vector utilities, `end` indexing, `NaN`/`Inf`, `sort`, `find` | ✅ Done |
 | 8 | Complex numbers (`3 + 4i`, `abs(z)`, `angle(z)`) | ✅ Done |
-| 9 | String data types (`'char array'`, `"string object"`) | Planned |
+| 9 | String data types (`'char array'`, `"string object"`) | ✅ Done |
 | 10 | C-style I/O (`fprintf('%.2f\n', x)`, `sprintf`) | Planned |
 | 11 | Control flow (`if`, `for`, `while`, `switch`, `try`/`catch`, `+=`) | Planned |
 | 12 | User-defined functions, multiple return values, `@(x)` lambdas | Planned |
@@ -88,10 +88,17 @@ Built-ins added: `real`, `imag`, `abs` (overloaded), `angle`, `conj`,
 `complex`, `isreal`. `scalar_arg` accepts `Complex` with `im == 0` as a
 real scalar. Complex matrices are out of scope and deferred.
 
-**Phase 9** adds string types: `Value::CharMatrix` (single-quote char arrays,
-numeric-compatible) and `Value::StringMatrix` (double-quote string objects).
-The `'` disambiguation — transpose vs string literal — is resolved by one
-token of left context in the tokenizer.
+**Phase 9** adds two string value types. `Value::Str(String)` represents
+single-quoted char arrays; `Value::StringObj(String)` represents double-quoted
+string objects. The `'` disambiguation — transpose vs char array literal — is
+resolved by one token of left context in the tokenizer: after
+`Number`/`Ident`/`RParen`/`RBracket`/`Apostrophe`/`Str` it is a transpose;
+otherwise it opens a char array. Char array arithmetic converts characters to
+their ASCII codes before the operation, matching MATLAB behaviour.
+String objects use `+` for concatenation and `==`/`~=` for comparison.
+New built-ins: `num2str`, `str2num`, `str2double`, `strcat`, `strcmp`,
+`strcmpi`, `lower`, `upper`, `strtrim`, `strrep`, `sprintf` (1-arg),
+`ischar`, `isstring`. `length`/`numel`/`size` updated for strings.
 
 **Phase 10** adds `fprintf(fmt, ...)` and `sprintf(fmt, ...)` using the
 string infrastructure from Phase 9. The ad-hoc `p`/`p<N>` precision command
