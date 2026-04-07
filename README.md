@@ -4,6 +4,8 @@ A fast terminal calculator with Octave/MATLAB syntax and script support — one 
 
 **Current version: 0.13.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
+**[📖 Documentation](https://holgertkey.github.io/ccalc/)**
+
 ---
 
 ## Why ccalc?
