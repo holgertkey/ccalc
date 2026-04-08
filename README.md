@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.13.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.14.0+001** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -103,7 +103,7 @@ $ printf "10\n+ 5\n* 2" | ccalc
 $ ccalc < formulas.txt
 ```
 
-All commands work in script/pipe mode: `exit`/`quit` stop processing, `who`/`clear`/`ws`/`wl` manage variables, `p`/`p<N>` set precision, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
+All commands work in script/pipe mode: `exit`/`quit` stop processing, `who`/`clear`/`ws`/`wl` manage variables, `format` controls number display, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
 
 ---
 
@@ -654,7 +654,7 @@ String objects use `+` for concatenation.
 | `lower(s)` / `upper(s)` | Case conversion |
 | `strtrim(s)` | Strip leading/trailing whitespace |
 | `strrep(s, old, new)` | Find-and-replace |
-| `sprintf(fmt)` | Process escape sequences (`\n`, `\t`, ...) |
+| `sprintf(fmt, v1, ...)` | Format string (C printf), returns char array |
 | `ischar(s)` | 1 if char array, else 0 |
 | `isstring(s)` | 1 if string object, else 0 |
 
@@ -709,6 +709,49 @@ i^4                       %  1
 
 ---
 
+## Formatted Output
+
+### `fprintf` — print to stdout
+
+`fprintf(fmt, v1, v2, ...)` prints formatted output using C-style conversion specifiers:
+
+| Specifier | Meaning                                         |
+|-----------|-------------------------------------------------|
+| `%d`, `%i`| Integer (truncated to whole number)             |
+| `%f`      | Fixed-point decimal                             |
+| `%e`      | Scientific notation (`1.23e+04`)               |
+| `%g`      | Shorter of `%f` and `%e`                       |
+| `%s`      | String (char array or string object)            |
+| `%%`      | Literal `%`                                     |
+
+Width, precision, and alignment flags follow standard C `printf` conventions:
+
+```
+fprintf('%8.3f\n', pi)      %     3.142
+fprintf('%-10s|\n', 'hi')   % hi        |
+fprintf('%+.4e\n', 1000)    % +1.0000e+03
+fprintf('%05d\n', 42)       % 00042
+```
+
+Escape sequences: `\n` (newline), `\t` (tab), `\\` (backslash).
+
+When there are more arguments than conversion specifiers, the format string repeats (Octave behaviour):
+
+```
+fprintf('%d ', 1, 2, 3)     % 1 2 3
+```
+
+### `sprintf` — format to string
+
+Same as `fprintf` but returns the result as a char array instead of printing:
+
+```
+label = sprintf('R = %.1f Ohm', R);
+disp(label)
+```
+
+---
+
 ## REPL commands
 
 | Command                           | Action                              |
@@ -720,15 +763,16 @@ i^4                       %  1
 | `who`                             | List all defined variables          |
 | `clear`                           | Clear all variables                 |
 | `clear <name>`                    | Clear a single variable             |
-| `p`                               | Show current decimal precision      |
-| `p<N>`                            | Set decimal precision (0–15)        |
+| `format`                          | Reset to `short` (5 significant digits) |
+| `format <mode>`                   | Switch display mode (see below)     |
+| `format <N>`                      | N decimal places (e.g. `format 4`) |
 | `hex` / `dec` / `bin` / `oct`     | Switch display base                 |
 | `base`                            | Show ans in all four bases          |
 | `ws`                              | Save workspace to disk              |
 | `wl`                              | Load workspace from disk            |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `matrices`  `examples`
+Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `format`  `matrices`  `examples`
 
 ## Keyboard shortcuts
 
@@ -749,28 +793,30 @@ Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `matrices`  `exam
 
 ## Number formatting and bases
 
-### Decimal precision
+### Display format
 
-By default results are shown with up to 10 decimal digits, trailing zeros removed:
+The `format` command controls how numbers are displayed (MATLAB-compatible):
 
-```
-[ 0 ]: 1 / 3
-[ 0.3333333333 ]:
-[ 0 ]: p4
-[ 0 ]: 1 / 3
-[ 0.3333 ]:
-[ 0 ]: p          show current precision
-precision: 4
-```
+| Command        | Mode       | Example for `pi`           |
+|----------------|------------|----------------------------|
+| `format`       | short      | `3.1416`  (5 sig digits, default) |
+| `format short` | short      | `3.1416`                   |
+| `format long`  | long       | `3.14159265358979`         |
+| `format shortE`| shortE     | `3.1416e+00`               |
+| `format longE` | longE      | `3.14159265358979e+00`     |
+| `format bank`  | bank       | `3.14`  (2 decimal places) |
+| `format rat`   | rat        | `355/113`  (rational approx) |
+| `format hex`   | hex        | `400921FB54442D18`  (IEEE 754 bits) |
+| `format +`     | +          | `+`  (sign only)           |
+| `format compact` | —        | suppress blank lines       |
+| `format loose` | —          | add blank line after outputs |
+| `format N`     | custom     | `format 4` → `0.3333`      |
 
-`p<N>` sets N decimal places (0–15). `p` alone shows the current setting.
+`format` affects `disp()`, assignment output, and the REPL prompt — not `fprintf`/`sprintf` (which use their own specifiers).
 
-Very large (`|n| >= 1e15`) and very small (`|n| < 1e-9`) numbers switch to scientific notation automatically:
+See `help format` for full documentation.
 
-```
-[ 0 ]: 2 ^ 60
-[ 1.152921504606847e18 ]:
-```
+Very large (`|n| >= 1e15`) and very small numbers switch to scientific notation automatically in `short`/`long` modes.
 
 ### Number bases
 
@@ -917,35 +963,30 @@ disp(ans)             % print current ans
 disp(rate * 12)       % print expression result
 ```
 
-### `fprintf('fmt')` — print formatted text
+### `fprintf` — print formatted text
 
-`fprintf('fmt')` prints a string with escape sequences.
+`fprintf(fmt, v1, ...)` prints formatted output using C-style specifiers.
 No newline is added automatically — include `\n` explicitly.
 
 ```
 fprintf('=== Resistors in series ===\n')
 
-100 + 220 + 470
-fprintf('Total resistance (Ohm): ')
-disp(ans)
+R_total = 100 + 220 + 470;
+fprintf('Total resistance: %d Ohm\n', R_total)
 
 fprintf('=== Parallel combination ===\n')
 
-1/100 + 1/220;
-^ -1
-fprintf('Parallel resistance (Ohm): ')
-disp(ans)
+R_par = 1 / (1/100 + 1/220);
+fprintf('Parallel resistance: %.2f Ohm\n', R_par)
 ```
 
 Output:
 
 ```
 === Resistors in series ===
-790
-Total resistance (Ohm): 790
+Total resistance: 790 Ohm
 === Parallel combination ===
-68.7500002148
-Parallel resistance (Ohm): 68.7500002148
+Parallel resistance: 68.75 Ohm
 ```
 
 ### Example files
@@ -966,9 +1007,10 @@ The `examples/` directory contains annotated formula files ready to run:
 | `vector_utils.calc`     | `nan`/`inf`, reductions, sort/find/unique, `end` indexing, reshape/flip |
 | `complex_numbers.calc`  | Complex arithmetic, polar form, built-ins, AC circuit   |
 | `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
+| `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 
 ```bash
-ccalc < examples/mortgage.ccalc
+ccalc < examples/mortgage.calc
 ```
 
 ---
@@ -993,8 +1035,8 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj), Env type (HashMap<String, Value>), workspace save/load
-    eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base enum
+    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void), Env type (HashMap<String, Value>), workspace save/load
+    eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history

@@ -1,47 +1,95 @@
-# Precision
+# Number Display Format
 
-The **precision** setting controls how many decimal places are shown in the
-output. It does not affect computation — all arithmetic is done in `f64`
-(IEEE 754 double precision).
+The `format` command controls how numbers are displayed in the REPL and
+script/pipe output. It does not affect computation — all arithmetic is done in
+`f64` (IEEE 754 double precision).
 
 ## Commands
 
-| Command | Action |
-|---|---|
-| `p` | Show current precision (default: 10) |
-| `p<N>` | Set precision to N decimal places (0–15) |
+| Command          | Description                                        |
+|------------------|----------------------------------------------------|
+| `format`         | Reset to `short` (5 significant digits)            |
+| `format short`   | 5 significant digits, auto fixed/scientific        |
+| `format long`    | 15 significant digits, auto fixed/scientific       |
+| `format shortE`  | Always scientific, 4 decimal places                |
+| `format longE`   | Always scientific, 14 decimal places               |
+| `format shortG`  | Same as `short` (MATLAB `shortG` alias)            |
+| `format longG`   | Same as `long` (MATLAB `longG` alias)              |
+| `format bank`    | Fixed 2 decimal places (currency)                  |
+| `format rat`     | Rational approximation `p/q`                       |
+| `format hex`     | IEEE 754 double-precision bit pattern (16 hex digits) |
+| `format +`       | Sign only: `+` positive, `-` negative, space for 0 |
+| `format compact` | Suppress blank lines between outputs               |
+| `format loose`   | Add blank line after every output (default)        |
+| `format N`       | N decimal places (e.g. `format 4`)                 |
+
+## Examples
 
 ```
-[ 0 ]: 1 / 3
-[ 0.3333333333 ]: p4
-[ 0.3333 ]: 1 / 3
-[ 0.3333 ]: p0
-[ 0 ]: 1 / 3
-[ 0 ]: p10
-[ 0 ]: 1 / 3
-[ 0.3333333333 ]:
+>> format short
+>> pi
+3.1416
+
+>> format long
+>> pi
+3.14159265358979
+
+>> format shortE
+>> pi
+3.1416e+00
+
+>> format bank
+>> 1/3
+0.33
+
+>> format rat
+>> pi
+355/113
+
+>> format hex
+>> 1.0
+3FF0000000000000
+
+>> format +
+>> [-2 0 5]
+- +
+
+>> format 4
+>> 1/3
+0.3333
 ```
 
-## Automatic formatting rules
+## Scope
 
-Regardless of precision, the formatter applies these rules:
+`format` affects:
+- `disp()` output
+- Variable assignment display (`x = 3.1416`)
+- The REPL prompt value
 
-- **Integer results** are always shown without a decimal point: `42`, not `42.0`
-- **Trailing zeros** are trimmed: `3.14` not `3.1400000000`
-- **Very large numbers** (≥ 10¹⁵) switch to scientific notation: `1.5e15`
-- **Very small numbers** (< 10⁻⁹) switch to scientific notation: `1.23e-12`
+`format` does **not** affect `fprintf` / `sprintf` — those functions use
+their own per-call format specifiers (e.g. `%f`, `%e`, `%.3f`).
 
-## Non-decimal bases
+## Automatic scientific notation
 
-Precision has no effect when the display base is hex, bin, or oct — those modes
-always show the rounded integer value.
+In `short` and `long` modes, numbers switch to scientific notation when:
+- The exponent is less than −3 (e.g. `0.001` → `1e-03`)
+- The exponent is ≥ the number of significant digits
 
 ## Persistent default
 
-To change the default precision across all sessions, set it in
+The default precision (used by `format N` and the startup default) is set in
 [`config.toml`](./configuration.md):
 
 ```toml
 [display]
-precision = 4
+precision = 10
 ```
+
+## Note: `format hex` vs `hex`
+
+These are different commands:
+
+- `format hex` — shows the IEEE 754 raw bit pattern of any floating-point
+  number as 16 uppercase hex digits (e.g. `400921FB54442D18` for `pi`).
+- `hex` — switches the display base to hexadecimal for integer values
+  (e.g. `0xFF` → `255` shown as `0xFF`).
