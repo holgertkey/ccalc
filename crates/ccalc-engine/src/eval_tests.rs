@@ -294,19 +294,19 @@ fn test_format_number_sci() {
 
 #[test]
 fn test_format_value_dec_integer() {
-    assert_eq!(format_scalar(42.0, 10, Base::Dec), "42");
-    assert_eq!(format_scalar(-5.0, 10, Base::Dec), "-5");
+    assert_eq!(format_scalar(42.0, Base::Dec, &FormatMode::Custom(10)), "42");
+    assert_eq!(format_scalar(-5.0, Base::Dec, &FormatMode::Custom(10)), "-5");
 }
 
 #[test]
 fn test_format_value_dec_float() {
-    assert_eq!(format_scalar(3.14, 2, Base::Dec), "3.14");
-    assert_eq!(format_scalar(1.0 / 3.0, 4, Base::Dec), "0.3333");
+    assert_eq!(format_scalar(3.14, Base::Dec, &FormatMode::Custom(2)), "3.14");
+    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(4)), "0.3333");
 }
 
 #[test]
 fn test_format_value_dec_sci_large() {
-    let result = format_scalar(1e20, 2, Base::Dec);
+    let result = format_scalar(1e20, Base::Dec, &FormatMode::Custom(2));
     assert!(
         result.contains('e'),
         "expected scientific notation, got: {result}"
@@ -315,7 +315,7 @@ fn test_format_value_dec_sci_large() {
 
 #[test]
 fn test_format_value_dec_sci_small() {
-    let result = format_scalar(1e-10, 4, Base::Dec);
+    let result = format_scalar(1e-10, Base::Dec, &FormatMode::Custom(4));
     assert!(
         result.contains('e'),
         "expected scientific notation, got: {result}"
@@ -324,21 +324,21 @@ fn test_format_value_dec_sci_small() {
 
 #[test]
 fn test_format_value_hex() {
-    assert_eq!(format_scalar(255.0, 10, Base::Hex), "0xFF");
-    assert_eq!(format_scalar(256.0, 10, Base::Hex), "0x100");
-    assert_eq!(format_scalar(0.0, 10, Base::Hex), "0x0");
+    assert_eq!(format_scalar(255.0, Base::Hex, &FormatMode::Custom(10)), "0xFF");
+    assert_eq!(format_scalar(256.0, Base::Hex, &FormatMode::Custom(10)), "0x100");
+    assert_eq!(format_scalar(0.0, Base::Hex, &FormatMode::Custom(10)), "0x0");
 }
 
 #[test]
 fn test_format_value_bin() {
-    assert_eq!(format_scalar(10.0, 10, Base::Bin), "0b1010");
-    assert_eq!(format_scalar(1.0, 10, Base::Bin), "0b1");
+    assert_eq!(format_scalar(10.0, Base::Bin, &FormatMode::Custom(10)), "0b1010");
+    assert_eq!(format_scalar(1.0, Base::Bin, &FormatMode::Custom(10)), "0b1");
 }
 
 #[test]
 fn test_format_value_oct() {
-    assert_eq!(format_scalar(8.0, 10, Base::Oct), "0o10");
-    assert_eq!(format_scalar(255.0, 10, Base::Oct), "0o377");
+    assert_eq!(format_scalar(8.0, Base::Oct, &FormatMode::Custom(10)), "0o10");
+    assert_eq!(format_scalar(255.0, Base::Oct, &FormatMode::Custom(10)), "0o377");
 }
 
 #[test]
@@ -349,7 +349,85 @@ fn test_format_non_dec_negative() {
 
 #[test]
 fn test_format_value_hex_rounds() {
-    assert_eq!(format_scalar(255.6, 10, Base::Hex), "0x100");
+    assert_eq!(format_scalar(255.6, Base::Hex, &FormatMode::Custom(10)), "0x100");
+}
+
+// --- FormatMode tests ---
+
+#[test]
+fn test_format_short() {
+    let m = &FormatMode::Short;
+    assert_eq!(format_scalar(std::f64::consts::PI, Base::Dec, m), "3.1416");
+    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, m), "0.33333");
+    assert_eq!(format_scalar(42.0, Base::Dec, m), "42");
+    assert_eq!(format_scalar(0.001, Base::Dec, m), "0.001");
+    assert_eq!(format_scalar(0.0001, Base::Dec, m), "1e-04");
+    assert_eq!(format_scalar(1234567.89, Base::Dec, m), "1.2346e+06");
+}
+
+#[test]
+fn test_format_long() {
+    let m = &FormatMode::Long;
+    assert_eq!(
+        format_scalar(std::f64::consts::PI, Base::Dec, m),
+        "3.14159265358979"
+    );
+    assert_eq!(format_scalar(42.0, Base::Dec, m), "42");
+}
+
+#[test]
+fn test_format_shorte() {
+    let m = &FormatMode::ShortE;
+    assert_eq!(format_scalar(std::f64::consts::PI, Base::Dec, m), "3.1416e+00");
+    assert_eq!(format_scalar(1234.5, Base::Dec, m), "1.2345e+03");
+}
+
+#[test]
+fn test_format_bank() {
+    let m = &FormatMode::Bank;
+    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, m), "0.33");
+    assert_eq!(format_scalar(199.999, Base::Dec, m), "200.00");
+    assert_eq!(format_scalar(3.0, Base::Dec, m), "3.00");
+}
+
+#[test]
+fn test_format_rat() {
+    let m = &FormatMode::Rat;
+    assert_eq!(format_scalar(std::f64::consts::PI, Base::Dec, m), "355/113");
+    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, m), "1/3");
+    assert_eq!(format_scalar(42.0, Base::Dec, m), "42");
+    assert_eq!(format_scalar(0.125, Base::Dec, m), "1/8");
+}
+
+#[test]
+fn test_format_hex_ieee754() {
+    let m = &FormatMode::Hex;
+    // IEEE 754 bit pattern for 1.0
+    assert_eq!(format_scalar(1.0, Base::Dec, m), "3FF0000000000000");
+    // FormatMode::Hex overrides Base
+    assert_eq!(format_scalar(1.0, Base::Hex, m), "3FF0000000000000");
+}
+
+#[test]
+fn test_format_plus() {
+    let m = &FormatMode::Plus;
+    assert_eq!(format_scalar(3.0, Base::Dec, m), "+");
+    assert_eq!(format_scalar(-2.0, Base::Dec, m), "-");
+    assert_eq!(format_scalar(0.0, Base::Dec, m), " ");
+}
+
+#[test]
+fn test_format_custom() {
+    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(4)), "0.3333");
+    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(2)), "0.33");
+}
+
+#[test]
+fn test_format_nan_inf() {
+    let m = &FormatMode::Short;
+    assert_eq!(format_scalar(f64::NAN, Base::Dec, m), "NaN");
+    assert_eq!(format_scalar(f64::INFINITY, Base::Dec, m), "Inf");
+    assert_eq!(format_scalar(f64::NEG_INFINITY, Base::Dec, m), "-Inf");
 }
 
 // --- Matrix tests ---
@@ -949,14 +1027,15 @@ fn test_builtin_isreal() {
 
 #[test]
 fn test_format_complex_display() {
-    assert_eq!(format_complex(3.0, 4.0, 10), "3 + 4i");
-    assert_eq!(format_complex(3.0, -4.0, 10), "3 - 4i");
-    assert_eq!(format_complex(0.0, 1.0, 10), "i");
-    assert_eq!(format_complex(0.0, -1.0, 10), "-i");
-    assert_eq!(format_complex(0.0, 2.0, 10), "2i");
-    assert_eq!(format_complex(3.0, 0.0, 10), "3");
-    assert_eq!(format_complex(1.0, 1.0, 10), "1 + i");
-    assert_eq!(format_complex(1.0, -1.0, 10), "1 - i");
+    let m = &FormatMode::Custom(10);
+    assert_eq!(format_complex(3.0, 4.0, m), "3 + 4i");
+    assert_eq!(format_complex(3.0, -4.0, m), "3 - 4i");
+    assert_eq!(format_complex(0.0, 1.0, m), "i");
+    assert_eq!(format_complex(0.0, -1.0, m), "-i");
+    assert_eq!(format_complex(0.0, 2.0, m), "2i");
+    assert_eq!(format_complex(3.0, 0.0, m), "3");
+    assert_eq!(format_complex(1.0, 1.0, m), "1 + i");
+    assert_eq!(format_complex(1.0, -1.0, m), "1 - i");
 }
 
 #[test]

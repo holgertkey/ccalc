@@ -11,7 +11,8 @@ pub fn print(topic: Option<&str>) {
         Some("functions" | "fn" | "func") => print_functions(),
         Some("bases" | "base") => print_bases(),
         Some("vars" | "variables") => print_vars(),
-        Some("script" | "pipe" | "io" | "printf" | "format") => print_script(),
+        Some("script" | "pipe" | "io" | "printf") => print_script(),
+        Some("format" | "fmt") => print_format(),
         Some("matrices" | "matrix" | "mat") => print_matrices(),
         Some("logic" | "logical" | "comparison") => print_logic(),
         Some("examples" | "ex") => print_examples(),
@@ -21,7 +22,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  complex  strings  io  examples"
+                "Available topics: syntax  functions  bases  vars  script  format  matrices  logic  vectors  complex  strings  io  examples"
             );
         }
     }
@@ -105,6 +106,13 @@ Output  disp(expr)
         fprintf('fmt', v1, v2, ...)   print formatted  (C printf)
         sprintf('fmt', v1, v2, ...)   return formatted string
         Specifiers: %d %i %f %e %g %s %%   Width/prec: %8.3f %-10s
+Format  format short   5 sig digits (default)   format long    15 sig digits
+        format shortE  always scientific         format longE
+        format shortG  same as short             format bank    2 decimal places
+        format rat     rational (p/q)            format hex     IEEE 754 hex
+        format +       sign only (+/-/space)
+        format compact suppress blank lines      format loose   add blank lines
+        format N       N decimal places (e.g. format 4)
 Config  config                show config path and active settings
         config reload         re-read config.toml and apply changes
 REPL    exit  quit  cls  Ctrl+L (clear screen)
@@ -114,6 +122,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help syntax      operators, precedence, implicit multiplication
   help functions   full function reference with examples
   help bases       number bases, display switching
+  help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
   help script      pipe/script mode, semicolons, disp, fprintf
   help matrices    matrix literals, arithmetic, ranges, indexing
@@ -309,6 +318,84 @@ See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
           help complex    (full complex number reference)
           help strings    (char arrays, string objects, full reference)
           help script     (fprintf/sprintf reference with format specifiers)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help format
+// ---------------------------------------------------------------------------
+
+fn print_format() {
+    println!(
+        "\
+NUMBER DISPLAY FORMAT  (help format)
+
+Change how numbers are displayed in the REPL and pipe/script mode.
+The format command affects disp(), variable assignment output, and
+the REPL prompt — but not fprintf/sprintf (which use their own specifiers).
+
+SYNTAX
+    format               reset to 'short' (5 significant digits)
+    format <mode>        switch to named mode
+    format <N>           N decimal places (e.g. format 4)
+
+MODES
+    short     5 significant digits, auto fixed/scientific  (default)
+    long      15 significant digits, auto fixed/scientific
+    shortE    always scientific notation, 4 decimal places
+    longE     always scientific notation, 14 decimal places
+    shortG    same as short  (MATLAB shortG alias)
+    longG     same as long   (MATLAB longG alias)
+    bank      fixed 2 decimal places  (currency)
+    rat       rational approximation  p/q  (e.g. 1/3, 22/7)
+    hex       IEEE 754 double-precision bit pattern (16 hex digits)
+    +         sign character only: + for positive, - for negative, space for 0
+    compact   suppress blank lines between outputs
+    loose     add blank line after every output
+    N         N decimal places (fixed or scientific as needed)
+
+EXAMPLES
+    >> format short
+    >> pi
+    3.1416
+
+    >> format long
+    >> pi
+    3.14159265358979
+
+    >> format shortE
+    >> pi
+    3.1416e+00
+
+    >> format bank
+    >> 1/3
+    0.33
+
+    >> format rat
+    >> pi
+    355/113
+
+    >> format hex
+    >> 1.0
+    3FF0000000000000
+
+    >> format +
+    >> [1 -2 0 3]
+    +- +
+
+    >> format 4
+    >> 1/3
+    0.3333
+
+    >> format compact
+    (blank lines between matrix outputs are suppressed)
+
+    >> format loose
+    (blank line added after every output)
+
+Note: 'format hex' (IEEE 754 bits) and 'hex' (integer display base) are
+different commands. 'hex' changes the base for integer display; 'format hex'
+shows the raw double-precision bit pattern of any number."
     );
 }
 

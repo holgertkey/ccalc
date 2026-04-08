@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0+001] - 2026-04-08
+
+### Added
+
+- **`format` command** — MATLAB-compatible number display modes:
+  - `format short` — 5 significant digits (default MATLAB style, e.g. `3.1416`)
+  - `format long` — 15 significant digits (e.g. `3.14159265358979`)
+  - `format shortE` — always scientific, 4 decimal places (e.g. `3.1416e+00`)
+  - `format longE` — always scientific, 14 decimal places
+  - `format shortG` — shorter of fixed/scientific, 5 sig digits
+  - `format longG` — shorter of fixed/scientific, 15 sig digits
+  - `format bank` — fixed 2 decimal places (e.g. `3.14`)
+  - `format rat` — rational approximation via continued fractions (e.g. `355/113` for pi)
+  - `format hex` — IEEE 754 double bit pattern as 16 uppercase hex digits
+  - `format +` — sign-only display: `+`, `-`, or space
+  - `format compact` — suppress blank lines between outputs
+  - `format loose` — restore blank lines (default)
+  - `format N` — custom N decimal places (legacy behaviour)
+  - `format` alone resets to `short`
+  - `help format` — new help topic with full mode reference and examples
+- **New example** `examples/formatted_output.calc` demonstrating all `fprintf`/`sprintf` specifiers, width/precision/alignment flags, escape sequences, Octave repeat behaviour, and a formatted kinematic data table
+
+### Changed
+
+- `format_scalar`, `format_complex`, `format_value`, `format_value_full` now accept `&FormatMode` parameter (replaces raw `usize` precision)
+- `num2str` uses MATLAB-compatible 5-significant-digit formatting by default
+
 ## [0.14.0] - 2026-04-08
 
 ### Added

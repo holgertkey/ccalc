@@ -414,13 +414,13 @@ fn test_evaluate_sets_base_via_suffix() {
 // --- pipe_output helper + tests ---
 
 fn pipe_output(input: &str) -> Vec<String> {
-    use ccalc_engine::eval::eval;
+    use ccalc_engine::eval::{FormatMode, eval};
     use ccalc_engine::parser::{Stmt, parse};
     use std::io::Cursor;
 
     let mut output = Vec::new();
     let mut env = new_env();
-    let precision: usize = 10;
+    let fmt = FormatMode::default();
     let mut base = Base::Dec;
     let reader = Cursor::new(input);
 
@@ -473,12 +473,12 @@ fn pipe_output(input: &str) -> Vec<String> {
                     Ok(v) => match &v {
                         Value::Void => {}
                         Value::Matrix(_) => {
-                            if let Some(full) = format_value_full(&v, precision) {
+                            if let Some(full) = format_value_full(&v, &fmt) {
                                 output.push(full);
                             }
                         }
-                        Value::Scalar(n) => output.push(format_scalar(*n, precision, base)),
-                        Value::Complex(re, im) => output.push(format_complex(*re, *im, precision)),
+                        Value::Scalar(n) => output.push(format_scalar(*n, base, &fmt)),
+                        Value::Complex(re, im) => output.push(format_complex(*re, *im, &fmt)),
                         Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
                     },
                     Err(e) => output.push(format!("Error: {e}")),
@@ -497,7 +497,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                             EvalResult::Assigned(name, v) => match &v {
                                 Value::Void => {}
                                 Value::Matrix(_) => {
-                                    if let Some(full) = format_value_full(&v, precision) {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push(format!("{name} ="));
                                         output.push(full);
                                     }
@@ -506,14 +506,14 @@ fn pipe_output(input: &str) -> Vec<String> {
                                     output.push(format!(
                                         "{} = {}",
                                         name,
-                                        format_scalar(*n, precision, base)
+                                        format_scalar(*n, base, &fmt)
                                     ));
                                 }
                                 Value::Complex(re, im) => {
                                     output.push(format!(
                                         "{} = {}",
                                         name,
-                                        format_complex(*re, *im, precision)
+                                        format_complex(*re, *im, &fmt)
                                     ));
                                 }
                                 Value::Str(s) => output.push(format!("{name} = {s}")),
@@ -522,7 +522,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
                                 Value::Matrix(_) => {
-                                    if let Some(full) = format_value_full(&v, precision) {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push("ans =".to_string());
                                         output.push(full);
                                     }
@@ -536,15 +536,15 @@ fn pipe_output(input: &str) -> Vec<String> {
                                         output.push(format!("8  - {}0o{:o}", sign, u));
                                         output.push(format!(
                                             "10 - {}",
-                                            format_scalar(*n, precision, Base::Dec)
+                                            format_scalar(*n, Base::Dec, &fmt)
                                         ));
                                         output.push(format!("16 - {}0x{:X}", sign, u));
                                     } else {
-                                        output.push(format_scalar(*n, precision, base));
+                                        output.push(format_scalar(*n, base, &fmt));
                                     }
                                 }
                                 Value::Complex(re, im) => {
-                                    output.push(format_complex(*re, *im, precision));
+                                    output.push(format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
                             },

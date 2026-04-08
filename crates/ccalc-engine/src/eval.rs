@@ -56,6 +56,58 @@ pub enum Base {
     Oct,
 }
 
+/// Controls how numbers are displayed (MATLAB-compatible format modes).
+#[derive(Debug, Clone, PartialEq)]
+pub enum FormatMode {
+    /// 5 significant digits, auto fixed/scientific (MATLAB `format short`).
+    Short,
+    /// 15 significant digits, auto fixed/scientific (MATLAB `format long`).
+    Long,
+    /// Always scientific notation, 4 decimal places — 5 sig digits.
+    ShortE,
+    /// Always scientific notation, 14 decimal places — 15 sig digits.
+    LongE,
+    /// Same as `Short` for scalars (MATLAB `format shortG`).
+    ShortG,
+    /// Same as `Long` for scalars (MATLAB `format longG`).
+    LongG,
+    /// Fixed 2 decimal places — currency (MATLAB `format bank`).
+    Bank,
+    /// Rational approximation `p/q` (MATLAB `format rat`).
+    Rat,
+    /// IEEE 754 hexadecimal bit pattern, 16 uppercase hex digits (MATLAB `format hex`).
+    Hex,
+    /// Sign character only: `+`, `-`, or ` ` for zero (MATLAB `format +`).
+    Plus,
+    /// N decimal places, auto fixed/scientific — legacy precision= setting.
+    Custom(usize),
+}
+
+impl Default for FormatMode {
+    fn default() -> Self {
+        FormatMode::Custom(10)
+    }
+}
+
+impl FormatMode {
+    /// Human-readable name for display in `config` / status messages.
+    pub fn name(&self) -> String {
+        match self {
+            FormatMode::Short    => "short".to_string(),
+            FormatMode::Long     => "long".to_string(),
+            FormatMode::ShortE   => "shortE".to_string(),
+            FormatMode::LongE    => "longE".to_string(),
+            FormatMode::ShortG   => "shortG".to_string(),
+            FormatMode::LongG    => "longG".to_string(),
+            FormatMode::Bank     => "bank".to_string(),
+            FormatMode::Rat      => "rat".to_string(),
+            FormatMode::Hex      => "hex".to_string(),
+            FormatMode::Plus     => "+".to_string(),
+            FormatMode::Custom(n) => format!("custom({n})"),
+        }
+    }
+}
+
 pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
     match expr {
         Expr::Number(n) => Ok(Value::Scalar(*n)),
@@ -849,7 +901,7 @@ fn printf_string(v: &Value) -> Result<String, String> {
     match v {
         Value::Str(s) | Value::StringObj(s) => Ok(s.clone()),
         Value::Scalar(n) => Ok(format_number(*n)),
-        Value::Complex(re, im) => Ok(format_complex(*re, *im, 6)),
+        Value::Complex(re, im) => Ok(format_complex(*re, *im, &FormatMode::Custom(6))),
         Value::Void => Err("fprintf: cannot format void as string".to_string()),
         Value::Matrix(_) => Err("fprintf: cannot format matrix as string".to_string()),
     }
@@ -1497,12 +1549,12 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             Value::Void => Err("num2str: not applicable to void".to_string()),
             Value::Str(s) => Ok(Value::Str(s.clone())),
             Value::StringObj(s) => Ok(Value::Str(s.clone())),
-            Value::Scalar(n) => Ok(Value::Str(format_decimal(*n, 4))),
-            Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, 4))),
+            Value::Scalar(n) => Ok(Value::Str(fmt_auto_sig(*n, 5))),
+            Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, &FormatMode::Short))),
             Value::Matrix(m) => {
                 let s = m
                     .iter()
-                    .map(|x| format_decimal(*x, 4))
+                    .map(|x| fmt_auto_sig(*x, 5))
                     .collect::<Vec<_>>()
                     .join("  ");
                 Ok(Value::Str(s))
@@ -1515,12 +1567,12 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 Value::Void => Err("num2str: not applicable to void".to_string()),
                 Value::Str(s) => Ok(Value::Str(s.clone())),
                 Value::StringObj(s) => Ok(Value::Str(s.clone())),
-                Value::Scalar(v) => Ok(Value::Str(format_decimal(*v, n))),
-                Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, n))),
+                Value::Scalar(v) => Ok(Value::Str(fmt_auto_sig(*v, n))),
+                Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, &FormatMode::Custom(n)))),
                 Value::Matrix(m) => {
                     let s = m
                         .iter()
-                        .map(|x| format_decimal(*x, n))
+                        .map(|x| fmt_auto_sig(*x, n))
                         .collect::<Vec<_>>()
                         .join("  ");
                     Ok(Value::Str(s))
@@ -1978,30 +2030,32 @@ pub fn format_number(n: f64) -> String {
     }
 }
 
-/// Formats a scalar `f64` for user-facing output using the given base and decimal precision.
-/// Replaces the old `format_value(f64, ...)` signature for scalar use sites.
-pub fn format_scalar(n: f64, precision: usize, base: Base) -> String {
+/// Formats a scalar `f64` for user-facing output using the given base and format mode.
+pub fn format_scalar(n: f64, base: Base, mode: &FormatMode) -> String {
+    // FormatMode::Hex always shows IEEE 754 bits regardless of base.
+    if matches!(mode, FormatMode::Hex) {
+        return format_decimal(n, mode);
+    }
     match base {
-        Base::Dec => format_decimal(n, precision),
+        Base::Dec => format_decimal(n, mode),
         _ => format_non_dec(n, base),
     }
 }
 
 /// Formats a complex number `re + im*i` for display.
 ///
-/// - `a + 0i` → `a` (pure real)
+/// - `a + 0i` → `a`  (pure real)
 /// - `0 + bi` → `bi`
-/// - `a + bi` / `a - bi`
 /// - `im == ±1` suppresses the coefficient: `i`, `-i`, `a + i`, `a - i`
-pub fn format_complex(re: f64, im: f64, precision: usize) -> String {
+pub fn format_complex(re: f64, im: f64, mode: &FormatMode) -> String {
     if im == 0.0 {
-        return format_decimal(re, precision);
+        return format_decimal(re, mode);
     }
     let im_abs = im.abs();
     let im_str = if im_abs == 1.0 {
         String::new()
     } else {
-        format_decimal(im_abs, precision)
+        format_decimal(im_abs, mode)
     };
     if re == 0.0 {
         if im < 0.0 {
@@ -2010,7 +2064,7 @@ pub fn format_complex(re: f64, im: f64, precision: usize) -> String {
             format!("{}i", im_str)
         }
     } else {
-        let re_str = format_decimal(re, precision);
+        let re_str = format_decimal(re, mode);
         if im < 0.0 {
             format!("{} - {}i", re_str, im_str)
         } else {
@@ -2020,12 +2074,12 @@ pub fn format_complex(re: f64, im: f64, precision: usize) -> String {
 }
 
 /// Formats a `Value` compactly: scalars as a number string, matrices as `[NxM double]`.
-pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
+pub fn format_value(v: &Value, base: Base, mode: &FormatMode) -> String {
     match v {
         Value::Void => String::new(),
-        Value::Scalar(n) => format_scalar(*n, precision, base),
+        Value::Scalar(n) => format_scalar(*n, base, mode),
         Value::Matrix(m) => format!("[{}x{} double]", m.nrows(), m.ncols()),
-        Value::Complex(re, im) => format_complex(*re, *im, precision),
+        Value::Complex(re, im) => format_complex(*re, *im, mode),
         Value::Str(s) => s.clone(),
         Value::StringObj(s) => s.clone(),
     }
@@ -2033,41 +2087,54 @@ pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
 
 /// Returns `None` for scalars, complex numbers, strings, and void (displayed inline or suppressed);
 /// `Some(full_string)` for matrices (MATLAB-style column-aligned display).
-pub fn format_value_full(v: &Value, precision: usize) -> Option<String> {
+pub fn format_value_full(v: &Value, mode: &FormatMode) -> Option<String> {
     match v {
         Value::Void
         | Value::Scalar(_)
         | Value::Complex(_, _)
         | Value::Str(_)
         | Value::StringObj(_) => None,
-        Value::Matrix(m) => Some(format_matrix(m, precision)),
+        Value::Matrix(m) => Some(format_matrix(m, mode)),
     }
 }
 
 /// Formats a matrix with right-aligned columns, 3-space indent, 3 spaces between columns.
-fn format_matrix(m: &Array2<f64>, precision: usize) -> String {
+/// `FormatMode::Plus` renders a sign grid (`+`, `-`, `0`).
+fn format_matrix(m: &Array2<f64>, mode: &FormatMode) -> String {
     if m.nrows() == 0 || m.ncols() == 0 {
         return "   []".to_string();
     }
+    // Special rendering for format +
+    if matches!(mode, FormatMode::Plus) {
+        let lines: Vec<String> = m
+            .rows()
+            .into_iter()
+            .map(|row| {
+                let chars: String = row
+                    .iter()
+                    .map(|&x| if x > 0.0 { '+' } else if x < 0.0 { '-' } else { '0' })
+                    .collect();
+                format!("   {}", chars)
+            })
+            .collect();
+        return lines.join("\n");
+    }
     let ncols = m.ncols();
-    // Format all cells
     let cells: Vec<Vec<String>> = m
         .rows()
         .into_iter()
-        .map(|row| row.iter().map(|&x| format_decimal(x, precision)).collect())
+        .map(|row| row.iter().map(|&x| format_decimal(x, mode)).collect())
         .collect();
-    // Compute column widths
     let col_widths: Vec<usize> = (0..ncols)
         .map(|c| cells.iter().map(|row| row[c].len()).max().unwrap_or(0))
         .collect();
     let mut lines = Vec::new();
     for row in &cells {
-        let mut line = String::from("   "); // 3-space indent
+        let mut line = String::from("   ");
         for (c, cell) in row.iter().enumerate() {
             if c > 0 {
-                line.push_str("   "); // 3 spaces between columns
+                line.push_str("   ");
             }
-            // Right-align
             let pad = col_widths[c].saturating_sub(cell.len());
             for _ in 0..pad {
                 line.push(' ');
@@ -2089,26 +2156,145 @@ pub fn format_non_dec(n: f64, base: Base) -> String {
         Base::Hex => format!("{}0x{:X}", sign, u),
         Base::Bin => format!("{}0b{:b}", sign, u),
         Base::Oct => format!("{}0o{:o}", sign, u),
-        Base::Dec => format_decimal(n, 10),
+        Base::Dec => format_decimal(n, &FormatMode::default()),
     }
 }
 
-fn format_decimal(n: f64, precision: usize) -> String {
-    if n.fract() == 0.0 && n.abs() < 1e15 {
-        format!("{}", n as i64)
-    } else if n.abs() >= 1e15 || (n != 0.0 && n.abs() < 1e-9) {
-        let s = format!("{:.prec$e}", n, prec = precision);
+// ---------------------------------------------------------------------------
+// Internal decimal formatters
+// ---------------------------------------------------------------------------
+
+fn format_decimal(n: f64, mode: &FormatMode) -> String {
+    if n.is_nan() {
+        return "NaN".to_string();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 { "Inf" } else { "-Inf" }.to_string();
+    }
+    match mode {
+        FormatMode::Short | FormatMode::ShortG => fmt_auto_sig(n, 5),
+        FormatMode::Long  | FormatMode::LongG  => fmt_auto_sig(n, 15),
+        FormatMode::ShortE                     => fmt_sci_dp(n, 4),
+        FormatMode::LongE                      => fmt_sci_dp(n, 14),
+        FormatMode::Bank                       => format!("{:.2}", n),
+        FormatMode::Rat                        => fmt_rat(n),
+        FormatMode::Hex                        => fmt_hex_ieee754(n),
+        FormatMode::Plus                       => fmt_plus_sign(n),
+        FormatMode::Custom(prec)               => fmt_custom_prec(n, *prec),
+    }
+}
+
+/// Integer shortcut: fits in i64 without fractional part.
+#[inline]
+fn is_exact_int(n: f64) -> bool {
+    n.fract() == 0.0 && n.abs() < 1e15
+}
+
+/// Auto fixed/scientific with `sig` significant digits (MATLAB-compatible).
+/// Uses fixed notation for exponents in [-3, sig), scientific otherwise.
+/// Integers are shown without a decimal point.
+fn fmt_auto_sig(n: f64, sig: usize) -> String {
+    if is_exact_int(n) {
+        return format!("{}", n as i64);
+    }
+    let abs_n = n.abs();
+    let exp = if abs_n == 0.0 { 0i32 } else { abs_n.log10().floor() as i32 };
+    if exp >= -3 && exp < sig as i32 {
+        let dp = ((sig as i32 - 1 - exp) as usize).max(0);
+        let s = format!("{:.prec$}", n, prec = dp);
+        // Only strip trailing zeros when there is a decimal point.
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        }
+    } else {
+        let s = format!("{:.prec$e}", n, prec = sig - 1);
+        trim_sci(&s)
+    }
+}
+
+/// Always scientific notation with `dp` decimal places.
+fn fmt_sci_dp(n: f64, dp: usize) -> String {
+    let s = format!("{:.prec$e}", n, prec = dp);
+    trim_sci(&s)
+}
+
+/// Legacy custom-precision: N decimal places, auto fixed/scientific.
+fn fmt_custom_prec(n: f64, prec: usize) -> String {
+    if is_exact_int(n) {
+        return format!("{}", n as i64);
+    }
+    if n.abs() >= 1e15 || (n != 0.0 && n.abs() < 1e-9) {
+        let s = format!("{:.prec$e}", n, prec = prec);
         trim_sci(&s)
     } else {
-        let s = format!("{:.prec$}", n, prec = precision);
+        let s = format!("{:.prec$}", n, prec = prec);
         s.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+/// Rational approximation via continued fractions. Returns `"p/q"` or `"p"` if denominator is 1.
+fn fmt_rat(n: f64) -> String {
+    if is_exact_int(n) {
+        return format!("{}", n as i64);
+    }
+    let sign = if n < 0.0 { -1i64 } else { 1i64 };
+    let x = n.abs();
+    let (mut h1, mut h2): (i64, i64) = (1, 0);
+    let (mut k1, mut k2): (i64, i64) = (0, 1);
+    let mut b = x;
+    for _ in 0..64 {
+        let a = b.floor() as i64;
+        let (nh, nk) = (a * h1 + h2, a * k1 + k2);
+        if nk > 10_000 {
+            break;
+        }
+        h2 = h1; h1 = nh;
+        k2 = k1; k1 = nk;
+        let frac = b - a as f64;
+        if frac < 1e-12 || (h1 as f64 / k1 as f64 - x).abs() < 1e-6 {
+            break;
+        }
+        b = 1.0 / frac;
+    }
+    let p = sign * h1;
+    if k1 == 1 {
+        format!("{}", p)
+    } else {
+        format!("{}/{}", p, k1)
+    }
+}
+
+/// IEEE 754 double-precision bit pattern as 16 uppercase hex digits.
+fn fmt_hex_ieee754(n: f64) -> String {
+    format!("{:016X}", n.to_bits())
+}
+
+/// Sign indicator: `+`, `-`, or ` ` for zero.
+fn fmt_plus_sign(n: f64) -> String {
+    if n > 0.0 {
+        "+".to_string()
+    } else if n < 0.0 {
+        "-".to_string()
+    } else {
+        " ".to_string()
     }
 }
 
 fn trim_sci(s: &str) -> String {
     if let Some(e_pos) = s.find('e') {
         let mantissa = s[..e_pos].trim_end_matches('0').trim_end_matches('.');
-        format!("{}{}", mantissa, &s[e_pos..])
+        let exp_str = &s[e_pos + 1..];
+        let (sign, digits) = if let Some(d) = exp_str.strip_prefix('-') {
+            ("-", d)
+        } else if let Some(d) = exp_str.strip_prefix('+') {
+            ("+", d)
+        } else {
+            ("+", exp_str)
+        };
+        let exp_num: i32 = digits.parse().unwrap_or(0);
+        format!("{}e{}{:02}", mantissa, sign, exp_num)
     } else {
         s.to_string()
     }

@@ -5,7 +5,7 @@ use rustyline::error::ReadlineError;
 
 use ccalc_engine::env::{Env, Value, config_dir, load_workspace_default, save_workspace_default};
 use ccalc_engine::eval::{
-    Base, eval, format_complex, format_number, format_scalar, format_value_full,
+    Base, FormatMode, eval, format_complex, format_number, format_scalar, format_value_full,
 };
 use ccalc_engine::parser::{Stmt, is_partial, parse};
 
@@ -202,12 +202,12 @@ fn is_leap_year(y: u32) -> bool {
     (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
 }
 
-fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
+fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
     match env.get("ans") {
         Some(Value::Void) | None => "0".to_string(),
-        Some(Value::Scalar(n)) => format_scalar(*n, precision, base),
+        Some(Value::Scalar(n)) => format_scalar(*n, base, fmt),
         Some(Value::Matrix(m)) => format!("[{}×{}]", m.nrows(), m.ncols()),
-        Some(Value::Complex(re, im)) => format_complex(*re, *im, precision),
+        Some(Value::Complex(re, im)) => format_complex(*re, *im, fmt),
         Some(Value::Str(s)) => {
             let display: String = s.chars().take(15).collect();
             if s.len() > 15 {
@@ -231,7 +231,8 @@ pub fn run() {
     let mut env = new_env();
     let config_path = config_dir().join("config.toml");
     let cfg = crate::config::load_or_create(&config_path);
-    let mut precision: usize = cfg.precision();
+    let mut fmt = FormatMode::Custom(cfg.precision());
+    let mut compact = false;
     let mut base = cfg.base();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
@@ -246,7 +247,7 @@ pub fn run() {
     println!();
 
     'repl: loop {
-        let prompt = format!("[ {} ]: ", format_prompt_ans(&env, precision, base));
+        let prompt = format!("[ {} ]: ", format_prompt_ans(&env, base, &fmt));
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
@@ -271,7 +272,7 @@ pub fn run() {
                     continue;
                 }
                 "who" => {
-                    print_who(&env, precision, base);
+                    print_who(&env, base, &fmt);
                     continue;
                 }
                 "clear" => {
@@ -295,7 +296,7 @@ pub fn run() {
                     continue;
                 }
                 "base" => {
-                    print_all_bases(ans(&env), precision);
+                    print_all_bases(ans(&env), &fmt);
                     continue;
                 }
                 "ws" => {
@@ -321,7 +322,8 @@ pub fn run() {
                 }
                 "config" => {
                     println!("config file: {}", config_path.display());
-                    println!("precision:   {precision}");
+                    println!("format:      {}", fmt.name());
+                    println!("compact:     {compact}");
                     println!("base:        {}", format_base_name(base));
                     continue;
                 }
@@ -332,13 +334,48 @@ pub fn run() {
             if stmt == "config reload" {
                 match crate::config::load(&config_path) {
                     Ok(cfg) => {
-                        precision = cfg.precision();
+                        fmt = FormatMode::Custom(cfg.precision());
                         base = cfg.base();
                         println!("Config reloaded.");
-                        println!("precision:   {precision}");
+                        println!("format:      {}", fmt.name());
                         println!("base:        {}", format_base_name(base));
                     }
                     Err(e) => eprintln!("Error: {e}"),
+                }
+                continue;
+            }
+
+            // format [mode] — change number display format
+            if stmt == "format" {
+                fmt = FormatMode::Short;
+                println!("format: short");
+                continue;
+            }
+            if let Some(arg) = stmt.strip_prefix("format ").map(str::trim) {
+                match arg {
+                    "short"             => { fmt = FormatMode::Short;  println!("format: short"); }
+                    "long"              => { fmt = FormatMode::Long;   println!("format: long"); }
+                    "shorte" | "shortE" => { fmt = FormatMode::ShortE; println!("format: shortE"); }
+                    "longe"  | "longE"  => { fmt = FormatMode::LongE;  println!("format: longE"); }
+                    "shortg" | "shortG" => { fmt = FormatMode::ShortG; println!("format: shortG"); }
+                    "longg"  | "longG"  => { fmt = FormatMode::LongG;  println!("format: longG"); }
+                    "bank"              => { fmt = FormatMode::Bank;   println!("format: bank"); }
+                    "rat"               => { fmt = FormatMode::Rat;    println!("format: rat"); }
+                    "hex"               => { fmt = FormatMode::Hex;    println!("format: hex"); }
+                    "+"                 => { fmt = FormatMode::Plus;   println!("format: +"); }
+                    "compact"           => { compact = true;  println!("format: compact"); }
+                    "loose"             => { compact = false; println!("format: loose"); }
+                    s => {
+                        if let Ok(n) = s.parse::<usize>() {
+                            fmt = FormatMode::Custom(n);
+                            println!("format: {n} decimal places");
+                        } else {
+                            eprintln!(
+                                "Unknown format '{s}'. Options: short long shortE longE \
+                                 shortG longG bank rat hex + compact loose <N>"
+                            );
+                        }
+                    }
                 }
                 continue;
             }
@@ -359,7 +396,7 @@ pub fn run() {
 
             // disp(expr) — print value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
-                handle_disp(arg, &env, precision, base);
+                handle_disp(arg, &env, base, &fmt);
                 continue;
             }
 
@@ -388,17 +425,18 @@ pub fn run() {
                             EvalResult::Assigned(name, val) => match &val {
                                 Value::Void => {}
                                 Value::Matrix(_) => {
-                                    if let Some(full) = format_value_full(&val, precision) {
+                                    if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
-                                        println!();
+                                        if !compact { println!(); }
                                     }
                                 }
                                 Value::Scalar(v) => {
-                                    println!("{name} = {}", format_scalar(*v, precision, base));
+                                    println!("{name} = {}", format_scalar(*v, base, &fmt));
+                                    if compact { } else if matches!(fmt, FormatMode::Hex | FormatMode::Rat | FormatMode::Bank) { println!(); }
                                 }
                                 Value::Complex(re, im) => {
-                                    println!("{name} = {}", format_complex(*re, *im, precision));
+                                    println!("{name} = {}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
@@ -406,10 +444,10 @@ pub fn run() {
                             EvalResult::Value(val) => match &val {
                                 Value::Void => {}
                                 Value::Matrix(_) => {
-                                    if let Some(full) = format_value_full(&val, precision) {
+                                    if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
-                                        println!();
+                                        if !compact { println!(); }
                                     }
                                 }
                                 Value::Scalar(v) => {
@@ -422,11 +460,11 @@ pub fn run() {
                                         println!("{display}");
                                     }
                                     if show_all_bases {
-                                        print_all_bases(*v, precision);
+                                        print_all_bases(*v, &fmt);
                                     }
                                 }
                                 Value::Complex(re, im) => {
-                                    println!("{}", format_complex(*re, *im, precision));
+                                    println!("{}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
                             },
@@ -448,8 +486,9 @@ pub fn run_expr(expr: &str) {
     let mut base = Base::Dec;
     let trimmed = expr.trim();
 
+    let fmt = FormatMode::default();
     if let Some(arg) = parse_disp_cmd(trimmed) {
-        handle_disp(arg, &env, 10, base);
+        handle_disp(arg, &env, base, &fmt);
         return;
     }
 
@@ -463,16 +502,16 @@ pub fn run_expr(expr: &str) {
             EvalResult::Assigned(name, v) => match &v {
                 Value::Void => {}
                 Value::Matrix(_) => {
-                    if let Some(full) = format_value_full(&v, 10) {
+                    if let Some(full) = format_value_full(&v, &fmt) {
                         println!("{name} =");
                         println!("{full}");
                     }
                 }
                 Value::Scalar(n) => {
-                    println!("{} = {}", name, format_scalar(*n, 10, base));
+                    println!("{} = {}", name, format_scalar(*n, base, &fmt));
                 }
                 Value::Complex(re, im) => {
-                    println!("{} = {}", name, format_complex(*re, *im, 10));
+                    println!("{} = {}", name, format_complex(*re, *im, &fmt));
                 }
                 Value::Str(s) => println!("{name} = {s}"),
                 Value::StringObj(s) => println!("{name} = {s}"),
@@ -480,20 +519,20 @@ pub fn run_expr(expr: &str) {
             EvalResult::Value(v) => match &v {
                 Value::Void => {}
                 Value::Matrix(_) => {
-                    if let Some(full) = format_value_full(&v, 10) {
+                    if let Some(full) = format_value_full(&v, &fmt) {
                         println!("ans =");
                         println!("{full}");
                     }
                 }
                 Value::Scalar(n) => {
                     if show_all {
-                        print_all_bases(*n, 10);
+                        print_all_bases(*n, &fmt);
                     } else {
-                        println!("{}", format_scalar(*n, 10, base));
+                        println!("{}", format_scalar(*n, base, &fmt));
                     }
                 }
                 Value::Complex(re, im) => {
-                    println!("{}", format_complex(*re, *im, 10));
+                    println!("{}", format_complex(*re, *im, &fmt));
                 }
                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
             },
@@ -509,7 +548,8 @@ pub fn run_expr(expr: &str) {
 /// Prints one result per expression line; no prompts.
 pub fn run_pipe(reader: impl BufRead) {
     let mut env = new_env();
-    let precision: usize = 10;
+    let mut fmt = FormatMode::default();
+    let mut compact = false;
     let mut base = Base::Dec;
 
     'lines: for line in reader.lines() {
@@ -548,7 +588,7 @@ pub fn run_pipe(reader: impl BufRead) {
                     continue;
                 }
                 "base" => {
-                    print_all_bases(ans(&env), precision);
+                    print_all_bases(ans(&env), &fmt);
                     continue;
                 }
                 "ws" => {
@@ -569,6 +609,34 @@ pub fn run_pipe(reader: impl BufRead) {
                 continue;
             }
 
+            // format [mode] — change number display format (pipe mode)
+            if stmt == "format" {
+                fmt = FormatMode::Short;
+                continue;
+            }
+            if let Some(arg) = stmt.strip_prefix("format ").map(str::trim) {
+                match arg {
+                    "short"             => { fmt = FormatMode::Short; }
+                    "long"              => { fmt = FormatMode::Long; }
+                    "shorte" | "shortE" => { fmt = FormatMode::ShortE; }
+                    "longe"  | "longE"  => { fmt = FormatMode::LongE; }
+                    "shortg" | "shortG" => { fmt = FormatMode::ShortG; }
+                    "longg"  | "longG"  => { fmt = FormatMode::LongG; }
+                    "bank"              => { fmt = FormatMode::Bank; }
+                    "rat"               => { fmt = FormatMode::Rat; }
+                    "hex"               => { fmt = FormatMode::Hex; }
+                    "+"                 => { fmt = FormatMode::Plus; }
+                    "compact"           => { compact = true; }
+                    "loose"             => { compact = false; }
+                    s => {
+                        if let Ok(n) = s.parse::<usize>() {
+                            fmt = FormatMode::Custom(n);
+                        }
+                    }
+                }
+                continue;
+            }
+
             // clear <name>
             if let Some(name) = stmt.strip_prefix("clear ").map(str::trim) {
                 if !name.is_empty() {
@@ -579,7 +647,7 @@ pub fn run_pipe(reader: impl BufRead) {
 
             // disp(expr) — print value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
-                handle_disp(arg, &env, precision, base);
+                handle_disp(arg, &env, base, &fmt);
                 continue;
             }
 
@@ -596,17 +664,17 @@ pub fn run_pipe(reader: impl BufRead) {
                             EvalResult::Assigned(name, v) => match &v {
                                 Value::Void => {}
                                 Value::Matrix(_) => {
-                                    if let Some(full) = format_value_full(&v, precision) {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
-                                        println!();
+                                        if !compact { println!(); }
                                     }
                                 }
                                 Value::Scalar(n) => {
-                                    println!("{} = {}", name, format_scalar(*n, precision, base));
+                                    println!("{} = {}", name, format_scalar(*n, base, &fmt));
                                 }
                                 Value::Complex(re, im) => {
-                                    println!("{} = {}", name, format_complex(*re, *im, precision));
+                                    println!("{} = {}", name, format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
@@ -614,10 +682,10 @@ pub fn run_pipe(reader: impl BufRead) {
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
                                 Value::Matrix(_) => {
-                                    if let Some(full) = format_value_full(&v, precision) {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
-                                        println!();
+                                        if !compact { println!(); }
                                     }
                                 }
                                 Value::Scalar(n) => {
@@ -629,15 +697,15 @@ pub fn run_pipe(reader: impl BufRead) {
                                         println!("8  - {}0o{:o}", sign, u);
                                         println!(
                                             "10 - {}",
-                                            format_scalar(*n, precision, Base::Dec)
+                                            format_scalar(*n, Base::Dec, &fmt)
                                         );
                                         println!("16 - {}0x{:X}", sign, u);
                                     } else {
-                                        println!("{}", format_scalar(*n, precision, base));
+                                        println!("{}", format_scalar(*n, base, &fmt));
                                     }
                                 }
                                 Value::Complex(re, im) => {
-                                    println!("{}", format_complex(*re, *im, precision));
+                                    println!("{}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
                             },
@@ -681,7 +749,7 @@ fn who_format_columns(entries: &[String], term_width: usize) -> Vec<String> {
     lines
 }
 
-fn print_who(env: &Env, precision: usize, base: Base) {
+fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
     if env.is_empty() {
         return;
     }
@@ -698,9 +766,9 @@ fn print_who(env: &Env, precision: usize, base: Base) {
     if let Some(val) = env.get("ans") {
         match val {
             Value::Void => {}
-            Value::Scalar(n) => println!("ans = {}", format_scalar(*n, precision, base)),
+            Value::Scalar(n) => println!("ans = {}", format_scalar(*n, base, fmt)),
             Value::Matrix(m) => println!("ans = [{}×{} double]", m.nrows(), m.ncols()),
-            Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, precision)),
+            Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, fmt)),
             Value::Str(s) => println!("ans = {s}"),
             Value::StringObj(s) => println!("ans = {s}"),
         }
@@ -718,13 +786,13 @@ fn print_who(env: &Env, precision: usize, base: Base) {
         match val {
             Value::Void => {}
             Value::Scalar(n) => {
-                scalars.push(format!("{} = {}", name, format_scalar(*n, precision, base)));
+                scalars.push(format!("{} = {}", name, format_scalar(*n, base, fmt)));
             }
             Value::Complex(re, im) => {
                 scalars.push(format!(
                     "{} = {}",
                     name,
-                    format_complex(*re, *im, precision)
+                    format_complex(*re, *im, fmt)
                 ));
             }
             Value::Matrix(m) => {
@@ -754,13 +822,13 @@ fn print_who(env: &Env, precision: usize, base: Base) {
 }
 
 /// Prints a value in all four bases.
-fn print_all_bases(n: f64, precision: usize) {
+fn print_all_bases(n: f64, fmt: &FormatMode) {
     let i = n.round() as i64;
     let u = i.unsigned_abs();
     let sign = if i < 0 { "-" } else { "" };
     println!("2  - {}0b{:b}", sign, u);
     println!("8  - {}0o{:o}", sign, u);
-    println!("10 - {}", format_scalar(n, precision, Base::Dec));
+    println!("10 - {}", format_scalar(n, Base::Dec, fmt));
     println!("16 - {}0x{:X}", sign, u);
 }
 
@@ -831,7 +899,7 @@ fn expand_vars_for_display(expr: &str, env: &Env, base: Base) -> Option<String> 
                     replaced = true;
                 }
                 Some(Value::Complex(re, im)) => {
-                    result.push_str(&format_complex(*re, *im, 10));
+                    result.push_str(&format_complex(*re, *im, &FormatMode::default()));
                     replaced = true;
                 }
                 _ => result.push_str(&ident),
@@ -1013,7 +1081,7 @@ fn parse_disp_cmd(input: &str) -> Option<&str> {
 }
 
 /// Evaluates `arg` and prints the result. Does not update `ans`.
-fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
+fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
     let result = parse(arg.trim()).and_then(|stmt| {
         let expr = match stmt {
             Stmt::Expr(e) => e,
@@ -1025,12 +1093,12 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
         Ok(v) => match &v {
             Value::Void => {}
             Value::Matrix(_) => {
-                if let Some(full) = format_value_full(&v, precision) {
+                if let Some(full) = format_value_full(&v, fmt) {
                     println!("{full}");
                 }
             }
-            Value::Scalar(n) => println!("{}", format_scalar(*n, precision, base)),
-            Value::Complex(re, im) => println!("{}", format_complex(*re, *im, precision)),
+            Value::Scalar(n) => println!("{}", format_scalar(*n, base, fmt)),
+            Value::Complex(re, im) => println!("{}", format_complex(*re, *im, fmt)),
             Value::Str(s) | Value::StringObj(s) => println!("{s}"),
         },
         Err(e) => eprintln!("Error: {e}"),
