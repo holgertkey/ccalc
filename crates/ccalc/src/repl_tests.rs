@@ -275,24 +275,6 @@ fn test_format_expr_hex_accumulator_bin_literals() {
     );
 }
 
-// --- parse_precision_cmd tests ---
-
-#[test]
-fn test_parse_precision_cmd_valid() {
-    assert_eq!(parse_precision_cmd("p6"), Some(6));
-    assert_eq!(parse_precision_cmd("p0"), Some(0));
-    assert_eq!(parse_precision_cmd("p15"), Some(15));
-    assert_eq!(parse_precision_cmd("p10"), Some(10));
-}
-
-#[test]
-fn test_parse_precision_cmd_invalid() {
-    assert_eq!(parse_precision_cmd("p"), None);
-    assert_eq!(parse_precision_cmd("p16"), None);
-    assert_eq!(parse_precision_cmd("pi"), None);
-    assert_eq!(parse_precision_cmd("6"), None);
-}
-
 // --- parse_disp_cmd tests ---
 
 #[test]
@@ -307,42 +289,6 @@ fn test_parse_disp_cmd_not_matched() {
     assert!(parse_disp_cmd("display(42)").is_none());
     assert!(parse_disp_cmd("disp()").is_none());
     assert!(parse_disp_cmd("disp 42").is_none());
-}
-
-// --- parse_fprintf_cmd tests ---
-
-#[test]
-fn test_parse_fprintf_cmd_string() {
-    assert_eq!(parse_fprintf_cmd("fprintf('hello')"), Some("'hello'"));
-    assert_eq!(parse_fprintf_cmd("fprintf(\"hi\")"), Some("\"hi\""));
-}
-
-#[test]
-fn test_parse_fprintf_cmd_not_matched() {
-    assert!(parse_fprintf_cmd("printf('x')").is_none());
-    assert!(parse_fprintf_cmd("fprintf 'x'").is_none());
-}
-
-// --- process_escapes tests ---
-
-#[test]
-fn test_process_escapes_newline() {
-    assert_eq!(process_escapes("a\\nb"), "a\nb");
-}
-
-#[test]
-fn test_process_escapes_tab() {
-    assert_eq!(process_escapes("a\\tb"), "a\tb");
-}
-
-#[test]
-fn test_process_escapes_backslash() {
-    assert_eq!(process_escapes("a\\\\b"), "a\\b");
-}
-
-#[test]
-fn test_process_escapes_no_escape() {
-    assert_eq!(process_escapes("hello"), "hello");
 }
 
 // --- expand_vars_for_display tests ---
@@ -474,7 +420,7 @@ fn pipe_output(input: &str) -> Vec<String> {
 
     let mut output = Vec::new();
     let mut env = new_env();
-    let mut precision: usize = 10;
+    let precision: usize = 10;
     let mut base = Base::Dec;
     let reader = Cursor::new(input);
 
@@ -514,10 +460,6 @@ fn pipe_output(input: &str) -> Vec<String> {
                 }
                 continue;
             }
-            if let Some(p) = parse_precision_cmd(stmt) {
-                precision = p;
-                continue;
-            }
             // disp(expr) — push formatted value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
                 let result = parse(arg.trim()).and_then(|stmt| {
@@ -529,6 +471,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                 });
                 match result {
                     Ok(v) => match &v {
+                        Value::Void => {}
                         Value::Matrix(_) => {
                             if let Some(full) = format_value_full(&v, precision) {
                                 output.push(full);
@@ -542,21 +485,6 @@ fn pipe_output(input: &str) -> Vec<String> {
                 }
                 continue;
             }
-            // fprintf('fmt') — push processed string
-            if let Some(arg) = parse_fprintf_cmd(stmt) {
-                let s = arg.trim();
-                let content = if let Some(inner) =
-                    s.strip_prefix('\'').and_then(|s| s.strip_suffix('\''))
-                {
-                    process_escapes(inner)
-                } else if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-                    process_escapes(inner)
-                } else {
-                    "Error: fprintf requires a string literal".to_string()
-                };
-                output.push(content);
-                continue;
-            }
             let (to_eval, base_suffix) = extract_base_suffix(stmt);
             let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
             if let Some(BaseSuffix::Switch(b)) = base_suffix {
@@ -567,6 +495,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                     if !silent {
                         match result {
                             EvalResult::Assigned(name, v) => match &v {
+                                Value::Void => {}
                                 Value::Matrix(_) => {
                                     if let Some(full) = format_value_full(&v, precision) {
                                         output.push(format!("{name} ="));
@@ -591,6 +520,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 Value::StringObj(s) => output.push(format!("{name} = {s}")),
                             },
                             EvalResult::Value(v) => match &v {
+                                Value::Void => {}
                                 Value::Matrix(_) => {
                                     if let Some(full) = format_value_full(&v, precision) {
                                         output.push("ans =".to_string());
@@ -844,21 +774,35 @@ fn test_pipe_disp_variable() {
 // --- fprintf tests ---
 
 #[test]
-fn test_pipe_fprintf_single_quotes() {
+fn test_pipe_fprintf_returns_void_no_captured_output() {
+    // fprintf writes directly to stdout — no captured output in test harness
     let out = pipe_output("fprintf('hello\\n')");
+    assert!(out.is_empty());
+}
+
+#[test]
+fn test_pipe_fprintf_double_quotes_void() {
+    let out = pipe_output("fprintf(\"hi\\n\")");
+    assert!(out.is_empty());
+}
+
+#[test]
+fn test_pipe_fprintf_with_arg_void() {
+    let out = pipe_output("fprintf('%d\\n', 42)");
+    assert!(out.is_empty());
+}
+
+#[test]
+fn test_pipe_sprintf_single_quotes() {
+    // sprintf returns a char array — captured in output
+    let out = pipe_output("sprintf('hello\\n')");
     assert_eq!(out, vec!["hello\n"]);
 }
 
 #[test]
-fn test_pipe_fprintf_double_quotes() {
-    let out = pipe_output("fprintf(\"hi\\n\")");
-    assert_eq!(out, vec!["hi\n"]);
-}
-
-#[test]
-fn test_pipe_fprintf_no_newline() {
-    let out = pipe_output("fprintf('result: ')");
-    assert_eq!(out, vec!["result: "]);
+fn test_pipe_sprintf_format_arg() {
+    let out = pipe_output("sprintf('%d items', 5)");
+    assert_eq!(out, vec!["5 items"]);
 }
 
 #[test]

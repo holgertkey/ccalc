@@ -1227,3 +1227,202 @@ fn test_strcmpi_case_insensitive() {
     );
     assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
 }
+
+// ---------------------------------------------------------------------------
+// Phase 10 — format_printf tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_printf_no_args() {
+    assert_eq!(format_printf("hello", &[]).unwrap(), "hello");
+}
+
+#[test]
+fn test_printf_escape_sequences() {
+    assert_eq!(format_printf("a\\nb\\tc", &[]).unwrap(), "a\nb\tc");
+    assert_eq!(format_printf("back\\\\slash", &[]).unwrap(), "back\\slash");
+}
+
+#[test]
+fn test_printf_percent_literal() {
+    assert_eq!(
+        format_printf("100%%", &[]).unwrap(),
+        "100%"
+    );
+}
+
+#[test]
+fn test_printf_d() {
+    let args = vec![Value::Scalar(42.0)];
+    assert_eq!(format_printf("%d", &args).unwrap(), "42");
+}
+
+#[test]
+fn test_printf_d_negative() {
+    let args = vec![Value::Scalar(-7.0)];
+    assert_eq!(format_printf("%d", &args).unwrap(), "-7");
+}
+
+#[test]
+fn test_printf_d_float_truncated() {
+    let args = vec![Value::Scalar(3.9)];
+    assert_eq!(format_printf("%d", &args).unwrap(), "3");
+}
+
+#[test]
+fn test_printf_f_default() {
+    let args = vec![Value::Scalar(3.14159)];
+    let s = format_printf("%f", &args).unwrap();
+    assert_eq!(s, "3.141590");
+}
+
+#[test]
+fn test_printf_f_precision() {
+    let args = vec![Value::Scalar(3.14159)];
+    assert_eq!(format_printf("%.2f", &args).unwrap(), "3.14");
+}
+
+#[test]
+fn test_printf_f_precision_zero() {
+    let args = vec![Value::Scalar(3.7)];
+    assert_eq!(format_printf("%.0f", &args).unwrap(), "4");
+}
+
+#[test]
+fn test_printf_e() {
+    let args = vec![Value::Scalar(12345.6789)];
+    let s = format_printf("%e", &args).unwrap();
+    assert_eq!(s, "1.234568e+04");
+}
+
+#[test]
+fn test_printf_e_precision() {
+    let args = vec![Value::Scalar(1.0)];
+    assert_eq!(format_printf("%.2e", &args).unwrap(), "1.00e+00");
+}
+
+#[test]
+fn test_printf_g_small() {
+    let args = vec![Value::Scalar(3.14)];
+    let s = format_printf("%g", &args).unwrap();
+    assert_eq!(s, "3.14");
+}
+
+#[test]
+fn test_printf_g_large() {
+    let args = vec![Value::Scalar(1234567.0)];
+    let s = format_printf("%g", &args).unwrap();
+    // exponent >= 6 (default prec) → scientific
+    assert!(s.contains('e'), "expected scientific notation, got {s}");
+}
+
+#[test]
+fn test_printf_g_trailing_zeros_removed() {
+    let args = vec![Value::Scalar(1.0)];
+    assert_eq!(format_printf("%g", &args).unwrap(), "1");
+}
+
+#[test]
+fn test_printf_s_char_array() {
+    let args = vec![Value::Str("hello".to_string())];
+    assert_eq!(format_printf("%s", &args).unwrap(), "hello");
+}
+
+#[test]
+fn test_printf_s_string_obj() {
+    let args = vec![Value::StringObj("world".to_string())];
+    assert_eq!(format_printf("%s", &args).unwrap(), "world");
+}
+
+#[test]
+fn test_printf_width_right_align() {
+    let args = vec![Value::Scalar(42.0)];
+    assert_eq!(format_printf("%6d", &args).unwrap(), "    42");
+}
+
+#[test]
+fn test_printf_width_left_align() {
+    let args = vec![Value::Scalar(42.0)];
+    assert_eq!(format_printf("%-6d", &args).unwrap(), "42    ");
+}
+
+#[test]
+fn test_printf_zero_pad() {
+    let args = vec![Value::Scalar(42.0)];
+    assert_eq!(format_printf("%06d", &args).unwrap(), "000042");
+}
+
+#[test]
+fn test_printf_force_sign() {
+    let args = vec![Value::Scalar(42.0)];
+    assert_eq!(format_printf("%+d", &args).unwrap(), "+42");
+}
+
+#[test]
+fn test_printf_multiple_args() {
+    let args = vec![Value::Scalar(3.0), Value::Scalar(4.0)];
+    assert_eq!(format_printf("%d + %d", &args).unwrap(), "3 + 4");
+}
+
+#[test]
+fn test_printf_repeat_format_octave() {
+    // More args than specifiers → format repeats
+    let args = vec![Value::Scalar(1.0), Value::Scalar(2.0), Value::Scalar(3.0)];
+    assert_eq!(format_printf("%d ", &args).unwrap(), "1 2 3 ");
+}
+
+#[test]
+fn test_printf_more_specifiers_than_args() {
+    // More specifiers than args → extra silently ignored
+    let args = vec![Value::Scalar(1.0)];
+    assert_eq!(format_printf("%d %d", &args).unwrap(), "1 ");
+}
+
+#[test]
+fn test_printf_mixed_types() {
+    let args = vec![
+        Value::Str("pi".to_string()),
+        Value::Scalar(std::f64::consts::PI),
+    ];
+    let s = format_printf("%s = %.4f", &args).unwrap();
+    assert_eq!(s, "pi = 3.1416");
+}
+
+#[test]
+fn test_printf_s_precision_truncate() {
+    let args = vec![Value::Str("hello".to_string())];
+    assert_eq!(format_printf("%.3s", &args).unwrap(), "hel");
+}
+
+#[test]
+fn test_sprintf_via_eval() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "sprintf".to_string(),
+        vec![
+            Expr::StrLiteral("x = %d".to_string()),
+            Expr::Number(5.0),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("x = 5".to_string())));
+}
+
+#[test]
+fn test_sprintf_no_args_escape() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "sprintf".to_string(),
+        vec![Expr::StrLiteral("a\\nb".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Str("a\nb".to_string())));
+}
+
+#[test]
+fn test_fprintf_returns_void() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "fprintf".to_string(),
+        vec![Expr::StrLiteral("".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Void));
+}

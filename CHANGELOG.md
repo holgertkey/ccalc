@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-04-08
+
+### Added
+
+- **Phase 10 — C-style I/O and precision overhaul**:
+  - `fprintf(fmt, v1, v2, ...)` — full C-style formatted output to stdout; returns `Value::Void` (no result display)
+  - `sprintf(fmt, v1, v2, ...)` — same formatting engine, returns result as a char array (`Value::Str`)
+  - **Format specifiers**: `%d` `%i` (integer), `%f` (fixed), `%e` (scientific), `%g` (shorter of f/e), `%s` (string), `%%` (literal `%`)
+  - **Width and precision**: `%8.3f`, `%-10s`, `%+.4e`, `%05d`
+  - **Flags**: `-` (left-align), `+` (force sign), `0` (zero-pad), space (space sign)
+  - **Escape sequences** in format strings: `\n`, `\t`, `\\`
+  - **Octave repeat behaviour**: when more arguments than specifiers, the format string repeats for remaining args
+  - `Value::Void` variant added to the `Value` enum — returned by side-effectful functions; suppresses result display
+
+### Changed
+
+- `sprintf(fmt)` (single-arg, escape-sequences-only) extended to full variadic `sprintf(fmt, ...)` with format specifiers
+- `fprintf` moved from special-case string parsing in `repl.rs` into the engine's `call_builtin`, enabling use in any expression context
+- `help script` / `help io` updated with full format specifier reference and examples
+
+### Removed
+
+- **`p` / `p<N>` precision directive** removed from the REPL and pipe mode (Phase 10c)
+  - Precision is now only settable via `config.toml` or `config reload`
+  - Scripts that need specific formatting should use `fprintf` / `sprintf` (portable to Octave)
+
 ## [0.13.0] - 2026-04-07
 
 ### Added

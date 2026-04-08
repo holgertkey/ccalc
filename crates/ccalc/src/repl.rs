@@ -204,6 +204,7 @@ fn is_leap_year(y: u32) -> bool {
 
 fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
     match env.get("ans") {
+        Some(Value::Void) | None => "0".to_string(),
         Some(Value::Scalar(n)) => format_scalar(*n, precision, base),
         Some(Value::Matrix(m)) => format!("[{}×{}]", m.nrows(), m.ncols()),
         Some(Value::Complex(re, im)) => format_complex(*re, *im, precision),
@@ -223,7 +224,6 @@ fn format_prompt_ans(env: &Env, precision: usize, base: Base) -> String {
                 format!("\"{display}\"")
             }
         }
-        None => "0".to_string(),
     }
 }
 
@@ -276,10 +276,6 @@ pub fn run() {
                 }
                 "clear" => {
                     env.clear();
-                    continue;
-                }
-                "p" => {
-                    println!("precision: {precision}");
                     continue;
                 }
                 "hex" => {
@@ -361,21 +357,9 @@ pub fn run() {
                 continue;
             }
 
-            // Precision command: p<N>
-            if let Some(p) = parse_precision_cmd(stmt) {
-                precision = p;
-                continue;
-            }
-
             // disp(expr) — print value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
                 handle_disp(arg, &env, precision, base);
-                continue;
-            }
-
-            // fprintf('fmt') — print formatted string
-            if let Some(arg) = parse_fprintf_cmd(stmt) {
-                handle_fprintf(arg);
                 continue;
             }
 
@@ -402,6 +386,7 @@ pub fn run() {
                     if !silent {
                         match result {
                             EvalResult::Assigned(name, val) => match &val {
+                                Value::Void => {}
                                 Value::Matrix(_) => {
                                     if let Some(full) = format_value_full(&val, precision) {
                                         println!("{name} =");
@@ -419,6 +404,7 @@ pub fn run() {
                                 Value::StringObj(s) => println!("{name} = {s}"),
                             },
                             EvalResult::Value(val) => match &val {
+                                Value::Void => {}
                                 Value::Matrix(_) => {
                                     if let Some(full) = format_value_full(&val, precision) {
                                         println!("ans =");
@@ -466,10 +452,6 @@ pub fn run_expr(expr: &str) {
         handle_disp(arg, &env, 10, base);
         return;
     }
-    if let Some(arg) = parse_fprintf_cmd(trimmed) {
-        handle_fprintf(arg);
-        return;
-    }
 
     let (to_eval, base_suffix) = extract_base_suffix(trimmed);
     let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
@@ -479,6 +461,7 @@ pub fn run_expr(expr: &str) {
     match evaluate(to_eval, &mut env) {
         Ok(result) => match result {
             EvalResult::Assigned(name, v) => match &v {
+                Value::Void => {}
                 Value::Matrix(_) => {
                     if let Some(full) = format_value_full(&v, 10) {
                         println!("{name} =");
@@ -495,6 +478,7 @@ pub fn run_expr(expr: &str) {
                 Value::StringObj(s) => println!("{name} = {s}"),
             },
             EvalResult::Value(v) => match &v {
+                Value::Void => {}
                 Value::Matrix(_) => {
                     if let Some(full) = format_value_full(&v, 10) {
                         println!("ans =");
@@ -525,7 +509,7 @@ pub fn run_expr(expr: &str) {
 /// Prints one result per expression line; no prompts.
 pub fn run_pipe(reader: impl BufRead) {
     let mut env = new_env();
-    let mut precision: usize = 10;
+    let precision: usize = 10;
     let mut base = Base::Dec;
 
     'lines: for line in reader.lines() {
@@ -547,10 +531,6 @@ pub fn run_pipe(reader: impl BufRead) {
                     continue;
                 }
                 "cls" | "who" | "help" | "?" | "config" => continue, // no-op in pipe mode
-                "p" => {
-                    println!("precision: {precision}");
-                    continue;
-                }
                 "hex" => {
                     base = Base::Hex;
                     continue;
@@ -597,21 +577,9 @@ pub fn run_pipe(reader: impl BufRead) {
                 continue;
             }
 
-            // Precision command: p<N>
-            if let Some(p) = parse_precision_cmd(stmt) {
-                precision = p;
-                continue;
-            }
-
             // disp(expr) — print value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
                 handle_disp(arg, &env, precision, base);
-                continue;
-            }
-
-            // fprintf('fmt') — print formatted string
-            if let Some(arg) = parse_fprintf_cmd(stmt) {
-                handle_fprintf(arg);
                 continue;
             }
 
@@ -626,6 +594,7 @@ pub fn run_pipe(reader: impl BufRead) {
                     if !silent {
                         match result {
                             EvalResult::Assigned(name, v) => match &v {
+                                Value::Void => {}
                                 Value::Matrix(_) => {
                                     if let Some(full) = format_value_full(&v, precision) {
                                         println!("{name} =");
@@ -643,6 +612,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                 Value::StringObj(s) => println!("{name} = {s}"),
                             },
                             EvalResult::Value(v) => match &v {
+                                Value::Void => {}
                                 Value::Matrix(_) => {
                                     if let Some(full) = format_value_full(&v, precision) {
                                         println!("ans =");
@@ -727,6 +697,7 @@ fn print_who(env: &Env, precision: usize, base: Base) {
     // ans always first
     if let Some(val) = env.get("ans") {
         match val {
+            Value::Void => {}
             Value::Scalar(n) => println!("ans = {}", format_scalar(*n, precision, base)),
             Value::Matrix(m) => println!("ans = [{}×{} double]", m.nrows(), m.ncols()),
             Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, precision)),
@@ -745,6 +716,7 @@ fn print_who(env: &Env, precision: usize, base: Base) {
 
     for (name, val) in others {
         match val {
+            Value::Void => {}
             Value::Scalar(n) => {
                 scalars.push(format!("{} = {}", name, format_scalar(*n, precision, base)));
             }
@@ -1033,25 +1005,11 @@ fn format_base_name(base: Base) -> &'static str {
 }
 
 /// Parses a precision command of the form `p<N>` where N is 0–15.
-fn parse_precision_cmd(input: &str) -> Option<usize> {
-    let bytes = input.as_bytes();
-    if bytes.first() == Some(&b'p') && bytes.len() > 1 {
-        input[1..].parse::<usize>().ok().filter(|&n| n <= 15)
-    } else {
-        None
-    }
-}
-
 /// Extracts the argument string from a `disp(...)` call.
 /// Returns `None` if the input does not match the pattern.
 fn parse_disp_cmd(input: &str) -> Option<&str> {
     let inner = input.strip_prefix("disp(")?.strip_suffix(')')?;
     if inner.is_empty() { None } else { Some(inner) }
-}
-
-/// Extracts the argument string from a `fprintf(...)` call.
-fn parse_fprintf_cmd(input: &str) -> Option<&str> {
-    input.strip_prefix("fprintf(")?.strip_suffix(')')
 }
 
 /// Evaluates `arg` and prints the result. Does not update `ans`.
@@ -1065,6 +1023,7 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
     });
     match result {
         Ok(v) => match &v {
+            Value::Void => {}
             Value::Matrix(_) => {
                 if let Some(full) = format_value_full(&v, precision) {
                     println!("{full}");
@@ -1076,46 +1035,6 @@ fn handle_disp(arg: &str, env: &Env, precision: usize, base: Base) {
         },
         Err(e) => eprintln!("Error: {e}"),
     }
-}
-
-/// Prints a formatted string literal. Phase 1: single string arg, escape sequences only.
-fn handle_fprintf(arg: &str) {
-    let s = arg.trim();
-    let content = if let Some(inner) = s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
-        inner
-    } else if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-        inner
-    } else {
-        eprintln!("Error: fprintf requires a string literal");
-        return;
-    };
-    print!("{}", process_escapes(content));
-    let _ = std::io::stdout().flush();
-}
-
-/// Processes `\n`, `\t`, `\\` escape sequences in a string.
-fn process_escapes(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('\\') => result.push('\\'),
-                Some('\'') => result.push('\''),
-                Some('"') => result.push('"'),
-                Some(other) => {
-                    result.push('\\');
-                    result.push(other);
-                }
-                None => result.push('\\'),
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
 }
 
 fn clear_screen() {

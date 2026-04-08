@@ -11,7 +11,7 @@ pub fn print(topic: Option<&str>) {
         Some("functions" | "fn" | "func") => print_functions(),
         Some("bases" | "base") => print_bases(),
         Some("vars" | "variables") => print_vars(),
-        Some("script" | "pipe") => print_script(),
+        Some("script" | "pipe" | "io" | "printf" | "format") => print_script(),
         Some("matrices" | "matrix" | "mat") => print_matrices(),
         Some("logic" | "logical" | "comparison") => print_logic(),
         Some("examples" | "ex") => print_examples(),
@@ -21,7 +21,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  complex  strings  examples"
+                "Available topics: syntax  functions  bases  vars  script  matrices  logic  vectors  complex  strings  io  examples"
             );
         }
     }
@@ -92,7 +92,7 @@ Complex 3+4i  3+4j  complex(re,im)
         z' = conj(z)  (conjugate transpose for scalars)
 Strings 'char array'  \"string object\"
         num2str  str2num  str2double  strcat  strcmp  strcmpi
-        lower  upper  strtrim  strrep  sprintf  ischar  isstring
+        lower  upper  strtrim  strrep  ischar  isstring
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -101,8 +101,10 @@ Vars    x = expr              shows: x = <val>  (ans unchanged)
         who   clear   clear x
         ws (save workspace)   wl (load workspace)
 
-Output  disp(expr)            fprintf('text\\n')
-Prec    p<N>  (0-15 decimal places, default 10)
+Output  disp(expr)
+        fprintf('fmt', v1, v2, ...)   print formatted  (C printf)
+        sprintf('fmt', v1, v2, ...)   return formatted string
+        Specifiers: %d %i %f %e %g %s %%   Width/prec: %8.3f %-10s
 Config  config                show config path and active settings
         config reload         re-read config.toml and apply changes
 REPL    exit  quit  cls  Ctrl+L (clear screen)
@@ -298,13 +300,15 @@ String functions  (see also: help strings)
     upper(s)           convert to uppercase
     strtrim(s)         strip leading and trailing whitespace
     strrep(s, old, new)  replace all occurrences of old with new
-    sprintf(fmt)       process escape sequences (\\n \\t \\\\); 1-arg form
+    sprintf(fmt, ...)  format string (C printf); returns char array
+    fprintf(fmt, ...)  format and print to stdout
     ischar(s)          1 if s is a char array, else 0
     isstring(s)        1 if s is a string object, else 0
 
 See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
           help complex    (full complex number reference)
-          help strings    (char arrays, string objects, full reference)"
+          help strings    (char arrays, string objects, full reference)
+          help script     (fprintf/sprintf reference with format specifiers)"
     );
 }
 
@@ -418,21 +422,40 @@ disp(expr) — print value without updating ans
     disp(ans)
     disp(rate * 12)
 
-fprintf('fmt') — print a formatted string  (double quotes also work)
-    fprintf('Monthly payment: ')
-    fprintf(\"value: %g\\n\")
+fprintf(fmt, v1, v2, ...) — print formatted output (C printf)
+    fprintf('x = %d\\n', 42)
+    fprintf('%.4f\\n', pi)
+    fprintf('%s = %.2f\\n', 'rate', 0.065)
+    fprintf('%8.3f  %-10s\\n', 3.14159, 'pi')
+
+sprintf(fmt, v1, v2, ...) — format and return as string
+    s = sprintf('R = %.1f Ohm', 47.5)
+    disp(s)
+
+Format specifiers
+    %d  %i    integer (truncated)
+    %f        fixed decimal  (default 6 places)
+    %.Nf      fixed with N decimal places
+    %e        scientific  1.23e+04
+    %g        shorter of %%f and %%e  (trailing zeros trimmed)
+    %s        string
+    %%        literal percent sign
+    Width/flags:  %8.3f   %-10s   %+.4e   %05d
 
 Escape sequences inside strings
     \\n   newline
     \\t   horizontal tab
     \\\\   literal backslash
 
+Octave behaviour: if more arguments than specifiers, the format
+string repeats for the remaining arguments.
+
 Commands that work in pipe/script mode
     exit / quit      stop processing
     who / clear      manage variables
     ws / wl          workspace save and load
-    p / p<N>         precision
     hex/dec/bin/oct  display base
+    Precision is set in config.toml (default 10)
 
 Example script
     % Monthly mortgage payment
@@ -440,8 +463,7 @@ Example script
     n = 360;
     factor = (1 + rate) ^ n;
     payment = 200000 * rate * factor / (factor - 1);
-    fprintf('Monthly payment ($): ')
-    disp(payment)"
+    fprintf('Monthly payment: $%.2f\\n', payment)"
     );
 }
 
@@ -807,7 +829,7 @@ String built-in functions
     upper(s)            convert to uppercase
     strtrim(s)          strip leading and trailing whitespace
     strrep(s, old, new) replace all occurrences of old with new
-    sprintf(fmt)        process escape sequences (\\\\n \\\\t ...); 1-arg form
+    sprintf(fmt, ...)   format string using C printf specifiers; returns char array
     ischar(s)           1 if s is a char array, else 0
     isstring(s)         1 if s is a string object, else 0
 

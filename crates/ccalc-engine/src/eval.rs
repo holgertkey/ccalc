@@ -64,6 +64,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             .cloned()
             .ok_or_else(|| format!("Undefined variable: '{name}'")),
         Expr::UnaryMinus(e) => match eval(e, env)? {
+            Value::Void => Err("Unary minus is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
             Value::Complex(re, im) => Ok(Value::Complex(-re, -im)),
@@ -77,6 +78,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             }
         },
         Expr::UnaryNot(e) => match eval(e, env)? {
+            Value::Void => Err("Logical NOT is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
             Value::Complex(re, im) => Ok(Value::Scalar(if re == 0.0 && im == 0.0 {
@@ -120,6 +122,9 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                 let mut row_vals: Vec<f64> = Vec::new();
                 for elem_expr in row {
                     match eval(elem_expr, env)? {
+                        Value::Void => {
+                            return Err("Void value cannot be used in matrix literal".to_string());
+                        }
                         Value::Scalar(n) => row_vals.push(n),
                         Value::Matrix(m) => {
                             if m.nrows() > 1 {
@@ -164,6 +169,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             Ok(Value::Matrix(m))
         }
         Expr::Transpose(e) => match eval(e, env)? {
+            Value::Void => Err("Transpose is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
             Value::Complex(re, im) => Ok(Value::Complex(re, -im)),
@@ -176,13 +182,21 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         Expr::Range(start_expr, step_expr, stop_expr) => {
             let start = match eval(start_expr, env)? {
                 Value::Scalar(n) => n,
-                Value::Matrix(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => {
+                Value::Void
+                | Value::Matrix(_)
+                | Value::Complex(_, _)
+                | Value::Str(_)
+                | Value::StringObj(_) => {
                     return Err("Range bounds must be real scalars".to_string());
                 }
             };
             let stop = match eval(stop_expr, env)? {
                 Value::Scalar(n) => n,
-                Value::Matrix(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => {
+                Value::Void
+                | Value::Matrix(_)
+                | Value::Complex(_, _)
+                | Value::Str(_)
+                | Value::StringObj(_) => {
                     return Err("Range bounds must be real scalars".to_string());
                 }
             };
@@ -190,7 +204,8 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                 None => 1.0,
                 Some(s) => match eval(s, env)? {
                     Value::Scalar(n) => n,
-                    Value::Matrix(_)
+                    Value::Void
+                    | Value::Matrix(_)
                     | Value::Complex(_, _)
                     | Value::Str(_)
                     | Value::StringObj(_) => {
@@ -217,6 +232,9 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
 
 fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
     match (l, r) {
+        (Value::Void, _) | (_, Value::Void) => {
+            Err("Cannot apply operator to void value".to_string())
+        }
         // --- String object operations ---
         (Value::StringObj(a), Value::StringObj(b)) => match op {
             Op::Add => Ok(Value::StringObj(a + &b)),
@@ -516,6 +534,9 @@ fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
 
 fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
     match v {
+        Value::Void => Err(format!(
+            "Function '{fname}' argument {pos} must be a scalar, got void"
+        )),
         Value::Scalar(n) => Ok(*n),
         Value::Complex(re, im) if *im == 0.0 => Ok(*re),
         Value::Complex(_, _) => Err(format!(
@@ -534,6 +555,7 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
 /// Applies a scalar function element-wise to a scalar or matrix.
 fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
     match v {
+        Value::Void => Err("Element-wise function not applicable to void".to_string()),
         Value::Scalar(n) => Ok(Value::Scalar(f(*n))),
         Value::Matrix(m) => Ok(Value::Matrix(m.mapv(f))),
         Value::Complex(_, _) => {
@@ -555,6 +577,7 @@ where
     F: Fn(&[f64]) -> f64,
 {
     match v {
+        Value::Void => Err("Reduction not applicable to void".to_string()),
         Value::Scalar(n) => Ok(Value::Scalar(f(&[*n]))),
         Value::Complex(_, _) => Err("Reduction not applicable to complex values".to_string()),
         Value::Str(_) | Value::StringObj(_) => {
@@ -588,6 +611,7 @@ where
     F: Fn(f64, f64) -> f64,
 {
     match v {
+        Value::Void => Err("Cumulative reduction not applicable to void".to_string()),
         Value::Scalar(n) => Ok(Value::Scalar(*n)),
         Value::Complex(_, _) => {
             Err("Cumulative reduction not applicable to complex values".to_string())
@@ -631,6 +655,7 @@ where
 /// Returns column-major 1-based indices of non-zero elements, up to `max_k`.
 fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
     match v {
+        Value::Void => Err("find: not applicable to void".to_string()),
         Value::Str(_) | Value::StringObj(_) => Err("find: not applicable to strings".to_string()),
         Value::Complex(re, im) => {
             if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
@@ -671,6 +696,311 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
                 Ok(Value::Matrix(Array2::from_shape_vec((1, n), idxs).unwrap()))
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// C-style printf format engine
+// ---------------------------------------------------------------------------
+
+/// Formats `args` using a C-style `fmt` string.
+///
+/// Supported specifiers: `%d` `%i` `%f` `%e` `%g` `%s` `%%`.
+/// Flags: `-` (left-align), `+` (force sign), `0` (zero-pad), ` ` (space sign).
+/// Width and `.precision` follow standard C `printf` conventions.
+/// Escape sequences `\n` `\t` `\\` are also processed.
+///
+/// Octave behaviour: if `args` is longer than the number of specifiers the
+/// format string is repeated until all args are consumed.
+pub fn format_printf(fmt: &str, args: &[Value]) -> Result<String, String> {
+    let mut result = String::new();
+    let mut arg_idx = 0;
+
+    loop {
+        let consumed_before = arg_idx;
+        let mut chars = fmt.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                match chars.next() {
+                    Some('n') => result.push('\n'),
+                    Some('t') => result.push('\t'),
+                    Some('\\') => result.push('\\'),
+                    Some('\'') => result.push('\''),
+                    Some('"') => result.push('"'),
+                    Some(other) => {
+                        result.push('\\');
+                        result.push(other);
+                    }
+                    None => result.push('\\'),
+                }
+                continue;
+            }
+
+            if c != '%' {
+                result.push(c);
+                continue;
+            }
+
+            // `%%` → literal `%`
+            if chars.peek() == Some(&'%') {
+                chars.next();
+                result.push('%');
+                continue;
+            }
+
+            // Parse flags
+            let mut flag_minus = false;
+            let mut flag_plus = false;
+            let mut flag_zero = false;
+            let mut flag_space = false;
+            loop {
+                match chars.peek() {
+                    Some('-') => { flag_minus = true; chars.next(); }
+                    Some('+') => { flag_plus  = true; chars.next(); }
+                    Some('0') => { flag_zero  = true; chars.next(); }
+                    Some(' ') => { flag_space = true; chars.next(); }
+                    _ => break,
+                }
+            }
+
+            // Parse width
+            let mut width_str = String::new();
+            while let Some(&d) = chars.peek() {
+                if d.is_ascii_digit() {
+                    width_str.push(d);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            let width: usize = width_str.parse().unwrap_or(0);
+
+            // Parse precision
+            let mut precision: Option<usize> = None;
+            if chars.peek() == Some(&'.') {
+                chars.next();
+                let mut p = String::new();
+                while let Some(&d) = chars.peek() {
+                    if d.is_ascii_digit() {
+                        p.push(d);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                precision = Some(p.parse().unwrap_or(0));
+            }
+
+            // Specifier character
+            let spec = match chars.next() {
+                Some(s) => s,
+                None => return Err("fprintf: incomplete format specifier at end of string".to_string()),
+            };
+
+            // No more args — silently skip remaining specifiers
+            if arg_idx >= args.len() {
+                continue;
+            }
+
+            let arg = &args[arg_idx];
+            arg_idx += 1;
+
+            let formatted = match spec {
+                'd' | 'i' => {
+                    let n = printf_scalar(arg, spec)?;
+                    let i = n.trunc() as i64;
+                    let s = printf_sign_str(i >= 0, flag_plus, flag_space, format!("{}", i.abs()));
+                    printf_pad(s, width, flag_minus, flag_zero)
+                }
+                'f' => {
+                    let n = printf_scalar(arg, spec)?;
+                    let prec = precision.unwrap_or(6);
+                    let s = printf_sign_str(n >= 0.0, flag_plus, flag_space, format!("{:.prec$}", n.abs(), prec = prec));
+                    printf_pad(s, width, flag_minus, flag_zero)
+                }
+                'e' | 'E' => {
+                    let n = printf_scalar(arg, spec)?;
+                    let prec = precision.unwrap_or(6);
+                    let s = printf_format_sci(n, prec, flag_plus, flag_space, spec == 'E');
+                    printf_pad(s, width, flag_minus, flag_zero)
+                }
+                'g' | 'G' => {
+                    let n = printf_scalar(arg, spec)?;
+                    let prec = precision.unwrap_or(6).max(1);
+                    let s = printf_format_g(n, prec, flag_plus, flag_space, spec == 'G');
+                    printf_pad(s, width, flag_minus, flag_zero)
+                }
+                's' => {
+                    let s = printf_string(arg)?;
+                    let s = if let Some(max_len) = precision {
+                        s.chars().take(max_len).collect::<String>()
+                    } else {
+                        s
+                    };
+                    printf_pad(s, width, flag_minus, false)
+                }
+                other => return Err(format!("fprintf: unknown format specifier '%{other}'")),
+            };
+
+            result.push_str(&formatted);
+        }
+
+        // Stop if all args consumed or no specifiers were found (infinite loop guard)
+        if arg_idx >= args.len() || arg_idx == consumed_before {
+            break;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Extracts a scalar f64 from a Value for use in numeric printf specifiers.
+fn printf_scalar(v: &Value, spec: char) -> Result<f64, String> {
+    match v {
+        Value::Scalar(n) => Ok(*n),
+        Value::Complex(re, im) if *im == 0.0 => Ok(*re),
+        Value::Str(s) if s.chars().count() == 1 => Ok(s.chars().next().unwrap() as u32 as f64),
+        _ => Err(format!(
+            "fprintf: expected numeric argument for '%{spec}', got {:?}",
+            std::mem::discriminant(v)
+        )),
+    }
+}
+
+/// Extracts a string from a Value for use in `%s`.
+fn printf_string(v: &Value) -> Result<String, String> {
+    match v {
+        Value::Str(s) | Value::StringObj(s) => Ok(s.clone()),
+        Value::Scalar(n) => Ok(format_number(*n)),
+        Value::Complex(re, im) => Ok(format_complex(*re, *im, 6)),
+        Value::Void => Err("fprintf: cannot format void as string".to_string()),
+        Value::Matrix(_) => Err("fprintf: cannot format matrix as string".to_string()),
+    }
+}
+
+/// Builds a sign-prefixed string: `+n`, ` n`, `-n`, or bare `n`.
+fn printf_sign_str(positive: bool, flag_plus: bool, flag_space: bool, digits: String) -> String {
+    if positive {
+        if flag_plus {
+            format!("+{digits}")
+        } else if flag_space {
+            format!(" {digits}")
+        } else {
+            digits
+        }
+    } else {
+        format!("-{digits}")
+    }
+}
+
+/// Right- or left-pads `s` to at least `width` chars, optionally zero-pads.
+fn printf_pad(s: String, width: usize, left_align: bool, zero_pad: bool) -> String {
+    if s.len() >= width {
+        return s;
+    }
+    let pad_len = width - s.len();
+    if left_align {
+        format!("{s}{}", " ".repeat(pad_len))
+    } else if zero_pad {
+        // Insert zeros after optional sign
+        let (prefix, rest) = if s.starts_with(['+', '-', ' ']) {
+            s.split_at(1)
+        } else {
+            ("", s.as_str())
+        };
+        format!("{prefix}{}{rest}", "0".repeat(pad_len))
+    } else {
+        format!("{}{s}", " ".repeat(pad_len))
+    }
+}
+
+/// Formats `n` in scientific notation matching C `%e` / `%E`.
+/// Always produces at least 2 exponent digits with an explicit sign: `1.23e+04`.
+fn printf_format_sci(n: f64, prec: usize, flag_plus: bool, flag_space: bool, upper: bool) -> String {
+    if n == 0.0 {
+        let zeros = "0".repeat(prec);
+        let sep = if prec > 0 { format!(".{zeros}") } else { String::new() };
+        let e_char = if upper { 'E' } else { 'e' };
+        let sign = if flag_plus { "+" } else if flag_space { " " } else { "" };
+        return format!("{sign}0{sep}{e_char}+00");
+    }
+
+    let neg = n < 0.0;
+    let abs_n = n.abs();
+    let exp = abs_n.log10().floor() as i32;
+    let mantissa = abs_n / 10f64.powi(exp);
+    let man_str = format!("{:.prec$}", mantissa, prec = prec);
+
+    let e_char = if upper { 'E' } else { 'e' };
+    let exp_sign = if exp >= 0 { '+' } else { '-' };
+    let exp_abs = exp.unsigned_abs();
+    let exp_str = if exp_abs < 10 {
+        format!("{e_char}{exp_sign}0{exp_abs}")
+    } else {
+        format!("{e_char}{exp_sign}{exp_abs}")
+    };
+
+    let sign_str = if neg {
+        "-"
+    } else if flag_plus {
+        "+"
+    } else if flag_space {
+        " "
+    } else {
+        ""
+    };
+    format!("{sign_str}{man_str}{exp_str}")
+}
+
+/// Formats `n` using `%g` / `%G` rules:
+/// uses `%e` if exponent < -4 or >= prec, otherwise `%f`; trims trailing zeros.
+fn printf_format_g(n: f64, prec: usize, flag_plus: bool, flag_space: bool, upper: bool) -> String {
+    if n == 0.0 {
+        let sign = if flag_plus { "+" } else if flag_space { " " } else { "" };
+        return format!("{sign}0");
+    }
+    let abs_n = n.abs();
+    let exp = abs_n.log10().floor() as i32;
+    if exp < -4 || exp >= prec as i32 {
+        let s = printf_format_sci(n, prec.saturating_sub(1), flag_plus, flag_space, upper);
+        trim_g_sci(s, upper)
+    } else {
+        let decimal_places = (prec as i32 - 1 - exp).max(0) as usize;
+        let neg = n < 0.0;
+        let s = format!("{:.prec$}", abs_n, prec = decimal_places);
+        let s = if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        };
+        let sign = if neg {
+            "-"
+        } else if flag_plus {
+            "+"
+        } else if flag_space {
+            " "
+        } else {
+            ""
+        };
+        format!("{sign}{s}")
+    }
+}
+
+/// Trims trailing zeros from the mantissa of a scientific-notation string `1.230e+04` → `1.23e+04`.
+fn trim_g_sci(s: String, upper: bool) -> String {
+    let e_char = if upper { 'E' } else { 'e' };
+    if let Some(e_pos) = s.find(e_char) {
+        let mantissa = &s[..e_pos];
+        let exp_part = &s[e_pos..];
+        let trimmed = if mantissa.contains('.') {
+            mantissa.trim_end_matches('0').trim_end_matches('.')
+        } else {
+            mantissa
+        };
+        format!("{trimmed}{exp_part}")
+    } else {
+        s
     }
 }
 
@@ -739,6 +1069,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         }
         // --- Matrix properties ---
         ("size", 1) => match &args[0] {
+            Value::Void => Err("size: not applicable to void".to_string()),
             Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Matrix(
                 Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
             )),
@@ -755,6 +1086,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("size", 2) => {
             let dim = scalar_arg(&args[1], name, 2)? as usize;
             match &args[0] {
+                Value::Void => Err("size: not applicable to void".to_string()),
                 Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
                 Value::Matrix(m) => match dim {
                     1 => Ok(Value::Scalar(m.nrows() as f64)),
@@ -770,18 +1102,21 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
         }
         ("length", 1) => match &args[0] {
+            Value::Void => Err("length: not applicable to void".to_string()),
             Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
             Value::Matrix(m) => Ok(Value::Scalar(m.nrows().max(m.ncols()) as f64)),
             Value::Str(s) => Ok(Value::Scalar(s.chars().count() as f64)),
             Value::StringObj(_) => Ok(Value::Scalar(1.0)),
         },
         ("numel", 1) => match &args[0] {
+            Value::Void => Err("numel: not applicable to void".to_string()),
             Value::Scalar(_) | Value::Complex(_, _) => Ok(Value::Scalar(1.0)),
             Value::Matrix(m) => Ok(Value::Scalar(m.len() as f64)),
             Value::Str(s) => Ok(Value::Scalar(s.chars().count() as f64)),
             Value::StringObj(_) => Ok(Value::Scalar(1.0)),
         },
         ("trace", 1) => match &args[0] {
+            Value::Void => Err("trace: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, _) => Ok(Value::Scalar(*re)),
             Value::Matrix(m) => {
@@ -793,6 +1128,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
         },
         ("det", 1) => match &args[0] {
+            Value::Void => Err("det: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(_, _) => Err("det: not applicable to complex scalars".to_string()),
             Value::Matrix(m) => Ok(Value::Scalar(det_matrix(m)?)),
@@ -801,6 +1137,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
         },
         ("inv", 1) => match &args[0] {
+            Value::Void => Err("inv: not applicable to void".to_string()),
             Value::Scalar(n) => {
                 if *n == 0.0 {
                     Err("inv: singular (zero scalar)".to_string())
@@ -944,6 +1281,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         }),
         // --- Norms ---
         ("norm", 1) => match &args[0] {
+            Value::Void => Err("norm: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
             Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
             Value::Matrix(m) => Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt())),
@@ -954,6 +1292,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("norm", 2) => {
             let p = scalar_arg(&args[1], name, 2)?;
             match &args[0] {
+                Value::Void => Err("norm: not applicable to void".to_string()),
                 Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
                 Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt().powf(p))),
                 Value::Matrix(m) => {
@@ -977,6 +1316,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("cumprod", 1) => apply_cumulative(&args[0], |acc, x| acc * x),
         // --- Sort ---
         ("sort", 1) => match &args[0] {
+            Value::Void => Err("sort: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(_, _) => Err("sort: not applicable to complex values".to_string()),
             Value::Str(_) | Value::StringObj(_) => {
@@ -998,6 +1338,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             let r = scalar_arg(&args[1], name, 2)? as usize;
             let c = scalar_arg(&args[2], name, 3)? as usize;
             match &args[0] {
+                Value::Void => Err("reshape: not applicable to void".to_string()),
                 Value::Scalar(n) => {
                     if r * c != 1 {
                         return Err(format!("reshape: cannot reshape 1 element into {r}x{c}"));
@@ -1033,6 +1374,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         }
         // --- Flip ---
         ("fliplr", 1) => match &args[0] {
+            Value::Void => Err(format!("{name}: not applicable to void")),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
             Value::Str(_) | Value::StringObj(_) => {
@@ -1052,6 +1394,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             }
         },
         ("flipud", 1) => match &args[0] {
+            Value::Void => Err(format!("{name}: not applicable to void")),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
             Value::Str(_) | Value::StringObj(_) => {
@@ -1081,6 +1424,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         }
         // --- Unique ---
         ("unique", 1) => match &args[0] {
+            Value::Void => Err("unique: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Matrix(m) => {
                 let mut vals: Vec<f64> = m.iter().copied().collect();
@@ -1104,6 +1448,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         // --- Complex built-ins ---
         // real(z) — real part; works on scalars too (returns the value unchanged).
         ("real", 1) => match &args[0] {
+            Value::Void => Err("real: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, _) => Ok(Value::Scalar(*re)),
             Value::Matrix(_) => Err("real: not applicable to matrices".to_string()),
@@ -1113,6 +1458,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         },
         // imag(z) — imaginary part; returns 0.0 for real scalars.
         ("imag", 1) => match &args[0] {
+            Value::Void => Err("imag: not applicable to void".to_string()),
             Value::Scalar(_) => Ok(Value::Scalar(0.0)),
             Value::Complex(_, im) => Ok(Value::Scalar(*im)),
             Value::Matrix(_) => Err("imag: not applicable to matrices".to_string()),
@@ -1122,6 +1468,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         },
         // abs(z) — modulus; overloads scalar abs.
         ("abs", 1) => match &args[0] {
+            Value::Void => Err("abs: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
             Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| x.abs()))),
@@ -1131,6 +1478,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         },
         // angle(z) — argument in radians; returns 0 for non-negative reals.
         ("angle", 1) => match &args[0] {
+            Value::Void => Err("angle: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(if *n >= 0.0 {
                 0.0
             } else {
@@ -1144,6 +1492,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         },
         // conj(z) — complex conjugate; scalars are unchanged.
         ("conj", 1) => match &args[0] {
+            Value::Void => Err("conj: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(make_complex(*re, -*im)),
             Value::Matrix(m) => Ok(Value::Matrix(m.clone())),
@@ -1159,6 +1508,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         }
         // isreal(z) — 1.0 if imaginary part is zero, 0.0 otherwise.
         ("isreal", 1) => match &args[0] {
+            Value::Void => Ok(Value::Scalar(0.0)),
             Value::Scalar(_) => Ok(Value::Scalar(1.0)),
             Value::Complex(_, im) => Ok(Value::Scalar(if *im == 0.0 { 1.0 } else { 0.0 })),
             Value::Matrix(_) => Ok(Value::Scalar(1.0)),
@@ -1168,6 +1518,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         // --- String built-ins ---
         // num2str(x) — convert number to char array string
         ("num2str", 1) => match &args[0] {
+            Value::Void => Err("num2str: not applicable to void".to_string()),
             Value::Str(s) => Ok(Value::Str(s.clone())),
             Value::StringObj(s) => Ok(Value::Str(s.clone())),
             Value::Scalar(n) => Ok(Value::Str(format_decimal(*n, 4))),
@@ -1185,6 +1536,7 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
         ("num2str", 2) => {
             let n = scalar_arg(&args[1], name, 2)? as usize;
             match &args[0] {
+                Value::Void => Err("num2str: not applicable to void".to_string()),
                 Value::Str(s) => Ok(Value::Str(s.clone())),
                 Value::StringObj(s) => Ok(Value::Str(s.clone())),
                 Value::Scalar(v) => Ok(Value::Str(format_decimal(*v, n))),
@@ -1288,11 +1640,20 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             let b = string_arg(&args[1], name, 2)?.to_lowercase();
             Ok(Value::Scalar(bool_to_f64(a == b)))
         }
-        // sprintf(fmt) — single string arg, process escape sequences
-        ("sprintf", 1) => {
-            let s = string_arg(&args[0], name, 1)?;
-            let result = process_escape_sequences(s);
+        // sprintf(fmt, ...) — format and return as char array
+        ("sprintf", n) if n >= 1 => {
+            let fmt = string_arg(&args[0], name, 1)?.to_string();
+            let result = format_printf(&fmt, &args[1..])?;
             Ok(Value::Str(result))
+        }
+        // fprintf(fmt, ...) — format and print to stdout; returns Void
+        ("fprintf", n) if n >= 1 => {
+            let fmt = string_arg(&args[0], name, 1)?.to_string();
+            let output = format_printf(&fmt, &args[1..])?;
+            use std::io::Write;
+            print!("{output}");
+            std::io::stdout().flush().ok();
+            Ok(Value::Void)
         }
         _ => Err(format!("Unknown function: '{name}'")),
     }
@@ -1426,6 +1787,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
         1 => {
             // v(i), v(1:3), v(:), v(end), v(end-1:end)
             match val {
+                Value::Void => return Err("Cannot index into void".to_string()),
                 Value::Scalar(n) => {
                     let env1 = env_with_end(env, 1);
                     match resolve_dim(&args[0], 1, &env1)? {
@@ -1525,13 +1887,13 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
         }
         2 => {
             // A(i, j), A(:, j), A(i, :), A(:, :), A(end, :), A(1:end, 2)
-            if matches!(val, Value::Str(_) | Value::StringObj(_)) {
-                return Err("2D indexing not supported for strings".to_string());
+            if matches!(val, Value::Void | Value::Str(_) | Value::StringObj(_)) {
+                return Err("2D indexing not supported for this type".to_string());
             }
             let (nrows, ncols) = match val {
                 Value::Scalar(_) | Value::Complex(_, _) => (1, 1),
                 Value::Matrix(m) => (m.nrows(), m.ncols()),
-                Value::Str(_) | Value::StringObj(_) => unreachable!(),
+                Value::Void | Value::Str(_) | Value::StringObj(_) => unreachable!(),
             };
             let env_r = env_with_end(env, nrows);
             let env_c = env_with_end(env, ncols);
@@ -1549,10 +1911,10 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
 
             if rows.len() == 1 && cols.len() == 1 {
                 match val {
+                    Value::Void | Value::Str(_) | Value::StringObj(_) => unreachable!(),
                     Value::Scalar(n) => Ok(Value::Scalar(*n)),
                     Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
                     Value::Matrix(m) => Ok(Value::Scalar(m[[rows[0], cols[0]]])),
-                    Value::Str(_) | Value::StringObj(_) => unreachable!(),
                 }
             } else {
                 let out_r = rows.len();
@@ -1561,10 +1923,10 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     .iter()
                     .flat_map(|&r| {
                         cols.iter().map(move |&c| match val {
+                            Value::Void | Value::Str(_) | Value::StringObj(_) => unreachable!(),
                             Value::Scalar(n) => *n,
                             Value::Complex(re, _) => *re,
                             Value::Matrix(m) => m[[r, c]],
-                            Value::Str(_) | Value::StringObj(_) => unreachable!(),
                         })
                     })
                     .collect();
@@ -1595,6 +1957,9 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
     }
     let val = eval(expr, env)?;
     let floats: Vec<f64> = match val {
+        Value::Void => {
+            return Err("Index must be numeric, not void".to_string());
+        }
         Value::Scalar(n) => vec![n],
         Value::Complex(re, im) => {
             if im != 0.0 {
@@ -1681,6 +2046,7 @@ pub fn format_complex(re: f64, im: f64, precision: usize) -> String {
 /// Formats a `Value` compactly: scalars as a number string, matrices as `[NxM double]`.
 pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
     match v {
+        Value::Void => String::new(),
         Value::Scalar(n) => format_scalar(*n, precision, base),
         Value::Matrix(m) => format!("[{}x{} double]", m.nrows(), m.ncols()),
         Value::Complex(re, im) => format_complex(*re, *im, precision),
@@ -1689,11 +2055,15 @@ pub fn format_value(v: &Value, precision: usize, base: Base) -> String {
     }
 }
 
-/// Returns `None` for scalars, complex numbers, and strings (displayed inline);
+/// Returns `None` for scalars, complex numbers, strings, and void (displayed inline or suppressed);
 /// `Some(full_string)` for matrices (MATLAB-style column-aligned display).
 pub fn format_value_full(v: &Value, precision: usize) -> Option<String> {
     match v {
-        Value::Scalar(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => None,
+        Value::Void
+        | Value::Scalar(_)
+        | Value::Complex(_, _)
+        | Value::Str(_)
+        | Value::StringObj(_) => None,
         Value::Matrix(m) => Some(format_matrix(m, precision)),
     }
 }

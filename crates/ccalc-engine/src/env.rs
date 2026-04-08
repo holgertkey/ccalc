@@ -6,6 +6,8 @@ use ndarray::Array2;
 /// A value held in the variable environment.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// No display value — returned by side-effectful functions like `fprintf`.
+    Void,
     Scalar(f64),
     Matrix(Array2<f64>),
     /// Complex number `re + im*i`.
@@ -20,7 +22,11 @@ impl Value {
     pub fn as_scalar(&self) -> Option<f64> {
         match self {
             Value::Scalar(n) => Some(*n),
-            Value::Matrix(_) | Value::Complex(_, _) | Value::Str(_) | Value::StringObj(_) => None,
+            Value::Void
+            | Value::Matrix(_)
+            | Value::Complex(_, _)
+            | Value::Str(_)
+            | Value::StringObj(_) => None,
         }
     }
 }
