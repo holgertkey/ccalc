@@ -93,16 +93,16 @@ impl FormatMode {
     /// Human-readable name for display in `config` / status messages.
     pub fn name(&self) -> String {
         match self {
-            FormatMode::Short    => "short".to_string(),
-            FormatMode::Long     => "long".to_string(),
-            FormatMode::ShortE   => "shortE".to_string(),
-            FormatMode::LongE    => "longE".to_string(),
-            FormatMode::ShortG   => "shortG".to_string(),
-            FormatMode::LongG    => "longG".to_string(),
-            FormatMode::Bank     => "bank".to_string(),
-            FormatMode::Rat      => "rat".to_string(),
-            FormatMode::Hex      => "hex".to_string(),
-            FormatMode::Plus     => "+".to_string(),
+            FormatMode::Short => "short".to_string(),
+            FormatMode::Long => "long".to_string(),
+            FormatMode::ShortE => "shortE".to_string(),
+            FormatMode::LongE => "longE".to_string(),
+            FormatMode::ShortG => "shortG".to_string(),
+            FormatMode::LongG => "longG".to_string(),
+            FormatMode::Bank => "bank".to_string(),
+            FormatMode::Rat => "rat".to_string(),
+            FormatMode::Hex => "hex".to_string(),
+            FormatMode::Plus => "+".to_string(),
             FormatMode::Custom(n) => format!("custom({n})"),
         }
     }
@@ -546,7 +546,6 @@ fn string_arg<'a>(v: &'a Value, fname: &str, pos: usize) -> Result<&'a str, Stri
     }
 }
 
-
 fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
     if lm.shape() != rm.shape() {
         return Err(format!(
@@ -784,10 +783,22 @@ pub fn format_printf(fmt: &str, args: &[Value]) -> Result<String, String> {
             let mut flag_space = false;
             loop {
                 match chars.peek() {
-                    Some('-') => { flag_minus = true; chars.next(); }
-                    Some('+') => { flag_plus  = true; chars.next(); }
-                    Some('0') => { flag_zero  = true; chars.next(); }
-                    Some(' ') => { flag_space = true; chars.next(); }
+                    Some('-') => {
+                        flag_minus = true;
+                        chars.next();
+                    }
+                    Some('+') => {
+                        flag_plus = true;
+                        chars.next();
+                    }
+                    Some('0') => {
+                        flag_zero = true;
+                        chars.next();
+                    }
+                    Some(' ') => {
+                        flag_space = true;
+                        chars.next();
+                    }
                     _ => break,
                 }
             }
@@ -823,7 +834,9 @@ pub fn format_printf(fmt: &str, args: &[Value]) -> Result<String, String> {
             // Specifier character
             let spec = match chars.next() {
                 Some(s) => s,
-                None => return Err("fprintf: incomplete format specifier at end of string".to_string()),
+                None => {
+                    return Err("fprintf: incomplete format specifier at end of string".to_string());
+                }
             };
 
             // No more args — silently skip remaining specifiers
@@ -844,7 +857,12 @@ pub fn format_printf(fmt: &str, args: &[Value]) -> Result<String, String> {
                 'f' => {
                     let n = printf_scalar(arg, spec)?;
                     let prec = precision.unwrap_or(6);
-                    let s = printf_sign_str(n >= 0.0, flag_plus, flag_space, format!("{:.prec$}", n.abs(), prec = prec));
+                    let s = printf_sign_str(
+                        n >= 0.0,
+                        flag_plus,
+                        flag_space,
+                        format!("{:.prec$}", n.abs(), prec = prec),
+                    );
                     printf_pad(s, width, flag_minus, flag_zero)
                 }
                 'e' | 'E' => {
@@ -945,12 +963,28 @@ fn printf_pad(s: String, width: usize, left_align: bool, zero_pad: bool) -> Stri
 
 /// Formats `n` in scientific notation matching C `%e` / `%E`.
 /// Always produces at least 2 exponent digits with an explicit sign: `1.23e+04`.
-fn printf_format_sci(n: f64, prec: usize, flag_plus: bool, flag_space: bool, upper: bool) -> String {
+fn printf_format_sci(
+    n: f64,
+    prec: usize,
+    flag_plus: bool,
+    flag_space: bool,
+    upper: bool,
+) -> String {
     if n == 0.0 {
         let zeros = "0".repeat(prec);
-        let sep = if prec > 0 { format!(".{zeros}") } else { String::new() };
+        let sep = if prec > 0 {
+            format!(".{zeros}")
+        } else {
+            String::new()
+        };
         let e_char = if upper { 'E' } else { 'e' };
-        let sign = if flag_plus { "+" } else if flag_space { " " } else { "" };
+        let sign = if flag_plus {
+            "+"
+        } else if flag_space {
+            " "
+        } else {
+            ""
+        };
         return format!("{sign}0{sep}{e_char}+00");
     }
 
@@ -985,7 +1019,13 @@ fn printf_format_sci(n: f64, prec: usize, flag_plus: bool, flag_space: bool, upp
 /// uses `%e` if exponent < -4 or >= prec, otherwise `%f`; trims trailing zeros.
 fn printf_format_g(n: f64, prec: usize, flag_plus: bool, flag_space: bool, upper: bool) -> String {
     if n == 0.0 {
-        let sign = if flag_plus { "+" } else if flag_space { " " } else { "" };
+        let sign = if flag_plus {
+            "+"
+        } else if flag_space {
+            " "
+        } else {
+            ""
+        };
         return format!("{sign}0");
     }
     let abs_n = n.abs();
@@ -1568,7 +1608,9 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
                 Value::Str(s) => Ok(Value::Str(s.clone())),
                 Value::StringObj(s) => Ok(Value::Str(s.clone())),
                 Value::Scalar(v) => Ok(Value::Str(fmt_auto_sig(*v, n))),
-                Value::Complex(re, im) => Ok(Value::Str(format_complex(*re, *im, &FormatMode::Custom(n)))),
+                Value::Complex(re, im) => {
+                    Ok(Value::Str(format_complex(*re, *im, &FormatMode::Custom(n))))
+                }
                 Value::Matrix(m) => {
                     let s = m
                         .iter()
@@ -1815,7 +1857,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
         1 => {
             // v(i), v(1:3), v(:), v(end), v(end-1:end)
             match val {
-                Value::Void => return Err("Cannot index into void".to_string()),
+                Value::Void => Err("Cannot index into void".to_string()),
                 Value::Scalar(n) => {
                     let env1 = env_with_end(env, 1);
                     match resolve_dim(&args[0], 1, &env1)? {
@@ -2112,7 +2154,15 @@ fn format_matrix(m: &Array2<f64>, mode: &FormatMode) -> String {
             .map(|row| {
                 let chars: String = row
                     .iter()
-                    .map(|&x| if x > 0.0 { '+' } else if x < 0.0 { '-' } else { '0' })
+                    .map(|&x| {
+                        if x > 0.0 {
+                            '+'
+                        } else if x < 0.0 {
+                            '-'
+                        } else {
+                            '0'
+                        }
+                    })
                     .collect();
                 format!("   {}", chars)
             })
@@ -2173,14 +2223,14 @@ fn format_decimal(n: f64, mode: &FormatMode) -> String {
     }
     match mode {
         FormatMode::Short | FormatMode::ShortG => fmt_auto_sig(n, 5),
-        FormatMode::Long  | FormatMode::LongG  => fmt_auto_sig(n, 15),
-        FormatMode::ShortE                     => fmt_sci_dp(n, 4),
-        FormatMode::LongE                      => fmt_sci_dp(n, 14),
-        FormatMode::Bank                       => format!("{:.2}", n),
-        FormatMode::Rat                        => fmt_rat(n),
-        FormatMode::Hex                        => fmt_hex_ieee754(n),
-        FormatMode::Plus                       => fmt_plus_sign(n),
-        FormatMode::Custom(prec)               => fmt_custom_prec(n, *prec),
+        FormatMode::Long | FormatMode::LongG => fmt_auto_sig(n, 15),
+        FormatMode::ShortE => fmt_sci_dp(n, 4),
+        FormatMode::LongE => fmt_sci_dp(n, 14),
+        FormatMode::Bank => format!("{:.2}", n),
+        FormatMode::Rat => fmt_rat(n),
+        FormatMode::Hex => fmt_hex_ieee754(n),
+        FormatMode::Plus => fmt_plus_sign(n),
+        FormatMode::Custom(prec) => fmt_custom_prec(n, *prec),
     }
 }
 
@@ -2198,7 +2248,11 @@ fn fmt_auto_sig(n: f64, sig: usize) -> String {
         return format!("{}", n as i64);
     }
     let abs_n = n.abs();
-    let exp = if abs_n == 0.0 { 0i32 } else { abs_n.log10().floor() as i32 };
+    let exp = if abs_n == 0.0 {
+        0i32
+    } else {
+        abs_n.log10().floor() as i32
+    };
     if exp >= -3 && exp < sig as i32 {
         let dp = ((sig as i32 - 1 - exp) as usize).max(0);
         let s = format!("{:.prec$}", n, prec = dp);
@@ -2250,8 +2304,10 @@ fn fmt_rat(n: f64) -> String {
         if nk > 10_000 {
             break;
         }
-        h2 = h1; h1 = nh;
-        k2 = k1; k1 = nk;
+        h2 = h1;
+        h1 = nh;
+        k2 = k1;
+        k1 = nk;
         let frac = b - a as f64;
         if frac < 1e-12 || (h1 as f64 / k1 as f64 - x).abs() < 1e-6 {
             break;

@@ -353,18 +353,54 @@ pub fn run() {
             }
             if let Some(arg) = stmt.strip_prefix("format ").map(str::trim) {
                 match arg {
-                    "short"             => { fmt = FormatMode::Short;  println!("format: short"); }
-                    "long"              => { fmt = FormatMode::Long;   println!("format: long"); }
-                    "shorte" | "shortE" => { fmt = FormatMode::ShortE; println!("format: shortE"); }
-                    "longe"  | "longE"  => { fmt = FormatMode::LongE;  println!("format: longE"); }
-                    "shortg" | "shortG" => { fmt = FormatMode::ShortG; println!("format: shortG"); }
-                    "longg"  | "longG"  => { fmt = FormatMode::LongG;  println!("format: longG"); }
-                    "bank"              => { fmt = FormatMode::Bank;   println!("format: bank"); }
-                    "rat"               => { fmt = FormatMode::Rat;    println!("format: rat"); }
-                    "hex"               => { fmt = FormatMode::Hex;    println!("format: hex"); }
-                    "+"                 => { fmt = FormatMode::Plus;   println!("format: +"); }
-                    "compact"           => { compact = true;  println!("format: compact"); }
-                    "loose"             => { compact = false; println!("format: loose"); }
+                    "short" => {
+                        fmt = FormatMode::Short;
+                        println!("format: short");
+                    }
+                    "long" => {
+                        fmt = FormatMode::Long;
+                        println!("format: long");
+                    }
+                    "shorte" | "shortE" => {
+                        fmt = FormatMode::ShortE;
+                        println!("format: shortE");
+                    }
+                    "longe" | "longE" => {
+                        fmt = FormatMode::LongE;
+                        println!("format: longE");
+                    }
+                    "shortg" | "shortG" => {
+                        fmt = FormatMode::ShortG;
+                        println!("format: shortG");
+                    }
+                    "longg" | "longG" => {
+                        fmt = FormatMode::LongG;
+                        println!("format: longG");
+                    }
+                    "bank" => {
+                        fmt = FormatMode::Bank;
+                        println!("format: bank");
+                    }
+                    "rat" => {
+                        fmt = FormatMode::Rat;
+                        println!("format: rat");
+                    }
+                    "hex" => {
+                        fmt = FormatMode::Hex;
+                        println!("format: hex");
+                    }
+                    "+" => {
+                        fmt = FormatMode::Plus;
+                        println!("format: +");
+                    }
+                    "compact" => {
+                        compact = true;
+                        println!("format: compact");
+                    }
+                    "loose" => {
+                        compact = false;
+                        println!("format: loose");
+                    }
                     s => {
                         if let Ok(n) = s.parse::<usize>() {
                             fmt = FormatMode::Custom(n);
@@ -428,12 +464,20 @@ pub fn run() {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                                 Value::Scalar(v) => {
                                     println!("{name} = {}", format_scalar(*v, base, &fmt));
-                                    if compact { } else if matches!(fmt, FormatMode::Hex | FormatMode::Rat | FormatMode::Bank) { println!(); }
+                                    if compact {
+                                    } else if matches!(
+                                        fmt,
+                                        FormatMode::Hex | FormatMode::Rat | FormatMode::Bank
+                                    ) {
+                                        println!();
+                                    }
                                 }
                                 Value::Complex(re, im) => {
                                     println!("{name} = {}", format_complex(*re, *im, &fmt));
@@ -447,7 +491,9 @@ pub fn run() {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                                 Value::Scalar(v) => {
@@ -616,18 +662,42 @@ pub fn run_pipe(reader: impl BufRead) {
             }
             if let Some(arg) = stmt.strip_prefix("format ").map(str::trim) {
                 match arg {
-                    "short"             => { fmt = FormatMode::Short; }
-                    "long"              => { fmt = FormatMode::Long; }
-                    "shorte" | "shortE" => { fmt = FormatMode::ShortE; }
-                    "longe"  | "longE"  => { fmt = FormatMode::LongE; }
-                    "shortg" | "shortG" => { fmt = FormatMode::ShortG; }
-                    "longg"  | "longG"  => { fmt = FormatMode::LongG; }
-                    "bank"              => { fmt = FormatMode::Bank; }
-                    "rat"               => { fmt = FormatMode::Rat; }
-                    "hex"               => { fmt = FormatMode::Hex; }
-                    "+"                 => { fmt = FormatMode::Plus; }
-                    "compact"           => { compact = true; }
-                    "loose"             => { compact = false; }
+                    "short" => {
+                        fmt = FormatMode::Short;
+                    }
+                    "long" => {
+                        fmt = FormatMode::Long;
+                    }
+                    "shorte" | "shortE" => {
+                        fmt = FormatMode::ShortE;
+                    }
+                    "longe" | "longE" => {
+                        fmt = FormatMode::LongE;
+                    }
+                    "shortg" | "shortG" => {
+                        fmt = FormatMode::ShortG;
+                    }
+                    "longg" | "longG" => {
+                        fmt = FormatMode::LongG;
+                    }
+                    "bank" => {
+                        fmt = FormatMode::Bank;
+                    }
+                    "rat" => {
+                        fmt = FormatMode::Rat;
+                    }
+                    "hex" => {
+                        fmt = FormatMode::Hex;
+                    }
+                    "+" => {
+                        fmt = FormatMode::Plus;
+                    }
+                    "compact" => {
+                        compact = true;
+                    }
+                    "loose" => {
+                        compact = false;
+                    }
                     s => {
                         if let Ok(n) = s.parse::<usize>() {
                             fmt = FormatMode::Custom(n);
@@ -667,7 +737,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                                 Value::Scalar(n) => {
@@ -685,7 +757,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                                 Value::Scalar(n) => {
@@ -695,10 +769,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                         let sign = if i < 0 { "-" } else { "" };
                                         println!("2  - {}0b{:b}", sign, u);
                                         println!("8  - {}0o{:o}", sign, u);
-                                        println!(
-                                            "10 - {}",
-                                            format_scalar(*n, Base::Dec, &fmt)
-                                        );
+                                        println!("10 - {}", format_scalar(*n, Base::Dec, &fmt));
                                         println!("16 - {}0x{:X}", sign, u);
                                     } else {
                                         println!("{}", format_scalar(*n, base, &fmt));
@@ -789,11 +860,7 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
                 scalars.push(format!("{} = {}", name, format_scalar(*n, base, fmt)));
             }
             Value::Complex(re, im) => {
-                scalars.push(format!(
-                    "{} = {}",
-                    name,
-                    format_complex(*re, *im, fmt)
-                ));
+                scalars.push(format!("{} = {}", name, format_complex(*re, *im, fmt)));
             }
             Value::Matrix(m) => {
                 matrices.push(format!("{} = [{}×{} double]", name, m.nrows(), m.ncols()));

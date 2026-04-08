@@ -294,14 +294,26 @@ fn test_format_number_sci() {
 
 #[test]
 fn test_format_value_dec_integer() {
-    assert_eq!(format_scalar(42.0, Base::Dec, &FormatMode::Custom(10)), "42");
-    assert_eq!(format_scalar(-5.0, Base::Dec, &FormatMode::Custom(10)), "-5");
+    assert_eq!(
+        format_scalar(42.0, Base::Dec, &FormatMode::Custom(10)),
+        "42"
+    );
+    assert_eq!(
+        format_scalar(-5.0, Base::Dec, &FormatMode::Custom(10)),
+        "-5"
+    );
 }
 
 #[test]
 fn test_format_value_dec_float() {
-    assert_eq!(format_scalar(3.14, Base::Dec, &FormatMode::Custom(2)), "3.14");
-    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(4)), "0.3333");
+    assert_eq!(
+        format_scalar(3.14, Base::Dec, &FormatMode::Custom(2)),
+        "3.14"
+    );
+    assert_eq!(
+        format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(4)),
+        "0.3333"
+    );
 }
 
 #[test]
@@ -324,21 +336,42 @@ fn test_format_value_dec_sci_small() {
 
 #[test]
 fn test_format_value_hex() {
-    assert_eq!(format_scalar(255.0, Base::Hex, &FormatMode::Custom(10)), "0xFF");
-    assert_eq!(format_scalar(256.0, Base::Hex, &FormatMode::Custom(10)), "0x100");
-    assert_eq!(format_scalar(0.0, Base::Hex, &FormatMode::Custom(10)), "0x0");
+    assert_eq!(
+        format_scalar(255.0, Base::Hex, &FormatMode::Custom(10)),
+        "0xFF"
+    );
+    assert_eq!(
+        format_scalar(256.0, Base::Hex, &FormatMode::Custom(10)),
+        "0x100"
+    );
+    assert_eq!(
+        format_scalar(0.0, Base::Hex, &FormatMode::Custom(10)),
+        "0x0"
+    );
 }
 
 #[test]
 fn test_format_value_bin() {
-    assert_eq!(format_scalar(10.0, Base::Bin, &FormatMode::Custom(10)), "0b1010");
-    assert_eq!(format_scalar(1.0, Base::Bin, &FormatMode::Custom(10)), "0b1");
+    assert_eq!(
+        format_scalar(10.0, Base::Bin, &FormatMode::Custom(10)),
+        "0b1010"
+    );
+    assert_eq!(
+        format_scalar(1.0, Base::Bin, &FormatMode::Custom(10)),
+        "0b1"
+    );
 }
 
 #[test]
 fn test_format_value_oct() {
-    assert_eq!(format_scalar(8.0, Base::Oct, &FormatMode::Custom(10)), "0o10");
-    assert_eq!(format_scalar(255.0, Base::Oct, &FormatMode::Custom(10)), "0o377");
+    assert_eq!(
+        format_scalar(8.0, Base::Oct, &FormatMode::Custom(10)),
+        "0o10"
+    );
+    assert_eq!(
+        format_scalar(255.0, Base::Oct, &FormatMode::Custom(10)),
+        "0o377"
+    );
 }
 
 #[test]
@@ -349,7 +382,10 @@ fn test_format_non_dec_negative() {
 
 #[test]
 fn test_format_value_hex_rounds() {
-    assert_eq!(format_scalar(255.6, Base::Hex, &FormatMode::Custom(10)), "0x100");
+    assert_eq!(
+        format_scalar(255.6, Base::Hex, &FormatMode::Custom(10)),
+        "0x100"
+    );
 }
 
 // --- FormatMode tests ---
@@ -378,7 +414,10 @@ fn test_format_long() {
 #[test]
 fn test_format_shorte() {
     let m = &FormatMode::ShortE;
-    assert_eq!(format_scalar(std::f64::consts::PI, Base::Dec, m), "3.1416e+00");
+    assert_eq!(
+        format_scalar(std::f64::consts::PI, Base::Dec, m),
+        "3.1416e+00"
+    );
     assert_eq!(format_scalar(1234.5, Base::Dec, m), "1.2345e+03");
 }
 
@@ -418,8 +457,14 @@ fn test_format_plus() {
 
 #[test]
 fn test_format_custom() {
-    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(4)), "0.3333");
-    assert_eq!(format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(2)), "0.33");
+    assert_eq!(
+        format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(4)),
+        "0.3333"
+    );
+    assert_eq!(
+        format_scalar(1.0 / 3.0, Base::Dec, &FormatMode::Custom(2)),
+        "0.33"
+    );
 }
 
 #[test]
@@ -1324,10 +1369,7 @@ fn test_printf_escape_sequences() {
 
 #[test]
 fn test_printf_percent_literal() {
-    assert_eq!(
-        format_printf("100%%", &[]).unwrap(),
-        "100%"
-    );
+    assert_eq!(format_printf("100%%", &[]).unwrap(), "100%");
 }
 
 #[test]
@@ -1478,10 +1520,7 @@ fn test_sprintf_via_eval() {
     let env = empty_env();
     let expr = Expr::Call(
         "sprintf".to_string(),
-        vec![
-            Expr::StrLiteral("x = %d".to_string()),
-            Expr::Number(5.0),
-        ],
+        vec![Expr::StrLiteral("x = %d".to_string()), Expr::Number(5.0)],
     );
     assert_eq!(eval(&expr, &env), Ok(Value::Str("x = 5".to_string())));
 }
