@@ -13,10 +13,8 @@ fprintf('Rotation matrix R (45 deg):\n')
 disp(R)
 
 % For any rotation: det = 1, trace = 2*cos(theta)
-fprintf('det(R) — must be 1:  ')
-disp(det(R))
-fprintf('trace(R) = 2*cos(45): ')
-disp(trace(R))
+fprintf('det(R) — must be 1:   %.2f\n', det(R))
+fprintf('trace(R) = 2*cos(45): %.2f\n', trace(R))
 
 % --- 2. Rotate a 2D point ---
 
@@ -85,12 +83,10 @@ disp(eye(3))
 B = [1 2 3; 0 1 4; 5 6 0];
 fprintf('B:\n')
 disp(B)
-fprintf('det(B):  ')
-disp(det(B))
+fprintf('det(B):   %.2f\n', det(B))
 fprintf('size(B): ')
 disp(size(B))
-fprintf('numel(B): ')
-disp(numel(B))
+fprintf('numel(B): %d\n', numel(B))
 
 % Inverse and verification
 Binv = inv(B);

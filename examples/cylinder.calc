@@ -9,10 +9,5 @@ h = 10;                   % height
 
 base_area = pi * r^2;     % pi * r^2
 
-base_area * h;
-fprintf('Volume: ')
-disp(ans)
-
-2 * base_area + 2 * pi * r * h;
-fprintf('Surface area: ')
-disp(ans)
+fprintf('Volume: %.2f\n', base_area * h)
+fprintf('Surface area: %.2f\n', 2 * base_area + 2 * pi * r * h)

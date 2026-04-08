@@ -54,15 +54,11 @@ disp(y)
 fprintf('\n=== 3. Verify roots ===\n')
 
 % x(3) = -1 and x(9) = 2 are the roots of f
-fprintf('x(3) — should be -1:  ')
-disp(x(3))
-fprintf('y(3) = f(-1) — should be 0:  ')
-disp(y(3))
+fprintf('x(3) — should be -1:            %.2f\n', x(3))
+fprintf('y(3) = f(-1) — should be 0:     %.2f\n', y(3))
 
-fprintf('x(9) — should be 2:  ')
-disp(x(9))
-fprintf('y(9) = f(2)  — should be 0:  ')
-disp(y(9))
+fprintf('x(9) — should be 2:             %.2f\n', x(9))
+fprintf('y(9) = f(2)  — should be 0:     %.2f\n', y(9))
 
 % --- 4. Sub-vector slicing ---
 
@@ -77,8 +73,7 @@ fprintf('x(5:9) — second half [0..2]: ')
 disp(x(5:9))
 
 % Middle element (x = 0)
-fprintf('x(5) — midpoint: ')
-disp(x(5))
+fprintf('x(5) — midpoint: %.2f\n', x(5))
 
 % --- 5. Finite differences — discrete derivative ---
 
@@ -96,10 +91,8 @@ disp(dydx)
 % f'(x) = 2x - 1 = 0 at x = 0.5 (minimum of f).
 % The sign of dydx changes between element 5 (at midpoint x = 0.25, dydx = -0.5)
 % and element 6 (at midpoint x = 0.75, dydx = +0.5), confirming x_min ≈ 0.5.
-fprintf('dydx(5) — should be -0.5 (f decreasing at x=0.25): ')
-disp(dydx(5))
-fprintf('dydx(6) — should be +0.5 (f increasing at x=0.75): ')
-disp(dydx(6))
+fprintf('dydx(5) — should be -0.5 (f decreasing at x=0.25): %.2f\n', dydx(5))
+fprintf('dydx(6) — should be +0.5 (f increasing at x=0.75): %.2f\n', dydx(6))
 
 % --- 6. Matrix slicing ---
 
@@ -111,8 +104,7 @@ fprintf('H:\n')
 disp(H)
 
 % Single element
-fprintf('H(2, 3) — should be 7: ')
-disp(H(2, 3))
+fprintf('H(2, 3) — should be 7: %d\n', H(2, 3))
 
 % Extract a full row
 fprintf('H(2, :) — row 2: ')

@@ -6,6 +6,4 @@
 
 gib = 1024^3;             % bytes in one GiB
 
-500 * 1000^3 / gib;
-fprintf('Real GiB in a 500 GB drive: ')
-disp(ans)
+fprintf('Real GiB in a 500 GB drive: %.2f\n', 500 * 1000^3 / gib)

@@ -36,18 +36,15 @@ fprintf('\n=== 2. Length and size ===\n')
 s = 'abcde';
 fprintf('s = ')
 disp(s)
-fprintf('length(s)  =>  ')
-disp(length(s))
-fprintf('numel(s)   =>  ')
-disp(numel(s))
+fprintf('length(s)  =>  %d\n', length(s))
+fprintf('numel(s)   =>  %d\n', numel(s))
 fprintf('size(s)    =>  ')
 disp(size(s))
 
 % String object is a scalar (1x1)
 t = "hello";
 fprintf('\nt = "hello"\n')
-fprintf('length(t)  =>  ')
-disp(length(t))
+fprintf('length(t)  =>  %d\n', length(t))
 fprintf('size(t)    =>  ')
 disp(size(t))
 
@@ -55,14 +52,10 @@ disp(size(t))
 
 fprintf('\n=== 3. Type checks ===\n')
 
-fprintf("ischar('hello')   =>  ")
-disp(ischar('hello'))
-fprintf('isstring("hello")  =>  ')
-disp(isstring("hello"))
-fprintf('ischar("hello")    =>  ')
-disp(ischar("hello"))
-fprintf('ischar(42)         =>  ')
-disp(ischar(42))
+fprintf("ischar('hello')   =>  %d\n", ischar('hello'))
+fprintf('isstring("hello")  =>  %d\n', isstring("hello"))
+fprintf('ischar("hello")    =>  %d\n', ischar("hello"))
+fprintf('ischar(42)         =>  %d\n', ischar(42))
 
 % --- 4. Char array arithmetic ---
 
@@ -70,12 +63,10 @@ fprintf('\n=== 4. Char array arithmetic ===\n')
 fprintf('Char arrays convert to ASCII codes before arithmetic.\n\n')
 
 % Single char to ASCII code
-fprintf("'A' + 0  =>  ")
-disp('A' + 0)
+fprintf("'A' + 0  =>  %d\n", 'A' + 0)
 
 % Shift a letter
-fprintf("'a' + 1  =>  ")
-disp('a' + 1)
+fprintf("'a' + 1  =>  %d\n", 'a' + 1)
 
 % Multi-char: produces a numeric row vector
 fprintf("'abc' + 0  =>  ")
@@ -114,18 +105,13 @@ disp(strcat("foo", "bar"))
 
 fprintf('\n=== 6. Comparison functions ===\n')
 
-fprintf("strcmp('abc', 'abc')   =>  ")
-disp(strcmp('abc', 'abc'))
-fprintf("strcmp('abc', 'ABC')   =>  ")
-disp(strcmp('abc', 'ABC'))
-fprintf("strcmpi('abc', 'ABC')  =>  ")
-disp(strcmpi('abc', 'ABC'))
+fprintf("strcmp('abc', 'abc')   =>  %d\n", strcmp('abc', 'abc'))
+fprintf("strcmp('abc', 'ABC')   =>  %d\n", strcmp('abc', 'ABC'))
+fprintf("strcmpi('abc', 'ABC')  =>  %d\n", strcmpi('abc', 'ABC'))
 
 % String objects: use == operator
-fprintf('"hello" == "hello"   =>  ')
-disp("hello" == "hello")
-fprintf('"hello" == "world"   =>  ')
-disp("hello" == "world")
+fprintf('"hello" == "hello"   =>  %d\n', "hello" == "hello")
+fprintf('"hello" == "world"   =>  %d\n', "hello" == "world")
 
 % --- 7. Case conversion and trimming ---
 
@@ -163,13 +149,11 @@ disp(num2str(3.14159))
 fprintf('num2str(3.14159, 2) =>  ')
 disp(num2str(3.14159, 2))
 
-fprintf("str2double('2.718')  =>  ")
-disp(str2double('2.718'))
+fprintf("str2double('2.718')  =>  %.4f\n", str2double('2.718'))
 fprintf("str2double('abc')   =>  ")
 disp(str2double('abc'))
 
-fprintf("str2num('100')      =>  ")
-disp(str2num('100'))
+fprintf("str2num('100')      =>  %d\n", str2num('100'))
 
 % --- 10. sprintf for string building ---
 
@@ -192,9 +176,6 @@ C = 2.2e-9;
 f0 = 1 / (2 * pi * R * C);
 
 fprintf('RC low-pass filter\n')
-fprintf('  R  = ')
-disp(strcat(num2str(R), ' Ohm'))
-fprintf('  C  = ')
-disp(strcat(num2str(C * 1e9, 3), ' nF'))
-fprintf('  f0 = ')
-disp(strcat(num2str(f0, 5), ' Hz'))
+fprintf('  R  = %d Ohm\n', R)
+fprintf('  C  = %.1f nF\n', C * 1e9)
+fprintf('  f0 = %.2f Hz\n', f0)

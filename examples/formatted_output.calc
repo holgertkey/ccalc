@@ -1,0 +1,100 @@
+% formatted_output.calc — Phase 10 fprintf/sprintf demo
+%
+% Covers: %d %i %f %e %g %s %% format specifiers,
+%         width and precision, alignment flags (- + 0),
+%         escape sequences (\n \t), multiple arguments,
+%         Octave repeat behaviour, and sprintf for string building.
+%
+% Usage: ccalc examples/formatted_output.calc
+
+% --- 1. Basic format specifiers ---
+
+fprintf('=== 1. Basic format specifiers ===\n')
+
+x = 42;
+y = 3.14159265;
+
+fprintf('Integer   %%d:  %d\n', x)
+fprintf('Integer   %%i:  %i\n', x)
+fprintf('Float     %%f:  %f\n', y)
+fprintf('2 d.p.    %%f:  %.2f\n', y)
+fprintf('Scientific%%e:  %e\n', y)
+fprintf('Auto      %%g:  %g\n', y)
+fprintf('String    %%s:  %s\n', 'hello')
+fprintf('Percent   %%%%:  100%%\n')
+
+% --- 2. Width, precision, and alignment ---
+
+fprintf('\n=== 2. Width, precision, alignment ===\n')
+
+fprintf('Right-aligned  (%%10d):  [%10d]\n', 42)
+fprintf('Left-aligned   (%%-10d): [%-10d]\n', 42)
+fprintf('Zero-padded    (%%08d):  [%08d]\n', 42)
+fprintf('Force sign     (%%+d):   [%+d]\n', 42)
+fprintf('Negative       (%%+d):   [%+d]\n', -42)
+fprintf('Float w+prec   (%%10.4f):[%10.4f]\n', 3.14159)
+
+% --- 3. Multiple arguments ---
+
+fprintf('\n=== 3. Multiple arguments ===\n')
+
+fprintf('Name: %-8s  Score: %3d  Avg: %.2f\n', 'Alice', 95, 94.7)
+fprintf('Name: %-8s  Score: %3d  Avg: %.2f\n', 'Bob', 87, 88.3)
+fprintf('Name: %-8s  Score: %3d  Avg: %.2f\n', 'Charlie', 91, 90.1)
+
+% --- 4. Escape sequences ---
+
+fprintf('\n=== 4. Escape sequences ===\n')
+
+fprintf('Tab:        [col1\tcol2\tcol3]\n')
+fprintf('Newline in string — line 1\nline 2\nline 3\n')
+
+% --- 5. Octave repeat behaviour ---
+
+fprintf('\n=== 5. Format repeats for extra arguments ===\n')
+
+% When more arguments than format specifiers, the format repeats.
+fprintf('%d ', 10, 20, 30, 40, 50)
+fprintf('\n')
+
+fprintf('%.2f  ', 1.1, 2.2, 3.3)
+fprintf('\n')
+
+% --- 6. sprintf builds a char array ---
+
+fprintf('\n=== 6. sprintf returns a char array ===\n')
+
+label = sprintf('R = %.1f kOhm, C = %.0f nF', 4.7, 220);
+fprintf('Built string: %s\n', label)
+
+% Combine number formatting with units
+v = 5.0;
+i = 0.025;
+fprintf('Voltage: %s V,  Current: %s mA\n', num2str(v, 4), num2str(i * 1000, 4))
+
+% --- 7. Formatted table ---
+
+fprintf('\n=== 7. Formatted data table ===\n')
+
+% Kinematic: d = v0*t + 0.5*a*t^2,  v = v0 + a*t
+v0 =  10.0;   % initial velocity, m/s
+a  =  -2.5;   % deceleration, m/s^2
+
+fprintf('v0 = %.1f m/s,  a = %.1f m/s^2\n\n', v0, a)
+fprintf('%-6s  %-12s  %-12s\n', 't (s)', 'd (m)', 'v (m/s)')
+fprintf('%6.1f  %12.3f  %12.3f\n', 0, v0*0 + 0.5*a*0^2, v0 + a*0)
+fprintf('%6.1f  %12.3f  %12.3f\n', 1, v0*1 + 0.5*a*1^2, v0 + a*1)
+fprintf('%6.1f  %12.3f  %12.3f\n', 2, v0*2 + 0.5*a*2^2, v0 + a*2)
+fprintf('%6.1f  %12.3f  %12.3f\n', 3, v0*3 + 0.5*a*3^2, v0 + a*3)
+fprintf('%6.1f  %12.3f  %12.3f\n', 4, v0*4 + 0.5*a*4^2, v0 + a*4)
+
+% --- 8. Numeric edge cases ---
+
+fprintf('\n=== 8. Numeric edge cases ===\n')
+
+fprintf('Large number  %%e: %e\n', 1234567.89)
+fprintf('Small number  %%e: %e\n', 0.000012345)
+fprintf('Auto %%g large:    %g\n', 1234567.89)
+fprintf('Auto %%g small:    %g\n', 0.000012345)
+fprintf('Negative float:   %.2f\n', -273.15)
+fprintf('Zero:             %.2f\n', 0)

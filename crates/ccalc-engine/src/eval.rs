@@ -494,30 +494,6 @@ fn string_arg<'a>(v: &'a Value, fname: &str, pos: usize) -> Result<&'a str, Stri
     }
 }
 
-/// Processes escape sequences (`\n`, `\t`, `\\`, `\'`, `\"`) in a string.
-fn process_escape_sequences(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('\\') => result.push('\\'),
-                Some('\'') => result.push('\''),
-                Some('"') => result.push('"'),
-                Some(other) => {
-                    result.push('\\');
-                    result.push(other);
-                }
-                None => result.push('\\'),
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
 
 fn check_same_shape(lm: &Array2<f64>, rm: &Array2<f64>) -> Result<(), String> {
     if lm.shape() != rm.shape() {

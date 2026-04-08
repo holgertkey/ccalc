@@ -20,20 +20,15 @@ fprintf('-inf = ')
 disp(-inf)
 
 % Predicates
-fprintf('isnan(nan) — should be 1: ')
-disp(isnan(nan))
-fprintf('isinf(inf) — should be 1: ')
-disp(isinf(inf))
-fprintf('isfinite(42) — should be 1: ')
-disp(isfinite(42))
-fprintf('isfinite(nan) — should be 0: ')
-disp(isfinite(nan))
+fprintf('isnan(nan) — should be 1: %d\n', isnan(nan))
+fprintf('isinf(inf) — should be 1: %d\n', isinf(inf))
+fprintf('isfinite(42) — should be 1: %d\n', isfinite(42))
+fprintf('isfinite(nan) — should be 0: %d\n', isfinite(nan))
 
 % NaN propagates through arithmetic
 fprintf('nan + 5 = ')
 disp(nan + 5)
-fprintf('nan == nan (always false in IEEE 754): ')
-disp(nan == nan)
+fprintf('nan == nan (always false in IEEE 754): %d\n', nan == nan)
 
 % --- 2. Vector reductions ---
 
@@ -45,36 +40,26 @@ data = [12.3, 8.7, 15.0, 9.4, 11.2, 14.6, 7.8, 13.1, 10.5, 16.0];
 fprintf('data = ')
 disp(data)
 
-fprintf('sum   = ')
-disp(sum(data))
-fprintf('mean  = ')
-disp(mean(data))
-fprintf('min   = ')
-disp(min(data))
-fprintf('max   = ')
-disp(max(data))
-fprintf('norm  = ')
-disp(norm(data))
+fprintf('sum   = %.2f\n', sum(data))
+fprintf('mean  = %.2f\n', mean(data))
+fprintf('min   = %.2f\n', min(data))
+fprintf('max   = %.2f\n', max(data))
+fprintf('norm  = %.2f\n', norm(data))
 
 % L1 norm (sum of absolute values)
-fprintf('L1 norm = ')
-disp(norm(data, 1))
+fprintf('L1 norm = %.2f\n', norm(data, 1))
 
 % any / all
 flags = data > 10;
 fprintf('data > 10: ')
 disp(flags)
-fprintf('any(data > 10) — at least one above threshold: ')
-disp(any(flags))
-fprintf('all(data > 10) — all above threshold: ')
-disp(all(flags))
-fprintf('all(data > 5)  — all above 5: ')
-disp(all(data > 5))
+fprintf('any(data > 10) — at least one above threshold: %d\n', any(flags))
+fprintf('all(data > 10) — all above threshold: %d\n', all(flags))
+fprintf('all(data > 5)  — all above 5: %d\n', all(data > 5))
 
 % prod — useful for small integer sequences
 n = [1, 2, 3, 4, 5];
-fprintf('\nn! = prod(1:5) = ')
-disp(prod(n))
+fprintf('\nn! = prod(1:5) = %d\n', prod(n))
 
 % Column-wise reductions on a matrix
 M = [1 2 3; 4 5 6];
@@ -103,8 +88,7 @@ fprintf('Cumulative product: ')
 disp(cumprod(growth))
 
 % Final value after 5 years (starting from 1000)
-fprintf('Portfolio after 5 years (x1000): ')
-disp(1000 * prod(growth))
+fprintf('Portfolio after 5 years (x1000): %.2f\n', 1000 * prod(growth))
 
 % --- 4. Sort, find, unique ---
 
@@ -144,10 +128,8 @@ seq = [10, 20, 30, 40, 50, 60, 70, 80];
 fprintf('seq = ')
 disp(seq)
 
-fprintf('seq(end)         — last element: ')
-disp(seq(end))
-fprintf('seq(end-1)       — second to last: ')
-disp(seq(end - 1))
+fprintf('seq(end)         — last element: %d\n', seq(end))
+fprintf('seq(end-1)       — second to last: %d\n', seq(end - 1))
 fprintf('seq(end-2:end)   — last three: ')
 disp(seq(end - 2:end))
 fprintf('seq(1:2:end)     — every other element: ')

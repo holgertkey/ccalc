@@ -74,12 +74,9 @@ disp(z1 + 10)
 fprintf('\n=== 4. Polar form ===\n')
 
 fprintf('z1 = 3 + 4i\n')
-fprintf('  abs(z1)   = |z1|     =>  ')
-disp(abs(z1))
-fprintf('  angle(z1) = arg(z1)  =>  ')
-disp(angle(z1))
-fprintf('  angle in degrees     =>  ')
-disp(angle(z1) * 180 / pi)
+fprintf('  abs(z1)   = |z1|     =>  %.2f\n', abs(z1))
+fprintf('  angle(z1) = arg(z1)  =>  %.4f\n', angle(z1))
+fprintf('  angle in degrees     =>  %.2f\n', angle(z1) * 180 / pi)
 
 % Reconstruct from polar form: r * (cos(theta) + i*sin(theta))
 r = abs(z1);
@@ -94,26 +91,19 @@ fprintf('\n=== 5. Built-in functions ===\n')
 z = 3 + 4*i;
 fprintf('z = 3 + 4i\n')
 
-fprintf('  real(z)   =>  ')
-disp(real(z))
-fprintf('  imag(z)   =>  ')
-disp(imag(z))
+fprintf('  real(z)   =>  %.2f\n', real(z))
+fprintf('  imag(z)   =>  %.2f\n', imag(z))
 fprintf('  conj(z)   =>  ')
 disp(conj(z))
-fprintf('  abs(z)    =>  ')
-disp(abs(z))
-fprintf('  angle(z)  =>  ')
-disp(angle(z))
-fprintf('  isreal(z) =>  ')
-disp(isreal(z))
+fprintf('  abs(z)    =>  %.2f\n', abs(z))
+fprintf('  angle(z)  =>  %.4f\n', angle(z))
+fprintf('  isreal(z) =>  %d\n', isreal(z))
 
 % Scalar is always real
-fprintf('  isreal(5) =>  ')
-disp(isreal(5))
+fprintf('  isreal(5) =>  %d\n', isreal(5))
 
 % imag of a real scalar
-fprintf('  imag(7)   =>  ')
-disp(imag(7))
+fprintf('  imag(7)   =>  %.2f\n', imag(7))
 
 % --- 6. Conjugate transpose ---
 
@@ -161,12 +151,9 @@ b = 3 + 4*i;
 c = 3 - 4*i;
 
 fprintf('a = 3+4i,  b = 3+4i,  c = 3-4i\n')
-fprintf('a == b  =>  ')
-disp(a == b)
-fprintf('a == c  =>  ')
-disp(a == c)
-fprintf('a ~= c  =>  ')
-disp(a ~= c)
+fprintf('a == b  =>  %d\n', a == b)
+fprintf('a == c  =>  %d\n', a == c)
+fprintf('a ~= c  =>  %d\n', a ~= c)
 
 % --- 9. Practical: AC circuit with complex impedance ---
 
@@ -182,12 +169,9 @@ w   = 2 * pi * f;   % angular frequency, rad/s
 X_L = w * L;        % inductive reactance
 X_C = 1 / (w * C);  % capacitive reactance
 
-fprintf('R   = ')
-disp(R)
-fprintf('X_L = ')
-disp(X_L)
-fprintf('X_C = ')
-disp(X_C)
+fprintf('R   = %d Ohm\n', R)
+fprintf('X_L = %.2f Ohm\n', X_L)
+fprintf('X_C = %.2f Ohm\n', X_C)
 
 % Complex impedance
 Z = complex(R, X_L - X_C);
@@ -195,10 +179,8 @@ fprintf('Z   = R + j*(X_L - X_C)  =>  ')
 disp(Z)
 
 % Magnitude and phase
-fprintf('|Z|  (Ohm)      =>  ')
-disp(abs(Z))
-fprintf('phi  (deg)      =>  ')
-disp(angle(Z) * 180 / pi)
+fprintf('|Z|  (Ohm)      =>  %.2f\n', abs(Z))
+fprintf('phi  (deg)      =>  %.2f\n', angle(Z) * 180 / pi)
 
 % Admittance Y = 1/Z
 Y = inv(Z);
@@ -208,8 +190,7 @@ disp(Y)
 % Resonant frequency: X_L = X_C  =>  w0 = 1/sqrt(L*C)
 w0 = 1 / (L * C)^0.5;
 f0 = w0 / (2 * pi);
-fprintf('\nResonant frequency f0 (Hz) =>  ')
-disp(f0)
+fprintf('\nResonant frequency f0 (Hz) =>  %.2f\n', f0)
 
 % At resonance, imaginary part of Z vanishes
 Z0 = complex(R, 0);

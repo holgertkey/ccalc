@@ -23,12 +23,9 @@ mask_bit0 = bitshift(1, 0);   % 0b00000001
 mask_bit3 = bitshift(1, 3);   % 0b00001000
 mask_bit7 = bitshift(1, 7);   % 0b10000000
 
-fprintf('mask bit 0 : ')
-disp(mask_bit0)
-fprintf('mask bit 3 : ')
-disp(mask_bit3)
-fprintf('mask bit 7 : ')
-disp(mask_bit7)
+fprintf('mask bit 0 : %d\n', mask_bit0)
+fprintf('mask bit 3 : %d\n', mask_bit3)
+fprintf('mask bit 7 : %d\n', mask_bit7)
 
 % Multi-bit field mask: N consecutive bits starting at position P
 % mask = ((1 << N) - 1) << P
@@ -38,8 +35,7 @@ field_pos   = 4;
 field_mask  = bitshift(bitshift(1, field_width) - 1, field_pos);
 
 fprintf('\n4-bit field mask at pos 4 (bits 4..7):\n')
-fprintf('field_mask = ')
-disp(field_mask)                 % should be 0b11110000 = 240
+fprintf('field_mask = %d\n', field_mask)   % should be 0b11110000 = 240
 
 % ===========================================================================
 % 2. Bit-field extraction from a UART status register
@@ -58,8 +54,7 @@ fprintf('\n=== 2. UART status register ===\n')
 %   → RX ready, TX empty, overrun set, framing clear, FIFO count = 3
 
 status = 0b00110111;
-fprintf('status register = ')
-disp(status)
+fprintf('status register = %d\n', status)
 
 % Extract individual flag bits with bitand
 rx_ready  = bitand(status, bitshift(1, 0));   % bit 0
@@ -67,25 +62,19 @@ tx_empty  = bitand(status, bitshift(1, 1));   % bit 1
 overrun   = bitand(status, bitshift(1, 2));   % bit 2
 framing   = bitand(status, bitshift(1, 3));   % bit 3
 
-fprintf('RX ready  (bit 0): ')
-disp(rx_ready)     % non-zero = set
-fprintf('TX empty  (bit 1): ')
-disp(tx_empty)
-fprintf('Overrun   (bit 2): ')
-disp(overrun)
-fprintf('Framing   (bit 3): ')
-disp(framing)
+fprintf('RX ready  (bit 0): %d\n', rx_ready)   % non-zero = set
+fprintf('TX empty  (bit 1): %d\n', tx_empty)
+fprintf('Overrun   (bit 2): %d\n', overrun)
+fprintf('Framing   (bit 3): %d\n', framing)
 
 % Extract the 4-bit FIFO count from bits 4..7
 fifo_raw   = bitand(status, field_mask);      % mask out other bits
 fifo_count = bitshift(fifo_raw, -field_pos);  % shift down to bit 0
-fprintf('FIFO count (bits 4..7): ')
-disp(fifo_count)   % should be 3
+fprintf('FIFO count (bits 4..7): %d\n', fifo_count)   % should be 3
 
 % Error flag: any of overrun or framing is set?
 any_error = bitor(overrun, framing);           % non-zero = at least one error
-fprintf('Any error flag: ')
-disp(any_error)
+fprintf('Any error flag: %d\n', any_error)
 
 % ===========================================================================
 % 3. Setting and clearing bits in a control register
@@ -95,33 +84,28 @@ fprintf('\n=== 3. Control register bit manipulation ===\n')
 
 % Start with a known register value
 ctrl = 0b10100100;
-fprintf('Initial ctrl = ')
-disp(ctrl)
+fprintf('Initial ctrl = %d\n', ctrl)
 
 % Set bit 0 (enable RX) and bit 1 (enable TX)
 ctrl = bitor(ctrl, bitshift(1, 0));
 ctrl = bitor(ctrl, bitshift(1, 1));
-fprintf('After enabling RX+TX (set bits 0,1): ')
-disp(ctrl)
+fprintf('After enabling RX+TX (set bits 0,1): %d\n', ctrl)
 
 % Clear bit 5 (disable some feature) using bitnot to flip the mask
 bit5_mask = bitshift(1, 5);
 ctrl = bitand(ctrl, bitnot(bit5_mask, 8));   % clear bit 5 in 8-bit register
-fprintf('After clearing bit 5: ')
-disp(ctrl)
+fprintf('After clearing bit 5: %d\n', ctrl)
 
 % Toggle bit 2 with XOR
 ctrl = bitxor(ctrl, bitshift(1, 2));
-fprintf('After toggling bit 2: ')
-disp(ctrl)
+fprintf('After toggling bit 2: %d\n', ctrl)
 
 % Write a 3-bit value (0b110 = 6) into a field at bit position 3
 new_val     = 6;
 write_mask  = bitnot(bitshift(0b111, 3), 8);  % clear bits 3..5
 ctrl        = bitand(ctrl, write_mask);         % clear field
 ctrl        = bitor(ctrl, bitshift(new_val, 3));% write new value
-fprintf('After writing 6 into bits 3..5: ')
-disp(ctrl)
+fprintf('After writing 6 into bits 3..5: %d\n', ctrl)
 
 % ===========================================================================
 % 4. 24-bit RGB colour packing and channel extraction
@@ -137,30 +121,24 @@ b = 64;    % blue  = 0x40
 
 colour = bitor(bitor(bitshift(r, 16), bitshift(g, 8)), b);
 fprintf('R=255, G=128, B=64\n')
-fprintf('Packed colour (decimal): ')
-disp(colour)         % should be 16744512 = 0xFF8040
+fprintf('Packed colour (decimal): %d\n', colour)   % should be 16744512 = 0xFF8040
 
 % Extract channels back
 r_out = bitshift(bitand(colour, 0xFF0000), -16);
 g_out = bitshift(bitand(colour, 0x00FF00), -8);
 b_out =          bitand(colour, 0x0000FF);
 
-fprintf('Extracted R: ')
-disp(r_out)
-fprintf('Extracted G: ')
-disp(g_out)
-fprintf('Extracted B: ')
-disp(b_out)
+fprintf('Extracted R: %d\n', r_out)
+fprintf('Extracted G: %d\n', g_out)
+fprintf('Extracted B: %d\n', b_out)
 
 % Swap red and blue channels (BGR layout)
 colour_bgr = bitor(bitor(bitshift(b_out, 16), bitshift(g_out, 8)), r_out);
-fprintf('BGR-swapped colour (decimal): ')
-disp(colour_bgr)     % 0x4080FF = 4227327
+fprintf('BGR-swapped colour (decimal): %d\n', colour_bgr)   % 0x4080FF = 4227327
 
 % Halve brightness: right-shift each channel by 1
 r_dim = bitshift(r_out, -1);
 g_dim = bitshift(g_out, -1);
 b_dim = bitshift(b_out, -1);
 colour_dim = bitor(bitor(bitshift(r_dim, 16), bitshift(g_dim, 8)), b_dim);
-fprintf('Dimmed colour 50%% (decimal): ')
-disp(colour_dim)     % 0x7F4020 = 8339488
+fprintf('Dimmed colour 50%% (decimal): %d\n', colour_dim)   % 0x7F4020 = 8339488

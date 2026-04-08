@@ -18,40 +18,28 @@ fprintf('=== 1. Scalar comparisons ===\n')
 v_in  = 2.7;    % input voltage
 v_ref = 3.3;    % ADC reference (maximum valid input)
 
-fprintf('v_in  = ')
-disp(v_in)
-fprintf('v_ref = ')
-disp(v_ref)
+fprintf('v_in  = %.2f\n', v_in)
+fprintf('v_ref = %.2f\n', v_ref)
 
 % Each comparison returns 1.0 (true) or 0.0 (false)
-fprintf('v_in < v_ref  (in range?)   : ')
-disp(v_in < v_ref)
-
-fprintf('v_in == v_ref (at maximum?) : ')
-disp(v_in == v_ref)
-
-fprintf('v_in > v_ref  (over-range?) : ')
-disp(v_in > v_ref)
+fprintf('v_in < v_ref  (in range?)   : %d\n', v_in < v_ref)
+fprintf('v_in == v_ref (at maximum?) : %d\n', v_in == v_ref)
+fprintf('v_in > v_ref  (over-range?) : %d\n', v_in > v_ref)
 
 % --- 2. Logical NOT ---
 
 fprintf('\n=== 2. Logical NOT ===\n')
 
 in_range = v_in >= 0 && v_in <= v_ref;
-fprintf('in_range  (0 <= v_in <= 3.3): ')
-disp(in_range)
-fprintf('fault     = ~in_range       : ')
-disp(~in_range)
+fprintf('in_range  (0 <= v_in <= 3.3): %d\n', in_range)
+fprintf('fault     = ~in_range       : %d\n', ~in_range)
 
 % Over-range example
 v_bad     = 4.1;
 in_range_bad = v_bad >= 0 && v_bad <= v_ref;
-fprintf('\nv_bad = ')
-disp(v_bad)
-fprintf('in_range  (v_bad)           : ')
-disp(in_range_bad)
-fprintf('fault     = ~in_range_bad   : ')
-disp(~in_range_bad)
+fprintf('\nv_bad = %.2f\n', v_bad)
+fprintf('in_range  (v_bad)           : %d\n', in_range_bad)
+fprintf('fault     = ~in_range_bad   : %d\n', ~in_range_bad)
 
 % --- 3. Combining conditions with && and || ---
 
@@ -65,24 +53,17 @@ r1 = 1.5;
 r2 = -0.2;
 r3 = 3.1;
 
-fprintf('r1 = 1.5  → valid: ')
-disp(r1 >= v_lo && r1 <= v_hi)
-
-fprintf('r2 = -0.2 → valid: ')
-disp(r2 >= v_lo && r2 <= v_hi)
-
-fprintf('r3 = 3.1  → valid: ')
-disp(r3 >= v_lo && r3 <= v_hi)
+fprintf('r1 = 1.5  → valid: %d\n', r1 >= v_lo && r1 <= v_hi)
+fprintf('r2 = -0.2 → valid: %d\n', r2 >= v_lo && r2 <= v_hi)
+fprintf('r3 = 3.1  → valid: %d\n', r3 >= v_lo && r3 <= v_hi)
 
 % Any of the three invalid?
 any_invalid = ~(r1 >= v_lo && r1 <= v_hi) || ~(r2 >= v_lo && r2 <= v_hi) || ~(r3 >= v_lo && r3 <= v_hi);
-fprintf('\nAny reading out of range? : ')
-disp(any_invalid)
+fprintf('\nAny reading out of range? : %d\n', any_invalid)
 
 % All three valid?
 all_valid = (r1 >= v_lo && r1 <= v_hi) && (r2 >= v_lo && r2 <= v_hi) && (r3 >= v_lo && r3 <= v_hi);
-fprintf('All readings valid?        : ')
-disp(all_valid)
+fprintf('All readings valid?        : %d\n', all_valid)
 
 % --- 4. Element-wise comparison on a vector ---
 
@@ -134,10 +115,8 @@ disp(r_measured)
 
 r_lo = r_nominal * (1 - tol);   % 950 Ohm
 r_hi = r_nominal * (1 + tol);   % 1050 Ohm
-fprintf('r_lo (950 Ohm): ')
-disp(r_lo)
-fprintf('r_hi (1050 Ohm): ')
-disp(r_hi)
+fprintf('r_lo (950 Ohm): %.2f\n', r_lo)
+fprintf('r_hi (1050 Ohm): %.2f\n', r_hi)
 
 in_tol = (r_measured >= r_lo) .* (r_measured <= r_hi);
 fprintf('In tolerance (1 = pass, 0 = fail):\n')
@@ -151,11 +130,7 @@ disp(passed)
 % Last check: is the first resistor within spec AND not equal to nominal?
 r1_ok     = r_measured(1) >= r_lo && r_measured(1) <= r_hi;
 r1_not_nom = r_measured(1) ~= r_nominal;
-fprintf('\nr_measured(1) = ')
-disp(r_measured(1))
-fprintf('Within spec?         : ')
-disp(r1_ok)
-fprintf('Not exactly nominal? : ')
-disp(r1_not_nom)
-fprintf('Within spec AND not nominal: ')
-disp(r1_ok && r1_not_nom)
+fprintf('\nr_measured(1) = %d\n', r_measured(1))
+fprintf('Within spec?         : %d\n', r1_ok)
+fprintf('Not exactly nominal? : %d\n', r1_not_nom)
+fprintf('Within spec AND not nominal: %d\n', r1_ok && r1_not_nom)

@@ -5,23 +5,15 @@
 % Usage: ccalc resistors.ccalc
 
 % --- Series combination: R1=100, R2=220, R3=470 ---
-100 + 220 + 470;
-r_series = ans;           % save for reuse
-fprintf('Series resistance (Ohm): ')
-disp(r_series)
+r_series = 100 + 220 + 470;
+fprintf('Series resistance (Ohm): %d\n', r_series)
 
 % Voltage divider: V_out across R3 with V_in = 12V
-12 * 470 / r_series;
-fprintf('Voltage divider V_out (V): ')
-disp(ans)
+fprintf('Voltage divider V_out (V): %.2f\n', 12 * 470 / r_series)
 
 % --- Parallel combination of R1=100 and R2=220 ---
-(1/100 + 1/220) ^ -1;
-r_parallel = ans;         % save for reuse
-fprintf('Parallel resistance (Ohm): ')
-disp(r_parallel)
+r_parallel = (1/100 + 1/220) ^ -1;
+fprintf('Parallel resistance (Ohm): %.2f\n', r_parallel)
 
 % Power dissipated at 5V: P = V^2 / R
-5^2 / r_parallel;
-fprintf('Power dissipated (W): ')
-disp(ans)
+fprintf('Power dissipated (W): %.2f\n', 5^2 / r_parallel)
