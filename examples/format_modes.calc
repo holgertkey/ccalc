@@ -1,0 +1,172 @@
+% format_modes.calc — number display format demo
+%
+% Covers: format short/long/shortE/longE/bank/rat/hex/+
+%         format N (custom decimal places)
+%         format compact/loose
+%         format reset
+%
+% Usage: ccalc examples/format_modes.calc
+
+% Reference values used throughout
+x  = pi;           % irrational, familiar
+y  = 1/3;          % repeating decimal
+z  = 0.000123456;  % small — triggers scientific in some modes
+w  = 123456.789;   % large fixed value
+v  = [3.5, -1.2, 0.0, 7.8, -0.5];
+
+% --- 1. format short (default — 5 significant digits) ---
+
+fprintf('=== 1. format short (default, 5 sig digits) ===\n')
+format short
+
+fprintf('pi       =>  ')
+disp(x)
+fprintf('1/3      =>  ')
+disp(y)
+fprintf('0.000123 =>  ')
+disp(z)
+fprintf('123456.7 =>  ')
+disp(w)
+
+% --- 2. format long (15 significant digits) ---
+
+fprintf('\n=== 2. format long (15 sig digits) ===\n')
+format long
+
+fprintf('pi       =>  ')
+disp(x)
+fprintf('1/3      =>  ')
+disp(y)
+fprintf('0.000123 =>  ')
+disp(z)
+
+% --- 3. format shortE (always scientific, 4 d.p.) ---
+
+fprintf('\n=== 3. format shortE (always scientific) ===\n')
+format shortE
+
+fprintf('pi       =>  ')
+disp(x)
+fprintf('1/3      =>  ')
+disp(y)
+fprintf('0.000123 =>  ')
+disp(z)
+fprintf('123456.7 =>  ')
+disp(w)
+
+% --- 4. format longE (always scientific, 14 d.p.) ---
+
+fprintf('\n=== 4. format longE ===\n')
+format longE
+
+fprintf('pi       =>  ')
+disp(x)
+fprintf('1/3      =>  ')
+disp(y)
+
+% --- 5. format bank (currency — 2 decimal places) ---
+
+fprintf('\n=== 5. format bank (2 decimal places) ===\n')
+format bank
+
+price   = 1299.9;
+tax     = price * 0.19;
+total   = price + tax;
+
+fprintf('price    =>  ')
+disp(price)
+fprintf('tax      =>  ')
+disp(tax)
+fprintf('total    =>  ')
+disp(total)
+
+% --- 6. format rat (rational approximation) ---
+
+fprintf('\n=== 6. format rat (rational p/q) ===\n')
+format rat
+
+fprintf('pi       =>  ')
+disp(x)
+fprintf('1/3      =>  ')
+disp(y)
+fprintf('sqrt(2)  =>  ')
+disp(sqrt(2))
+fprintf('0.1      =>  ')
+disp(0.1)
+fprintf('0.125    =>  ')
+disp(0.125)
+
+% --- 7. format hex (IEEE 754 bit pattern) ---
+
+fprintf('\n=== 7. format hex (IEEE 754 double bits) ===\n')
+format hex
+
+fprintf('1.0      =>  ')
+disp(1.0)
+fprintf('pi       =>  ')
+disp(x)
+fprintf('-1.0     =>  ')
+disp(-1.0)
+fprintf('0.0      =>  ')
+disp(0.0)
+fprintf('0.5      =>  ')
+disp(0.5)
+fprintf('0.1      =>  ')
+disp(0.1)
+
+% --- 8. format + (sign only) ---
+
+fprintf('\n=== 8. format + (sign only: + - space) ===\n')
+format +
+
+fprintf('scalar  3.5  =>  ')
+disp(3.5)
+fprintf('scalar -1.2  =>  ')
+disp(-1.2)
+fprintf('scalar  0.0  =>  ')
+disp(0.0)
+fprintf('vector [3.5 -1.2 0 7.8 -0.5]  =>\n')
+disp(v)
+
+% --- 9. format N (custom decimal places) ---
+
+fprintf('\n=== 9. format N (custom precision) ===\n')
+
+format 2
+fprintf('format 2  =>  pi = ')
+disp(x)
+
+format 6
+fprintf('format 6  =>  pi = ')
+disp(x)
+
+format 15
+fprintf('format 15 =>  pi = ')
+disp(x)
+
+% --- 10. format compact / loose ---
+
+fprintf('\n=== 10. format compact vs loose ===\n')
+
+format short
+
+fprintf('--- loose (default: blank line after each matrix) ---\n')
+format loose
+[1 2; 3 4]
+[5 6; 7 8]
+
+fprintf('--- compact (no blank lines between outputs) ---\n')
+format compact
+[1 2; 3 4]
+[5 6; 7 8]
+
+% --- 11. format (reset to short) ---
+
+fprintf('\n=== 11. format reset ===\n')
+format loose
+format
+
+fprintf('pi after reset  =>  ')
+disp(x)
+fprintf('1/3 after reset =>  ')
+disp(y)

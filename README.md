@@ -1008,6 +1008,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `complex_numbers.calc`  | Complex arithmetic, polar form, built-ins, AC circuit   |
 | `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
+| `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 
 ```bash
 ccalc < examples/mortgage.calc
