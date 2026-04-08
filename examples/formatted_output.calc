@@ -81,7 +81,7 @@ v0 =  10.0;   % initial velocity, m/s
 a  =  -2.5;   % deceleration, m/s^2
 
 fprintf('v0 = %.1f m/s,  a = %.1f m/s^2\n\n', v0, a)
-fprintf('%-6s  %-12s  %-12s\n', 't (s)', 'd (m)', 'v (m/s)')
+fprintf('%6s  %12s  %12s\n', 't (s)', 'd (m)', 'v (m/s)')
 fprintf('%6.1f  %12.3f  %12.3f\n', 0, v0*0 + 0.5*a*0^2, v0 + a*0)
 fprintf('%6.1f  %12.3f  %12.3f\n', 1, v0*1 + 0.5*a*1^2, v0 + a*1)
 fprintf('%6.1f  %12.3f  %12.3f\n', 2, v0*2 + 0.5*a*2^2, v0 + a*2)
