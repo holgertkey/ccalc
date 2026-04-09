@@ -1690,3 +1690,155 @@ fn test_fprintf_to_file() {
 
     let _ = std::fs::remove_file(&tmp);
 }
+
+// --- Phase 10.5b: dlmread / dlmwrite ---
+
+#[test]
+fn test_dlmwrite_and_dlmread_comma() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_dlm_comma.csv");
+    let path = tmp.to_string_lossy().to_string();
+
+    // Write 2×3 matrix
+    let write_expr = Expr::Call(
+        "dlmwrite".to_string(),
+        vec![
+            Expr::StrLiteral(path.clone()),
+            Expr::Matrix(vec![
+                vec![Expr::Number(1.0), Expr::Number(2.0), Expr::Number(3.0)],
+                vec![Expr::Number(4.0), Expr::Number(5.0), Expr::Number(6.0)],
+            ]),
+        ],
+    );
+    assert_eq!(eval(&write_expr, &env), Ok(Value::Void));
+
+    let content = std::fs::read_to_string(&tmp).unwrap();
+    assert_eq!(content, "1,2,3\n4,5,6\n");
+
+    // Read back
+    let read_expr = Expr::Call("dlmread".to_string(), vec![Expr::StrLiteral(path.clone())]);
+    match eval(&read_expr, &env).unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m.shape(), &[2, 3]);
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[1, 2]], 6.0);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_dlmwrite_tab_delimiter() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_dlm_tab.tsv");
+    let path = tmp.to_string_lossy().to_string();
+
+    let write_expr = Expr::Call(
+        "dlmwrite".to_string(),
+        vec![
+            Expr::StrLiteral(path.clone()),
+            Expr::Matrix(vec![vec![Expr::Number(10.0), Expr::Number(20.0)]]),
+            Expr::StrLiteral(r"\t".to_string()),
+        ],
+    );
+    assert_eq!(eval(&write_expr, &env), Ok(Value::Void));
+
+    let content = std::fs::read_to_string(&tmp).unwrap();
+    assert_eq!(content, "10\t20\n");
+
+    // Read back with explicit tab delimiter
+    let read_expr = Expr::Call(
+        "dlmread".to_string(),
+        vec![
+            Expr::StrLiteral(path.clone()),
+            Expr::StrLiteral(r"\t".to_string()),
+        ],
+    );
+    match eval(&read_expr, &env).unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m.shape(), &[1, 2]);
+            assert_eq!(m[[0, 0]], 10.0);
+            assert_eq!(m[[0, 1]], 20.0);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_dlmread_whitespace_auto() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_dlm_ws.txt");
+    std::fs::write(&tmp, "1 2 3\n4 5 6\n").unwrap();
+
+    let read_expr = Expr::Call(
+        "dlmread".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    match eval(&read_expr, &env).unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m.shape(), &[2, 3]);
+            assert_eq!(m[[0, 2]], 3.0);
+            assert_eq!(m[[1, 0]], 4.0);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_dlmread_empty_file() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_dlm_empty.csv");
+    std::fs::write(&tmp, "").unwrap();
+
+    let read_expr = Expr::Call(
+        "dlmread".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    match eval(&read_expr, &env).unwrap() {
+        Value::Matrix(m) => assert_eq!(m.shape(), &[0, 0]),
+        other => panic!("expected empty matrix, got {other:?}"),
+    }
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_dlmread_non_numeric_error() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_dlm_bad.csv");
+    std::fs::write(&tmp, "1,2,three\n").unwrap();
+
+    let read_expr = Expr::Call(
+        "dlmread".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    let result = eval(&read_expr, &env);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("non-numeric"));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_dlmwrite_scalar() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_dlm_scalar.csv");
+    let path = tmp.to_string_lossy().to_string();
+
+    let write_expr = Expr::Call(
+        "dlmwrite".to_string(),
+        vec![Expr::StrLiteral(path.clone()), Expr::Number(3.14)],
+    );
+    assert_eq!(eval(&write_expr, &env), Ok(Value::Void));
+
+    let content = std::fs::read_to_string(&tmp).unwrap();
+    assert!(content.starts_with("3.14"));
+
+    let _ = std::fs::remove_file(&tmp);
+}

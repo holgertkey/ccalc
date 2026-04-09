@@ -1806,8 +1806,146 @@ fn call_builtin(name: &str, args: &[Value], io: Option<&mut IoContext>) -> Resul
                 None => Err("fgets: file I/O not available in this context".to_string()),
             }
         }
+        // dlmread(path) / dlmread(path, delim)
+        ("dlmread", 1) => {
+            let path = string_arg(&args[0], name, 1)?.to_string();
+            dlmread_impl(&path, None)
+        }
+        ("dlmread", 2) => {
+            let path = string_arg(&args[0], name, 1)?.to_string();
+            let delim = interpret_delim(string_arg(&args[1], name, 2)?);
+            dlmread_impl(&path, Some(delim))
+        }
+        // dlmwrite(path, A) / dlmwrite(path, A, delim)
+        ("dlmwrite", 2) => {
+            let path = string_arg(&args[0], name, 1)?.to_string();
+            dlmwrite_impl(&path, &args[1], None)
+        }
+        ("dlmwrite", 3) => {
+            let path = string_arg(&args[0], name, 1)?.to_string();
+            let delim = interpret_delim(string_arg(&args[2], name, 3)?);
+            dlmwrite_impl(&path, &args[1], Some(delim))
+        }
         _ => Err(format!("Unknown function: '{name}'")),
     }
+}
+
+/// Interprets backslash escape sequences in delimiter strings.
+/// `\t` → tab, `\n` → newline. Other strings are used as-is.
+fn interpret_delim(s: &str) -> String {
+    match s {
+        r"\t" => "\t".to_string(),
+        r"\n" => "\n".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Returns true if splitting every line by `delim` gives the same field count > 1.
+fn delim_consistent(lines: &[&str], delim: char) -> bool {
+    let counts: Vec<usize> = lines.iter().map(|l| l.split(delim).count()).collect();
+    counts.iter().all(|&c| c > 1) && counts.windows(2).all(|w| w[0] == w[1])
+}
+
+/// Reads a delimiter-separated numeric file and returns a `Value::Matrix`.
+fn dlmread_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("dlmread: cannot read '{path}': {e}"))?;
+
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+
+    if lines.is_empty() {
+        return Ok(Value::Matrix(Array2::zeros((0, 0))));
+    }
+
+    // Determine delimiter: explicit → auto-detect (comma → tab → whitespace)
+    let delim: Option<String> = match explicit_delim {
+        Some(d) => Some(d),
+        None => {
+            if delim_consistent(&lines, ',') {
+                Some(",".to_string())
+            } else if delim_consistent(&lines, '\t') {
+                Some("\t".to_string())
+            } else {
+                None // split by whitespace
+            }
+        }
+    };
+
+    let mut rows: Vec<Vec<f64>> = Vec::new();
+    for (line_num, line) in lines.iter().enumerate() {
+        let fields: Vec<&str> = match &delim {
+            Some(d) => line.split(d.as_str()).collect(),
+            None => line.split_whitespace().collect(),
+        };
+        let mut row_vals: Vec<f64> = Vec::with_capacity(fields.len());
+        for field in &fields {
+            let trimmed = field.trim();
+            if trimmed.is_empty() {
+                row_vals.push(0.0);
+            } else {
+                row_vals.push(trimmed.parse::<f64>().map_err(|_| {
+                    format!("dlmread: non-numeric value '{trimmed}' on line {}", line_num + 1)
+                })?);
+            }
+        }
+        if !row_vals.is_empty() {
+            rows.push(row_vals);
+        }
+    }
+
+    if rows.is_empty() {
+        return Ok(Value::Matrix(Array2::zeros((0, 0))));
+    }
+
+    let ncols = rows[0].len();
+    for (i, row) in rows.iter().enumerate() {
+        if row.len() != ncols {
+            return Err(format!(
+                "dlmread: row {} has {} fields, expected {ncols}",
+                i + 1,
+                row.len()
+            ));
+        }
+    }
+
+    let nrows = rows.len();
+    let flat: Vec<f64> = rows.into_iter().flatten().collect();
+    Array2::from_shape_vec((nrows, ncols), flat)
+        .map_err(|e| format!("dlmread: shape error: {e}"))
+        .map(Value::Matrix)
+}
+
+/// Formats one f64 value for use in a delimited file.
+/// Integers are written without decimal point; floats use full precision.
+fn fmt_dlm_number(n: f64) -> String {
+    if n.is_finite() && n == n.trunc() && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
+    }
+}
+
+/// Writes a scalar or matrix to a delimiter-separated file.
+fn dlmwrite_impl(path: &str, val: &Value, explicit_delim: Option<String>) -> Result<Value, String> {
+    let delim = explicit_delim.unwrap_or_else(|| ",".to_string());
+
+    let content = match val {
+        Value::Scalar(n) => format!("{}\n", fmt_dlm_number(*n)),
+        Value::Matrix(m) => {
+            let mut out = String::new();
+            for row in m.rows() {
+                let parts: Vec<String> = row.iter().map(|n| fmt_dlm_number(*n)).collect();
+                out.push_str(&parts.join(&delim));
+                out.push('\n');
+            }
+            out
+        }
+        _ => return Err("dlmwrite: second argument must be a numeric scalar or matrix".to_string()),
+    };
+
+    std::fs::write(path, content)
+        .map_err(|e| format!("dlmwrite: cannot write '{path}': {e}"))?;
+    Ok(Value::Void)
 }
 
 /// Converts an f64 to u64 for bitwise operations.
