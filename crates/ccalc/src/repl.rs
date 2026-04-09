@@ -5,8 +5,10 @@ use rustyline::error::ReadlineError;
 
 use ccalc_engine::env::{Env, Value, config_dir, load_workspace_default, save_workspace_default};
 use ccalc_engine::eval::{
-    Base, FormatMode, eval, format_complex, format_number, format_scalar, format_value_full,
+    Base, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
+    format_value_full,
 };
+use ccalc_engine::io::IoContext;
 use ccalc_engine::parser::{Stmt, is_partial, parse};
 
 /// Result of evaluating one input line.
@@ -23,7 +25,7 @@ enum EvalResult {
 /// MATLAB semantics: expressions always update `ans`; assignments never do.
 /// The caller controls whether output is printed (silent flag), but `ans` is
 /// always updated by expressions regardless of silence.
-fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
+fn evaluate(input: &str, env: &mut Env, io: &mut IoContext) -> Result<EvalResult, String> {
     let expanded = if is_partial(input) {
         format!("ans {}", input)
     } else {
@@ -32,13 +34,13 @@ fn evaluate(input: &str, env: &mut Env) -> Result<EvalResult, String> {
 
     match parse(&expanded)? {
         Stmt::Assign(name, expr) => {
-            let val = eval(&expr, env)?;
+            let val = eval_with_io(&expr, env, io)?;
             env.insert(name.clone(), val.clone());
             // Assignments do not update ans (MATLAB semantics)
             Ok(EvalResult::Assigned(name, val))
         }
         Stmt::Expr(expr) => {
-            let val = eval(&expr, env)?;
+            let val = eval_with_io(&expr, env, io)?;
             env.insert("ans".to_string(), val.clone()); // always update ans
             Ok(EvalResult::Value(val))
         }
@@ -229,6 +231,7 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
 
 pub fn run() {
     let mut env = new_env();
+    let mut io = IoContext::new();
     let config_path = config_dir().join("config.toml");
     let cfg = crate::config::load_or_create(&config_path);
     let mut fmt = FormatMode::Custom(cfg.precision());
@@ -454,7 +457,7 @@ pub fn run() {
             let base_display =
                 format_expr_for_display(expanded.as_deref().unwrap_or(&display_str), base);
 
-            match evaluate(to_eval, &mut env) {
+            match evaluate(to_eval, &mut env, &mut io) {
                 Ok(result) => {
                     if !silent {
                         match result {
@@ -529,6 +532,7 @@ pub fn run() {
 /// Prints the result and exits with code 1 on error.
 pub fn run_expr(expr: &str) {
     let mut env = new_env();
+    let mut io = IoContext::new();
     let mut base = Base::Dec;
     let trimmed = expr.trim();
 
@@ -543,7 +547,7 @@ pub fn run_expr(expr: &str) {
     if let Some(BaseSuffix::Switch(b)) = base_suffix {
         base = b;
     }
-    match evaluate(to_eval, &mut env) {
+    match evaluate(to_eval, &mut env, &mut io) {
         Ok(result) => match result {
             EvalResult::Assigned(name, v) => match &v {
                 Value::Void => {}
@@ -594,6 +598,7 @@ pub fn run_expr(expr: &str) {
 /// Prints one result per expression line; no prompts.
 pub fn run_pipe(reader: impl BufRead) {
     let mut env = new_env();
+    let mut io = IoContext::new();
     let mut fmt = FormatMode::default();
     let mut compact = false;
     let mut base = Base::Dec;
@@ -727,7 +732,7 @@ pub fn run_pipe(reader: impl BufRead) {
                 base = b;
             }
 
-            match evaluate(to_eval, &mut env) {
+            match evaluate(to_eval, &mut env, &mut io) {
                 Ok(result) => {
                     if !silent {
                         match result {

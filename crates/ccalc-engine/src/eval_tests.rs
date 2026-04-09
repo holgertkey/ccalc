@@ -1544,3 +1544,149 @@ fn test_fprintf_returns_void() {
     );
     assert_eq!(eval(&expr, &env), Ok(Value::Void));
 }
+
+// --- Phase 10.5a: fopen / fclose / fgetl / fgets ---
+
+#[test]
+fn test_fopen_write_and_fclose() {
+    use crate::io::IoContext;
+    let env = empty_env();
+    let mut io = IoContext::new();
+    let tmp = std::env::temp_dir().join("ccalc_test_fopen_write.txt");
+    let path = tmp.to_string_lossy().to_string();
+
+    // fopen returns fd >= 3
+    let open_expr = Expr::Call(
+        "fopen".to_string(),
+        vec![
+            Expr::StrLiteral(path.clone()),
+            Expr::StrLiteral("w".to_string()),
+        ],
+    );
+    let fd_val = eval_with_io(&open_expr, &env, &mut io).unwrap();
+    let fd = match fd_val {
+        Value::Scalar(n) => n,
+        _ => panic!("expected scalar fd"),
+    };
+    assert!(fd >= 3.0, "expected fd >= 3, got {fd}");
+
+    // fclose returns 0
+    let close_expr = Expr::Call("fclose".to_string(), vec![Expr::Number(fd)]);
+    let result = eval_with_io(&close_expr, &env, &mut io).unwrap();
+    assert_eq!(result, Value::Scalar(0.0));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_fopen_nonexistent_returns_minus_one() {
+    use crate::io::IoContext;
+    let env = empty_env();
+    let mut io = IoContext::new();
+
+    let expr = Expr::Call(
+        "fopen".to_string(),
+        vec![
+            Expr::StrLiteral("/nonexistent/path/file.txt".to_string()),
+            Expr::StrLiteral("r".to_string()),
+        ],
+    );
+    let result = eval_with_io(&expr, &env, &mut io).unwrap();
+    assert_eq!(result, Value::Scalar(-1.0));
+}
+
+#[test]
+fn test_fgetl_reads_lines() {
+    use crate::io::IoContext;
+    let env = empty_env();
+    let mut io = IoContext::new();
+    let tmp = std::env::temp_dir().join("ccalc_test_fgetl.txt");
+    std::fs::write(&tmp, "hello\nworld\n").unwrap();
+
+    let path = tmp.to_string_lossy().to_string();
+    let fd = io.fopen(&path, "r");
+    assert!(fd >= 3);
+
+    let expr_fgetl = |fd: i32| {
+        Expr::Call("fgetl".to_string(), vec![Expr::Number(fd as f64)])
+    };
+
+    let line1 = eval_with_io(&expr_fgetl(fd), &env, &mut io).unwrap();
+    assert_eq!(line1, Value::Str("hello".to_string()));
+
+    let line2 = eval_with_io(&expr_fgetl(fd), &env, &mut io).unwrap();
+    assert_eq!(line2, Value::Str("world".to_string()));
+
+    // EOF returns -1
+    let eof = eval_with_io(&expr_fgetl(fd), &env, &mut io).unwrap();
+    assert_eq!(eof, Value::Scalar(-1.0));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_fgets_keeps_newline() {
+    use crate::io::IoContext;
+    let env = empty_env();
+    let mut io = IoContext::new();
+    let tmp = std::env::temp_dir().join("ccalc_test_fgets.txt");
+    std::fs::write(&tmp, "hello\n").unwrap();
+
+    let path = tmp.to_string_lossy().to_string();
+    let fd = io.fopen(&path, "r");
+
+    let expr = Expr::Call("fgets".to_string(), vec![Expr::Number(fd as f64)]);
+    let result = eval_with_io(&expr, &env, &mut io).unwrap();
+    assert_eq!(result, Value::Str("hello\n".to_string()));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_fclose_all() {
+    use crate::io::IoContext;
+    let env = empty_env();
+    let mut io = IoContext::new();
+    let tmp1 = std::env::temp_dir().join("ccalc_test_fclose_all_1.txt");
+    let tmp2 = std::env::temp_dir().join("ccalc_test_fclose_all_2.txt");
+    io.fopen(&tmp1.to_string_lossy(), "w");
+    io.fopen(&tmp2.to_string_lossy(), "w");
+
+    let expr = Expr::Call(
+        "fclose".to_string(),
+        vec![Expr::StrLiteral("all".to_string())],
+    );
+    let result = eval_with_io(&expr, &env, &mut io).unwrap();
+    assert_eq!(result, Value::Scalar(0.0));
+
+    let _ = std::fs::remove_file(&tmp1);
+    let _ = std::fs::remove_file(&tmp2);
+}
+
+#[test]
+fn test_fprintf_to_file() {
+    use crate::io::IoContext;
+    let env = empty_env();
+    let mut io = IoContext::new();
+    let tmp = std::env::temp_dir().join("ccalc_test_fprintf_file.txt");
+    let path = tmp.to_string_lossy().to_string();
+
+    let fd = io.fopen(&path, "w") as f64;
+
+    let expr = Expr::Call(
+        "fprintf".to_string(),
+        vec![
+            Expr::Number(fd),
+            Expr::StrLiteral("value = %d\n".to_string()),
+            Expr::Number(42.0),
+        ],
+    );
+    let result = eval_with_io(&expr, &env, &mut io).unwrap();
+    assert_eq!(result, Value::Void);
+
+    io.fclose(fd as i32);
+    let content = std::fs::read_to_string(&tmp).unwrap();
+    assert_eq!(content, "value = 42\n");
+
+    let _ = std::fs::remove_file(&tmp);
+}

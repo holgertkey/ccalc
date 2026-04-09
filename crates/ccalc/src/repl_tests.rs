@@ -1,5 +1,9 @@
 use super::*;
 
+fn test_io() -> IoContext {
+    IoContext::new()
+}
+
 // --- who_format_columns tests ---
 
 #[test]
@@ -346,7 +350,7 @@ fn test_expand_vars_in_hex_base() {
 fn test_expand_vars_matrix_not_expanded() {
     // Build a matrix value via evaluate so we don't need ndarray directly
     let mut env = new_env();
-    evaluate("[1 2; 3 4]", &mut env).unwrap();
+    evaluate("[1 2; 3 4]", &mut env, &mut test_io()).unwrap();
     // ans is now a matrix — move it to "m"
     let mat_val = env.get("ans").unwrap().clone();
     env.insert("m".to_string(), mat_val);
@@ -359,7 +363,7 @@ fn test_expand_vars_matrix_not_expanded() {
 #[test]
 fn test_evaluate_simple() {
     let mut env = Env::new();
-    let result = evaluate("3 * 4", &mut env).unwrap();
+    let result = evaluate("3 * 4", &mut env, &mut test_io()).unwrap();
     assert!(matches!(result, EvalResult::Value(Value::Scalar(12.0))));
     assert_eq!(ans(&env), 12.0);
 }
@@ -368,7 +372,7 @@ fn test_evaluate_simple() {
 fn test_evaluate_partial_adds_to_ans() {
     let mut env = Env::new();
     env.insert("ans".to_string(), Value::Scalar(10.0));
-    let result = evaluate("+ 5", &mut env).unwrap();
+    let result = evaluate("+ 5", &mut env, &mut test_io()).unwrap();
     assert!(matches!(result, EvalResult::Value(Value::Scalar(15.0))));
     assert_eq!(ans(&env), 15.0);
 }
@@ -376,7 +380,7 @@ fn test_evaluate_partial_adds_to_ans() {
 #[test]
 fn test_evaluate_assignment() {
     let mut env = Env::new();
-    let result = evaluate("x = 7", &mut env).unwrap();
+    let result = evaluate("x = 7", &mut env, &mut test_io()).unwrap();
     assert!(matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0));
     assert_eq!(env.get("x"), Some(&Value::Scalar(7.0)));
 }
@@ -384,7 +388,7 @@ fn test_evaluate_assignment() {
 #[test]
 fn test_evaluate_expression_always_updates_ans() {
     let mut env = new_env();
-    let result = evaluate("3 * 4", &mut env).unwrap();
+    let result = evaluate("3 * 4", &mut env, &mut test_io()).unwrap();
     assert!(matches!(result, EvalResult::Value(Value::Scalar(12.0))));
     assert_eq!(ans(&env), 12.0);
 }
@@ -392,7 +396,7 @@ fn test_evaluate_expression_always_updates_ans() {
 #[test]
 fn test_evaluate_assignment_does_not_update_ans() {
     let mut env = new_env();
-    let result = evaluate("x = 7", &mut env).unwrap();
+    let result = evaluate("x = 7", &mut env, &mut test_io()).unwrap();
     assert!(matches!(&result, EvalResult::Assigned(n, Value::Scalar(v)) if n == "x" && *v == 7.0));
     assert_eq!(env.get("x"), Some(&Value::Scalar(7.0)));
     assert_eq!(ans(&env), 0.0);
@@ -406,7 +410,7 @@ fn test_evaluate_sets_base_via_suffix() {
     if let Some(BaseSuffix::Switch(b)) = suffix {
         base = b;
     }
-    evaluate(to_eval, &mut env).unwrap();
+    evaluate(to_eval, &mut env, &mut test_io()).unwrap();
     assert_eq!(base, Base::Hex);
     assert_eq!(ans(&env), 255.0);
 }
@@ -490,7 +494,7 @@ fn pipe_output(input: &str) -> Vec<String> {
             if let Some(BaseSuffix::Switch(b)) = base_suffix {
                 base = b;
             }
-            match evaluate(to_eval, &mut env) {
+            match evaluate(to_eval, &mut env, &mut test_io()) {
                 Ok(result) => {
                     if !silent {
                         match result {

@@ -1,6 +1,7 @@
 use ndarray::Array2;
 
 use crate::env::{Env, Value};
+use crate::io::IoContext;
 
 #[derive(Debug)]
 pub enum Expr {
@@ -108,14 +109,26 @@ impl FormatMode {
     }
 }
 
+/// Evaluates an expression without file I/O context.
+/// This is the public API used by tests and non-I/O evaluation paths.
 pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
+    eval_inner(expr, env, None)
+}
+
+/// Evaluates an expression with an I/O context (file descriptor table).
+/// Used by the REPL to support `fopen`/`fclose`/`fgetl`/`fgets`/`fprintf(fd,...)`.
+pub fn eval_with_io(expr: &Expr, env: &Env, io: &mut IoContext) -> Result<Value, String> {
+    eval_inner(expr, env, Some(io))
+}
+
+fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<Value, String> {
     match expr {
         Expr::Number(n) => Ok(Value::Scalar(*n)),
         Expr::Var(name) => env
             .get(name)
             .cloned()
             .ok_or_else(|| format!("Undefined variable: '{name}'")),
-        Expr::UnaryMinus(e) => match eval(e, env)? {
+        Expr::UnaryMinus(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Unary minus is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
@@ -129,7 +142,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                 Err("Unary minus is not applicable to string objects".to_string())
             }
         },
-        Expr::UnaryNot(e) => match eval(e, env)? {
+        Expr::UnaryNot(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Logical NOT is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
             Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
@@ -148,8 +161,8 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             }
         },
         Expr::BinOp(left, op, right) => {
-            let l = eval(left, env)?;
-            let r = eval(right, env)?;
+            let l = eval_inner(left, env, io.as_deref_mut())?;
+            let r = eval_inner(right, env, io)?;
             eval_binop(l, op, r)
         }
         Expr::Call(name, args) => {
@@ -158,8 +171,11 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             if let Some(val) = env.get(name).cloned() {
                 return eval_index(&val, args, env);
             }
-            let evaled: Result<Vec<Value>, String> = args.iter().map(|a| eval(a, env)).collect();
-            call_builtin(name, &evaled?)
+            let mut evaled = Vec::with_capacity(args.len());
+            for a in args {
+                evaled.push(eval_inner(a, env, io.as_deref_mut())?);
+            }
+            call_builtin(name, &evaled, io)
         }
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::Matrix(rows) => {
@@ -173,7 +189,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             for row in rows {
                 let mut row_vals: Vec<f64> = Vec::new();
                 for elem_expr in row {
-                    match eval(elem_expr, env)? {
+                    match eval_inner(elem_expr, env, io.as_deref_mut())? {
                         Value::Void => {
                             return Err("Void value cannot be used in matrix literal".to_string());
                         }
@@ -220,7 +236,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                 .map_err(|e| format!("Matrix shape error: {e}"))?;
             Ok(Value::Matrix(m))
         }
-        Expr::Transpose(e) => match eval(e, env)? {
+        Expr::Transpose(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Transpose is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n)),
             Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
@@ -232,7 +248,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
         Expr::StrLiteral(s) => Ok(Value::Str(s.clone())),
         Expr::StringObjLiteral(s) => Ok(Value::StringObj(s.clone())),
         Expr::Range(start_expr, step_expr, stop_expr) => {
-            let start = match eval(start_expr, env)? {
+            let start = match eval_inner(start_expr, env, io.as_deref_mut())? {
                 Value::Scalar(n) => n,
                 Value::Void
                 | Value::Matrix(_)
@@ -242,7 +258,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
                     return Err("Range bounds must be real scalars".to_string());
                 }
             };
-            let stop = match eval(stop_expr, env)? {
+            let stop = match eval_inner(stop_expr, env, io.as_deref_mut())? {
                 Value::Scalar(n) => n,
                 Value::Void
                 | Value::Matrix(_)
@@ -254,7 +270,7 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, String> {
             };
             let step = match step_expr {
                 None => 1.0,
-                Some(s) => match eval(s, env)? {
+                Some(s) => match eval_inner(s, env, io)? {
                     Value::Scalar(n) => n,
                     Value::Void
                     | Value::Matrix(_)
@@ -1072,7 +1088,7 @@ fn trim_g_sci(s: String, upper: bool) -> String {
     }
 }
 
-fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
+fn call_builtin(name: &str, args: &[Value], io: Option<&mut IoContext>) -> Result<Value, String> {
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
         ("sqrt", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sqrt())),
@@ -1716,14 +1732,79 @@ fn call_builtin(name: &str, args: &[Value]) -> Result<Value, String> {
             let result = format_printf(&fmt, &args[1..])?;
             Ok(Value::Str(result))
         }
-        // fprintf(fmt, ...) — format and print to stdout; returns Void
+        // fprintf([fd,] fmt, ...) — format and print; fd defaults to 1 (stdout)
         ("fprintf", n) if n >= 1 => {
-            let fmt = string_arg(&args[0], name, 1)?.to_string();
-            let output = format_printf(&fmt, &args[1..])?;
-            use std::io::Write;
-            print!("{output}");
-            std::io::stdout().flush().ok();
+            // If first arg is a numeric scalar, treat it as a file descriptor.
+            let (fd, fmt_idx) = match &args[0] {
+                Value::Scalar(n) => (*n as i32, 1),
+                _ => (1, 0),
+            };
+            if fmt_idx >= args.len() {
+                return Err("fprintf: missing format string".to_string());
+            }
+            let fmt = string_arg(&args[fmt_idx], name, fmt_idx + 1)?.to_string();
+            let output = format_printf(&fmt, &args[fmt_idx + 1..])?;
+            match io {
+                Some(ctx) => ctx.write_to_fd(fd, &output)?,
+                None => {
+                    // No I/O context: only stdout (fd 1) is allowed
+                    if fd == 1 {
+                        use std::io::Write;
+                        print!("{output}");
+                        std::io::stdout().flush().ok();
+                    } else {
+                        return Err("fprintf: file I/O not available in this context".to_string());
+                    }
+                }
+            }
             Ok(Value::Void)
+        }
+        // fopen(path, mode) — open a file; returns fd or -1 on failure
+        ("fopen", 2) => {
+            let path = string_arg(&args[0], name, 1)?;
+            let mode = string_arg(&args[1], name, 2)?;
+            match io {
+                Some(ctx) => Ok(Value::Scalar(ctx.fopen(&path, &mode) as f64)),
+                None => Err("fopen: file I/O not available in this context".to_string()),
+            }
+        }
+        // fclose(fd) or fclose('all')
+        ("fclose", 1) => match &args[0] {
+            Value::Str(s) if s == "all" => {
+                if let Some(ctx) = io {
+                    ctx.fclose_all();
+                }
+                Ok(Value::Scalar(0.0))
+            }
+            _ => {
+                let fd = scalar_arg(&args[0], name, 1)? as i32;
+                match io {
+                    Some(ctx) => Ok(Value::Scalar(ctx.fclose(fd) as f64)),
+                    None => Err("fclose: file I/O not available in this context".to_string()),
+                }
+            }
+        },
+        // fgetl(fd) — read line, strip newline; returns Str or Scalar(-1) at EOF
+        ("fgetl", 1) => {
+            let fd = scalar_arg(&args[0], name, 1)? as i32;
+            match io {
+                Some(ctx) => match ctx.fgetl(fd) {
+                    Some(line) => Ok(Value::Str(line)),
+                    None => Ok(Value::Scalar(-1.0)),
+                },
+                None => Err("fgetl: file I/O not available in this context".to_string()),
+            }
+        }
+        // fgets(fd) — read line, keep newline; returns Str or Scalar(-1) at EOF
+        ("fgets", 1) => {
+            let fd = scalar_arg(&args[0], name, 1)? as i32;
+            match io {
+                Some(ctx) => match ctx.fgets(fd) {
+                    Some(line) => Ok(Value::Str(line)),
+                    None => Ok(Value::Scalar(-1.0)),
+                },
+                None => Err("fgets: file I/O not available in this context".to_string()),
+            }
         }
         _ => Err(format!("Unknown function: '{name}'")),
     }
