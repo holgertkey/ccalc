@@ -1842,3 +1842,154 @@ fn test_dlmwrite_scalar() {
 
     let _ = std::fs::remove_file(&tmp);
 }
+
+// --- Phase 10.5c: isfile / isfolder / exist / pwd ---
+
+#[test]
+fn test_isfile_existing_file() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_isfile.txt");
+    std::fs::write(&tmp, "").unwrap();
+
+    let expr = Expr::Call(
+        "isfile".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_isfile_nonexistent() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "isfile".to_string(),
+        vec![Expr::StrLiteral("/no/such/file.txt".to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_isfile_directory_is_false() {
+    let env = empty_env();
+    let dir = std::env::temp_dir();
+    let expr = Expr::Call(
+        "isfile".to_string(),
+        vec![Expr::StrLiteral(dir.to_string_lossy().to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_isfolder_existing_dir() {
+    let env = empty_env();
+    let dir = std::env::temp_dir();
+    let expr = Expr::Call(
+        "isfolder".to_string(),
+        vec![Expr::StrLiteral(dir.to_string_lossy().to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_isfolder_file_is_false() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_isfolder.txt");
+    std::fs::write(&tmp, "").unwrap();
+
+    let expr = Expr::Call(
+        "isfolder".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_pwd_returns_string() {
+    let env = empty_env();
+    let expr = Expr::Call("pwd".to_string(), vec![]);
+    let result = eval(&expr, &env).unwrap();
+    match result {
+        Value::Str(s) => assert!(!s.is_empty()),
+        other => panic!("expected Str, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_exist_var_found() {
+    let mut env = empty_env();
+    env.insert("myvar".to_string(), Value::Scalar(42.0));
+
+    let expr = Expr::Call(
+        "exist".to_string(),
+        vec![
+            Expr::StrLiteral("myvar".to_string()),
+            Expr::StrLiteral("var".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_exist_var_not_found() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "exist".to_string(),
+        vec![
+            Expr::StrLiteral("novar".to_string()),
+            Expr::StrLiteral("var".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_exist_file_found() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_test_exist_file.txt");
+    std::fs::write(&tmp, "").unwrap();
+
+    let expr = Expr::Call(
+        "exist".to_string(),
+        vec![
+            Expr::StrLiteral(tmp.to_string_lossy().to_string()),
+            Expr::StrLiteral("file".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(2.0)));
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn test_exist_file_not_found() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "exist".to_string(),
+        vec![
+            Expr::StrLiteral("/no/such/file.txt".to_string()),
+            Expr::StrLiteral("file".to_string()),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_exist_one_arg_checks_var_then_file() {
+    let mut env = empty_env();
+    env.insert("x".to_string(), Value::Scalar(1.0));
+
+    // variable found → 1
+    let expr = Expr::Call("exist".to_string(), vec![Expr::StrLiteral("x".to_string())]);
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+
+    // not in env, not a file → 0
+    let expr2 = Expr::Call(
+        "exist".to_string(),
+        vec![Expr::StrLiteral("novar".to_string())],
+    );
+    assert_eq!(eval(&expr2, &env), Ok(Value::Scalar(0.0)));
+}

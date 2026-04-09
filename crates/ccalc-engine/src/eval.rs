@@ -175,7 +175,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             for a in args {
                 evaled.push(eval_inner(a, env, io.as_deref_mut())?);
             }
-            call_builtin(name, &evaled, io)
+            call_builtin(name, &evaled, env, io)
         }
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::Matrix(rows) => {
@@ -1088,7 +1088,7 @@ fn trim_g_sci(s: String, upper: bool) -> String {
     }
 }
 
-fn call_builtin(name: &str, args: &[Value], io: Option<&mut IoContext>) -> Result<Value, String> {
+fn call_builtin(name: &str, args: &[Value], env: &Env, io: Option<&mut IoContext>) -> Result<Value, String> {
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
         ("sqrt", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sqrt())),
@@ -1804,6 +1804,52 @@ fn call_builtin(name: &str, args: &[Value], io: Option<&mut IoContext>) -> Resul
                     None => Ok(Value::Scalar(-1.0)),
                 },
                 None => Err("fgets: file I/O not available in this context".to_string()),
+            }
+        }
+        // isfile(path) — 1.0 if path exists and is a regular file, else 0.0
+        ("isfile", 1) => {
+            let path = string_arg(&args[0], name, 1)?;
+            let is_file = std::fs::metadata(path)
+                .map(|m| m.is_file())
+                .unwrap_or(false);
+            Ok(Value::Scalar(bool_to_f64(is_file)))
+        }
+        // isfolder(path) — 1.0 if path exists and is a directory, else 0.0
+        ("isfolder", 1) => {
+            let path = string_arg(&args[0], name, 1)?;
+            let is_dir = std::fs::metadata(path)
+                .map(|m| m.is_dir())
+                .unwrap_or(false);
+            Ok(Value::Scalar(bool_to_f64(is_dir)))
+        }
+        // pwd() — current working directory as a char array
+        ("pwd", 0) => {
+            let cwd = std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            Ok(Value::Str(cwd))
+        }
+        // exist(name) — check var (1), then file (2), else 0
+        ("exist", 1) => {
+            let name_arg = string_arg(&args[0], name, 1)?;
+            if env.contains_key(name_arg) {
+                Ok(Value::Scalar(1.0))
+            } else if std::path::Path::new(name_arg).is_file() {
+                Ok(Value::Scalar(2.0))
+            } else {
+                Ok(Value::Scalar(0.0))
+            }
+        }
+        // exist(name, 'var') or exist(name, 'file')
+        ("exist", 2) => {
+            let name_arg = string_arg(&args[0], name, 1)?;
+            let kind = string_arg(&args[1], name, 2)?;
+            match kind {
+                "var" => Ok(Value::Scalar(if env.contains_key(name_arg) { 1.0 } else { 0.0 })),
+                "file" => Ok(Value::Scalar(
+                    if std::path::Path::new(name_arg).is_file() { 2.0 } else { 0.0 },
+                )),
+                other => Err(format!("exist: unknown type '{other}', expected 'var' or 'file'")),
             }
         }
         // dlmread(path) / dlmread(path, delim)
