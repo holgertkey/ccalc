@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0+006] - 2026-04-09
+
+### Added
+
+- **Phase 10.5 — File I/O and filesystem queries**:
+  - **`IoContext`** — file descriptor table in `ccalc-engine/src/io.rs`; passed into `eval_with_io()`
+  - **`eval_with_io(expr, env, io)`** — new public API; `eval()` unchanged (no I/O)
+  - **10.5a — File handles**:
+    - `fopen(path, mode)` — open file; modes `'r'` `'w'` `'a'` `'r+'`; returns fd (≥3) or -1 on failure
+    - `fclose(fd)` — close by fd; returns 0 or -1
+    - `fclose('all')` — close all open handles
+    - `fgetl(fd)` — read one line, strip trailing newline; returns -1 at EOF
+    - `fgets(fd)` — read one line, keep trailing newline
+    - `fprintf(fd, fmt, ...)` — write formatted output to file descriptor; fd 1 = stdout, 2 = stderr
+  - **10.5b — Data file I/O**:
+    - `dlmread(path)` — read delimiter-separated numeric data (auto-detect `,` / `\t` / whitespace)
+    - `dlmread(path, delim)` — explicit delimiter (`','`, `'\t'`)
+    - `dlmwrite(path, A)` — write matrix with comma separator
+    - `dlmwrite(path, A, delim)` — explicit delimiter
+  - **10.5c — Filesystem queries**:
+    - `isfile(path)` — 1 if path exists and is a file, else 0
+    - `isfolder(path)` — 1 if path exists and is a directory, else 0
+    - `pwd()` — current working directory as a char array
+    - `exist(name)` — 1 if variable exists in workspace, 2 if a file on disk
+    - `exist(name, 'var')` — check workspace only
+    - `exist(name, 'file')` — check filesystem only (returns 2 if found, matching MATLAB)
+  - **10.5d — Workspace with explicit path**:
+    - `save` / `load` — aliases for `ws` / `wl` (default path)
+    - `save('path.mat')` — save all workspace variables to named file
+    - `save('path.mat', 'x', 'y')` — save specific variables only
+    - `load('path.mat')` — load variables from named file into workspace
+    - Path argument can be a variable reference (`save(mat_path)`)
+    - Workspace format extended: scalars + char arrays + string objects persisted; matrices/complex still skipped
+  - **New example** `examples/file_io.calc` — 10-section demo covering all subphases; writes to `.debug/.TESTS/`
+
 ## [0.14.0+001] - 2026-04-08
 
 ### Added

@@ -19,6 +19,7 @@
 - [Comparison & Logical Operators](./guide/logic.md)
 - [Complex Numbers](./guide/complex.md)
 - [Strings](./guide/strings.md)
+- [File I/O](./guide/file-io.md)
 
 # Architecture
 
@@ -41,3 +42,4 @@
 - [Phase 8 — Complex Numbers](./ccalc/phase8-complex.md)
 - [Phase 9 — String Data Types](./ccalc/phase9-strings.md)
 - [Phase 10 — C-style I/O and Format](./ccalc/phase10-io.md)
+- [Phase 10.5 — File I/O and Filesystem Queries](./ccalc/phase105-fileio.md)

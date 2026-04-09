@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.14.0+001** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.14.0+006** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -103,7 +103,7 @@ $ printf "10\n+ 5\n* 2" | ccalc
 $ ccalc < formulas.txt
 ```
 
-All commands work in script/pipe mode: `exit`/`quit` stop processing, `who`/`clear`/`ws`/`wl` manage variables, `format` controls number display, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
+All commands work in script/pipe mode: `exit`/`quit` stop processing, `who`/`clear`/`ws`/`wl`/`save`/`load` manage variables, `format` controls number display, `hex`/`dec`/`bin`/`oct`/`base` control number base. `cls` is ignored.
 
 ---
 
@@ -300,8 +300,11 @@ rate = 0.07
 | `who`         | Show all defined variables and their values        |
 | `clear`       | Clear all variables                                |
 | `clear name`  | Clear a single variable                            |
-| `ws`          | Save workspace to `~/.config/ccalc/workspace.toml` |
-| `wl`          | Load workspace from file                           |
+| `ws` / `save` | Save workspace to `~/.config/ccalc/workspace.toml` |
+| `wl` / `load` | Load workspace from file                           |
+| `save('path.mat')` | Save to explicit path                         |
+| `save('path.mat', 'x', 'y')` | Save specific variables only      |
+| `load('path.mat')` | Load from explicit path                       |
 
 ```
 [ 0 ]: rate = 0.05
@@ -752,6 +755,64 @@ disp(label)
 
 ---
 
+## File I/O
+
+### File handles
+
+```matlab
+fd = fopen('log.txt', 'w');         % open for writing; returns fd (≥3) or -1 on failure
+fprintf(fd, 'x = %.4f\n', x);      % write formatted text to file
+fclose(fd);                         % close; returns 0 or -1
+
+fd = fopen('data.txt', 'r');        % open for reading
+line = fgetl(fd);                   % read one line, newline stripped; -1 at EOF
+raw  = fgets(fd);                   % read one line, newline kept
+fclose(fd);
+
+fclose('all');                      % close all open file handles
+```
+
+Modes: `'r'` read, `'w'` write (create/truncate), `'a'` append, `'r+'` read+write.  
+File descriptor 1 = stdout, 2 = stderr.
+
+### Delimiter-separated data
+
+```matlab
+dlmwrite('results.csv', A);         % write matrix, comma-separated
+dlmwrite('results.tsv', A, '\t');   % explicit delimiter
+
+data = dlmread('results.csv');      % read; auto-detect ',' / '\t' / whitespace
+data = dlmread('results.tsv', '\t');
+```
+
+### Filesystem queries
+
+```matlab
+isfile('data.csv')          % 1 if the path is an existing file, else 0
+isfolder('output/')         % 1 if the path is an existing directory, else 0
+pwd()                       % current working directory as a char array
+
+exist('x', 'var')           % 1 if variable x is in the workspace
+exist('x', 'file')          % 2 if file exists on disk (MATLAB numeric code)
+exist('x')                  % checks workspace first, then filesystem
+```
+
+### Workspace with explicit path
+
+```matlab
+save                            % save all variables to default path
+save('session.mat')             % save all variables to named file
+save('session.mat', 'x', 'y')  % save specific variables only
+load('session.mat')             % load variables from named file
+
+path = 'session.mat';
+save(path)                      % variable reference also accepted
+```
+
+Scalars, char arrays, and string objects are persisted. Matrices, complex values, and functions are always skipped.
+
+---
+
 ## REPL commands
 
 | Command                           | Action                              |
@@ -768,11 +829,14 @@ disp(label)
 | `format <N>`                      | N decimal places (e.g. `format 4`) |
 | `hex` / `dec` / `bin` / `oct`     | Switch display base                 |
 | `base`                            | Show ans in all four bases          |
-| `ws`                              | Save workspace to disk              |
-| `wl`                              | Load workspace from disk            |
+| `ws` / `save`                     | Save workspace to disk              |
+| `wl` / `load`                     | Load workspace from disk            |
+| `save('path')`                    | Save to explicit file               |
+| `save('path', 'x', 'y')`         | Save specific variables             |
+| `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `format`  `matrices`  `examples`
+Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1009,6 +1073,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
+| `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
 
 ```bash
 ccalc < examples/mortgage.calc
@@ -1038,6 +1103,7 @@ crates/
     lib.rs       — crate root, public module exports
     env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void), Env type (HashMap<String, Value>), workspace save/load
     eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums
+    io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history

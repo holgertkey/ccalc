@@ -114,8 +114,8 @@ two-digit exponent and explicit sign.
 
 ## Scope boundary
 
-- **File I/O** (`fopen`/`fclose`/`fgetl`, `dlmread`/`dlmwrite`) — deferred to Phase 10.5.
-- `fprintf(fd, ...)` with file descriptor — deferred to Phase 10.5.
+- **File I/O** (`fopen`/`fclose`/`fgetl`, `dlmread`/`dlmwrite`) — implemented in Phase 10.5.
+- `fprintf(fd, ...)` with file descriptor — implemented in Phase 10.5.
 - Complex matrices in `fprintf` — not supported (same boundary as Phase 8).
 
 ---

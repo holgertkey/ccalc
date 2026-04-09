@@ -11,7 +11,7 @@ pub fn print(topic: Option<&str>) {
         Some("functions" | "fn" | "func") => print_functions(),
         Some("bases" | "base") => print_bases(),
         Some("vars" | "variables") => print_vars(),
-        Some("script" | "pipe" | "io" | "printf") => print_script(),
+        Some("script" | "pipe" | "printf") => print_script(),
         Some("format" | "fmt") => print_format(),
         Some("matrices" | "matrix" | "mat") => print_matrices(),
         Some("logic" | "logical" | "comparison") => print_logic(),
@@ -19,10 +19,11 @@ pub fn print(topic: Option<&str>) {
         Some("vectors" | "vector" | "utils") => print_vectors(),
         Some("complex" | "cplx" | "imag") => print_complex(),
         Some("strings" | "string" | "str" | "char") => print_strings(),
+        Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose") => print_fileio(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  format  matrices  logic  vectors  complex  strings  io  examples"
+                "Available topics: syntax  functions  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  examples"
             );
         }
     }
@@ -100,12 +101,18 @@ Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
-        ws (save workspace)   wl (load workspace)
+        ws/save (save workspace)   wl/load (load workspace)
+        save('f.mat')  save('f.mat','x','y')  load('f.mat')
 
 Output  disp(expr)
         fprintf('fmt', v1, v2, ...)   print formatted  (C printf)
         sprintf('fmt', v1, v2, ...)   return formatted string
         Specifiers: %d %i %f %e %g %s %%   Width/prec: %8.3f %-10s
+Files   fd = fopen('f.txt','w')   fclose(fd)   fclose('all')
+        fprintf(fd,'fmt',v1,...)  fgetl(fd)  fgets(fd)
+        dlmwrite('f.csv',A)  dlmwrite('f.tsv',A,'\t')
+        data = dlmread('f.csv')  data = dlmread('f.tsv','\t')
+        isfile(p)  isfolder(p)  pwd()  exist('x','var')  exist('f','file')
 Format  format short   5 sig digits (default)   format long    15 sig digits
         format shortE  always scientific         format longE
         format shortG  same as short             format bank    2 decimal places
@@ -130,6 +137,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
+  help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -472,9 +480,13 @@ View and clear
     clear name     clear a single variable by name
 
 Workspace persistence
-    ws    save all variables to ~/.config/ccalc/workspace.toml
-    wl    load variables from file  (replaces the current workspace)
+    ws / save               save all variables to ~/.config/ccalc/workspace.toml
+    wl / load               load variables from file  (replaces the current workspace)
+    save('path.mat')        save all variables to named file
+    save('path.mat','x','y')  save specific variables only
+    load('path.mat')        load from named file
 
+    Only scalars and strings are persisted; matrices and complex values are skipped.
     The workspace file is plain text: one 'name = value' per line."
     );
 }
@@ -538,10 +550,13 @@ Octave behaviour: if more arguments than specifiers, the format
 string repeats for the remaining arguments.
 
 Commands that work in pipe/script mode
-    exit / quit      stop processing
-    who / clear      manage variables
-    ws / wl          workspace save and load
-    hex/dec/bin/oct  display base
+    exit / quit              stop processing
+    who / clear              manage variables
+    ws / wl / save / load    workspace save and load
+    save('f.mat')            save to explicit path
+    save('f.mat','x','y')    save specific variables
+    load('f.mat')            load from explicit path
+    hex/dec/bin/oct          display base
     Precision is set in config.toml (default 10)
 
 Example script
@@ -1070,6 +1085,75 @@ Script files  (see examples/ directory)
     ccalc examples/bitwise.calc
     ccalc examples/vector_utils.calc
     ccalc examples/complex_numbers.calc
-    ccalc examples/strings.calc"
+    ccalc examples/strings.calc
+    ccalc examples/file_io.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help files
+// ---------------------------------------------------------------------------
+
+fn print_fileio() {
+    println!(
+        "\
+FILE I/O
+
+File handles
+    fd = fopen(path, mode)    open file; returns fd (≥3) or -1 on failure
+    fclose(fd)                close by fd; returns 0 on success, -1 on failure
+    fclose('all')             close all open handles
+
+  Modes: 'r' read  'w' write (create/truncate)  'a' append  'r+' read+write
+  fd 1 = stdout, fd 2 = stderr
+
+Read / write
+    fprintf(fd, fmt, v1, ...)  write formatted output to fd
+    fprintf(fmt, v1, ...)      write to stdout  (fd 1)
+    line = fgetl(fd)           read one line; newline stripped; returns -1 at EOF
+    raw  = fgets(fd)           read one line; newline kept; returns -1 at EOF
+
+  Example — write then read back:
+    fd = fopen('log.txt', 'w');
+    fprintf(fd, 'x = %.4f\\n', 3.14159);
+    fclose(fd);
+    fd = fopen('log.txt', 'r');
+    line = fgetl(fd);          % 'x = 3.1416'
+    fclose(fd);
+
+Delimiter-separated data
+    dlmwrite(path, A)          write matrix with ',' separator
+    dlmwrite(path, A, delim)   explicit delimiter  (',' or '\\t')
+    A = dlmread(path)          read; auto-detect ',' / '\\t' / whitespace
+    A = dlmread(path, delim)   explicit delimiter
+
+  Example:
+    data = [1, 3.3; 2, 4.7];
+    dlmwrite('meas.csv', data);
+    loaded = dlmread('meas.csv');
+
+Filesystem queries
+    isfile(path)            1 if path is an existing file, else 0
+    isfolder(path)          1 if path is an existing directory, else 0
+    pwd()                   current working directory as a char array
+    exist(name)             1 if variable in workspace, 2 if file on disk
+    exist(name, 'var')      check workspace only; 1 or 0
+    exist(name, 'file')     check filesystem only; 2 if found, 0 otherwise
+
+Workspace with explicit path
+    save                         save to ~/.config/ccalc/workspace.toml
+    save('path.mat')             save all variables to named file
+    save('path.mat', 'x', 'y')  save only named variables
+    load('path.mat')             load from named file
+
+  The path argument may be a variable reference:
+    p = 'session.mat';
+    save(p);
+    load(p);
+
+  Persisted types: Scalar, char array, string object.
+  Skipped always:  Matrix, Complex.
+
+See also: help script  help vars"
     );
 }
