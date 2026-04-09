@@ -464,7 +464,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                 }
                 continue;
             }
-            if let Some(cmd) = try_parse_save_load(stmt) {
+            if let Some(cmd) = try_parse_save_load(stmt, &env) {
                 use ccalc_engine::env::{load_workspace, save_workspace, save_workspace_vars};
                 match cmd {
                     SaveLoadCmd::Save { path, vars } => {
@@ -872,19 +872,22 @@ fn test_pipe_matrix_semicolon_not_split() {
 
 #[test]
 fn test_try_parse_save_bare() {
-    let cmd = try_parse_save_load("save");
+    let env = ccalc_engine::env::Env::new();
+    let cmd = try_parse_save_load("save", &env);
     assert!(matches!(cmd, Some(SaveLoadCmd::Save { path: None, .. })));
 }
 
 #[test]
 fn test_try_parse_load_bare() {
-    let cmd = try_parse_save_load("load");
+    let env = ccalc_engine::env::Env::new();
+    let cmd = try_parse_save_load("load", &env);
     assert!(matches!(cmd, Some(SaveLoadCmd::Load { path: None })));
 }
 
 #[test]
 fn test_try_parse_save_with_path() {
-    let cmd = try_parse_save_load("save('session.mat')");
+    let env = ccalc_engine::env::Env::new();
+    let cmd = try_parse_save_load("save('session.mat')", &env);
     match cmd {
         Some(SaveLoadCmd::Save { path: Some(p), vars }) => {
             assert_eq!(p, "session.mat");
@@ -896,7 +899,8 @@ fn test_try_parse_save_with_path() {
 
 #[test]
 fn test_try_parse_save_with_vars() {
-    let cmd = try_parse_save_load("save('out.mat', 'x', 'y')");
+    let env = ccalc_engine::env::Env::new();
+    let cmd = try_parse_save_load("save('out.mat', 'x', 'y')", &env);
     match cmd {
         Some(SaveLoadCmd::Save { path: Some(p), vars }) => {
             assert_eq!(p, "out.mat");
@@ -908,7 +912,8 @@ fn test_try_parse_save_with_vars() {
 
 #[test]
 fn test_try_parse_load_with_path() {
-    let cmd = try_parse_save_load("load('session.mat')");
+    let env = ccalc_engine::env::Env::new();
+    let cmd = try_parse_save_load("load('session.mat')", &env);
     match cmd {
         Some(SaveLoadCmd::Load { path: Some(p) }) => assert_eq!(p, "session.mat"),
         _ => panic!("expected Load with path"),
@@ -917,8 +922,9 @@ fn test_try_parse_load_with_path() {
 
 #[test]
 fn test_try_parse_unrelated_returns_none() {
-    assert!(try_parse_save_load("x = 3").is_none());
-    assert!(try_parse_save_load("fprintf('hi')").is_none());
+    let env = ccalc_engine::env::Env::new();
+    assert!(try_parse_save_load("x = 3", &env).is_none());
+    assert!(try_parse_save_load("fprintf('hi')", &env).is_none());
 }
 
 #[test]

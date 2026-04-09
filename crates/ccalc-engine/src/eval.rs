@@ -1822,8 +1822,8 @@ fn call_builtin(name: &str, args: &[Value], env: &Env, io: Option<&mut IoContext
                 .unwrap_or(false);
             Ok(Value::Scalar(bool_to_f64(is_dir)))
         }
-        // pwd() — current working directory as a char array
-        ("pwd", 0) => {
+        // pwd() — current working directory as a char array (parser sends ans as sole arg for empty calls)
+        ("pwd", _) => {
             let cwd = std::env::current_dir()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default();

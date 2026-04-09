@@ -154,7 +154,10 @@ enum SaveLoadCmd {
 /// - `save('path', 'x', 'y')`  — selective save
 ///
 /// Returns `None` if the statement is not a save/load command.
-fn try_parse_save_load(stmt: &str) -> Option<SaveLoadCmd> {
+///
+/// String arguments may be literals (`'path'`) or variables holding a string value.
+/// `env` is used to resolve variable references.
+fn try_parse_save_load(stmt: &str, env: &Env) -> Option<SaveLoadCmd> {
     match stmt.trim() {
         "save" => return Some(SaveLoadCmd::Save { path: None, vars: vec![] }),
         "load" => return Some(SaveLoadCmd::Load { path: None }),
@@ -165,10 +168,15 @@ fn try_parse_save_load(stmt: &str) -> Option<SaveLoadCmd> {
         Stmt::Expr(Expr::Call(name, args)) => {
             let mut str_args: Vec<String> = Vec::new();
             for arg in args {
-                match arg {
-                    Expr::StrLiteral(s) | Expr::StringObjLiteral(s) => str_args.push(s),
+                let s = match arg {
+                    Expr::StrLiteral(s) | Expr::StringObjLiteral(s) => s,
+                    Expr::Var(v) => match env.get(&v) {
+                        Some(Value::Str(s)) | Some(Value::StringObj(s)) => s.clone(),
+                        _ => return None,
+                    },
                     _ => return None,
-                }
+                };
+                str_args.push(s);
             }
             match name.as_str() {
                 "save" => {
@@ -481,7 +489,7 @@ pub fn run() {
             }
 
             // save / load with optional path and variable list
-            if let Some(cmd) = try_parse_save_load(stmt) {
+            if let Some(cmd) = try_parse_save_load(stmt, &env) {
                 match cmd {
                     SaveLoadCmd::Save { path, vars } => {
                         let result = match (&path, vars.is_empty()) {
@@ -802,7 +810,7 @@ pub fn run_pipe(reader: impl BufRead) {
             }
 
             // save / load with optional path and variable list
-            if let Some(cmd) = try_parse_save_load(stmt) {
+            if let Some(cmd) = try_parse_save_load(stmt, &env) {
                 match cmd {
                     SaveLoadCmd::Save { path, vars } => {
                         let _ = match (&path, vars.is_empty()) {

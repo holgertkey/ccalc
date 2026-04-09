@@ -1,0 +1,217 @@
+% file_io.calc — Phase 10.5 file I/O and filesystem queries demo
+%
+% Covers:
+%   10.5a  fopen / fclose / fgetl / fgets / fprintf(fd, ...)
+%   10.5b  dlmread / dlmwrite
+%   10.5c  isfile / isfolder / exist / pwd
+%   10.5d  save / load with explicit path
+%
+% Files are written to .debug/.TESTS/ (git-ignored scratch area).
+%
+% Usage: ccalc examples/file_io.calc
+
+% ---------------------------------------------------------------
+% 1. Filesystem queries
+% ---------------------------------------------------------------
+
+fprintf('=== 1. Filesystem queries ===\n')
+
+fprintf('Working directory: %s\n', pwd())
+
+% isfile / isfolder
+fprintf('isfile Cargo.toml:   %d\n', isfile('Cargo.toml'))
+fprintf('isfolder examples/:  %d\n', isfolder('examples'))
+fprintf('isfile no_such.txt:  %d\n', isfile('no_such_file.txt'))
+
+% exist — variable vs file
+pi_copy = 3.14159;
+fprintf('\nexist pi_copy (var): %d\n', exist('pi_copy', 'var'))
+fprintf('exist no_var  (var): %d\n', exist('no_var',   'var'))
+fprintf('exist Cargo.toml (file): %d\n', exist('Cargo.toml', 'file'))
+
+% ---------------------------------------------------------------
+% 2. Writing to a file with fprintf
+% ---------------------------------------------------------------
+
+fprintf('\n=== 2. fprintf to file ===\n')
+
+log_path = '.debug/.TESTS/demo_log.txt';
+
+fd = fopen(log_path, 'w');
+fprintf(fd, 'ccalc file I/O demo log\n')
+fprintf(fd, '=======================\n')
+fprintf(fd, 'pi  = %.6f\n', 3.14159265)
+fprintf(fd, 'e   = %.6f\n', 2.71828183)
+fprintf(fd, 'phi = %.6f\n', 1.61803399)
+fclose(fd);
+
+fprintf('Log written to %s\n', log_path)
+fprintf('isfile check:  %d\n', isfile(log_path))
+
+% ---------------------------------------------------------------
+% 3. Reading back with fgetl
+% ---------------------------------------------------------------
+
+fprintf('\n=== 3. fgetl line-by-line read ===\n')
+
+fd = fopen(log_path, 'r');
+line1 = fgetl(fd);
+line2 = fgetl(fd);
+line3 = fgetl(fd);
+line4 = fgetl(fd);
+line5 = fgetl(fd);
+eof_check = fgetl(fd);
+fclose(fd);
+
+fprintf('Line 1: %s\n', line1)
+fprintf('Line 2: %s\n', line2)
+fprintf('Line 3: %s\n', line3)
+fprintf('Line 4: %s\n', line4)
+fprintf('Line 5: %s\n', line5)
+fprintf('EOF returns: %d\n', eof_check)
+
+% ---------------------------------------------------------------
+% 4. fgets preserves the newline
+% ---------------------------------------------------------------
+
+fprintf('\n=== 4. fgets vs fgetl ===\n')
+
+fd = fopen(log_path, 'r');
+raw = fgets(fd);
+fclose(fd);
+
+% fgets keeps \n — length includes it
+fprintf('fgets first line (with newline): [%s]\n', raw)
+
+% ---------------------------------------------------------------
+% 5. dlmwrite / dlmread — CSV data
+% ---------------------------------------------------------------
+
+fprintf('\n=== 5. dlmwrite / dlmread (CSV) ===\n')
+
+csv_path = '.debug/.TESTS/measurements.csv';
+
+% Simulate three sensor readings: [time, voltage, current]
+t1 = 0;   v1 = 3.30;  i1 = 0.012;
+t2 = 0.5; v2 = 3.28;  i2 = 0.015;
+t3 = 1.0; v3 = 3.25;  i3 = 0.018;
+
+% Build and write the 3x3 matrix
+data = [t1, v1, i1; t2, v2, i2; t3, v3, i3];
+dlmwrite(csv_path, data);
+fprintf('CSV written to %s\n', csv_path)
+
+% Read back and compute power (P = V * I) for each row
+meas = dlmread(csv_path);
+fprintf('\n  t(s)   V(V)    I(A)    P(W)\n')
+fprintf('  %.1f    %.2f   %.3f   %.4f\n', meas(1,1), meas(1,2), meas(1,3), meas(1,2)*meas(1,3))
+fprintf('  %.1f    %.2f   %.3f   %.4f\n', meas(2,1), meas(2,2), meas(2,3), meas(2,2)*meas(2,3))
+fprintf('  %.1f    %.2f   %.3f   %.4f\n', meas(3,1), meas(3,2), meas(3,3), meas(3,2)*meas(3,3))
+
+% ---------------------------------------------------------------
+% 6. dlmwrite / dlmread — TSV data
+% ---------------------------------------------------------------
+
+fprintf('\n=== 6. dlmwrite / dlmread (TSV) ===\n')
+
+tsv_path = '.debug/.TESTS/results.tsv';
+
+% 2x4 result matrix
+results = [1, 100, 9.81, 0.5; 2, 200, 19.62, 1.0];
+dlmwrite(tsv_path, results, '\t');
+fprintf('TSV written to %s\n', tsv_path)
+
+loaded = dlmread(tsv_path, '\t');
+fprintf('Loaded size: %d x %d\n', size(loaded, 1), size(loaded, 2))
+fprintf('Row 2, col 3 = %.2f\n', loaded(2, 3))
+
+% ---------------------------------------------------------------
+% 7. Appending to a file
+% ---------------------------------------------------------------
+
+fprintf('\n=== 7. Append mode ===\n')
+
+append_path = '.debug/.TESTS/appended.txt';
+
+fd = fopen(append_path, 'w');
+fprintf(fd, 'Session 1: x = 10\n')
+fclose(fd);
+
+fd = fopen(append_path, 'a');
+fprintf(fd, 'Session 2: x = 20\n')
+fprintf(fd, 'Session 3: x = 30\n')
+fclose(fd);
+
+fd = fopen(append_path, 'r');
+a1 = fgetl(fd);
+a2 = fgetl(fd);
+a3 = fgetl(fd);
+fclose(fd);
+
+fprintf('%s\n', a1)
+fprintf('%s\n', a2)
+fprintf('%s\n', a3)
+
+% ---------------------------------------------------------------
+% 8. save / load with explicit path
+% ---------------------------------------------------------------
+
+fprintf('\n=== 8. save / load with explicit path ===\n')
+
+mat_path = '.debug/.TESTS/session.mat';
+
+% Define analysis parameters
+R = 4700;
+C = 220e-9;
+f_cutoff = 1 / (2 * 3.14159265 * R * C);
+label = 'RC low-pass filter';
+
+fprintf('Saving: R=%g, C=%g, f_cutoff=%.2f\n', R, C, f_cutoff)
+save(mat_path);
+
+% Clear and reload
+clear R
+clear C
+clear f_cutoff
+
+fprintf('After clear: exist R = %d\n', exist('R', 'var'))
+
+load(mat_path);
+
+fprintf('After load:  exist R = %d\n', exist('R', 'var'))
+fprintf('Restored: R=%g, C=%g, f_cutoff=%.2f\n', R, C, f_cutoff)
+fprintf('Label: %s\n', label)
+
+% ---------------------------------------------------------------
+% 9. save — selective variables only
+% ---------------------------------------------------------------
+
+fprintf('\n=== 9. save with variable selection ===\n')
+
+sel_path = '.debug/.TESTS/selected.mat';
+
+x_val = 42;
+y_val = 99;
+z_val = 7;
+
+save(sel_path, 'x_val', 'z_val');
+fprintf('Saved only x_val and z_val\n')
+
+load(sel_path);
+
+fprintf('x_val: %g\n', x_val)
+fprintf('z_val: %g\n', z_val)
+fprintf('y_val in workspace: %d\n', exist('y_val', 'var'))
+
+% ---------------------------------------------------------------
+% 10. fopen failure
+% ---------------------------------------------------------------
+
+fprintf('\n=== 10. fopen error handling ===\n')
+
+bad_fd = fopen('/no/such/directory/file.txt', 'r');
+fprintf('fopen on missing path returns: %d\n', bad_fd)
+
+% fclose on invalid fd returns -1
+status = fclose(bad_fd);
+fprintf('fclose on fd=-1 returns: %d\n', status)
