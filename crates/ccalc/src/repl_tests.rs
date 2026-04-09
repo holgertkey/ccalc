@@ -464,6 +464,31 @@ fn pipe_output(input: &str) -> Vec<String> {
                 }
                 continue;
             }
+            if let Some(cmd) = try_parse_save_load(stmt) {
+                use ccalc_engine::env::{load_workspace, save_workspace, save_workspace_vars};
+                match cmd {
+                    SaveLoadCmd::Save { path, vars } => {
+                        let _ = match (&path, vars.is_empty()) {
+                            (None, _) => save_workspace_default(&env),
+                            (Some(p), true) => save_workspace(&env, std::path::Path::new(p)),
+                            (Some(p), false) => {
+                                let var_refs: Vec<&str> = vars.iter().map(String::as_str).collect();
+                                save_workspace_vars(&env, std::path::Path::new(p), &var_refs)
+                            }
+                        };
+                    }
+                    SaveLoadCmd::Load { path } => {
+                        let result = match path {
+                            None => load_workspace_default(),
+                            Some(p) => load_workspace(std::path::Path::new(&p)),
+                        };
+                        if let Ok(loaded) = result {
+                            env = loaded;
+                        }
+                    }
+                }
+                continue;
+            }
             // disp(expr) — push formatted value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
                 let result = parse(arg.trim()).and_then(|stmt| {
@@ -841,4 +866,92 @@ fn test_pipe_matrix_semicolon_not_split() {
     assert_eq!(out[0], "ans =");
     // Two rows of output
     assert_eq!(out[1].lines().count(), 2);
+}
+
+// --- Phase 10.5d: save / load with path ---
+
+#[test]
+fn test_try_parse_save_bare() {
+    let cmd = try_parse_save_load("save");
+    assert!(matches!(cmd, Some(SaveLoadCmd::Save { path: None, .. })));
+}
+
+#[test]
+fn test_try_parse_load_bare() {
+    let cmd = try_parse_save_load("load");
+    assert!(matches!(cmd, Some(SaveLoadCmd::Load { path: None })));
+}
+
+#[test]
+fn test_try_parse_save_with_path() {
+    let cmd = try_parse_save_load("save('session.mat')");
+    match cmd {
+        Some(SaveLoadCmd::Save { path: Some(p), vars }) => {
+            assert_eq!(p, "session.mat");
+            assert!(vars.is_empty());
+        }
+        _ => panic!("expected Save with path"),
+    }
+}
+
+#[test]
+fn test_try_parse_save_with_vars() {
+    let cmd = try_parse_save_load("save('out.mat', 'x', 'y')");
+    match cmd {
+        Some(SaveLoadCmd::Save { path: Some(p), vars }) => {
+            assert_eq!(p, "out.mat");
+            assert_eq!(vars, vec!["x", "y"]);
+        }
+        _ => panic!("expected Save with path and vars"),
+    }
+}
+
+#[test]
+fn test_try_parse_load_with_path() {
+    let cmd = try_parse_save_load("load('session.mat')");
+    match cmd {
+        Some(SaveLoadCmd::Load { path: Some(p) }) => assert_eq!(p, "session.mat"),
+        _ => panic!("expected Load with path"),
+    }
+}
+
+#[test]
+fn test_try_parse_unrelated_returns_none() {
+    assert!(try_parse_save_load("x = 3").is_none());
+    assert!(try_parse_save_load("fprintf('hi')").is_none());
+}
+
+#[test]
+fn test_pipe_save_load_roundtrip() {
+    use ccalc_engine::env::load_workspace;
+    let tmp = std::env::temp_dir().join("ccalc_test_pipe_saveload.mat");
+    let path = tmp.to_string_lossy().to_string();
+
+    // Save x and y to file
+    let save_script = format!("x = 42\ny = 3.14\nsave('{path}')");
+    pipe_output(&save_script);
+
+    // Load and check
+    let loaded = load_workspace(std::path::Path::new(&path)).unwrap();
+    assert_eq!(loaded.get("x"), Some(&Value::Scalar(42.0)));
+    assert_eq!(loaded.get("y"), Some(&Value::Scalar(3.14)));
+
+    std::fs::remove_file(&tmp).ok();
+}
+
+#[test]
+fn test_pipe_save_selective_vars() {
+    use ccalc_engine::env::load_workspace;
+    let tmp = std::env::temp_dir().join("ccalc_test_pipe_save_selective.mat");
+    let path = tmp.to_string_lossy().to_string();
+
+    let save_script = format!("x = 1\ny = 2\nz = 3\nsave('{path}', 'x', 'z')");
+    pipe_output(&save_script);
+
+    let loaded = load_workspace(std::path::Path::new(&path)).unwrap();
+    assert_eq!(loaded.get("x"), Some(&Value::Scalar(1.0)));
+    assert_eq!(loaded.get("z"), Some(&Value::Scalar(3.0)));
+    assert!(!loaded.contains_key("y"));
+
+    std::fs::remove_file(&tmp).ok();
 }

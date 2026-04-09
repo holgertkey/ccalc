@@ -3,9 +3,12 @@ use std::io::{BufRead, Write};
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 
-use ccalc_engine::env::{Env, Value, config_dir, load_workspace_default, save_workspace_default};
+use ccalc_engine::env::{
+    Env, Value, config_dir, load_workspace, load_workspace_default, save_workspace,
+    save_workspace_default, save_workspace_vars,
+};
 use ccalc_engine::eval::{
-    Base, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
+    Base, Expr, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
     format_value_full,
 };
 use ccalc_engine::io::IoContext;
@@ -135,6 +138,50 @@ fn new_env() -> Env {
     env.insert("i".to_string(), Value::Complex(0.0, 1.0));
     env.insert("j".to_string(), Value::Complex(0.0, 1.0));
     env
+}
+
+/// Parsed form of a `save` or `load` command.
+enum SaveLoadCmd {
+    Save { path: Option<String>, vars: Vec<String> },
+    Load { path: Option<String> },
+}
+
+/// Tries to parse a statement as a `save`/`load` command (bare or with arguments).
+///
+/// Recognises:
+/// - `save`  /  `load`  — bare aliases for `ws` / `wl`
+/// - `save('path')`  /  `load('path')`
+/// - `save('path', 'x', 'y')`  — selective save
+///
+/// Returns `None` if the statement is not a save/load command.
+fn try_parse_save_load(stmt: &str) -> Option<SaveLoadCmd> {
+    match stmt.trim() {
+        "save" => return Some(SaveLoadCmd::Save { path: None, vars: vec![] }),
+        "load" => return Some(SaveLoadCmd::Load { path: None }),
+        _ => {}
+    }
+    let parsed = parse(stmt).ok()?;
+    match parsed {
+        Stmt::Expr(Expr::Call(name, args)) => {
+            let mut str_args: Vec<String> = Vec::new();
+            for arg in args {
+                match arg {
+                    Expr::StrLiteral(s) | Expr::StringObjLiteral(s) => str_args.push(s),
+                    _ => return None,
+                }
+            }
+            match name.as_str() {
+                "save" => {
+                    let path = str_args.first().cloned();
+                    let vars = if str_args.len() > 1 { str_args[1..].to_vec() } else { vec![] };
+                    Some(SaveLoadCmd::Save { path, vars })
+                }
+                "load" => Some(SaveLoadCmd::Load { path: str_args.into_iter().next() }),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Appends a `% --- Session: YYYY-MM-DD HH:MM:SS UTC ---` line to the history
@@ -302,14 +349,14 @@ pub fn run() {
                     print_all_bases(ans(&env), &fmt);
                     continue;
                 }
-                "ws" => {
+                "ws" | "save" => {
                     match save_workspace_default(&env) {
                         Ok(()) => println!("Workspace saved."),
                         Err(e) => eprintln!("Error: {e}"),
                     }
                     continue;
                 }
-                "wl" => {
+                "wl" | "load" => {
                     match load_workspace_default() {
                         Ok(loaded) => {
                             env = loaded;
@@ -429,6 +476,40 @@ pub fn run() {
             if let Some(name) = stmt.strip_prefix("clear ").map(str::trim) {
                 if !name.is_empty() {
                     env.remove(name);
+                }
+                continue;
+            }
+
+            // save / load with optional path and variable list
+            if let Some(cmd) = try_parse_save_load(stmt) {
+                match cmd {
+                    SaveLoadCmd::Save { path, vars } => {
+                        let result = match (&path, vars.is_empty()) {
+                            (None, _) => save_workspace_default(&env),
+                            (Some(p), true) => save_workspace(&env, std::path::Path::new(p)),
+                            (Some(p), false) => {
+                                let var_refs: Vec<&str> = vars.iter().map(String::as_str).collect();
+                                save_workspace_vars(&env, std::path::Path::new(p), &var_refs)
+                            }
+                        };
+                        match result {
+                            Ok(()) => println!("Workspace saved."),
+                            Err(e) => eprintln!("Error: {e}"),
+                        }
+                    }
+                    SaveLoadCmd::Load { path } => {
+                        let result = match path {
+                            None => load_workspace_default(),
+                            Some(p) => load_workspace(std::path::Path::new(&p)),
+                        };
+                        match result {
+                            Ok(loaded) => {
+                                env = loaded;
+                                println!("Workspace loaded.");
+                            }
+                            Err(e) => eprintln!("Error: {e}"),
+                        }
+                    }
                 }
                 continue;
             }
@@ -642,11 +723,11 @@ pub fn run_pipe(reader: impl BufRead) {
                     print_all_bases(ans(&env), &fmt);
                     continue;
                 }
-                "ws" => {
+                "ws" | "save" => {
                     let _ = save_workspace_default(&env);
                     continue;
                 }
-                "wl" => {
+                "wl" | "load" => {
                     if let Ok(loaded) = load_workspace_default() {
                         env = loaded;
                     }
@@ -716,6 +797,32 @@ pub fn run_pipe(reader: impl BufRead) {
             if let Some(name) = stmt.strip_prefix("clear ").map(str::trim) {
                 if !name.is_empty() {
                     env.remove(name);
+                }
+                continue;
+            }
+
+            // save / load with optional path and variable list
+            if let Some(cmd) = try_parse_save_load(stmt) {
+                match cmd {
+                    SaveLoadCmd::Save { path, vars } => {
+                        let _ = match (&path, vars.is_empty()) {
+                            (None, _) => save_workspace_default(&env),
+                            (Some(p), true) => save_workspace(&env, std::path::Path::new(p)),
+                            (Some(p), false) => {
+                                let var_refs: Vec<&str> = vars.iter().map(String::as_str).collect();
+                                save_workspace_vars(&env, std::path::Path::new(p), &var_refs)
+                            }
+                        };
+                    }
+                    SaveLoadCmd::Load { path } => {
+                        let result = match path {
+                            None => load_workspace_default(),
+                            Some(p) => load_workspace(std::path::Path::new(&p)),
+                        };
+                        if let Ok(loaded) = result {
+                            env = loaded;
+                        }
+                    }
                 }
                 continue;
             }

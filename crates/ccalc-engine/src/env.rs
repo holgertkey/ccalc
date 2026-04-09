@@ -47,26 +47,57 @@ fn workspace_path() -> PathBuf {
     config_dir().join("workspace.toml")
 }
 
-/// Saves all scalar variables in `env` to `path`. Matrices are skipped.
-/// Each variable is written as `name = value\n`.
+/// Serializes one `Value` to a workspace line value string.
+/// Returns `None` for types that cannot be persisted (Matrix, Complex, Void,
+/// or strings containing characters that would break the format).
+fn serialize_value(v: &Value) -> Option<String> {
+    match v {
+        Value::Scalar(n) => Some(format!("{n}")),
+        // Char arrays: wrap in single quotes; skip if contains ' or newline
+        Value::Str(s) if !s.contains('\'') && !s.contains('\n') => {
+            Some(format!("'{s}'"))
+        }
+        // String objects: wrap in double quotes; skip if contains " or newline
+        Value::StringObj(s) if !s.contains('"') && !s.contains('\n') => {
+            Some(format!("\"{s}\""))
+        }
+        _ => None,
+    }
+}
+
+/// Saves scalars and strings from `env` to `path`.
+/// Matrices, complex values, and strings with unsafe characters are skipped.
+/// Format: `name = value` per line, where value is a raw f64, `'str'`, or `"strobj"`.
 pub fn save_workspace(env: &Env, path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create config dir: {e}"))?;
     }
-    let mut pairs: Vec<(&String, f64)> = env
+    let mut entries: Vec<(&String, String)> = env
         .iter()
-        .filter_map(|(k, v)| v.as_scalar().map(|s| (k, s)))
+        .filter_map(|(k, v)| serialize_value(v).map(|s| (k, s)))
         .collect();
-    pairs.sort_by_key(|(k, _)| k.as_str());
+    entries.sort_by_key(|(k, _)| k.as_str());
     let mut content = String::new();
-    for (name, val) in pairs {
+    for (name, val) in entries {
         content.push_str(&format!("{name} = {val}\n"));
     }
     std::fs::write(path, &content).map_err(|e| format!("Cannot write {}: {e}", path.display()))
 }
 
-/// Loads variables from `path`, returning a new `Env`.
-/// Lines that do not match `name = value` are silently skipped.
+/// Saves only the named variables from `env` to `path`.
+/// Variables not present in `env` are silently ignored.
+pub fn save_workspace_vars(env: &Env, path: &Path, vars: &[&str]) -> Result<(), String> {
+    let filtered: Env = env
+        .iter()
+        .filter(|(k, _)| vars.contains(&k.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    save_workspace(&filtered, path)
+}
+
+/// Loads variables from `path` into a new `Env`.
+/// Recognises: `name = 3.14` (Scalar), `name = 'str'` (Str), `name = "str"` (StringObj).
+/// Unrecognised lines are silently skipped.
 pub fn load_workspace(path: &Path) -> Result<Env, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
@@ -79,11 +110,19 @@ pub fn load_workspace(path: &Path) -> Result<Env, String> {
         if let Some((key, val)) = line.split_once('=') {
             let key = key.trim();
             let val = val.trim();
-            if is_valid_ident(key)
-                && let Ok(v) = val.parse::<f64>()
-            {
-                env.insert(key.to_string(), Value::Scalar(v));
+            if !is_valid_ident(key) {
+                continue;
             }
+            let value = if val.starts_with('\'') && val.ends_with('\'') && val.len() >= 2 {
+                Value::Str(val[1..val.len() - 1].to_string())
+            } else if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
+                Value::StringObj(val[1..val.len() - 1].to_string())
+            } else if let Ok(n) = val.parse::<f64>() {
+                Value::Scalar(n)
+            } else {
+                continue;
+            };
+            env.insert(key.to_string(), value);
         }
     }
     Ok(env)
@@ -179,6 +218,52 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("x = 5"));
         assert!(!content.contains("m"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_save_load_strings() {
+        let path = std::env::temp_dir().join("ccalc_test_workspace_strings.toml");
+        let mut env = Env::new();
+        env.insert("name".to_string(), Value::Str("hello".to_string()));
+        env.insert("tag".to_string(), Value::StringObj("world".to_string()));
+        env.insert("n".to_string(), Value::Scalar(1.0));
+        save_workspace(&env, &path).unwrap();
+
+        let loaded = load_workspace(&path).unwrap();
+        assert_eq!(loaded.get("name"), Some(&Value::Str("hello".to_string())));
+        assert_eq!(loaded.get("tag"), Some(&Value::StringObj("world".to_string())));
+        assert_eq!(loaded.get("n"), Some(&Value::Scalar(1.0)));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_save_skips_string_with_unsafe_chars() {
+        let path = std::env::temp_dir().join("ccalc_test_workspace_unsafe_str.toml");
+        let mut env = Env::new();
+        env.insert("s".to_string(), Value::Str("it's".to_string())); // embedded quote
+        env.insert("x".to_string(), Value::Scalar(5.0));
+        save_workspace(&env, &path).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("x = 5"));
+        assert!(!content.contains("it's")); // unsafe string skipped
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_save_workspace_vars_selective() {
+        let path = std::env::temp_dir().join("ccalc_test_workspace_vars.toml");
+        let mut env = Env::new();
+        env.insert("x".to_string(), Value::Scalar(1.0));
+        env.insert("y".to_string(), Value::Scalar(2.0));
+        env.insert("z".to_string(), Value::Scalar(3.0));
+        save_workspace_vars(&env, &path, &["x", "z"]).unwrap();
+
+        let loaded = load_workspace(&path).unwrap();
+        assert_eq!(loaded.get("x"), Some(&Value::Scalar(1.0)));
+        assert_eq!(loaded.get("z"), Some(&Value::Scalar(3.0)));
+        assert!(!loaded.contains_key("y")); // not in the list
         std::fs::remove_file(&path).ok();
     }
 }
