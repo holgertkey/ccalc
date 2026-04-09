@@ -1088,7 +1088,12 @@ fn trim_g_sci(s: String, upper: bool) -> String {
     }
 }
 
-fn call_builtin(name: &str, args: &[Value], env: &Env, io: Option<&mut IoContext>) -> Result<Value, String> {
+fn call_builtin(
+    name: &str,
+    args: &[Value],
+    env: &Env,
+    io: Option<&mut IoContext>,
+) -> Result<Value, String> {
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
         ("sqrt", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sqrt())),
@@ -1764,7 +1769,7 @@ fn call_builtin(name: &str, args: &[Value], env: &Env, io: Option<&mut IoContext
             let path = string_arg(&args[0], name, 1)?;
             let mode = string_arg(&args[1], name, 2)?;
             match io {
-                Some(ctx) => Ok(Value::Scalar(ctx.fopen(&path, &mode) as f64)),
+                Some(ctx) => Ok(Value::Scalar(ctx.fopen(path, mode) as f64)),
                 None => Err("fopen: file I/O not available in this context".to_string()),
             }
         }
@@ -1817,9 +1822,7 @@ fn call_builtin(name: &str, args: &[Value], env: &Env, io: Option<&mut IoContext
         // isfolder(path) — 1.0 if path exists and is a directory, else 0.0
         ("isfolder", 1) => {
             let path = string_arg(&args[0], name, 1)?;
-            let is_dir = std::fs::metadata(path)
-                .map(|m| m.is_dir())
-                .unwrap_or(false);
+            let is_dir = std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false);
             Ok(Value::Scalar(bool_to_f64(is_dir)))
         }
         // pwd() — current working directory as a char array (parser sends ans as sole arg for empty calls)
@@ -1845,11 +1848,19 @@ fn call_builtin(name: &str, args: &[Value], env: &Env, io: Option<&mut IoContext
             let name_arg = string_arg(&args[0], name, 1)?;
             let kind = string_arg(&args[1], name, 2)?;
             match kind {
-                "var" => Ok(Value::Scalar(if env.contains_key(name_arg) { 1.0 } else { 0.0 })),
-                "file" => Ok(Value::Scalar(
-                    if std::path::Path::new(name_arg).is_file() { 2.0 } else { 0.0 },
+                "var" => Ok(Value::Scalar(if env.contains_key(name_arg) {
+                    1.0
+                } else {
+                    0.0
+                })),
+                "file" => Ok(Value::Scalar(if std::path::Path::new(name_arg).is_file() {
+                    2.0
+                } else {
+                    0.0
+                })),
+                other => Err(format!(
+                    "exist: unknown type '{other}', expected 'var' or 'file'"
                 )),
-                other => Err(format!("exist: unknown type '{other}', expected 'var' or 'file'")),
             }
         }
         // dlmread(path) / dlmread(path, delim)
@@ -1894,8 +1905,8 @@ fn delim_consistent(lines: &[&str], delim: char) -> bool {
 
 /// Reads a delimiter-separated numeric file and returns a `Value::Matrix`.
 fn dlmread_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("dlmread: cannot read '{path}': {e}"))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("dlmread: cannot read '{path}': {e}"))?;
 
     let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
 
@@ -1930,7 +1941,10 @@ fn dlmread_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, Str
                 row_vals.push(0.0);
             } else {
                 row_vals.push(trimmed.parse::<f64>().map_err(|_| {
-                    format!("dlmread: non-numeric value '{trimmed}' on line {}", line_num + 1)
+                    format!(
+                        "dlmread: non-numeric value '{trimmed}' on line {}",
+                        line_num + 1
+                    )
                 })?);
             }
         }
@@ -1986,11 +2000,12 @@ fn dlmwrite_impl(path: &str, val: &Value, explicit_delim: Option<String>) -> Res
             }
             out
         }
-        _ => return Err("dlmwrite: second argument must be a numeric scalar or matrix".to_string()),
+        _ => {
+            return Err("dlmwrite: second argument must be a numeric scalar or matrix".to_string());
+        }
     };
 
-    std::fs::write(path, content)
-        .map_err(|e| format!("dlmwrite: cannot write '{path}': {e}"))?;
+    std::fs::write(path, content).map_err(|e| format!("dlmwrite: cannot write '{path}': {e}"))?;
     Ok(Value::Void)
 }
 

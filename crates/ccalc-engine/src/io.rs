@@ -18,6 +18,12 @@ pub struct IoContext {
     next_fd: i32,
 }
 
+impl Default for IoContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IoContext {
     pub fn new() -> Self {
         Self {
@@ -31,17 +37,17 @@ impl IoContext {
     pub fn fopen(&mut self, path: &str, mode: &str) -> i32 {
         let handle = match mode {
             "r" => File::open(path).map(|f| FileHandle::Read(BufReader::new(f))),
-            "w" => File::create(path).map(|f| FileHandle::Write(f)),
+            "w" => File::create(path).map(FileHandle::Write),
             "a" => OpenOptions::new()
                 .append(true)
                 .create(true)
                 .open(path)
-                .map(|f| FileHandle::Write(f)),
+                .map(FileHandle::Write),
             "r+" => OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(path)
-                .map(|f| FileHandle::Write(f)),
+                .map(FileHandle::Write),
             _ => return -1,
         };
         match handle {
@@ -57,7 +63,11 @@ impl IoContext {
 
     /// Closes a file descriptor. Returns 0 on success, -1 if fd is unknown.
     pub fn fclose(&mut self, fd: i32) -> i32 {
-        if self.handles.remove(&fd).is_some() { 0 } else { -1 }
+        if self.handles.remove(&fd).is_some() {
+            0
+        } else {
+            -1
+        }
     }
 
     /// Closes all open file handles.

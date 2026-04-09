@@ -142,8 +142,13 @@ fn new_env() -> Env {
 
 /// Parsed form of a `save` or `load` command.
 enum SaveLoadCmd {
-    Save { path: Option<String>, vars: Vec<String> },
-    Load { path: Option<String> },
+    Save {
+        path: Option<String>,
+        vars: Vec<String>,
+    },
+    Load {
+        path: Option<String>,
+    },
 }
 
 /// Tries to parse a statement as a `save`/`load` command (bare or with arguments).
@@ -159,7 +164,12 @@ enum SaveLoadCmd {
 /// `env` is used to resolve variable references.
 fn try_parse_save_load(stmt: &str, env: &Env) -> Option<SaveLoadCmd> {
     match stmt.trim() {
-        "save" => return Some(SaveLoadCmd::Save { path: None, vars: vec![] }),
+        "save" => {
+            return Some(SaveLoadCmd::Save {
+                path: None,
+                vars: vec![],
+            });
+        }
         "load" => return Some(SaveLoadCmd::Load { path: None }),
         _ => {}
     }
@@ -181,10 +191,16 @@ fn try_parse_save_load(stmt: &str, env: &Env) -> Option<SaveLoadCmd> {
             match name.as_str() {
                 "save" => {
                     let path = str_args.first().cloned();
-                    let vars = if str_args.len() > 1 { str_args[1..].to_vec() } else { vec![] };
+                    let vars = if str_args.len() > 1 {
+                        str_args[1..].to_vec()
+                    } else {
+                        vec![]
+                    };
                     Some(SaveLoadCmd::Save { path, vars })
                 }
-                "load" => Some(SaveLoadCmd::Load { path: str_args.into_iter().next() }),
+                "load" => Some(SaveLoadCmd::Load {
+                    path: str_args.into_iter().next(),
+                }),
                 _ => None,
             }
         }

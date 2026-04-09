@@ -1607,9 +1607,7 @@ fn test_fgetl_reads_lines() {
     let fd = io.fopen(&path, "r");
     assert!(fd >= 3);
 
-    let expr_fgetl = |fd: i32| {
-        Expr::Call("fgetl".to_string(), vec![Expr::Number(fd as f64)])
-    };
+    let expr_fgetl = |fd: i32| Expr::Call("fgetl".to_string(), vec![Expr::Number(fd as f64)]);
 
     let line1 = eval_with_io(&expr_fgetl(fd), &env, &mut io).unwrap();
     assert_eq!(line1, Value::Str("hello".to_string()));

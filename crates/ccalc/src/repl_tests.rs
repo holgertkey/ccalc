@@ -889,7 +889,10 @@ fn test_try_parse_save_with_path() {
     let env = ccalc_engine::env::Env::new();
     let cmd = try_parse_save_load("save('session.mat')", &env);
     match cmd {
-        Some(SaveLoadCmd::Save { path: Some(p), vars }) => {
+        Some(SaveLoadCmd::Save {
+            path: Some(p),
+            vars,
+        }) => {
             assert_eq!(p, "session.mat");
             assert!(vars.is_empty());
         }
@@ -902,7 +905,10 @@ fn test_try_parse_save_with_vars() {
     let env = ccalc_engine::env::Env::new();
     let cmd = try_parse_save_load("save('out.mat', 'x', 'y')", &env);
     match cmd {
-        Some(SaveLoadCmd::Save { path: Some(p), vars }) => {
+        Some(SaveLoadCmd::Save {
+            path: Some(p),
+            vars,
+        }) => {
             assert_eq!(p, "out.mat");
             assert_eq!(vars, vec!["x", "y"]);
         }

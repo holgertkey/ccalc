@@ -54,13 +54,9 @@ fn serialize_value(v: &Value) -> Option<String> {
     match v {
         Value::Scalar(n) => Some(format!("{n}")),
         // Char arrays: wrap in single quotes; skip if contains ' or newline
-        Value::Str(s) if !s.contains('\'') && !s.contains('\n') => {
-            Some(format!("'{s}'"))
-        }
+        Value::Str(s) if !s.contains('\'') && !s.contains('\n') => Some(format!("'{s}'")),
         // String objects: wrap in double quotes; skip if contains " or newline
-        Value::StringObj(s) if !s.contains('"') && !s.contains('\n') => {
-            Some(format!("\"{s}\""))
-        }
+        Value::StringObj(s) if !s.contains('"') && !s.contains('\n') => Some(format!("\"{s}\"")),
         _ => None,
     }
 }
@@ -232,7 +228,10 @@ mod tests {
 
         let loaded = load_workspace(&path).unwrap();
         assert_eq!(loaded.get("name"), Some(&Value::Str("hello".to_string())));
-        assert_eq!(loaded.get("tag"), Some(&Value::StringObj("world".to_string())));
+        assert_eq!(
+            loaded.get("tag"),
+            Some(&Value::StringObj("world".to_string()))
+        );
         assert_eq!(loaded.get("n"), Some(&Value::Scalar(1.0)));
         std::fs::remove_file(&path).ok();
     }
