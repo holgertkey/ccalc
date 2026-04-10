@@ -20,10 +20,11 @@ pub fn print(topic: Option<&str>) {
         Some("complex" | "cplx" | "imag") => print_complex(),
         Some("strings" | "string" | "str" | "char") => print_strings(),
         Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose") => print_fileio(),
+        Some("control" | "flow" | "if" | "for" | "while") => print_control(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  examples"
+                "Available topics: syntax  functions  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
             );
         }
     }
@@ -65,8 +66,8 @@ ccalc v{ver} — terminal calculator with Octave/MATLAB syntax
 
 Operators   + - * / ^        ^ is right-associative
             2(3+1) → 8       implicit multiplication
-Comparison  ==  ~=  <  >  <=  >=     return 1 (true) or 0 (false)
-Logical     ~expr  &&  ||             NOT, AND, OR
+Comparison  ==  ~= (!=)  <  >  <=  >=     return 1 (true) or 0 (false)
+Logical     ~expr (!expr)  &&  ||          NOT, AND, OR
 Constants   pi  e  ans  nan  inf  i  j  (imaginary unit)
 Partial     [ 100 ]: / 4     starts with operator → uses ans
 
@@ -98,6 +99,12 @@ Strings 'char array'  \"string object\"
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
+Compound  x += e  x -= e  x *= e  x /= e    desugar to x = x op e
+          x++  x--  ++x  --x                statement-level only
+Control   if cond / elseif / else / end
+          for var = range / end
+          while cond / end
+          break   continue
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
@@ -138,6 +145,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
   help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
+  help control     if/for/while, break/continue, compound assignment
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -189,8 +197,10 @@ Partial expressions
     [  30 ]: ^ 2      →  900
 
 Comments
-    % this is a comment
+    % this is a comment           (Octave/MATLAB style)
+    # this is a comment           (Octave/shell alias)
     10 * 5  % inline comment — expression still evaluates
+    10 * 5  # hash-style inline comment
 
 Semicolon
     Trailing ; suppresses output.
@@ -675,17 +685,19 @@ fn print_logic() {
 COMPARISON AND LOGICAL OPERATORS
 
 Comparison  (return 1.0 = true, 0.0 = false)
-    a == b      equal
-    a ~= b      not equal
-    a <  b      less than
-    a >  b      greater than
-    a <= b      less than or equal
-    a >= b      greater than or equal
+    a == b           equal
+    a ~= b  (a != b) not equal        ~= and != are equivalent
+    a <  b           less than
+    a >  b           greater than
+    a <= b           less than or equal
+    a >= b           greater than or equal
 
 Logical
-    ~expr       NOT: 1 if expr == 0, else 0
-    a && b      AND: 1 if both non-zero (scalar or element-wise)
-    a || b      OR:  1 if either non-zero (scalar or element-wise)
+    ~expr   (!expr)  NOT: 1 if expr == 0, else 0
+    a && b           AND: 1 if both non-zero (scalar or element-wise)
+    a || b           OR:  1 if either non-zero (scalar or element-wise)
+
+  ! and != are C/shell-style aliases for ~ and ~= (Octave extension).
 
 Precedence (low to high inside an expression)
     ||  →  &&  →  comparisons  →  :  →  +/-  →  *//  →  ^  →  unary
@@ -1155,5 +1167,121 @@ Workspace with explicit path
   Skipped always:  Matrix, Complex.
 
 See also: help script  help vars"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help control
+// ---------------------------------------------------------------------------
+
+fn print_control() {
+    println!(
+        "\
+CONTROL FLOW
+
+All block constructs use the keyword `end` to close. Blocks may be nested
+to any depth. Multi-line blocks work in both REPL and script/pipe mode.
+
+─── if / elseif / else ────────────────────────────────────────────────────────
+
+  if cond
+    ...
+  elseif cond2
+    ...
+  else
+    ...
+  end
+
+  Condition is truthy when:
+    Scalar:       non-zero and not NaN
+    Matrix:       all elements non-zero and not NaN
+    Str/StringObj: non-empty
+
+  Example:
+    score = 73;
+    if score >= 90
+      grade = 'A';
+    elseif score >= 70
+      grade = 'C';
+    else
+      grade = 'F';
+    end
+
+─── for ───────────────────────────────────────────────────────────────────────
+
+  for var = range_expr
+    ...
+  end
+
+  Range is evaluated once before the loop. Iteration over matrix columns:
+    Row vector  →  each element as a scalar
+    M×N matrix  →  each column as an M×1 column vector
+
+  Examples:
+    for k = 1:5
+      fprintf('%d\\n', k)
+    end
+
+    for k = 1:2:9           % step = 2  →  1 3 5 7 9
+      fprintf('%d ', k)
+    end
+
+─── while ─────────────────────────────────────────────────────────────────────
+
+  while cond
+    ...
+  end
+
+  Example:
+    x = 1.0;
+    while abs(x ^ 2 - 2) > 1e-12
+      x = (x + 2 / x) / 2;
+    end
+
+─── break / continue ──────────────────────────────────────────────────────────
+
+  break      exit the innermost loop immediately
+  continue   skip to the next iteration of the innermost loop
+
+  Example:
+    for n = 1:20
+      if mod(n, 2) == 0
+        continue
+      end
+      if n > 9
+        break
+      end
+      fprintf('%d ', n)      % prints: 1 3 5 7 9
+    end
+
+─── Compound assignment operators ─────────────────────────────────────────────
+
+  All forms desugar at parse time to a plain assignment — no new AST nodes.
+
+    x += e     →  x = x + e
+    x -= e     →  x = x - e
+    x *= e     →  x = x * e
+    x /= e     →  x = x / e
+    x++        →  x = x + 1   (suffix)
+    x--        →  x = x - 1   (suffix)
+    ++x        →  x = x + 1   (prefix)
+    --x        →  x = x - 1   (prefix)
+
+  RHS is a full expression:
+    x *= 2 + 3    →  x = x * (2 + 3)   (not x * 2 + 3)
+
+  Limitation: ++ and -- are statement-level only.
+    b = a - b--   is NOT supported (use two statements instead).
+
+─── REPL multi-line input ─────────────────────────────────────────────────────
+
+  The REPL detects unclosed blocks by tracking depth changes:
+    Keywords that open a block (+1): if  for  while
+    Keyword that closes a block (-1): end
+  Lines accumulate with a continuation prompt until the block is complete.
+  Press Ctrl+C to cancel an in-progress block.
+
+See also: help syntax  help logic
+Example:  ccalc examples/control_flow.calc"
     );
 }

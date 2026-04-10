@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-04-10
+
+### Added
+
+- **Comment alias `#`** — `#` is now equivalent to `%` as a comment character (Octave-compatible).
+  Works in all contexts: full-line, inline, inside `split_stmts`, and block parsing.
+- **Logical NOT alias `!`** — `!expr` is now equivalent to `~expr`.
+- **Not-equal alias `!=`** — `!=` is now equivalent to `~=`.
+
+## [0.15.1] - 2026-04-10
+
+### Added
+
+- **Phase 11b — Compound assignment operators**:
+  - New tokens: `+=`, `-=`, `*=`, `/=`, `++`, `--`
+  - `x += e` → `x = x + e`; `x -= e` → `x = x - e`; `x *= e` → `x = x * e`; `x /= e` → `x = x / e`
+  - `x++` / `x--` → `x = x + 1` / `x = x - 1` (suffix)
+  - `++x` / `--x` → `x = x + 1` / `x = x - 1` (prefix)
+  - All forms desugar at parse time into `Stmt::Assign` — no new AST nodes
+  - RHS is a full expression: `x *= 2 + 3` → `x = x * (2 + 3)`
+  - **Limitation**: `++`/`--` are statement-level only; using them inside a larger expression is not supported
+
+## [0.15.0] - 2026-04-10
+
+### Added
+
+- **Phase 11a — Multi-line input and core control flow**:
+  - **REPL block buffering**: incomplete blocks accumulate lines; `Ctrl+C` cancels; continuation prompt `  >> `
+  - **`if` / `elseif` / `else` / `end`**: arbitrary nesting; elseif chains
+  - **`for var = range; ...; end`**: iterates over columns of a matrix (row vector → scalars, M×N → M×1 columns)
+  - **`while cond; ...; end`**: loops while condition is truthy
+  - **`break`** — exits innermost enclosing loop
+  - **`continue`** — advances to next iteration of innermost enclosing loop
+  - **`block_depth_delta(line)`** — public API for tracking block depth per line
+  - **`parse_stmts(input)`** — public API for parsing multi-line block strings
+  - **`exec_stmts()`** in new `exec.rs` module — separates block execution from parsing/evaluation; avoids circular dependency
+  - `split_stmts()` moved from `repl.rs` to `parser.rs` (made public)
+  - **New example** `examples/control_flow.calc` — 7-section demo: grade classifier, sum of squares, odd sums, prime sieve, Newton-Raphson, Collatz sequence
+
 ## [0.14.0+006] - 2026-04-09
 
 ### Added

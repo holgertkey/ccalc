@@ -17,8 +17,10 @@ The work is divided into phases in order of architectural dependency.
 | 7.5 | Vector utilities, `end` indexing, `NaN`/`Inf`, `sort`, `find` | ✅ Done |
 | 8 | Complex numbers (`3 + 4i`, `abs(z)`, `angle(z)`) | ✅ Done |
 | 9 | String data types (`'char array'`, `"string object"`) | ✅ Done |
-| 10 | C-style I/O (`fprintf('%.2f\n', x)`, `sprintf`) | Planned |
-| 11 | Control flow (`if`, `for`, `while`, `switch`, `try`/`catch`, `+=`) | Planned |
+| 10 | C-style I/O (`fprintf('%.2f\n', x)`, `sprintf`) | ✅ Done |
+| 10.5 | File I/O (`fopen`, `dlmread`, `isfile`, `save`/`load` with path) | ✅ Done |
+| 11 | Core control flow (`if`, `for`, `while`, `break`, `continue`, `+=`) | ✅ Done |
+| 11.5 | Extended control flow (`switch`, `try`/`catch`, `do...until`, `run`) | Planned |
 | 12 | User-defined functions, multiple return values, `@(x)` lambdas | Planned |
 
 ## Key architectural decisions
@@ -105,13 +107,18 @@ string infrastructure from Phase 9. The ad-hoc `p`/`p<N>` precision command
 is deprecated and removed in this phase. Placed before control flow so that
 loop scripts have formatted output from the start.
 
-**Phase 11** adds multi-line input buffering to the REPL and six control
-flow constructs: `if`/`elseif`/`else`, `for`, `while`, `switch`
-(scalar and string `case` values; `case {…}` deferred to cell arrays),
-`do...until` (Octave-only), and `try`/`catch` error handling.
+**Phase 10** adds `fprintf(fmt, ...)` and `sprintf(fmt, ...)`.
+The ad-hoc `p`/`p<N>` precision command is removed. Phase 10.5 extends this
+with file I/O (`fopen`/`fclose`/`fgetl`/`fgets`), data files (`dlmread`/`dlmwrite`),
+filesystem queries (`isfile`, `isfolder`, `pwd`, `exist`), and workspace
+persistence with explicit paths (`save('f.mat')`, `load('f.mat')`).
+
+**Phase 11** adds multi-line REPL buffering and core control flow constructs:
+`if`/`elseif`/`else`, `for` (column iteration), `while`, `break`, `continue`.
 Compound assignment operators (`+=`, `-=`, `*=`, `/=`, `++`, `--`) are
-desugared at parse time — no new AST nodes.
-Multi-value `case {2, 3}` requires cell arrays and is deferred.
+desugared at parse time to plain `Stmt::Assign` — no new AST nodes.
+Syntax aliases: `#` for `%` (comment), `!` for `~` (NOT), `!=` for `~=`.
+Extended control flow (`switch`, `try`/`catch`, `do...until`) moves to Phase 11.5.
 
 **Phase 12** adds user-defined functions with single and multiple return
 values (`[a, b] = f(x)`), and anonymous functions `@(x) expr` (closures).

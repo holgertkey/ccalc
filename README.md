@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.14.0+006** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.15.2** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -559,22 +559,24 @@ All require **non-negative integer** arguments — combine naturally with `0xFF`
 
 Comparison operators return `1` (true) or `0` (false):
 
-| Operator | Meaning           |
-|----------|-------------------|
-| `==`     | Equal             |
-| `~=`     | Not equal         |
-| `<`      | Less than         |
-| `>`      | Greater than      |
-| `<=`     | Less or equal     |
-| `>=`     | Greater or equal  |
+| Operator      | Meaning           |
+|---------------|-------------------|
+| `==`          | Equal             |
+| `~=` or `!=` | Not equal         |
+| `<`           | Less than         |
+| `>`           | Greater than      |
+| `<=`          | Less or equal     |
+| `>=`          | Greater or equal  |
 
 Logical operators:
 
-| Operator | Meaning              |
-|----------|----------------------|
-| `~expr`  | Logical NOT (unary)  |
-| `&&`     | Logical AND          |
-| `\|\|`   | Logical OR           |
+| Operator        | Meaning              |
+|-----------------|----------------------|
+| `~expr` or `!expr` | Logical NOT (unary) |
+| `&&`            | Logical AND          |
+| `\|\|`          | Logical OR           |
+
+`!` and `!=` are C/shell-style aliases for `~` and `~=`.
 
 **Precedence** (low → high): `||` → `&&` → comparisons → `:` → `+`/`-` → `*`/`/` → `^` → unary (`-`, `~`) → primary
 
@@ -813,6 +815,90 @@ Scalars, char arrays, and string objects are persisted. Matrices, complex values
 
 ---
 
+## Control Flow
+
+Multi-line control flow blocks are supported in both REPL and script mode.
+
+### REPL multi-line input
+
+The REPL detects unclosed blocks and buffers lines with a continuation prompt until `end` is seen. Press `Ctrl+C` to cancel an incomplete block.
+
+```
+[ 0 ]:   for k = 1:3
+  >>   fprintf('%d\n', k)
+  >> end
+1
+2
+3
+```
+
+### `if` / `elseif` / `else`
+
+```matlab
+score = 73;
+if score >= 90
+  grade = 'A';
+elseif score >= 70
+  grade = 'C';
+else
+  grade = 'F';
+end
+fprintf('grade: %s\n', grade)
+```
+
+### `for`
+
+Iterates over a range (or matrix columns):
+
+```matlab
+total = 0;
+for k = 1:10
+  total += k ^ 2;
+end
+fprintf('sum of squares: %d\n', total)   % 385
+```
+
+### `while`
+
+```matlab
+x = 1.0;
+while abs(x ^ 2 - 2) > 1e-12
+  x = (x + 2 / x) / 2;
+end
+fprintf('sqrt(2) ≈ %.15f\n', x)
+```
+
+### `break` and `continue`
+
+```matlab
+for n = 1:20
+  if mod(n, 2) == 0
+    continue       % skip even numbers
+  end
+  if n > 9
+    break          % stop after 9
+  end
+  fprintf('%d ', n)
+end
+```
+
+### Compound assignment operators
+
+| Operator | Meaning         |
+|----------|-----------------|
+| `x += e` | `x = x + e`    |
+| `x -= e` | `x = x - e`    |
+| `x *= e` | `x = x * e`    |
+| `x /= e` | `x = x / e`    |
+| `x++`    | `x = x + 1`    |
+| `x--`    | `x = x - 1`    |
+| `++x`    | `x = x + 1`    |
+| `--x`    | `x = x - 1`    |
+
+All forms desugar at parse time — no performance penalty.
+
+---
+
 ## REPL commands
 
 | Command                           | Action                              |
@@ -996,11 +1082,14 @@ When reading from a file (`ccalc < formula.txt`) you have three tools to control
 
 ### Comments
 
-`%` starts a comment (Octave/MATLAB convention). It can be the first character on the line (full-line comment) or appear after an expression (inline comment). Everything from `%` to end-of-line is ignored.
+`%` starts a comment (Octave/MATLAB convention). `#` is a supported alias (Octave and shell style). Both can appear as the first character on the line (full-line comment) or inline after an expression.
 
 ```
 % Cylinder volume: V = pi * r^2 * h
 pi * 5^2      % pi * r^2, r = 5
+
+# same as above — hash-style comment
+pi * 5^2      # inline hash comment
 ```
 
 ### Semicolon — suppress output
@@ -1074,6 +1163,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
+| `control_flow.calc`     | Control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |
 
 ```bash
 ccalc < examples/mortgage.calc
@@ -1103,8 +1193,9 @@ crates/
     lib.rs       — crate root, public module exports
     env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void), Env type (HashMap<String, Value>), workspace save/load
     eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums
+    exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue)
     io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd
-    parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum
+    parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum (incl. If/For/While/Break/Continue)
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history
 ```
