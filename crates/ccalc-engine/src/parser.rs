@@ -528,6 +528,9 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
 /// - `x--`        →  `x = x - 1`
 /// - `++x`        →  `x = x + 1`   (prefix)
 /// - `--x`        →  `x = x - 1`   (prefix)
+///
+/// **Limitation**: `++`/`--` are statement-level only. Using them inside a larger
+/// expression (e.g. `b = a - b--`) is not supported.
 fn try_parse_compound(tokens: &[Token]) -> Result<Option<Stmt>, String> {
     // Prefix ++x / --x
     if tokens.len() == 2
