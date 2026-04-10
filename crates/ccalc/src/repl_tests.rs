@@ -493,8 +493,8 @@ fn pipe_output(input: &str) -> Vec<String> {
             if let Some(arg) = parse_disp_cmd(stmt) {
                 let result = parse(arg.trim()).and_then(|stmt| {
                     let expr = match stmt {
-                        Stmt::Expr(e) => e,
-                        Stmt::Assign(_, e) => e,
+                        Stmt::Expr(e) | Stmt::Assign(_, e) => e,
+                        _ => return Err("Block statements not valid in disp()".to_string()),
                     };
                     eval(&expr, &env)
                 });

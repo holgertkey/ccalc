@@ -22,5 +22,6 @@
 
 pub mod env;
 pub mod eval;
+pub mod exec;
 pub mod io;
 pub mod parser;

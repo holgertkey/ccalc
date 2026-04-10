@@ -851,8 +851,8 @@ fn eval_parse(input: &str, env: &Env) -> Result<Value, String> {
     use crate::parser::{Stmt, parse};
     let stmt = parse(input)?;
     let expr = match stmt {
-        Stmt::Expr(e) => e,
-        Stmt::Assign(_, e) => e,
+        Stmt::Expr(e) | Stmt::Assign(_, e) => e,
+        _ => return Err("Block statements not valid in expression context".to_string()),
     };
     eval(&expr, env)
 }

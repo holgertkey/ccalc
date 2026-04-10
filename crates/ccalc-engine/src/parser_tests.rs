@@ -9,27 +9,30 @@ fn eval_s(expr: &Expr, env: &Env) -> f64 {
     }
 }
 
+/// Extracts the inner `Expr` from a simple `Stmt::Assign` or `Stmt::Expr`.
+/// Panics if the statement is a block (`If`/`For`/`While`/`Break`/`Continue`).
+fn unwrap_expr(stmt: Stmt) -> Expr {
+    match stmt {
+        Stmt::Expr(e) | Stmt::Assign(_, e) => e,
+        _ => panic!("expected simple Expr or Assign, got a block statement"),
+    }
+}
+
 fn calc(input: &str) -> f64 {
     let env = Env::new();
-    match parse(input).unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval_s(&expr, &env),
-    }
+    eval_s(&unwrap_expr(parse(input).unwrap()), &env)
 }
 
 fn calc_with_ans(input: &str, ans: f64) -> f64 {
     let mut env = Env::new();
     env.insert("ans".to_string(), Value::Scalar(ans));
-    match parse(input).unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval_s(&expr, &env),
-    }
+    eval_s(&unwrap_expr(parse(input).unwrap()), &env)
 }
 
 fn calc_with_var(input: &str, name: &str, val: f64) -> f64 {
     let mut env = Env::new();
     env.insert(name.to_string(), Value::Scalar(val));
-    match parse(input).unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval_s(&expr, &env),
-    }
+    eval_s(&unwrap_expr(parse(input).unwrap()), &env)
 }
 
 #[test]
@@ -623,11 +626,9 @@ fn test_is_partial_elem_ops() {
 
 fn calc_vec(input: &str) -> Vec<f64> {
     let env = Env::new();
-    match parse(input).unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => match eval(&expr, &env).unwrap() {
-            Value::Matrix(m) => m.iter().copied().collect(),
-            _ => panic!("expected matrix"),
-        },
+    match eval(&unwrap_expr(parse(input).unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m.iter().copied().collect(),
+        _ => panic!("expected matrix"),
     }
 }
 
@@ -765,15 +766,11 @@ fn index_env() -> Env {
 }
 
 fn eval_with(input: &str, env: &Env) -> Value {
-    match parse(input).unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, env).unwrap(),
-    }
+    eval(&unwrap_expr(parse(input).unwrap()), env).unwrap()
 }
 
 fn try_eval_with(input: &str, env: &Env) -> Result<Value, String> {
-    match parse(input)? {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, env),
-    }
+    eval(&unwrap_expr(parse(input)?), env)
 }
 
 fn scalar_with(input: &str, env: &Env) -> f64 {
@@ -1136,28 +1133,20 @@ fn test_bitwise_error_negative() {
     assert!(parse("bitand(-1, 5)").is_ok()); // parses OK
     // eval must fail for negative args
     let env = Env::new();
-    assert!(match parse("bitand(-1, 5)").unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
-    });
+    assert!(eval(&unwrap_expr(parse("bitand(-1, 5)").unwrap()), &env).is_err());
 }
 
 #[test]
 fn test_bitwise_error_noninteger() {
     let env = Env::new();
-    assert!(match parse("bitand(1.5, 2)").unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
-    });
+    assert!(eval(&unwrap_expr(parse("bitand(1.5, 2)").unwrap()), &env).is_err());
 }
 
 #[test]
 fn test_bitnot_error_invalid_width() {
     let env = Env::new();
-    assert!(match parse("bitnot(5, 0)").unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
-    });
-    assert!(match parse("bitnot(5, 54)").unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
-    });
+    assert!(eval(&unwrap_expr(parse("bitnot(5, 0)").unwrap()), &env).is_err());
+    assert!(eval(&unwrap_expr(parse("bitnot(5, 54)").unwrap()), &env).is_err());
 }
 
 // --- Phase 7.5a: Special constants ---
@@ -1378,9 +1367,7 @@ fn test_reshape_wrong_size() {
     use ndarray::array;
     let mut env = Env::new();
     env.insert("v".to_string(), Value::Matrix(array![[1.0, 2.0, 3.0]]));
-    assert!(match parse("reshape(v, 2, 2)").unwrap() {
-        Stmt::Expr(expr) | Stmt::Assign(_, expr) => eval(&expr, &env).is_err(),
-    });
+    assert!(eval(&unwrap_expr(parse("reshape(v, 2, 2)").unwrap()), &env).is_err());
 }
 
 #[test]
@@ -1633,4 +1620,136 @@ fn test_parse_empty_string_obj() {
         Stmt::Expr(Expr::StringObjLiteral(s)) => assert_eq!(s, ""),
         other => panic!("unexpected: {:?}", other),
     }
+}
+
+// ── Phase 11a: Multi-line block parsing ──────────────────────────────────────
+
+use crate::eval::Base;
+use crate::eval::FormatMode;
+use crate::exec::exec_stmts;
+use crate::io::IoContext;
+
+fn run_block(src: &str) -> Env {
+    let stmts = parse_stmts(src).expect("parse_stmts failed");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .expect("exec_stmts failed");
+    env
+}
+
+fn scalar(env: &Env, name: &str) -> f64 {
+    match env.get(name) {
+        Some(Value::Scalar(n)) => *n,
+        v => panic!("expected scalar for '{name}', got {v:?}"),
+    }
+}
+
+#[test]
+fn test_parse_stmts_simple_assign() {
+    let env = run_block("x = 42");
+    assert_eq!(scalar(&env, "x"), 42.0);
+}
+
+#[test]
+fn test_parse_stmts_multiline_assign() {
+    let env = run_block("x = 1\ny = 2\nz = x + y");
+    assert_eq!(scalar(&env, "x"), 1.0);
+    assert_eq!(scalar(&env, "y"), 2.0);
+    assert_eq!(scalar(&env, "z"), 3.0);
+}
+
+#[test]
+fn test_if_true_branch() {
+    let env = run_block("x = 5\nif x > 0\n  y = 1\nend");
+    assert_eq!(scalar(&env, "y"), 1.0);
+}
+
+#[test]
+fn test_if_false_branch() {
+    let env = run_block("x = -1\nif x > 0\n  y = 1\nelse\n  y = 0\nend");
+    assert_eq!(scalar(&env, "y"), 0.0);
+}
+
+#[test]
+fn test_if_elseif_chain() {
+    let src = "x = 0\nif x > 0\n  r = 1\nelseif x == 0\n  r = 0\nelse\n  r = -1\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 0.0);
+}
+
+#[test]
+fn test_if_only_else() {
+    let env = run_block("x = -5\nif x > 0\n  r = 1\nelse\n  r = -1\nend");
+    assert_eq!(scalar(&env, "r"), -1.0);
+}
+
+#[test]
+fn test_for_loop_sum() {
+    let src = "s = 0\nfor k = 1:5\n  s = s + k\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "s"), 15.0);
+}
+
+#[test]
+fn test_for_loop_variable() {
+    let src = "last = 0\nfor k = 1:4\n  last = k\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "last"), 4.0);
+}
+
+#[test]
+fn test_while_loop() {
+    let src = "x = 1\nwhile x < 8\n  x = x * 2\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "x"), 8.0);
+}
+
+#[test]
+fn test_while_false_from_start() {
+    let env = run_block("x = 10\nwhile x < 0\n  x = x - 1\nend");
+    assert_eq!(scalar(&env, "x"), 10.0);
+}
+
+#[test]
+fn test_break_exits_loop() {
+    let src = "s = 0\nfor k = 1:10\n  if k > 3\n    break\n  end\n  s = s + k\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "s"), 6.0); // 1+2+3
+}
+
+#[test]
+fn test_continue_skips_iteration() {
+    let src = "s = 0\nfor k = 1:5\n  if k == 3\n    continue\n  end\n  s = s + k\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "s"), 12.0); // 1+2+4+5
+}
+
+#[test]
+fn test_nested_for_loops() {
+    let src = "s = 0\nfor i = 1:3\n  for j = 1:3\n    s = s + 1\n  end\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "s"), 9.0);
+}
+
+#[test]
+fn test_block_depth_delta_keywords() {
+    assert_eq!(block_depth_delta("if x > 0"), 1);
+    assert_eq!(block_depth_delta("for k = 1:10"), 1);
+    assert_eq!(block_depth_delta("while x > 0"), 1);
+    assert_eq!(block_depth_delta("end"), -1);
+    assert_eq!(block_depth_delta("else"), 0);
+    assert_eq!(block_depth_delta("elseif x > 0"), 0);
+    assert_eq!(block_depth_delta("x = 1"), 0);
+    assert_eq!(block_depth_delta("end_value = 5"), 0); // not a keyword
+    assert_eq!(block_depth_delta("if_flag = 1"), 0); // not a keyword
+    assert_eq!(block_depth_delta("% if comment"), 0); // inside comment
 }

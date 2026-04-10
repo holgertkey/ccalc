@@ -11,8 +11,9 @@ use ccalc_engine::eval::{
     Base, Expr, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
     format_value_full,
 };
+use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
-use ccalc_engine::parser::{Stmt, is_partial, parse};
+use ccalc_engine::parser::{Stmt, block_depth_delta, is_partial, parse, parse_stmts, split_stmts};
 
 /// Result of evaluating one input line.
 enum EvalResult {
@@ -47,82 +48,8 @@ fn evaluate(input: &str, env: &mut Env, io: &mut IoContext) -> Result<EvalResult
             env.insert("ans".to_string(), val.clone()); // always update ans
             Ok(EvalResult::Value(val))
         }
+        _ => Err("Block statements must be entered in multi-line mode".to_string()),
     }
-}
-
-/// Splits a raw input line into `(statement, silent)` pairs.
-///
-/// - Strips inline `%` comments (outside string literals).
-/// - Splits on `;` outside string literals and outside `[...]` brackets.
-/// - `silent = true` when the statement was followed by `;`,
-///   meaning output is suppressed.
-fn split_stmts(input: &str) -> Vec<(&str, bool)> {
-    let mut semis: Vec<usize> = Vec::new();
-    let mut comment_at = input.len();
-    let mut in_sq = false;
-    let mut in_dq = false;
-
-    let mut bracket_depth: i32 = 0;
-    for (i, c) in input.char_indices() {
-        match c {
-            '\'' if !in_dq => {
-                if in_sq {
-                    in_sq = false; // closing string quote
-                } else {
-                    // Transpose operator if preceded by ident char, digit, ')', ']', or another '
-                    // (i.e. the context is "rvalue '"); otherwise it opens a string literal.
-                    let before = input[..i].trim_end_matches([' ', '\t']);
-                    let is_transpose = before.ends_with(|c: char| {
-                        c.is_alphanumeric() || c == '_' || c == ')' || c == ']' || c == '\''
-                    });
-                    if !is_transpose {
-                        in_sq = true;
-                    }
-                }
-            }
-            '"' if !in_sq => in_dq = !in_dq,
-            '[' if !in_sq && !in_dq => bracket_depth += 1,
-            ']' if !in_sq && !in_dq => {
-                if bracket_depth > 0 {
-                    bracket_depth -= 1;
-                }
-            }
-            '%' if !in_sq && !in_dq && bracket_depth == 0 => {
-                comment_at = i;
-                break;
-            }
-            ';' if !in_sq && !in_dq && bracket_depth == 0 => semis.push(i),
-            _ => {}
-        }
-    }
-
-    let content = input[..comment_at].trim_end();
-    if content.is_empty() {
-        return Vec::new();
-    }
-
-    let mut result = Vec::new();
-    let mut start = 0;
-
-    for &sc in &semis {
-        if sc >= content.len() {
-            break;
-        }
-        let part = content[start..sc].trim();
-        if !part.is_empty() {
-            result.push((part, true));
-        }
-        start = sc + 1;
-    }
-
-    if start <= content.len() {
-        let last = content[start..].trim();
-        if !last.is_empty() {
-            result.push((last, false));
-        }
-    }
-
-    result
 }
 
 fn ans(env: &Env) -> f64 {
@@ -320,11 +247,30 @@ pub fn run() {
     );
     println!();
 
+    // Multi-line block buffering state
+    let mut block_buf: Vec<String> = Vec::new();
+    let mut block_depth: i32 = 0;
+
     'repl: loop {
-        let prompt = format!("[ {} ]: ", format_prompt_ans(&env, base, &fmt));
+        let prompt = if block_depth > 0 {
+            "  >> ".to_string()
+        } else {
+            format!("[ {} ]: ", format_prompt_ans(&env, base, &fmt))
+        };
+
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
-            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
+            Err(ReadlineError::Interrupted) => {
+                if block_depth > 0 {
+                    // Cancel current block
+                    block_buf.clear();
+                    block_depth = 0;
+                    eprintln!("^C");
+                    continue;
+                }
+                break;
+            }
+            Err(ReadlineError::Eof) => break,
             Err(err) => {
                 eprintln!("Error: {:?}", err);
                 break;
@@ -336,6 +282,34 @@ pub fn run() {
             continue;
         }
         let _ = rl.add_history_entry(trimmed);
+
+        // Exit/quit always works, even inside block mode
+        if trimmed == "exit" || trimmed == "quit" {
+            break 'repl;
+        }
+
+        // Block mode: accumulate lines until block closes
+        let delta = block_depth_delta(trimmed);
+        if block_depth > 0 || delta > 0 {
+            block_buf.push(trimmed.to_string());
+            block_depth += delta;
+            if block_depth <= 0 {
+                block_depth = 0;
+                let block_input = block_buf.join("\n");
+                block_buf.clear();
+                match parse_stmts(&block_input) {
+                    Ok(stmts) => match exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                        Ok(None) => {}
+                        Ok(Some(Signal::Break | Signal::Continue)) => {
+                            eprintln!("Error: 'break'/'continue' outside a loop");
+                        }
+                        Err(e) => eprintln!("Error: {e}"),
+                    },
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            continue;
+        }
 
         for (stmt, silent) in split_stmts(trimmed) {
             // Built-in commands
@@ -708,6 +682,10 @@ pub fn run_pipe(reader: impl BufRead) {
     let mut compact = false;
     let mut base = Base::Dec;
 
+    // Multi-line block buffering state
+    let mut block_buf: Vec<String> = Vec::new();
+    let mut block_depth: i32 = 0;
+
     'lines: for line in reader.lines() {
         let line = match line {
             Ok(l) => l,
@@ -717,6 +695,37 @@ pub fn run_pipe(reader: impl BufRead) {
             }
         };
         let trimmed = line.trim();
+
+        if trimmed.is_empty() {
+            if block_depth > 0 {
+                block_buf.push(String::new());
+            }
+            continue;
+        }
+
+        // Block mode: accumulate lines until block closes
+        let delta = block_depth_delta(trimmed);
+        if block_depth > 0 || delta > 0 {
+            if matches!(trimmed, "exit" | "quit") {
+                break 'lines;
+            }
+            block_buf.push(trimmed.to_string());
+            block_depth += delta;
+            if block_depth <= 0 {
+                block_depth = 0;
+                let block_input = block_buf.join("\n");
+                block_buf.clear();
+                match parse_stmts(&block_input) {
+                    Ok(stmts) => {
+                        if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                            eprintln!("Error: {e}");
+                        }
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            continue;
+        }
 
         for (stmt, silent) in split_stmts(trimmed) {
             // Built-in commands (subset relevant in pipe mode)
@@ -1287,8 +1296,8 @@ fn parse_disp_cmd(input: &str) -> Option<&str> {
 fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
     let result = parse(arg.trim()).and_then(|stmt| {
         let expr = match stmt {
-            Stmt::Expr(e) => e,
-            Stmt::Assign(_, e) => e,
+            Stmt::Expr(e) | Stmt::Assign(_, e) => e,
+            _ => return Err("Block statements are not valid in disp()".to_string()),
         };
         eval(&expr, env)
     });
