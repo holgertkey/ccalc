@@ -612,7 +612,10 @@ fn try_parse_compound(tokens: &[Token]) -> Result<Option<Stmt>, String> {
 pub fn is_partial(input: &str) -> bool {
     let mut chars = input.trim_start().chars();
     match chars.next() {
-        Some('+' | '-' | '*' | '/' | '^' | '<' | '>') => true,
+        // '++' and '--' are prefix increment/decrement, not binary operators
+        Some('+') => !matches!(chars.next(), Some('+')),
+        Some('-') => !matches!(chars.next(), Some('-')),
+        Some('*' | '/' | '^' | '<' | '>') => true,
         // '.*', './', '.^' are element-wise binary operators
         Some('.') => matches!(chars.next(), Some('*' | '/' | '^')),
         // '==' comparison; '~=' not-equal
