@@ -1753,3 +1753,209 @@ fn test_block_depth_delta_keywords() {
     assert_eq!(block_depth_delta("if_flag = 1"), 0); // not a keyword
     assert_eq!(block_depth_delta("% if comment"), 0); // inside comment
 }
+
+// ── Phase 11b: Compound assignment operators ──────────────────────────────────
+
+fn parse_assign(input: &str) -> (String, Expr) {
+    match parse(input).unwrap() {
+        Stmt::Assign(name, expr) => (name, expr),
+        other => panic!("expected Stmt::Assign, got {other:?}"),
+    }
+}
+
+fn exec_with_var(src: &str, var: &str, init: f64) -> f64 {
+    let stmts = parse_stmts(src).expect("parse_stmts failed");
+    let mut env = Env::new();
+    env.insert(var.to_string(), Value::Scalar(init));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .expect("exec_stmts failed");
+    scalar(&env, var)
+}
+
+#[test]
+fn test_plus_eq() {
+    // Parse check
+    let (name, _) = parse_assign("x += 5");
+    assert_eq!(name, "x");
+    // Execution: x = 10, then x += 5 → 15
+    assert_eq!(exec_with_var("x += 5", "x", 10.0), 15.0);
+}
+
+#[test]
+fn test_minus_eq() {
+    let stmts = parse_stmts("x -= 3").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(10.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 7.0);
+}
+
+#[test]
+fn test_star_eq() {
+    let stmts = parse_stmts("x *= 3").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(4.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 12.0);
+}
+
+#[test]
+fn test_slash_eq() {
+    let stmts = parse_stmts("x /= 2").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(8.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 4.0);
+}
+
+#[test]
+fn test_plus_plus_suffix() {
+    let stmts = parse_stmts("x++").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 6.0);
+}
+
+#[test]
+fn test_minus_minus_suffix() {
+    let stmts = parse_stmts("x--").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 4.0);
+}
+
+#[test]
+fn test_plus_plus_prefix() {
+    let stmts = parse_stmts("++x").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 6.0);
+}
+
+#[test]
+fn test_minus_minus_prefix() {
+    let stmts = parse_stmts("--x").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 4.0);
+}
+
+#[test]
+fn test_compound_in_for_loop() {
+    let src = "s = 0\nfor k = 1:5\n  s += k\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "s"), 15.0);
+}
+
+#[test]
+fn test_increment_in_while_loop() {
+    let src = "i = 0\nwhile i < 5\n  i++\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "i"), 5.0);
+}
+
+#[test]
+fn test_compound_rhs_expression() {
+    // x *= 2 + 3  →  x = x * (2 + 3) = x * 5
+    let stmts = parse_stmts("x *= 2 + 3").unwrap();
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(4.0));
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "x"), 20.0);
+}
+
+#[test]
+fn test_arithmetic_still_works_after_tokenizer_changes() {
+    // Ensure regular + and - still work (not confused with ++ or +=)
+    assert_eq!(calc("1 + 2"), 3.0);
+    assert_eq!(calc("5 - 3"), 2.0);
+    assert_eq!(calc("2 * 4"), 8.0);
+    assert_eq!(calc("10 / 4"), 2.5);
+    assert_eq!(calc("1e-3"), 0.001); // sci notation with minus
+    assert_eq!(calc("1e+3"), 1000.0); // sci notation with plus
+    assert_eq!(calc("-5 + 3"), -2.0); // unary minus + binary plus
+}

@@ -50,6 +50,13 @@ enum Token {
     RBracket,
     Semicolon,
     Colon,
+    // --- Compound assignment ---
+    PlusEq,     // +=
+    MinusEq,    // -=
+    StarEq,     // *=
+    SlashEq,    // /=
+    PlusPlus,   // ++
+    MinusMinus, // --
     // --- Comparison ---
     EqEq,  // ==
     NotEq, // ~=
@@ -146,20 +153,50 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             '+' => {
-                tokens.push(Token::Plus);
                 chars.next();
+                match chars.peek() {
+                    Some('=') => {
+                        chars.next();
+                        tokens.push(Token::PlusEq);
+                    }
+                    Some('+') => {
+                        chars.next();
+                        tokens.push(Token::PlusPlus);
+                    }
+                    _ => tokens.push(Token::Plus),
+                }
             }
             '-' => {
-                tokens.push(Token::Minus);
                 chars.next();
+                match chars.peek() {
+                    Some('=') => {
+                        chars.next();
+                        tokens.push(Token::MinusEq);
+                    }
+                    Some('-') => {
+                        chars.next();
+                        tokens.push(Token::MinusMinus);
+                    }
+                    _ => tokens.push(Token::Minus),
+                }
             }
             '*' => {
-                tokens.push(Token::Star);
                 chars.next();
+                if chars.peek() == Some(&'=') {
+                    chars.next();
+                    tokens.push(Token::StarEq);
+                } else {
+                    tokens.push(Token::Star);
+                }
             }
             '/' => {
-                tokens.push(Token::Slash);
                 chars.next();
+                if chars.peek() == Some(&'=') {
+                    chars.next();
+                    tokens.push(Token::SlashEq);
+                } else {
+                    tokens.push(Token::Slash);
+                }
             }
             '^' => {
                 tokens.push(Token::Caret);
@@ -467,12 +504,107 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
     if tokens.is_empty() {
         return Err("Empty expression".to_string());
     }
+
+    // Check for compound assignment: x += expr, x -= expr, x *= expr, x /= expr,
+    // x++, x--, ++x, --x (all desugar to simple Stmt::Assign at parse time).
+    if let Some(stmt) = try_parse_compound(&tokens)? {
+        return Ok(stmt);
+    }
+
     let mut pos = 0;
     let expr = parse_logical_or(&tokens, &mut pos)?;
     if pos != tokens.len() {
         return Err("Unexpected token after expression".to_string());
     }
     Ok(Stmt::Expr(expr))
+}
+
+/// Tries to parse a compound assignment or increment/decrement statement from an already-
+/// tokenised token list. Returns `Ok(Some(stmt))` on a match, `Ok(None)` otherwise.
+///
+/// Supported forms (all desugar to `Stmt::Assign` — no new AST nodes required):
+/// - `x op= rhs`  →  `x = x op rhs`   (`op` ∈ {+, −, ×, ÷})
+/// - `x++`        →  `x = x + 1`
+/// - `x--`        →  `x = x - 1`
+/// - `++x`        →  `x = x + 1`   (prefix)
+/// - `--x`        →  `x = x - 1`   (prefix)
+fn try_parse_compound(tokens: &[Token]) -> Result<Option<Stmt>, String> {
+    // Prefix ++x / --x
+    if tokens.len() == 2
+        && let Token::Ident(name) = &tokens[1]
+    {
+        let op = match &tokens[0] {
+            Token::PlusPlus => Some(Op::Add),
+            Token::MinusMinus => Some(Op::Sub),
+            _ => None,
+        };
+        if let Some(op) = op {
+            let expr = Expr::BinOp(
+                Box::new(Expr::Var(name.clone())),
+                op,
+                Box::new(Expr::Number(1.0)),
+            );
+            return Ok(Some(Stmt::Assign(name.clone(), expr)));
+        }
+    }
+
+    // All remaining forms start with an identifier
+    let name = match tokens.first() {
+        Some(Token::Ident(n)) => n.clone(),
+        _ => return Ok(None),
+    };
+
+    if tokens.len() < 2 {
+        return Ok(None);
+    }
+
+    match &tokens[1] {
+        // Suffix x++ / x--
+        Token::PlusPlus | Token::MinusMinus if tokens.len() == 2 => {
+            let op = if matches!(&tokens[1], Token::PlusPlus) {
+                Op::Add
+            } else {
+                Op::Sub
+            };
+            let expr = Expr::BinOp(
+                Box::new(Expr::Var(name.clone())),
+                op,
+                Box::new(Expr::Number(1.0)),
+            );
+            Ok(Some(Stmt::Assign(name, expr)))
+        }
+
+        // x op= rhs
+        Token::PlusEq | Token::MinusEq | Token::StarEq | Token::SlashEq => {
+            let op = match &tokens[1] {
+                Token::PlusEq => Op::Add,
+                Token::MinusEq => Op::Sub,
+                Token::StarEq => Op::Mul,
+                Token::SlashEq => Op::Div,
+                _ => unreachable!(),
+            };
+            let rhs_tokens = &tokens[2..];
+            if rhs_tokens.is_empty() {
+                let op_str = match op {
+                    Op::Add => "+=",
+                    Op::Sub => "-=",
+                    Op::Mul => "*=",
+                    Op::Div => "/=",
+                    _ => "op=",
+                };
+                return Err(format!("Expected expression after '{op_str}'"));
+            }
+            let mut pos = 0;
+            let rhs = parse_logical_or(rhs_tokens, &mut pos)?;
+            if pos != rhs_tokens.len() {
+                return Err("Unexpected token after expression".to_string());
+            }
+            let expr = Expr::BinOp(Box::new(Expr::Var(name.clone())), op, Box::new(rhs));
+            Ok(Some(Stmt::Assign(name, expr)))
+        }
+
+        _ => Ok(None),
+    }
 }
 
 /// Returns true if the input looks like a partial expression
