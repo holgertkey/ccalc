@@ -1959,3 +1959,33 @@ fn test_arithmetic_still_works_after_tokenizer_changes() {
     assert_eq!(calc("1e+3"), 1000.0); // sci notation with plus
     assert_eq!(calc("-5 + 3"), -2.0); // unary minus + binary plus
 }
+
+// ── Aliases: # comment, ! NOT, != not-equal ───────────────────────────────
+
+#[test]
+fn test_hash_comment_full_line() {
+    // A line that is only a comment produces no tokens → parse error (empty)
+    // but split_stmts strips it entirely
+    let pairs = split_stmts("# this is a comment");
+    assert!(pairs.is_empty());
+}
+
+#[test]
+fn test_hash_comment_inline() {
+    // Inline # comment: only the part before # is parsed
+    assert_eq!(calc("2 + 3 # plus three"), 5.0);
+}
+
+#[test]
+fn test_bang_not() {
+    // !x  →  same as ~x
+    assert_eq!(calc_with_var("!x", "x", 5.0), 0.0);  // nonzero → 0
+    assert_eq!(calc_with_var("!x", "x", 0.0), 1.0);  // zero    → 1
+}
+
+#[test]
+fn test_bang_not_eq() {
+    // !=  →  same as ~=
+    assert_eq!(calc("3 != 4"), 1.0);
+    assert_eq!(calc("3 != 3"), 0.0);
+}

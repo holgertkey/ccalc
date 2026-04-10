@@ -67,7 +67,7 @@ enum Token {
     // --- Logical ---
     AmpAmp,   // &&
     PipePipe, // ||
-    Tilde,    // ~ (unary NOT)
+    Tilde,    // ~ / ! (unary NOT)
 }
 
 fn parse_integer_literal(
@@ -306,9 +306,18 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     _ => return Err("Unexpected '.'".to_string()),
                 }
             }
-            '%' => {
-                // '%' starts a comment in Octave/MATLAB — stop tokenizing
+            '%' | '#' => {
+                // '%' / '#' start a comment — stop tokenizing
                 break;
+            }
+            '!' => {
+                chars.next();
+                if chars.peek().copied() == Some('=') {
+                    chars.next();
+                    tokens.push(Token::NotEq);
+                } else {
+                    tokens.push(Token::Tilde);
+                }
             }
             '(' => {
                 tokens.push(Token::LParen);
@@ -669,7 +678,7 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                     bracket_depth -= 1;
                 }
             }
-            '%' if !in_sq && !in_dq && bracket_depth == 0 => {
+            '%' | '#' if !in_sq && !in_dq && bracket_depth == 0 => {
                 comment_at = i;
                 break;
             }
@@ -896,7 +905,7 @@ fn strip_line_comment(line: &str) -> &str {
         match c {
             '\'' if !in_dq => in_sq = !in_sq,
             '"' if !in_sq => in_dq = !in_dq,
-            '%' if !in_sq && !in_dq => return &line[..i],
+            '%' | '#' if !in_sq && !in_dq => return &line[..i],
             _ => {}
         }
     }
