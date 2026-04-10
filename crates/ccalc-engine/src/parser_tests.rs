@@ -1979,8 +1979,8 @@ fn test_hash_comment_inline() {
 #[test]
 fn test_bang_not() {
     // !x  →  same as ~x
-    assert_eq!(calc_with_var("!x", "x", 5.0), 0.0);  // nonzero → 0
-    assert_eq!(calc_with_var("!x", "x", 0.0), 1.0);  // zero    → 1
+    assert_eq!(calc_with_var("!x", "x", 5.0), 0.0); // nonzero → 0
+    assert_eq!(calc_with_var("!x", "x", 0.0), 1.0); // zero    → 1
 }
 
 #[test]
