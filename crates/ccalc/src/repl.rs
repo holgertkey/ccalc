@@ -518,6 +518,11 @@ pub fn run() {
                 continue;
             }
 
+            // run() / source() — execute a script file in the current workspace
+            if try_run_source(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
             // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
             let (to_eval, base_suffix) = extract_base_suffix(stmt);
             let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
@@ -670,6 +675,40 @@ pub fn run_expr(expr: &str) {
             eprintln!("Error: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+/// Handles `run('file')` / `source('file')` when encountered as a single
+/// statement in pipe or REPL mode.
+///
+/// In those modes, statements normally go through [`evaluate()`] → `eval_with_io`.
+/// But `run`/`source` must execute a script via [`exec_stmts`], which shares the
+/// caller's `Env`. This function bridges that gap.
+///
+/// Returns `true` if the statement was intercepted (caller should `continue`),
+/// `false` if normal evaluation should proceed.
+fn try_run_source(
+    stmt: &str,
+    silent: bool,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> bool {
+    let s = stmt.trim_start();
+    if !s.starts_with("run(") && !s.starts_with("source(") {
+        return false;
+    }
+    match parse(stmt) {
+        Ok(parsed) => {
+            match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
+                Ok(_) => {}
+                Err(e) => eprintln!("Error: {e}"),
+            }
+            true
+        }
+        Err(_) => false, // fall through to evaluate() for a proper error message
     }
 }
 
@@ -863,6 +902,11 @@ pub fn run_pipe(reader: impl BufRead) {
             // disp(expr) — print value without updating ans
             if let Some(arg) = parse_disp_cmd(stmt) {
                 handle_disp(arg, &env, base, &fmt);
+                continue;
+            }
+
+            // run() / source() — execute a script file in the current workspace
+            if try_run_source(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
                 continue;
             }
 
