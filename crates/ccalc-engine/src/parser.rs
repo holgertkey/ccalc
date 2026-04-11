@@ -31,6 +31,7 @@ pub enum Stmt {
     /// Each case carries a list of match expressions (single value today; cell-array
     /// multi-value is deferred to Phase 11.5b) and a statement body.
     /// `otherwise` is optional.
+    #[allow(clippy::type_complexity)]
     Switch {
         expr: Expr,
         cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)>,
@@ -39,10 +40,7 @@ pub enum Stmt {
     /// `do; body; until (cond)` — Octave-specific post-test loop.
     ///
     /// The body always executes at least once. `break` and `continue` work as in `while`.
-    DoUntil {
-        body: Vec<(Stmt, bool)>,
-        cond: Expr,
-    },
+    DoUntil { body: Vec<(Stmt, bool)>, cond: Expr },
 }
 
 #[derive(Debug, Clone)]
@@ -888,13 +886,14 @@ fn parse_stmts_from_lines(
                 let expr = parse_condition(expr_str)?;
                 *pos += 1;
 
+                #[allow(clippy::type_complexity)]
                 let mut cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)> = Vec::new();
                 let mut otherwise_body: Option<Vec<(Stmt, bool)>> = None;
 
                 loop {
                     if *pos >= lines.len() {
                         return Err(
-                            "Unexpected end of input inside 'switch': expected 'end'".to_string(),
+                            "Unexpected end of input inside 'switch': expected 'end'".to_string()
                         );
                     }
                     let kw_line = strip_line_comment(lines[*pos]).trim();
@@ -906,11 +905,8 @@ fn parse_stmts_from_lines(
                             }
                             let case_expr = parse_condition(case_str)?;
                             *pos += 1;
-                            let case_body = parse_stmts_from_lines(
-                                lines,
-                                pos,
-                                &["case", "otherwise", "end"],
-                            )?;
+                            let case_body =
+                                parse_stmts_from_lines(lines, pos, &["case", "otherwise", "end"])?;
                             cases.push((vec![case_expr], case_body));
                         }
                         Some("otherwise") => {
@@ -930,7 +926,11 @@ fn parse_stmts_from_lines(
 
                 expect_end(lines, pos, "switch")?;
                 stmts.push((
-                    Stmt::Switch { expr, cases, otherwise_body },
+                    Stmt::Switch {
+                        expr,
+                        cases,
+                        otherwise_body,
+                    },
                     false,
                 ));
             }
@@ -940,9 +940,7 @@ fn parse_stmts_from_lines(
                 *pos += 1;
                 let body = parse_stmts_from_lines(lines, pos, &["until"])?;
                 if *pos >= lines.len() {
-                    return Err(
-                        "Unexpected end of input inside 'do': expected 'until'".to_string(),
-                    );
+                    return Err("Unexpected end of input inside 'do': expected 'until'".to_string());
                 }
                 let until_line = strip_line_comment(lines[*pos]).trim();
                 if leading_keyword(until_line) != Some("until") {
@@ -1016,8 +1014,8 @@ fn leading_keyword(line: &str) -> Option<&str> {
         .unwrap_or(line.len());
     let word = &line[..end];
     match word {
-        "if" | "elseif" | "else" | "end" | "for" | "while" | "break" | "continue"
-        | "switch" | "case" | "otherwise" | "do" | "until" => Some(word),
+        "if" | "elseif" | "else" | "end" | "for" | "while" | "break" | "continue" | "switch"
+        | "case" | "otherwise" | "do" | "until" => Some(word),
         _ => None,
     }
 }

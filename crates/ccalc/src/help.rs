@@ -20,7 +20,9 @@ pub fn print(topic: Option<&str>) {
         Some("complex" | "cplx" | "imag") => print_complex(),
         Some("strings" | "string" | "str" | "char") => print_strings(),
         Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose") => print_fileio(),
-        Some("control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source") => print_control(),
+        Some("control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source") => {
+            print_control()
+        }
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(

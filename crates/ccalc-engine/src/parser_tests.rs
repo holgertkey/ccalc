@@ -1994,14 +1994,16 @@ fn test_bang_not_eq() {
 
 #[test]
 fn test_switch_scalar_first_case() {
-    let src = "x = 2\nswitch x\n  case 1\n    r = 10\n  case 2\n    r = 20\n  case 3\n    r = 30\nend";
+    let src =
+        "x = 2\nswitch x\n  case 1\n    r = 10\n  case 2\n    r = 20\n  case 3\n    r = 30\nend";
     let env = run_block(src);
     assert_eq!(scalar(&env, "r"), 20.0);
 }
 
 #[test]
 fn test_switch_scalar_last_case() {
-    let src = "x = 3\nswitch x\n  case 1\n    r = 10\n  case 2\n    r = 20\n  case 3\n    r = 30\nend";
+    let src =
+        "x = 3\nswitch x\n  case 1\n    r = 10\n  case 2\n    r = 20\n  case 3\n    r = 30\nend";
     let env = run_block(src);
     assert_eq!(scalar(&env, "r"), 30.0);
 }

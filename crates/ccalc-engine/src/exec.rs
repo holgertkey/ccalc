@@ -30,7 +30,11 @@ pub enum Signal {
 fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
     let p = std::path::Path::new(name);
     if p.extension().is_some() {
-        return if p.exists() { Some(p.to_path_buf()) } else { None };
+        return if p.exists() {
+            Some(p.to_path_buf())
+        } else {
+            None
+        };
     }
     let with_calc = p.with_extension("calc");
     if with_calc.exists() {
@@ -140,14 +144,11 @@ pub fn exec_stmts(
                     let filename = match &path_val {
                         Value::Str(s) | Value::StringObj(s) => s.clone(),
                         _ => {
-                            return Err(format!(
-                                "{fn_name}: argument must be a string (filename)"
-                            ));
+                            return Err(format!("{fn_name}: argument must be a string (filename)"));
                         }
                     };
-                    let script_path = resolve_script_path(&filename).ok_or_else(|| {
-                        format!("{fn_name}: script not found: '{filename}'")
-                    })?;
+                    let script_path = resolve_script_path(&filename)
+                        .ok_or_else(|| format!("{fn_name}: script not found: '{filename}'"))?;
                     let content = std::fs::read_to_string(&script_path).map_err(|e| {
                         format!("{fn_name}: cannot read '{}': {e}", script_path.display())
                     })?;
@@ -257,7 +258,11 @@ pub fn exec_stmts(
             Stmt::Continue => return Ok(Some(Signal::Continue)),
 
             // ── switch / case / otherwise / end ──────────────────────────────
-            Stmt::Switch { expr, cases, otherwise_body } => {
+            Stmt::Switch {
+                expr,
+                cases,
+                otherwise_body,
+            } => {
                 let switch_val = eval_with_io(expr, env, io)?;
                 let mut matched = false;
                 'switch_loop: for (case_exprs, case_body) in cases {
@@ -278,9 +283,7 @@ pub fn exec_stmts(
                             }
                         };
                         if is_match {
-                            if let Some(sig) =
-                                exec_stmts(case_body, env, io, fmt, base, compact)?
-                            {
+                            if let Some(sig) = exec_stmts(case_body, env, io, fmt, base, compact)? {
                                 return Ok(Some(sig));
                             }
                             matched = true;
@@ -288,12 +291,11 @@ pub fn exec_stmts(
                         }
                     }
                 }
-                if !matched {
-                    if let Some(ob) = otherwise_body {
-                        if let Some(sig) = exec_stmts(ob, env, io, fmt, base, compact)? {
-                            return Ok(Some(sig));
-                        }
-                    }
+                if !matched
+                    && let Some(ob) = otherwise_body
+                    && let Some(sig) = exec_stmts(ob, env, io, fmt, base, compact)?
+                {
+                    return Ok(Some(sig));
                 }
             }
 
