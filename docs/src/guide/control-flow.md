@@ -122,11 +122,77 @@ The RHS is a full expression: `x *= 2 + 3` desugars to `x = x * (2 + 3)`.
 > **Limitation**: `++`/`--` are statement-level only. Using them inside a
 > larger expression (`b = a - b--`) is not supported.
 
-## Example
+## switch / case / otherwise
 
-See `examples/control_flow.calc` for a self-contained demo covering all
-constructs above.
+```matlab
+switch expr
+  case val1
+    % ...
+  case val2
+    % ...
+  otherwise     % optional
+    % ...
+end
+```
+
+No fall-through — only the first matching case executes. Works with scalars
+(exact `==`) and strings (`Str`/`StringObj` interchangeable). `break`/`continue`
+propagate to the nearest enclosing loop.
+
+```matlab
+switch code
+  case 200
+    msg = 'OK';
+  case 404
+    msg = 'Not Found';
+  otherwise
+    msg = 'Unknown';
+end
+fprintf('%d: %s\n', code, msg)
+```
+
+## do...until
+
+Octave post-test loop — body always runs at least once:
+
+```matlab
+do
+  body
+until (cond)
+```
+
+Parentheses around `cond` are optional. Closed by `until`, not `end`.
+`break` and `continue` work as in `while`.
+
+```matlab
+x = 1;
+do
+  x *= 2;
+until (x > 100)
+fprintf('%d\n', x)   % 128
+```
+
+## run() / source()
+
+Execute a script file in the current workspace. Variables defined in the script
+persist in the caller's scope (MATLAB `run` semantics — not a function call):
+
+```matlab
+a = 252; b = 105;
+run('euclid_helper')        % looks for euclid_helper.calc, then .m
+fprintf('gcd = %d\n', g)    % g was set by the helper
+
+source('euclid_helper')     % Octave alias — identical behaviour
+```
+
+Extension resolution for bare names: `.calc` is tried first (native ccalc
+format), then `.m` (Octave/MATLAB compatibility).
+
+## Examples
+
+See the example scripts for self-contained demos:
 
 ```bash
-ccalc examples/control_flow.calc
+ccalc examples/control_flow.calc           # if/for/while/break/continue
+ccalc examples/extended_control_flow.calc  # switch/do-until/run/source
 ```

@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.15.2** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.16.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -84,7 +84,8 @@ Pass a script file as an argument — any file that exists on disk:
 
 ```
 $ ccalc script.m
-$ ccalc examples/mortgage.ccalc
+$ ccalc script.calc
+$ ccalc examples/mortgage.calc
 ```
 
 ### Pipe / non-interactive mode
@@ -882,6 +883,50 @@ for n = 1:20
 end
 ```
 
+### `switch / case / otherwise`
+
+```matlab
+switch code
+  case 200
+    msg = 'OK';
+  case 404
+    msg = 'Not Found';
+  otherwise
+    msg = 'Unknown';
+end
+fprintf('%d: %s\n', code, msg)
+```
+
+No fall-through — only the first matching case runs. Works with scalars and strings. `otherwise` is optional.
+
+### `do ... until`
+
+Octave post-test loop — the body always runs at least once, then the condition is checked:
+
+```matlab
+x = 1;
+do
+  x *= 2;
+until (x > 100)
+fprintf('%d\n', x)   % 128
+```
+
+`break` and `continue` work inside `do...until`.
+
+### `run()` / `source()`
+
+Execute a script file in the current workspace. Variables defined in the script persist in the caller's scope (MATLAB `run` semantics):
+
+```matlab
+a = 252; b = 105;
+run('euclid_helper')      % looks for euclid_helper.calc, then .m
+fprintf('gcd = %d\n', g)  % g was set by the helper
+
+source('utils')           % Octave alias for run()
+```
+
+Extension resolution for bare names: `.calc` is tried first (native), then `.m` (compatibility).
+
 ### Compound assignment operators
 
 | Operator | Meaning         |
@@ -922,7 +967,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `examples`
+Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1163,7 +1208,8 @@ The `examples/` directory contains annotated formula files ready to run:
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
-| `control_flow.calc`     | Control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |
+| `control_flow.calc`          | Core control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |
+| `extended_control_flow.calc` | Extended control flow: switch/case, do...until, run()/source(); exit-code classifier, unit converter, digit sum, Euclidean GCD |
 
 ```bash
 ccalc < examples/mortgage.calc

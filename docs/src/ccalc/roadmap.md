@@ -20,7 +20,7 @@ The work is divided into phases in order of architectural dependency.
 | 10 | C-style I/O (`fprintf('%.2f\n', x)`, `sprintf`) | ✅ Done |
 | 10.5 | File I/O (`fopen`, `dlmread`, `isfile`, `save`/`load` with path) | ✅ Done |
 | 11 | Core control flow (`if`, `for`, `while`, `break`, `continue`, `+=`) | ✅ Done |
-| 11.5 | Extended control flow (`switch`, `try`/`catch`, `do...until`, `run`) | Planned |
+| 11.5 | Extended control flow (`switch`, `do...until`, `run`/`source`; `try`/`catch` deferred to Phase 14) | ✅ Done |
 | 12 | User-defined functions, multiple return values, `@(x)` lambdas | Planned |
 
 ## Key architectural decisions
@@ -118,7 +118,15 @@ persistence with explicit paths (`save('f.mat')`, `load('f.mat')`).
 Compound assignment operators (`+=`, `-=`, `*=`, `/=`, `++`, `--`) are
 desugared at parse time to plain `Stmt::Assign` — no new AST nodes.
 Syntax aliases: `#` for `%` (comment), `!` for `~` (NOT), `!=` for `~=`.
-Extended control flow (`switch`, `try`/`catch`, `do...until`) moves to Phase 11.5.
+Extended control flow (`switch`, `do...until`, `run`/`source`) was completed in Phase 11.5.
+
+**Phase 11.5** adds `switch`/`case`/`otherwise` (no fall-through; scalar exact `==`,
+string equality), `do...until` (Octave post-test loop; `until` closes the block
+without `end`), and `run()`/`source()` script sourcing (MATLAB run semantics —
+scripts execute in the caller's workspace). Extension resolution for bare names
+tries `.calc` (native ccalc format) before `.m` (Octave/MATLAB compatibility).
+A `thread_local! RUN_DEPTH` counter caps recursion at 64 levels.
+`try`/`catch` is deferred to Phase 14 (after structs).
 
 **Phase 12** adds user-defined functions with single and multiple return
 values (`[a, b] = f(x)`), and anonymous functions `@(x) expr` (closures).

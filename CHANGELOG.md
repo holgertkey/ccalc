@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-11
+
+### Added
+
+- **Phase 11.5 — Extended control flow and script sourcing**:
+
+  - **`switch / case / otherwise / end`** — no fall-through; first matching case runs and control jumps to `end`
+    - Scalar cases: exact `==` comparison
+    - String cases: `Str` and `StringObj` are interchangeable
+    - `otherwise` is optional; no match without `otherwise` → body silently skipped
+    - `break`/`continue` propagate outward to the nearest enclosing loop (switch itself is not a loop)
+
+  - **`do ... until (cond)`** — Octave post-test loop; body always executes at least once
+    - Condition tested *after* each iteration; parentheses around the condition are optional
+    - `break` exits the loop immediately; `continue` re-tests the condition
+    - `until` closes the block in the REPL (depth delta -1) — no separate `end` needed
+
+  - **`run('file')` / `source('file')`** — execute a script file in the current workspace
+    - Script variables persist in the caller's scope (MATLAB `run` semantics — shared `Env`)
+    - Extension resolution for bare names: `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility)
+    - Explicit extensions (`.calc`, `.m`, or any other) are used verbatim
+    - Recursive nesting supported up to depth 64 (tracked via thread-local `RUN_DEPTH`)
+    - Works in REPL, pipe/script mode, and inside multi-line blocks
+    - `source()` is a full alias for `run()` (Octave convention)
+
+  - **`block_depth_delta` extended**: `switch`/`do` → +1; `until` → −1
+
+- **New example** `examples/extended_control_flow.calc` — 8-section demo: exit-code classifier, unit converter, month-to-season switch, power-of-2 ceiling, digit sum, first prime search, Euclidean GCD via `run()`, `source()` alias
+- **New helper script** `examples/euclid_helper.calc` — GCD computation sourced by the demo
+
+### Fixed
+
+- `run()` / `source()` now work correctly in pipe and script mode (single-line statements
+  previously bypassed `exec_stmts`; a `try_run_source()` helper in `repl.rs` now bridges
+  both execution paths)
+
 ## [0.15.2] - 2026-04-10
 
 ### Added

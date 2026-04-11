@@ -20,7 +20,7 @@ pub fn print(topic: Option<&str>) {
         Some("complex" | "cplx" | "imag") => print_complex(),
         Some("strings" | "string" | "str" | "char") => print_strings(),
         Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose") => print_fileio(),
-        Some("control" | "flow" | "if" | "for" | "while") => print_control(),
+        Some("control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source") => print_control(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
@@ -104,7 +104,11 @@ Compound  x += e  x -= e  x *= e  x /= e    desugar to x = x op e
 Control   if cond / elseif / else / end
           for var = range / end
           while cond / end
+          switch expr / case val / otherwise / end
+          do / until (cond)                 body runs at least once
           break   continue
+Scripts   run('file.calc')  run('file')     .calc first, then .m
+          source('file')                    Octave alias for run()
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
@@ -1273,15 +1277,80 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
   Limitation: ++ and -- are statement-level only.
     b = a - b--   is NOT supported (use two statements instead).
 
+─── switch / case / otherwise ─────────────────────────────────────────────────
+
+  switch expr
+    case val1
+      ...
+    case val2
+      ...
+    otherwise       % optional default branch
+      ...
+  end
+
+  No fall-through: only the first matching case runs.
+  Scalars: exact == comparison.
+  Strings: Str and StringObj are interchangeable.
+  break/continue inside switch propagate to the nearest enclosing loop.
+
+  Example:
+    switch code
+      case 200
+        msg = 'OK';
+      case 404
+        msg = 'Not Found';
+      otherwise
+        msg = 'Unknown';
+    end
+
+─── do...until ────────────────────────────────────────────────────────────────
+
+  do
+    ...
+  until (cond)
+
+  Octave post-test loop: body always executes at least once, then cond is
+  checked. Parentheses around cond are optional.
+  break and continue work as in while.
+  until closes the block (no separate end needed).
+
+  Example:
+    x = 1;
+    do
+      x *= 2;
+    until (x > 100)
+    % x == 128
+
+─── run() / source() ──────────────────────────────────────────────────────────
+
+  run('filename')
+  source('filename')    % Octave alias for run()
+
+  Execute a script file in the current workspace (MATLAB run semantics):
+  variables defined in the script persist in the caller's scope.
+
+  Extension resolution for bare names (no extension):
+    1. <name>.calc   native ccalc format (checked first)
+    2. <name>.m      Octave/MATLAB compatibility
+
+  With explicit extension: used verbatim.
+  Maximum nesting depth: 64 levels (catches accidental recursion).
+
+  Example:
+    a = 252; b = 105;
+    run('euclid_helper')       % defines g = gcd(a, b) in workspace
+    fprintf('gcd = %d\\n', g)   % 21
+
 ─── REPL multi-line input ─────────────────────────────────────────────────────
 
   The REPL detects unclosed blocks by tracking depth changes:
-    Keywords that open a block (+1): if  for  while
-    Keyword that closes a block (-1): end
+    Keywords that open a block (+1): if  for  while  switch  do
+    Keywords that close a block (-1): end  until
   Lines accumulate with a continuation prompt until the block is complete.
   Press Ctrl+C to cancel an in-progress block.
 
 See also: help syntax  help logic
-Example:  ccalc examples/control_flow.calc"
+Examples: ccalc examples/control_flow.calc
+          ccalc examples/extended_control_flow.calc"
     );
 }
