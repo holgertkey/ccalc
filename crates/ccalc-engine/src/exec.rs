@@ -2,10 +2,15 @@ use ndarray::Array2;
 
 use crate::env::{Env, Value};
 use crate::eval::{
-    Base, FormatMode, eval_with_io, format_complex, format_scalar, format_value_full,
+    Base, Expr, FormatMode, eval_with_io, format_complex, format_scalar, format_value_full,
 };
 use crate::io::IoContext;
-use crate::parser::Stmt;
+use crate::parser::{Stmt, parse_stmts};
+
+thread_local! {
+    /// Tracks the current script nesting depth to prevent infinite recursion via `run()`.
+    static RUN_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
 
 /// Flow control signal returned by [`exec_stmts`].
 ///
@@ -15,6 +20,27 @@ use crate::parser::Stmt;
 pub enum Signal {
     Break,
     Continue,
+}
+
+/// Resolves a script filename to an existing path.
+///
+/// If `name` already has an extension, it is used verbatim.
+/// Otherwise, `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility).
+/// The search is relative to the current working directory.
+fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
+    let p = std::path::Path::new(name);
+    if p.extension().is_some() {
+        return if p.exists() { Some(p.to_path_buf()) } else { None };
+    }
+    let with_calc = p.with_extension("calc");
+    if with_calc.exists() {
+        return Some(with_calc);
+    }
+    let with_m = p.with_extension("m");
+    if with_m.exists() {
+        return Some(with_m);
+    }
+    None
 }
 
 /// Returns `true` if `val` is considered truthy by MATLAB `if`/`while` semantics.
@@ -104,6 +130,42 @@ pub fn exec_stmts(
             }
 
             Stmt::Expr(expr) => {
+                // Intercept run()/source() — execute a script file in the current workspace.
+                // Variables defined in the script persist in the caller's scope (MATLAB `run` semantics).
+                if let Expr::Call(fn_name, args) = expr
+                    && matches!(fn_name.as_str(), "run" | "source")
+                    && args.len() == 1
+                {
+                    let path_val = eval_with_io(&args[0], env, io)?;
+                    let filename = match &path_val {
+                        Value::Str(s) | Value::StringObj(s) => s.clone(),
+                        _ => {
+                            return Err(format!(
+                                "{fn_name}: argument must be a string (filename)"
+                            ));
+                        }
+                    };
+                    let script_path = resolve_script_path(&filename).ok_or_else(|| {
+                        format!("{fn_name}: script not found: '{filename}'")
+                    })?;
+                    let content = std::fs::read_to_string(&script_path).map_err(|e| {
+                        format!("{fn_name}: cannot read '{}': {e}", script_path.display())
+                    })?;
+                    let depth = RUN_DEPTH.with(|d| d.get());
+                    if depth >= 64 {
+                        return Err(format!(
+                            "{fn_name}: maximum script nesting depth (64) exceeded"
+                        ));
+                    }
+                    RUN_DEPTH.with(|d| d.set(depth + 1));
+                    let run_stmts = parse_stmts(&content).map_err(|e| {
+                        format!("{fn_name}: parse error in '{}': {e}", script_path.display())
+                    })?;
+                    let result = exec_stmts(&run_stmts, env, io, fmt, base, compact);
+                    RUN_DEPTH.with(|d| d.set(depth));
+                    return result;
+                }
+
                 let val = eval_with_io(expr, env, io)?;
                 env.insert("ans".to_string(), val.clone());
                 if !silent && !matches!(val, Value::Void) {
@@ -193,6 +255,58 @@ pub fn exec_stmts(
 
             Stmt::Break => return Ok(Some(Signal::Break)),
             Stmt::Continue => return Ok(Some(Signal::Continue)),
+
+            // ── switch / case / otherwise / end ──────────────────────────────
+            Stmt::Switch { expr, cases, otherwise_body } => {
+                let switch_val = eval_with_io(expr, env, io)?;
+                let mut matched = false;
+                'switch_loop: for (case_exprs, case_body) in cases {
+                    for case_expr in case_exprs {
+                        let case_val = eval_with_io(case_expr, env, io)?;
+                        let is_match = match (&switch_val, &case_val) {
+                            (Value::Scalar(a), Value::Scalar(b)) => a == b,
+                            _ => {
+                                let sv = match &switch_val {
+                                    Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
+                                    _ => None,
+                                };
+                                let cv = match &case_val {
+                                    Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
+                                    _ => None,
+                                };
+                                matches!((sv, cv), (Some(a), Some(b)) if a == b)
+                            }
+                        };
+                        if is_match {
+                            if let Some(sig) =
+                                exec_stmts(case_body, env, io, fmt, base, compact)?
+                            {
+                                return Ok(Some(sig));
+                            }
+                            matched = true;
+                            break 'switch_loop;
+                        }
+                    }
+                }
+                if !matched {
+                    if let Some(ob) = otherwise_body {
+                        if let Some(sig) = exec_stmts(ob, env, io, fmt, base, compact)? {
+                            return Ok(Some(sig));
+                        }
+                    }
+                }
+            }
+
+            // ── do...until ───────────────────────────────────────────────────
+            Stmt::DoUntil { body, cond } => loop {
+                match exec_stmts(body, env, io, fmt, base, compact)? {
+                    Some(Signal::Break) => break,
+                    Some(Signal::Continue) | None => {}
+                }
+                if is_truthy(&eval_with_io(cond, env, io)?) {
+                    break;
+                }
+            },
         }
     }
     Ok(None)

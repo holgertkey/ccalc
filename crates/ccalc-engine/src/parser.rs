@@ -26,6 +26,23 @@ pub enum Stmt {
     Break,
     /// `continue` — advances to next iteration of the innermost enclosing loop
     Continue,
+    /// `switch expr; case val; body; ...; otherwise; body; end`
+    ///
+    /// Each case carries a list of match expressions (single value today; cell-array
+    /// multi-value is deferred to Phase 11.5b) and a statement body.
+    /// `otherwise` is optional.
+    Switch {
+        expr: Expr,
+        cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)>,
+        otherwise_body: Option<Vec<(Stmt, bool)>>,
+    },
+    /// `do; body; until (cond)` — Octave-specific post-test loop.
+    ///
+    /// The body always executes at least once. `break` and `continue` work as in `while`.
+    DoUntil {
+        body: Vec<(Stmt, bool)>,
+        cond: Expr,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -720,8 +737,8 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
 pub fn block_depth_delta(line: &str) -> i32 {
     let stripped = strip_line_comment(line).trim();
     match leading_keyword(stripped) {
-        Some("if") | Some("for") | Some("while") => 1,
-        Some("end") => -1,
+        Some("if") | Some("for") | Some("while") | Some("switch") | Some("do") => 1,
+        Some("end") | Some("until") => -1,
         _ => 0,
     }
 }
@@ -862,8 +879,86 @@ fn parse_stmts_from_lines(
                 *pos += 1;
             }
 
+            // ── switch / case / otherwise / end ──────────────────────────────
+            Some("switch") => {
+                let expr_str = line["switch".len()..].trim();
+                if expr_str.is_empty() {
+                    return Err("Expected expression after 'switch'".to_string());
+                }
+                let expr = parse_condition(expr_str)?;
+                *pos += 1;
+
+                let mut cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)> = Vec::new();
+                let mut otherwise_body: Option<Vec<(Stmt, bool)>> = None;
+
+                loop {
+                    if *pos >= lines.len() {
+                        return Err(
+                            "Unexpected end of input inside 'switch': expected 'end'".to_string(),
+                        );
+                    }
+                    let kw_line = strip_line_comment(lines[*pos]).trim();
+                    match leading_keyword(kw_line) {
+                        Some("case") => {
+                            let case_str = kw_line["case".len()..].trim();
+                            if case_str.is_empty() {
+                                return Err("Expected value after 'case'".to_string());
+                            }
+                            let case_expr = parse_condition(case_str)?;
+                            *pos += 1;
+                            let case_body = parse_stmts_from_lines(
+                                lines,
+                                pos,
+                                &["case", "otherwise", "end"],
+                            )?;
+                            cases.push((vec![case_expr], case_body));
+                        }
+                        Some("otherwise") => {
+                            *pos += 1;
+                            let ob = parse_stmts_from_lines(lines, pos, &["end"])?;
+                            otherwise_body = Some(ob);
+                            break;
+                        }
+                        Some("end") => break,
+                        _ => {
+                            return Err(format!(
+                                "Expected 'case', 'otherwise', or 'end' in switch block, found: '{kw_line}'"
+                            ));
+                        }
+                    }
+                }
+
+                expect_end(lines, pos, "switch")?;
+                stmts.push((
+                    Stmt::Switch { expr, cases, otherwise_body },
+                    false,
+                ));
+            }
+
+            // ── do...until ───────────────────────────────────────────────────
+            Some("do") => {
+                *pos += 1;
+                let body = parse_stmts_from_lines(lines, pos, &["until"])?;
+                if *pos >= lines.len() {
+                    return Err(
+                        "Unexpected end of input inside 'do': expected 'until'".to_string(),
+                    );
+                }
+                let until_line = strip_line_comment(lines[*pos]).trim();
+                if leading_keyword(until_line) != Some("until") {
+                    return Err(format!("Expected 'until', found: '{until_line}'"));
+                }
+                let cond_str = until_line["until".len()..].trim();
+                if cond_str.is_empty() {
+                    return Err("Expected condition after 'until'".to_string());
+                }
+                let cond = parse_condition(cond_str)?;
+                *pos += 1;
+                stmts.push((Stmt::DoUntil { body, cond }, false));
+            }
+
             // ── unexpected terminators ───────────────────────────────────────
-            Some(kw @ ("end" | "else" | "elseif")) => {
+            Some(kw @ ("end" | "else" | "elseif" | "case" | "otherwise" | "until")) => {
                 return Err(format!("Unexpected '{kw}' without matching block opener"));
             }
 
@@ -921,7 +1016,8 @@ fn leading_keyword(line: &str) -> Option<&str> {
         .unwrap_or(line.len());
     let word = &line[..end];
     match word {
-        "if" | "elseif" | "else" | "end" | "for" | "while" | "break" | "continue" => Some(word),
+        "if" | "elseif" | "else" | "end" | "for" | "while" | "break" | "continue"
+        | "switch" | "case" | "otherwise" | "do" | "until" => Some(word),
         _ => None,
     }
 }

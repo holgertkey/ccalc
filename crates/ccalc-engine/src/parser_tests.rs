@@ -1989,3 +1989,264 @@ fn test_bang_not_eq() {
     assert_eq!(calc("3 != 4"), 1.0);
     assert_eq!(calc("3 != 3"), 0.0);
 }
+
+// ── Phase 11.5a: switch/case/otherwise ───────────────────────────────────────
+
+#[test]
+fn test_switch_scalar_first_case() {
+    let src = "x = 2\nswitch x\n  case 1\n    r = 10\n  case 2\n    r = 20\n  case 3\n    r = 30\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 20.0);
+}
+
+#[test]
+fn test_switch_scalar_last_case() {
+    let src = "x = 3\nswitch x\n  case 1\n    r = 10\n  case 2\n    r = 20\n  case 3\n    r = 30\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 30.0);
+}
+
+#[test]
+fn test_switch_no_match_no_otherwise() {
+    // No match and no otherwise — r stays at its initial value
+    let src = "r = 99\nswitch 5\n  case 1\n    r = 1\n  case 2\n    r = 2\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 99.0);
+}
+
+#[test]
+fn test_switch_otherwise() {
+    let src = "x = 7\nr = 0\nswitch x\n  case 1\n    r = 1\n  case 2\n    r = 2\n  otherwise\n    r = -1\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), -1.0);
+}
+
+#[test]
+fn test_switch_string_match() {
+    let src = "mode = 'fast'\nswitch mode\n  case 'slow'\n    r = 1\n  case 'fast'\n    r = 2\n  otherwise\n    r = 0\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 2.0);
+}
+
+#[test]
+fn test_switch_string_otherwise() {
+    let src = "mode = 'turbo'\nr = 0\nswitch mode\n  case 'slow'\n    r = 1\n  case 'fast'\n    r = 2\n  otherwise\n    r = -1\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), -1.0);
+}
+
+#[test]
+fn test_switch_empty_no_cases() {
+    // switch with no cases and no otherwise — nothing happens
+    let src = "r = 42\nswitch 1\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 42.0);
+}
+
+#[test]
+fn test_switch_only_otherwise() {
+    let src = "r = 0\nswitch 99\n  otherwise\n    r = 7\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 7.0);
+}
+
+#[test]
+fn test_switch_first_match_wins() {
+    // Only the first matching case executes (no fall-through)
+    let src = "x = 1\nr = 0\nswitch x\n  case 1\n    r = 100\n  case 1\n    r = 200\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "r"), 100.0);
+}
+
+#[test]
+fn test_switch_inside_for_loop() {
+    let src = "s = 0\nfor k = 1:3\n  switch k\n    case 1\n      s += 10\n    case 2\n      s += 20\n    otherwise\n      s += 1\n  end\nend";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "s"), 31.0); // 10 + 20 + 1
+}
+
+// ── Phase 11.5c: do...until ──────────────────────────────────────────────────
+
+#[test]
+fn test_do_until_basic() {
+    // Counts from 1 to 5; stops when x == 5
+    let src = "x = 0\ndo\n  x = x + 1\nuntil (x >= 5)";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "x"), 5.0);
+}
+
+#[test]
+fn test_do_until_executes_at_least_once() {
+    // Condition is true from the start — body still runs once
+    let src = "x = 10\ndo\n  x = x + 1\nuntil (x > 0)";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "x"), 11.0);
+}
+
+#[test]
+fn test_do_until_multiple_iterations() {
+    // Doubles x until it exceeds 50
+    let src = "x = 1\ndo\n  x = x * 2\nuntil (x > 50)";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "x"), 64.0);
+}
+
+#[test]
+fn test_do_until_break() {
+    // Break exits the loop before condition
+    let src = "x = 0\ndo\n  x = x + 1\n  if x == 3\n    break\n  end\nuntil (x >= 10)";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "x"), 3.0);
+}
+
+#[test]
+fn test_do_until_continue() {
+    // continue skips the rest of the body; condition is then checked
+    let src = "s = 0\nx = 0\ndo\n  x = x + 1\n  if x == 3\n    continue\n  end\n  s = s + x\nuntil (x >= 5)";
+    let env = run_block(src);
+    // x goes 1,2,3(skipped),4,5  →  s = 1+2+4+5 = 12
+    assert_eq!(scalar(&env, "s"), 12.0);
+    assert_eq!(scalar(&env, "x"), 5.0);
+}
+
+#[test]
+fn test_do_until_no_parens() {
+    // Octave allows until without parens
+    let src = "x = 0\ndo\n  x += 1\nuntil x == 4";
+    let env = run_block(src);
+    assert_eq!(scalar(&env, "x"), 4.0);
+}
+
+// ── Phase 11.5a/c: block_depth_delta extended ────────────────────────────────
+
+#[test]
+fn test_block_depth_delta_switch_do_until() {
+    assert_eq!(block_depth_delta("switch x"), 1);
+    assert_eq!(block_depth_delta("do"), 1);
+    assert_eq!(block_depth_delta("until (x < 1)"), -1);
+    assert_eq!(block_depth_delta("until x < 1"), -1);
+    // These should not be confused with keywords when part of identifiers
+    assert_eq!(block_depth_delta("switch_val = 1"), 0);
+    assert_eq!(block_depth_delta("do_something"), 0);
+}
+
+// ── Phase 11.5e: run() / source() ────────────────────────────────────────────
+
+fn run_block_with_env(src: &str, env: &mut Env) {
+    let stmts = parse_stmts(src).expect("parse_stmts failed");
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, env, &mut io, &FormatMode::Short, Base::Dec, true)
+        .expect("exec_stmts failed");
+}
+
+#[test]
+fn test_run_calc_script() {
+    let dir = std::env::temp_dir().join("ccalc_test_run");
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("helper.calc");
+    std::fs::write(&script, "result = 42\n").unwrap();
+
+    let path = script.to_string_lossy().replace('\\', "/");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env(&format!("run('{path}')"), &mut env);
+    assert_eq!(
+        match env.get("result") {
+            Some(Value::Scalar(n)) => *n,
+            other => panic!("expected scalar, got {other:?}"),
+        },
+        42.0
+    );
+    std::fs::remove_file(script).ok();
+}
+
+#[test]
+fn test_run_m_script() {
+    let dir = std::env::temp_dir().join("ccalc_test_run");
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("helper_m.m");
+    std::fs::write(&script, "mval = 7\n").unwrap();
+
+    let path = script.to_string_lossy().replace('\\', "/");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env(&format!("run('{path}')"), &mut env);
+    assert_eq!(
+        match env.get("mval") {
+            Some(Value::Scalar(n)) => *n,
+            other => panic!("expected scalar, got {other:?}"),
+        },
+        7.0
+    );
+    std::fs::remove_file(script).ok();
+}
+
+#[test]
+fn test_run_no_extension_prefers_calc() {
+    // When no extension given, .calc is preferred over .m
+    let dir = std::env::temp_dir().join("ccalc_test_run_ext");
+    std::fs::create_dir_all(&dir).unwrap();
+    let calc_script = dir.join("ambiguous.calc");
+    let m_script = dir.join("ambiguous.m");
+    std::fs::write(&calc_script, "chosen = 1\n").unwrap();
+    std::fs::write(&m_script, "chosen = 2\n").unwrap();
+
+    let base = dir.join("ambiguous").to_string_lossy().replace('\\', "/");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env(&format!("run('{base}')"), &mut env);
+    assert_eq!(
+        match env.get("chosen") {
+            Some(Value::Scalar(n)) => *n,
+            other => panic!("expected scalar, got {other:?}"),
+        },
+        1.0, // .calc wins
+    );
+    std::fs::remove_file(calc_script).ok();
+    std::fs::remove_file(m_script).ok();
+}
+
+#[test]
+fn test_run_script_shares_env() {
+    // Variables defined in the script persist in the caller's scope
+    let dir = std::env::temp_dir().join("ccalc_test_run_env");
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("env_test.calc");
+    std::fs::write(&script, "shared = x * 2\n").unwrap();
+
+    let path = script.to_string_lossy().replace('\\', "/");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    env.insert("x".to_string(), Value::Scalar(5.0));
+    run_block_with_env(&format!("run('{path}')"), &mut env);
+    assert_eq!(
+        match env.get("shared") {
+            Some(Value::Scalar(n)) => *n,
+            other => panic!("expected scalar, got {other:?}"),
+        },
+        10.0
+    );
+    std::fs::remove_file(script).ok();
+}
+
+#[test]
+fn test_source_alias() {
+    // source() is an alias for run()
+    let dir = std::env::temp_dir().join("ccalc_test_source");
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("src_test.calc");
+    std::fs::write(&script, "sourced = 99\n").unwrap();
+
+    let path = script.to_string_lossy().replace('\\', "/");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env(&format!("source('{path}')"), &mut env);
+    assert_eq!(
+        match env.get("sourced") {
+            Some(Value::Scalar(n)) => *n,
+            other => panic!("expected scalar, got {other:?}"),
+        },
+        99.0
+    );
+    std::fs::remove_file(script).ok();
+}
