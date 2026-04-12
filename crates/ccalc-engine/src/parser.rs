@@ -41,6 +41,27 @@ pub enum Stmt {
     ///
     /// The body always executes at least once. `break` and `continue` work as in `while`.
     DoUntil { body: Vec<(Stmt, bool)>, cond: Expr },
+    /// `function [outputs] = name(params) body end` — named user function definition.
+    ///
+    /// The body is stored as raw source text and re-parsed on each call by `exec.rs`.
+    /// Named functions execute in an isolated scope (only params and built-in constants visible).
+    FunctionDef {
+        name: String,
+        outputs: Vec<String>,
+        params: Vec<String>,
+        body_source: String,
+    },
+    /// `return` — exits the current function immediately.
+    ///
+    /// Inside a named function, `return` causes the function to return its current output
+    /// variable values. At the top level it is treated as an error by `exec.rs`.
+    Return,
+    /// `[a, b] = f()` — multi-output assignment.
+    ///
+    /// Produced when the LHS is a bracket list of identifiers.
+    /// The RHS must evaluate to a `Value::Tuple`; extra values are discarded,
+    /// missing values produce an error.
+    MultiAssign { targets: Vec<String>, expr: Expr },
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +104,7 @@ enum Token {
     AmpAmp,   // &&
     PipePipe, // ||
     Tilde,    // ~ / ! (unary NOT)
+    At,       // @ (lambda / function handle prefix)
 }
 
 fn parse_integer_literal(
@@ -487,6 +509,10 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     tokens.push(Token::Number(n));
                 }
             }
+            '@' => {
+                tokens.push(Token::At);
+                chars.next();
+            }
             'a'..='z' | 'A'..='Z' | '_' => {
                 let mut ident = String::new();
                 while let Some(&c) = chars.peek() {
@@ -511,7 +537,28 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
 /// Assignment (`name = expr`) is detected first. Everything else is treated as
 /// an expression whose result will be stored in `ans`.
 pub fn parse(input: &str) -> Result<Stmt, String> {
-    if let Some((name, rhs)) = try_split_assignment(input) {
+    let trimmed = input.trim();
+
+    // 'return' statement
+    if trimmed == "return" {
+        return Ok(Stmt::Return);
+    }
+
+    // Multi-assign: [a, b] = expr
+    if let Some((targets, rhs)) = try_split_multi_assign(trimmed) {
+        let tokens = tokenize(rhs)?;
+        if tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut pos = 0;
+        let expr = parse_logical_or(&tokens, &mut pos)?;
+        if pos != tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::MultiAssign { targets, expr });
+    }
+
+    if let Some((name, rhs)) = try_split_assignment(trimmed) {
         let tokens = tokenize(rhs)?;
         if tokens.is_empty() {
             return Err("Expected expression after '='".to_string());
@@ -524,7 +571,7 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
         return Ok(Stmt::Assign(name.to_string(), expr));
     }
 
-    let tokens = tokenize(input)?;
+    let tokens = tokenize(trimmed)?;
     if tokens.is_empty() {
         return Err("Empty expression".to_string());
     }
@@ -735,7 +782,8 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
 pub fn block_depth_delta(line: &str) -> i32 {
     let stripped = strip_line_comment(line).trim();
     match leading_keyword(stripped) {
-        Some("if") | Some("for") | Some("while") | Some("switch") | Some("do") => 1,
+        Some("if") | Some("for") | Some("while") | Some("switch") | Some("do")
+        | Some("function") => 1,
         Some("end") | Some("until") => -1,
         _ => 0,
     }
@@ -955,6 +1003,49 @@ fn parse_stmts_from_lines(
                 stmts.push((Stmt::DoUntil { body, cond }, false));
             }
 
+            // ── function definition ──────────────────────────────────────────
+            Some("function") => {
+                let header = line["function".len()..].trim();
+                if header.is_empty() {
+                    return Err("Expected function header after 'function'".to_string());
+                }
+                let (name, outputs, params) = parse_function_header(header)?;
+                *pos += 1;
+                // Collect raw body lines until the matching 'end', tracking nested block depth.
+                let body_start = *pos;
+                let mut depth: i32 = 1;
+                while *pos < lines.len() && depth > 0 {
+                    let l = strip_line_comment(lines[*pos]).trim();
+                    depth += block_depth_delta(l);
+                    if depth == 0 {
+                        break;
+                    }
+                    *pos += 1;
+                }
+                if depth != 0 {
+                    return Err(format!(
+                        "Unexpected end of input: expected 'end' to close 'function {name}'"
+                    ));
+                }
+                let body_source = lines[body_start..*pos].join("\n");
+                *pos += 1; // consume 'end'
+                stmts.push((
+                    Stmt::FunctionDef {
+                        name,
+                        outputs,
+                        params,
+                        body_source,
+                    },
+                    false,
+                ));
+            }
+
+            // ── return ───────────────────────────────────────────────────────
+            Some("return") => {
+                stmts.push((Stmt::Return, false));
+                *pos += 1;
+            }
+
             // ── unexpected terminators ───────────────────────────────────────
             Some(kw @ ("end" | "else" | "elseif" | "case" | "otherwise" | "until")) => {
                 return Err(format!("Unexpected '{kw}' without matching block opener"));
@@ -1015,8 +1106,90 @@ fn leading_keyword(line: &str) -> Option<&str> {
     let word = &line[..end];
     match word {
         "if" | "elseif" | "else" | "end" | "for" | "while" | "break" | "continue" | "switch"
-        | "case" | "otherwise" | "do" | "until" => Some(word),
+        | "case" | "otherwise" | "do" | "until" | "function" | "return" => Some(word),
         _ => None,
+    }
+}
+
+/// Parses the function header text (everything after `function` keyword).
+///
+/// Handles three forms:
+/// - `name(params)` — no outputs
+/// - `y = name(params)` — single output
+/// - `[y1, y2] = name(params)` — multiple outputs
+fn parse_function_header(header: &str) -> Result<(String, Vec<String>, Vec<String>), String> {
+    // Detect output list if there is an `=` (that is not `==`)
+    if let Some(eq_pos) = header.find('=') {
+        if !header[eq_pos + 1..].starts_with('=') {
+            let lhs = header[..eq_pos].trim();
+            let rhs = header[eq_pos + 1..].trim();
+            let outputs = parse_output_list(lhs)?;
+            let (name, params) = parse_func_name_params(rhs)?;
+            return Ok((name, outputs, params));
+        }
+    }
+    // No outputs: just name(params)
+    let (name, params) = parse_func_name_params(header.trim())?;
+    Ok((name, vec![], params))
+}
+
+/// Parses an output variable list: `y`, `[y1, y2]`.
+fn parse_output_list(lhs: &str) -> Result<Vec<String>, String> {
+    let lhs = lhs.trim();
+    if lhs.starts_with('[') && lhs.ends_with(']') {
+        let inner = &lhs[1..lhs.len() - 1];
+        inner
+            .split(',')
+            .map(|s| {
+                let s = s.trim();
+                if is_valid_ident(s) {
+                    Ok(s.to_string())
+                } else {
+                    Err(format!("Invalid output variable name: '{s}'"))
+                }
+            })
+            .collect()
+    } else if is_valid_ident(lhs) {
+        Ok(vec![lhs.to_string()])
+    } else {
+        Err(format!("Invalid function output list: '{lhs}'"))
+    }
+}
+
+/// Parses `name(p1, p2)` or `name` — returns `(name, params)`.
+fn parse_func_name_params(s: &str) -> Result<(String, Vec<String>), String> {
+    let s = s.trim();
+    if let Some(paren_pos) = s.find('(') {
+        let name = s[..paren_pos].trim();
+        if !is_valid_ident(name) {
+            return Err(format!("Invalid function name: '{name}'"));
+        }
+        let rest = s[paren_pos + 1..].trim();
+        if !rest.ends_with(')') {
+            return Err(format!("Expected ')' in function header: '{s}'"));
+        }
+        let params_str = rest[..rest.len() - 1].trim();
+        let params = if params_str.is_empty() {
+            vec![]
+        } else {
+            params_str
+                .split(',')
+                .map(|p| {
+                    let p = p.trim();
+                    if is_valid_ident(p) {
+                        Ok(p.to_string())
+                    } else {
+                        Err(format!("Invalid parameter name: '{p}'"))
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok((name.to_string(), params))
+    } else {
+        if !is_valid_ident(s) {
+            return Err(format!("Invalid function name: '{s}'"));
+        }
+        Ok((s.to_string(), vec![]))
     }
 }
 
@@ -1040,6 +1213,32 @@ fn parse_for_header(rest: &str) -> Result<(String, Expr), String> {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+
+/// If `input` matches `"[a, b] = rhs"` (not `==`), returns the target names and rhs string.
+/// All targets must be valid identifiers or `~` (discard placeholder).
+fn try_split_multi_assign<'a>(input: &'a str) -> Option<(Vec<String>, &'a str)> {
+    let trimmed = input.trim();
+    if !trimmed.starts_with('[') {
+        return None;
+    }
+    let close = trimmed.find(']')?;
+    let rest = trimmed[close + 1..].trim();
+    if !rest.starts_with('=') || rest.starts_with("==") {
+        return None;
+    }
+    let rhs = rest[1..].trim();
+    let inner = trimmed[1..close].trim();
+    if inner.is_empty() {
+        return None;
+    }
+    let targets: Vec<String> = inner.split(',').map(|s| s.trim().to_string()).collect();
+    for t in &targets {
+        if t != "~" && !is_valid_ident(t) {
+            return None;
+        }
+    }
+    Some((targets, rhs))
+}
 
 /// If `input` matches `"name = rhs"` (not `==`), returns `Some((name, rhs))`.
 /// The name must be a valid identifier; otherwise returns `None`.
@@ -1335,9 +1534,40 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
             *pos += 1;
             Expr::StringObjLiteral(s)
         }
+        Token::At => {
+            *pos += 1;
+            // @(params) body — anonymous function (lambda)
+            if !matches!(tokens.get(*pos), Some(Token::LParen)) {
+                return Err("Expected '(' after '@'".to_string());
+            }
+            *pos += 1;
+            let mut params = Vec::new();
+            loop {
+                match tokens.get(*pos) {
+                    Some(Token::RParen) => {
+                        *pos += 1;
+                        break;
+                    }
+                    Some(Token::Ident(name)) => {
+                        params.push(name.clone());
+                        *pos += 1;
+                        if matches!(tokens.get(*pos), Some(Token::Comma)) {
+                            *pos += 1;
+                        }
+                    }
+                    None => return Err("Expected ')' in lambda parameter list".to_string()),
+                    _ => return Err("Expected parameter name in lambda".to_string()),
+                }
+            }
+            let body = parse_logical_or(tokens, pos)?;
+            Expr::Lambda {
+                params,
+                body: Box::new(body),
+            }
+        }
         _ => {
             return Err(
-                "Expected number, function, variable, string, '-', '[', or '('".to_string(),
+                "Expected number, function, variable, string, '-', '[', '@', or '('".to_string(),
             );
         }
     };

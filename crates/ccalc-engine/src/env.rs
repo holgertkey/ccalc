@@ -1,7 +1,30 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use ndarray::Array2;
+
+use crate::io::IoContext;
+
+/// A type-erased callable for anonymous functions (lambdas).
+///
+/// Stores a heap-allocated closure that captures the lambda's body expression
+/// and the lexical environment at the point of definition.
+/// Two `LambdaFn` values are equal only if they are the exact same allocation.
+#[derive(Clone)]
+pub struct LambdaFn(pub Rc<dyn Fn(&[Value], Option<&mut IoContext>) -> Result<Value, String>>);
+
+impl std::fmt::Debug for LambdaFn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "@<lambda>")
+    }
+}
+
+impl PartialEq for LambdaFn {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
 
 /// A value held in the variable environment.
 #[derive(Debug, Clone, PartialEq)]
@@ -16,6 +39,24 @@ pub enum Value {
     Str(String),
     /// String object (double-quoted string).
     StringObj(String),
+    /// Anonymous function: `@(params) expr`. Stores a pre-compiled closure
+    /// that captures the lexical environment at definition time.
+    Lambda(LambdaFn),
+    /// Named user-defined function: `function [outputs] = name(params) ... end`.
+    ///
+    /// The body is stored as raw source text and re-parsed on each call.
+    /// Named functions execute in an isolated scope (only params are visible,
+    /// plus built-in constants `i`, `j`).
+    Function {
+        outputs: Vec<String>,
+        params: Vec<String>,
+        body_source: String,
+    },
+    /// Multiple return values from a multi-output function call (internal use).
+    ///
+    /// Produced by calling a function with `outputs.len() > 1`.
+    /// Consumed by `Stmt::MultiAssign` in exec.rs. Not directly user-visible.
+    Tuple(Vec<Value>),
 }
 
 impl Value {
@@ -26,7 +67,10 @@ impl Value {
             | Value::Matrix(_)
             | Value::Complex(_, _)
             | Value::Str(_)
-            | Value::StringObj(_) => None,
+            | Value::StringObj(_)
+            | Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_) => None,
         }
     }
 }

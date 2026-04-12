@@ -224,6 +224,9 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
                 format!("\"{display}\"")
             }
         }
+        Some(Value::Lambda(_)) => "@<lambda>".to_string(),
+        Some(Value::Function { .. }) => "@<function>".to_string(),
+        Some(Value::Tuple(_)) => "(...)".to_string(),
     }
 }
 
@@ -302,6 +305,9 @@ pub fn run() {
                         Ok(None) => {}
                         Ok(Some(Signal::Break | Signal::Continue)) => {
                             eprintln!("Error: 'break'/'continue' outside a loop");
+                        }
+                        Ok(Some(Signal::Return)) => {
+                            eprintln!("Error: 'return' outside a function");
                         }
                         Err(e) => eprintln!("Error: {e}"),
                     },
@@ -523,6 +529,11 @@ pub fn run() {
                 continue;
             }
 
+            // MultiAssign / FunctionDef / Return — can't go through evaluate()
+            if try_exec_stmt(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
             // Extract trailing base suffix (e.g. "0xFF + 0b10 hex", "10 base")
             let (to_eval, base_suffix) = extract_base_suffix(stmt);
             let show_all_bases = matches!(base_suffix, Some(BaseSuffix::ShowAll));
@@ -571,6 +582,19 @@ pub fn run() {
                                 }
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
+                                Value::Lambda(_) => println!("{name} = @<lambda>"),
+                                Value::Function {
+                                    params, outputs, ..
+                                } => {
+                                    let p = params.join(", ");
+                                    let out = match outputs.len() {
+                                        0 => String::new(),
+                                        1 => format!("{} = ", outputs[0]),
+                                        _ => format!("[{}] = ", outputs.join(", ")),
+                                    };
+                                    println!("{name} = @function {out}{name}({p})");
+                                }
+                                Value::Tuple(_) => {}
                             },
                             EvalResult::Value(val) => match &val {
                                 Value::Void => {}
@@ -600,6 +624,19 @@ pub fn run() {
                                     println!("{}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
+                                Value::Lambda(_) => println!("@<lambda>"),
+                                Value::Function {
+                                    params, outputs, ..
+                                } => {
+                                    let p = params.join(", ");
+                                    let out = match outputs.len() {
+                                        0 => String::new(),
+                                        1 => format!("{} = ", outputs[0]),
+                                        _ => format!("[{}] = ", outputs.join(", ")),
+                                    };
+                                    println!("@function {out}f({p})");
+                                }
+                                Value::Tuple(_) => {}
                             },
                         }
                     }
@@ -649,6 +686,19 @@ pub fn run_expr(expr: &str) {
                 }
                 Value::Str(s) => println!("{name} = {s}"),
                 Value::StringObj(s) => println!("{name} = {s}"),
+                Value::Lambda(_) => println!("{name} = @<lambda>"),
+                Value::Function {
+                    params, outputs, ..
+                } => {
+                    let p = params.join(", ");
+                    let out = match outputs.len() {
+                        0 => String::new(),
+                        1 => format!("{} = ", outputs[0]),
+                        _ => format!("[{}] = ", outputs.join(", ")),
+                    };
+                    println!("{name} = @function {out}{name}({p})");
+                }
+                Value::Tuple(_) => {}
             },
             EvalResult::Value(v) => match &v {
                 Value::Void => {}
@@ -669,11 +719,60 @@ pub fn run_expr(expr: &str) {
                     println!("{}", format_complex(*re, *im, &fmt));
                 }
                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
+                Value::Lambda(_) => println!("@<lambda>"),
+                Value::Function {
+                    params, outputs, ..
+                } => {
+                    let p = params.join(", ");
+                    let out = match outputs.len() {
+                        0 => String::new(),
+                        1 => format!("{} = ", outputs[0]),
+                        _ => format!("[{}] = ", outputs.join(", ")),
+                    };
+                    println!("@function {out}f({p})");
+                }
+                Value::Tuple(_) => {}
             },
         },
         Err(e) => {
             eprintln!("Error: {e}");
             std::process::exit(1);
+        }
+    }
+}
+
+/// Handles statements that `evaluate()` cannot process: `MultiAssign`, `FunctionDef`, `Return`.
+///
+/// When a single-line statement parses to one of these variants, this function
+/// runs it directly via `exec_stmts` and returns `true` (caller should `continue`).
+/// Returns `false` if the statement is a simple expression or assignment that
+/// `evaluate()` can handle.
+fn try_exec_stmt(
+    stmt: &str,
+    silent: bool,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> bool {
+    let Ok(parsed) = parse(stmt) else {
+        return false;
+    };
+    match parsed {
+        Stmt::Assign(_, _) | Stmt::Expr(_) => false, // handled by evaluate()
+        other => {
+            match exec_stmts(&[(other, silent)], env, io, fmt, base, compact) {
+                Ok(Some(Signal::Return)) => {
+                    eprintln!("Error: 'return' outside a function");
+                }
+                Ok(Some(Signal::Break) | Some(Signal::Continue)) => {
+                    eprintln!("Error: 'break'/'continue' outside a loop");
+                }
+                Ok(None) => {}
+                Err(e) => eprintln!("Error: {e}"),
+            }
+            true
         }
     }
 }
@@ -910,6 +1009,11 @@ pub fn run_pipe(reader: impl BufRead) {
                 continue;
             }
 
+            // MultiAssign / FunctionDef / Return — can't go through evaluate()
+            if try_exec_stmt(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
             let (to_eval, base_suffix) = extract_base_suffix(stmt);
             let show_all = matches!(base_suffix, Some(BaseSuffix::ShowAll));
             if let Some(BaseSuffix::Switch(b)) = base_suffix {
@@ -939,6 +1043,19 @@ pub fn run_pipe(reader: impl BufRead) {
                                 }
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
+                                Value::Lambda(_) => println!("{name} = @<lambda>"),
+                                Value::Function {
+                                    params, outputs, ..
+                                } => {
+                                    let p = params.join(", ");
+                                    let out = match outputs.len() {
+                                        0 => String::new(),
+                                        1 => format!("{} = ", outputs[0]),
+                                        _ => format!("[{}] = ", outputs.join(", ")),
+                                    };
+                                    println!("{name} = @function {out}{name}({p})");
+                                }
+                                Value::Tuple(_) => {}
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
@@ -968,6 +1085,19 @@ pub fn run_pipe(reader: impl BufRead) {
                                     println!("{}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
+                                Value::Lambda(_) => println!("@<lambda>"),
+                                Value::Function {
+                                    params, outputs, ..
+                                } => {
+                                    let p = params.join(", ");
+                                    let out = match outputs.len() {
+                                        0 => String::new(),
+                                        1 => format!("{} = ", outputs[0]),
+                                        _ => format!("[{}] = ", outputs.join(", ")),
+                                    };
+                                    println!("@function {out}f({p})");
+                                }
+                                Value::Tuple(_) => {}
                             },
                         }
                     }
@@ -1031,6 +1161,9 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, fmt)),
             Value::Str(s) => println!("ans = {s}"),
             Value::StringObj(s) => println!("ans = {s}"),
+            Value::Lambda(_) => println!("ans = @<lambda>"),
+            Value::Function { .. } => println!("ans = @function"),
+            Value::Tuple(_) => {}
         }
     }
 
@@ -1061,6 +1194,13 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::StringObj(_) => {
                 scalars.push(format!("{name} [string]"));
             }
+            Value::Lambda(_) => {
+                scalars.push(format!("{name} = @<lambda>"));
+            }
+            Value::Function { params, .. } => {
+                scalars.push(format!("{name}({}) [function]", params.join(", ")));
+            }
+            Value::Tuple(_) => {}
         }
     }
 
@@ -1356,6 +1496,9 @@ fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
             Value::Scalar(n) => println!("{}", format_scalar(*n, base, fmt)),
             Value::Complex(re, im) => println!("{}", format_complex(*re, *im, fmt)),
             Value::Str(s) | Value::StringObj(s) => println!("{s}"),
+            Value::Lambda(_) => println!("@<lambda>"),
+            Value::Function { .. } => println!("@function"),
+            Value::Tuple(_) => {}
         },
         Err(e) => eprintln!("Error: {e}"),
     }

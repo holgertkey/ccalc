@@ -509,6 +509,9 @@ fn pipe_output(input: &str) -> Vec<String> {
                         Value::Scalar(n) => output.push(format_scalar(*n, base, &fmt)),
                         Value::Complex(re, im) => output.push(format_complex(*re, *im, &fmt)),
                         Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
+                        Value::Lambda(_) => output.push("@<lambda>".to_string()),
+                        Value::Function { .. } => output.push("@function".to_string()),
+                        Value::Tuple(_) => {}
                     },
                     Err(e) => output.push(format!("Error: {e}")),
                 }
@@ -547,6 +550,11 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 }
                                 Value::Str(s) => output.push(format!("{name} = {s}")),
                                 Value::StringObj(s) => output.push(format!("{name} = {s}")),
+                                Value::Lambda(_) => output.push(format!("{name} = @<lambda>")),
+                                Value::Function { .. } => {
+                                    output.push(format!("{name} = @function"))
+                                }
+                                Value::Tuple(_) => {}
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
@@ -576,6 +584,9 @@ fn pipe_output(input: &str) -> Vec<String> {
                                     output.push(format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
+                                Value::Lambda(_) => output.push("@<lambda>".to_string()),
+                                Value::Function { .. } => output.push("@function".to_string()),
+                                Value::Tuple(_) => {}
                             },
                         }
                     }

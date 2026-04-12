@@ -1630,9 +1630,12 @@ use crate::exec::exec_stmts;
 use crate::io::IoContext;
 
 fn run_block(src: &str) -> Env {
+    crate::exec::init();
     let stmts = parse_stmts(src).expect("parse_stmts failed");
     let mut env = Env::new();
     env.insert("ans".to_string(), Value::Scalar(0.0));
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    env.insert("j".to_string(), Value::Complex(0.0, 1.0));
     let mut io = IoContext::new();
     exec_stmts(
         &stmts,
@@ -2135,6 +2138,7 @@ fn test_block_depth_delta_switch_do_until() {
 // ── Phase 11.5e: run() / source() ────────────────────────────────────────────
 
 fn run_block_with_env(src: &str, env: &mut Env) {
+    crate::exec::init();
     let stmts = parse_stmts(src).expect("parse_stmts failed");
     let mut io = IoContext::new();
     exec_stmts(&stmts, env, &mut io, &FormatMode::Short, Base::Dec, true)
@@ -2251,4 +2255,353 @@ fn test_source_alias() {
         99.0
     );
     std::fs::remove_file(script).ok();
+}
+
+// ── Phase 12: User-defined functions and lambdas ─────────────────────────────
+
+// Helper: runs a block and calls a function defined in it.
+fn run_block_fn(src: &str, call: &str) -> Value {
+    let mut env = run_block(src); // run_block already calls init()
+    env.entry("ans".to_string()).or_insert(Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts(call).expect("parse call failed");
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .expect("exec call failed");
+    env.get("ans").cloned().unwrap_or(Value::Scalar(0.0))
+}
+
+// ── 12a: Named functions ──────────────────────────────────────────────────────
+
+#[test]
+fn test_named_function_single_return() {
+    let src = "function y = double(x)\ny = x * 2\nend";
+    let val = run_block_fn(src, "ans = double(5)");
+    assert_eq!(val, Value::Scalar(10.0));
+}
+
+#[test]
+fn test_named_function_no_outputs() {
+    // Function with no outputs stores nothing visible to the caller
+    let src = "function foo(x)\nend";
+    let env = run_block(src);
+    assert!(matches!(env.get("foo"), Some(Value::Function { .. })));
+}
+
+#[test]
+fn test_named_function_nargin() {
+    let src = "function y = nargin_check(a, b)\ny = nargin\nend";
+    let val = run_block_fn(src, "ans = nargin_check(1)");
+    assert_eq!(val, Value::Scalar(1.0));
+}
+
+#[test]
+fn test_named_function_with_if() {
+    let src =
+        "function y = sign_of(x)\nif x > 0\ny = 1\nelseif x < 0\ny = -1\nelse\ny = 0\nend\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = sign_of(5)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(1.0)));
+
+    let stmts = parse_stmts("ans = sign_of(-3)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(-1.0)));
+
+    let stmts = parse_stmts("ans = sign_of(0)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_named_function_isolated_scope() {
+    // Variables from the caller's scope must not leak into the function body
+    let src = "x = 99\nfunction y = f(a)\ny = a + 1\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = f(3)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    // x should still be 99, not changed by function
+    assert_eq!(env.get("x").cloned(), Some(Value::Scalar(99.0)));
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(4.0)));
+}
+
+#[test]
+fn test_named_function_return_statement() {
+    let src = "function y = early(x)\nif x > 0\ny = 1\nreturn\nend\ny = -1\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = early(5)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(1.0)));
+
+    let stmts = parse_stmts("ans = early(-1)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(-1.0)));
+}
+
+// ── 12b: Multiple return values ───────────────────────────────────────────────
+
+#[test]
+fn test_named_function_multi_return() {
+    let src = "function [mn, mx] = bounds(v)\nmn = min(v)\nmx = max(v)\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("[lo, hi] = bounds([3, 1, 4, 1, 5])").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("lo").cloned(), Some(Value::Scalar(1.0)));
+    assert_eq!(env.get("hi").cloned(), Some(Value::Scalar(5.0)));
+}
+
+#[test]
+fn test_multi_assign_extra_discarded() {
+    // Calling a function that returns a tuple with only one target — extras discarded
+    let src = "function [a, b] = pair()\na = 10\nb = 20\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("[x] = pair()").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("x").cloned(), Some(Value::Scalar(10.0)));
+    assert!(env.get("b").is_none() || env.get("b").cloned() != Some(Value::Scalar(20.0)));
+}
+
+#[test]
+fn test_multi_assign_tilde_discard() {
+    let src = "function [a, b, c] = triple()\na = 1\nb = 2\nc = 3\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("[x, ~, z] = triple()").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("x").cloned(), Some(Value::Scalar(1.0)));
+    assert_eq!(env.get("z").cloned(), Some(Value::Scalar(3.0)));
+}
+
+// ── 12c: Anonymous functions (lambdas) ────────────────────────────────────────
+
+#[test]
+fn test_lambda_parse() {
+    // @(x) x * 2 should parse to Expr::Lambda
+    let tokens = tokenize("@(x) x * 2").unwrap();
+    let mut pos = 0;
+    let expr = parse_logical_or(&tokens, &mut pos).unwrap();
+    assert!(matches!(expr, Expr::Lambda { .. }));
+}
+
+#[test]
+fn test_lambda_eval_single_arg() {
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    // Assign f = @(x) x^2, then call f(4)
+    let stmts = parse_stmts("f = @(x) x^2\nans = f(4)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(16.0)));
+}
+
+#[test]
+fn test_lambda_eval_two_args() {
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("add = @(a, b) a + b\nans = add(3, 7)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(10.0)));
+}
+
+#[test]
+fn test_lambda_no_args() {
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("k = @() 42\nans = k()").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(42.0)));
+}
+
+#[test]
+fn test_lambda_captures_lexical_env() {
+    // The lambda should capture the value of `c` at definition time
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("c = 10\nfn = @(x) x + c\nc = 99\nans = fn(5)").unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    // Should capture c=10, not c=99
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(15.0)));
+}
+
+// ── Parser-level tests ────────────────────────────────────────────────────────
+
+#[test]
+fn test_parse_return_stmt() {
+    let stmts = parse_stmts("return").unwrap();
+    assert!(matches!(stmts.as_slice(), [(Stmt::Return, false)]));
+}
+
+#[test]
+fn test_parse_multi_assign() {
+    let stmt = parse("[a, b] = f()").unwrap();
+    assert!(matches!(stmt, Stmt::MultiAssign { targets, .. } if targets == vec!["a", "b"]));
+}
+
+#[test]
+fn test_parse_function_def() {
+    let stmts = parse_stmts("function y = sq(x)\ny = x*x\nend").unwrap();
+    assert!(
+        matches!(&stmts[0].0, Stmt::FunctionDef { name, outputs, params, .. }
+            if name == "sq" && outputs == &["y"] && params == &["x"])
+    );
+}
+
+#[test]
+fn test_parse_function_multi_output() {
+    let stmts = parse_stmts("function [a, b] = swap(x, y)\na = y\nb = x\nend").unwrap();
+    assert!(
+        matches!(&stmts[0].0, Stmt::FunctionDef { name, outputs, params, .. }
+            if name == "swap" && outputs == &["a", "b"] && params == &["x", "y"])
+    );
+}
+
+#[test]
+fn test_block_depth_function() {
+    assert_eq!(block_depth_delta("function y = f(x)"), 1);
+    assert_eq!(block_depth_delta("end"), -1);
+}
+
+#[test]
+fn test_too_many_args_error() {
+    crate::exec::init();
+    let src = "function y = f(x)\ny = x\nend";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = f(1, 2, 3)").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
 }
