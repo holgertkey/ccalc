@@ -1,3 +1,9 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
+/// Parsed function body cache: body source string → pre-parsed, all-silent statements.
+type BodyCache = HashMap<String, Rc<Vec<(Stmt, bool)>>>;
+
 use ndarray::Array2;
 
 use crate::env::{Env, Value};
@@ -11,6 +17,38 @@ use crate::parser::{Stmt, parse_stmts};
 thread_local! {
     /// Tracks the current script nesting depth to prevent infinite recursion via `run()`.
     static RUN_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+
+    /// Parse cache for named function bodies.
+    ///
+    /// Key: body source string (verbatim text between `function` and `end`).
+    /// Value: pre-parsed, all-silent statement sequence.
+    ///
+    /// Populated on the first call to any function; subsequent calls with the
+    /// same body string skip parsing entirely and reuse the shared `Rc`.
+    /// Cache entries are never evicted — acceptable because the number of
+    /// unique function bodies in a session is small.
+    static BODY_CACHE: std::cell::RefCell<BodyCache> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Returns a parsed, all-silent body for `body_source`, using the cache when possible.
+///
+/// "All-silent" means every `(Stmt, bool)` has `bool = true` — function bodies
+/// never print output directly. The parse result is shared via `Rc` so that
+/// repeated calls to the same function avoid both allocation and parsing work.
+fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool)>>, String> {
+    BODY_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(body) = cache.get(body_source) {
+            return Ok(Rc::clone(body));
+        }
+        let stmts = parse_stmts(body_source)
+            .map_err(|e| format!("function body parse error: {e}"))?;
+        let silent: Vec<(Stmt, bool)> = stmts.into_iter().map(|(s, _)| (s, true)).collect();
+        let rc = Rc::new(silent);
+        cache.insert(body_source.to_string(), Rc::clone(&rc));
+        Ok(rc)
+    })
 }
 
 /// Flow control signal returned by [`exec_stmts`].
@@ -92,14 +130,12 @@ fn call_user_function(
     );
     local_env.insert("nargout".to_string(), Value::Scalar(outputs.len() as f64));
 
-    // Parse and execute body
-    let stmts = parse_stmts(body_source).map_err(|e| format!("function body parse error: {e}"))?;
+    // Retrieve (or parse-and-cache) the function body, then execute it.
+    let body = get_or_parse_body(body_source)?;
     let fmt = get_display_fmt();
     let base = get_display_base();
     let compact = get_display_compact();
-    // Function bodies execute silently (no output printing)
-    let silent_stmts: Vec<(Stmt, bool)> = stmts.into_iter().map(|(s, _)| (s, true)).collect();
-    match exec_stmts(&silent_stmts, &mut local_env, io, &fmt, base, compact)? {
+    match exec_stmts(&body, &mut local_env, io, &fmt, base, compact)? {
         None | Some(Signal::Return) => {}
         Some(Signal::Break) => return Err("'break' outside loop".to_string()),
         Some(Signal::Continue) => return Err("'continue' outside loop".to_string()),

@@ -15,6 +15,12 @@ exclude = ["CLAUDE.md", ".debug/**"]
 name = "ccalc"
 path = "src/main.rs"
 
+[features]
+default = []
+# Pass through to ccalc-engine — see ccalc-engine/Cargo.toml for build requirements.
+blas = ["ccalc-engine/blas"]
+blas-static = ["ccalc-engine/blas-static"]
+
 [dependencies]
 rustyline = "14"
 ccalc-engine = { path = "../ccalc-engine" }

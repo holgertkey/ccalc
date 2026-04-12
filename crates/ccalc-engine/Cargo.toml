@@ -7,6 +7,26 @@ repository.workspace = true
 edition.workspace = true
 description = "Core computation engine for ccalc: tokenizer, parser, AST evaluator, and memory cells"
 
+[features]
+default = []
+
+# Link against a system-installed OpenBLAS (dynamic).
+# Requires OpenBLAS headers and shared library on the build host.
+#   Linux:   sudo apt install libopenblas-dev
+#   macOS:   brew install openblas  (or use Accelerate — see below)
+#   Windows: install OpenBLAS via vcpkg or MSYS2
+# Build: cargo build --release --features blas
+blas = ["dep:blas-src", "ndarray/blas"]
+
+# Build and statically link OpenBLAS from source.
+# Requires a Fortran compiler (gfortran), cmake, and make.
+#   Linux/macOS: sudo apt install gfortran cmake  /  brew install gcc cmake
+#   Windows: requires MSYS2 + MinGW + gfortran — non-trivial; prefer system OpenBLAS instead.
+# Build: cargo build --release --features blas-static
+blas-static = ["blas", "dep:openblas-src"]
+
 [dependencies]
 dirs = "5"
 ndarray = "0.16"
+blas-src = { version = "0.10", optional = true, default-features = false, features = ["openblas"] }
+openblas-src = { version = "0.10", optional = true, features = ["static"] }
