@@ -23,10 +23,14 @@ pub fn print(topic: Option<&str>) {
         Some("control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source") => {
             print_control()
         }
+        Some(
+            "userfuncs" | "userfunc" | "ufunc" | "lambda" | "lambdas" | "anon" | "user"
+            | "function" | "closures",
+        ) => print_userfuncs(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
+                "Available topics: syntax  functions  userfuncs  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
             );
         }
     }
@@ -111,6 +115,14 @@ Control   if cond / elseif / else / end
           break   continue
 Scripts   run('file.calc')  run('file')     .calc first, then .m
           source('file')                    Octave alias for run()
+Functions function y = f(x) ... end         named, single return
+          function [a,b] = f(x) ... end     multiple return values
+          [a,b] = f(x)   [~,b] = f(x)      multi-assign, ~ discards
+          nargin                            # args actually passed
+          return                            early exit
+Lambda    f = @(x) expr                    anonymous function
+          g = @(x,y) expr                  multi-arg lambda
+          h = @(x) f(g(x))                 compose via capture
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
@@ -140,7 +152,8 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
         Ctrl+W del word  Ctrl+U del to start  Ctrl+K del to end
 
   help syntax      operators, precedence, implicit multiplication
-  help functions   full function reference with examples
+  help functions   built-in function reference with examples
+  help userfuncs   user-defined functions, multiple return, lambdas
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
@@ -1351,8 +1364,145 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
   Lines accumulate with a continuation prompt until the block is complete.
   Press Ctrl+C to cancel an in-progress block.
 
-See also: help syntax  help logic
+See also: help syntax  help logic  help userfuncs
 Examples: ccalc examples/control_flow.calc
           ccalc examples/extended_control_flow.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help userfuncs
+// ---------------------------------------------------------------------------
+
+fn print_userfuncs() {
+    println!(
+        "\
+USER-DEFINED FUNCTIONS AND LAMBDAS  (help userfuncs)
+
+─── Named functions ───────────────────────────────────────────────────────────
+
+  function result = name(p1, p2)
+    ...
+    result = expr;
+  end
+
+  Defined at the top level or in a script file. Stored in the workspace
+  like any variable. Functions persist until cleared.
+
+  Single return value:
+    function y = square(x)
+      y = x ^ 2;
+    end
+    square(5)    →  25
+
+  Multiple return values:
+    function [mn, mx] = bounds(v)
+      mn = min(v);
+      mx = max(v);
+    end
+    [lo, hi] = bounds([3 1 4 1 5])   →  lo = 1, hi = 5
+
+  Discard outputs with ~:
+    [~, hi] = bounds([3 1 4 1 5])    →  hi = 5
+
+─── nargin — optional arguments ───────────────────────────────────────────────
+
+  nargin holds the number of arguments actually passed by the caller.
+  Use it to implement optional parameters with defaults:
+
+    function y = power_fn(base, exp)
+      if nargin < 2
+        exp = 2;
+      end
+      y = base ^ exp;
+    end
+    power_fn(5)     →  25   (uses default exp = 2)
+    power_fn(2, 8)  →  256
+
+─── return — early exit ───────────────────────────────────────────────────────
+
+  return immediately exits the current function. Output variables must
+  be assigned before return is reached:
+
+    function g = gcd_fn(a, b)
+      while b ~= 0
+        r = mod(a, b);
+        a = b;
+        b = r;
+      end
+      g = a;
+    end
+
+─── Scope ─────────────────────────────────────────────────────────────────────
+
+  Each call creates a fresh local scope. The caller's data variables
+  (scalars, matrices, strings) are NOT visible inside the function.
+  Parameters are bound to the local scope.
+
+  However, all Function and Lambda values from the caller's workspace
+  are forwarded, enabling:
+    - self-recursion: a function can call itself by name
+    - mutual recursion: two functions can call each other
+
+─── Anonymous functions (lambdas) ─────────────────────────────────────────────
+
+  Syntax:  @(param1, param2, ...) expr
+
+    sq    = @(x) x ^ 2;
+    hyp   = @(a, b) sqrt(a^2 + b^2);
+    add   = @(a, b) a + b;
+
+    sq(7)        →  49
+    hyp(3, 4)    →   5
+
+  Zero-argument lambda:
+    const_pi = @() pi;
+    const_pi()   →  3.14159...
+
+  Lambdas are stored in variables and passed like any value.
+
+─── Lexical capture ───────────────────────────────────────────────────────────
+
+  A lambda captures the enclosing environment at DEFINITION time.
+  Changing a captured variable later has no effect:
+
+    rate = 0.05;
+    interest = @(p, n) p * (1 + rate) ^ n;
+    rate = 0.99;              % too late — the lambda captured 0.05
+    interest(1000, 10)   →  1628.89
+
+─── Lambdas as arguments ──────────────────────────────────────────────────────
+
+  Pass a lambda to a function using @:
+
+    function s = midpoint(f, a, b, n)
+      h = (b - a) / n;
+      s = 0;
+      for k = 1:n
+        xm = a + (k - 0.5) * h;
+        s += f(xm);
+      end
+      s *= h;
+    end
+
+    midpoint(@(x) x^2,    0, 1, 1000)   →  0.333333
+    midpoint(@(x) sin(x), 0, pi, 1000)  →  2.000001
+
+─── Functions returning functions ─────────────────────────────────────────────
+
+  A named function can return a lambda (higher-order programming):
+
+    function f = make_adder(c)
+      f = @(x) x + c;
+    end
+
+    add5  = make_adder(5);
+    add10 = make_adder(10);
+    add5(3)         →   8
+    add10(7)        →  17
+    add5(add10(1))  →  16
+
+See also: help control  help functions
+Example:  ccalc examples/user_functions.calc"
     );
 }

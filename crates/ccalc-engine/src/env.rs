@@ -11,8 +11,10 @@ use crate::io::IoContext;
 /// Stores a heap-allocated closure that captures the lambda's body expression
 /// and the lexical environment at the point of definition.
 /// Two `LambdaFn` values are equal only if they are the exact same allocation.
+type LambdaFnInner = Rc<dyn Fn(&[Value], Option<&mut IoContext>) -> Result<Value, String>>;
+
 #[derive(Clone)]
-pub struct LambdaFn(pub Rc<dyn Fn(&[Value], Option<&mut IoContext>) -> Result<Value, String>>);
+pub struct LambdaFn(pub LambdaFnInner);
 
 impl std::fmt::Debug for LambdaFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

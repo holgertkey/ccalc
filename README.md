@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.16.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.17.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -913,6 +913,106 @@ fprintf('%d\n', x)   % 128
 
 `break` and `continue` work inside `do...until`.
 
+### User-defined functions
+
+Named functions use the `function ... end` block syntax:
+
+```matlab
+function result = factorial_r(n)
+  if n <= 1
+    result = 1;
+    return
+  end
+  result = n * factorial_r(n - 1);
+end
+
+factorial_r(7)   % 5040
+```
+
+Multiple return values are separated with `[...]`:
+
+```matlab
+function [mn, mx, avg] = stats(v)
+  mn  = min(v);
+  mx  = max(v);
+  avg = mean(v);
+end
+
+data = [4 7 2 9 1 5 8];
+[lo, hi, mu] = stats(data);   % lo=1  hi=9  mu=5.14...
+```
+
+Use `~` to discard individual outputs:
+
+```matlab
+[~, top, ~] = stats([10 30 20]);   % top = 30
+```
+
+**`nargin`** — number of arguments actually passed; useful for optional parameters:
+
+```matlab
+function y = power_fn(base, exp)
+  if nargin < 2
+    exp = 2;
+  end
+  y = base ^ exp;
+end
+
+power_fn(5)     % 25   (default exponent)
+power_fn(2, 8)  % 256
+```
+
+Functions are recursive. They see all other `Function`/`Lambda` values
+defined in the workspace at the time of the call.
+
+### Anonymous functions (lambdas)
+
+```matlab
+sq   = @(x) x ^ 2;
+hyp  = @(a, b) sqrt(a^2 + b^2);
+
+sq(7)        % 49
+hyp(3, 4)    % 5
+```
+
+Lambdas capture the enclosing environment **at definition time** (lexical closure):
+
+```matlab
+rate = 0.05;
+interest = @(p, n) p * (1 + rate) ^ n;
+rate = 0.99;                        % does not affect the lambda
+interest(1000, 10)                  % 1628.89  (uses captured 5%)
+```
+
+Pass lambdas to named functions (higher-order functions):
+
+```matlab
+function s = midpoint(f, a, b, n)
+  h = (b - a) / n;
+  s = 0;
+  for k = 1:n
+    xm = a + (k - 0.5) * h;
+    s += f(xm);
+  end
+  s *= h;
+end
+
+midpoint(@(x) x^2, 0, 1, 1000)         % 0.333333
+midpoint(@(x) sin(x), 0, pi, 1000)     % 2.000001
+```
+
+Functions can return functions:
+
+```matlab
+function f = make_adder(c)
+  f = @(x) x + c;
+end
+
+add5 = make_adder(5);
+add5(3)            % 8
+add5(make_adder(10)(1))  % 16
+```
+
 ### `run()` / `source()`
 
 Execute a script file in the current workspace. Variables defined in the script persist in the caller's scope (MATLAB `run` semantics):
@@ -967,7 +1067,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1210,6 +1310,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
 | `control_flow.calc`          | Core control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |
 | `extended_control_flow.calc` | Extended control flow: switch/case, do...until, run()/source(); exit-code classifier, unit converter, digit sum, Euclidean GCD |
+| `user_functions.calc`        | User-defined functions and lambdas: recursion, multiple return values, nargin, anonymous functions, lexical capture, midpoint integration, higher-order functions |
 
 ```bash
 ccalc < examples/mortgage.calc
@@ -1237,11 +1338,11 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void), Env type (HashMap<String, Value>), workspace save/load
-    eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums
-    exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue)
+    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void/Lambda/Function/Tuple), Env type (HashMap<String, Value>), workspace save/load
+    eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums + FnCallHook
+    exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue/Return), call_user_function()
     io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd
-    parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum (incl. If/For/While/Break/Continue)
+    parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum (incl. If/For/While/FunctionDef/Return/MultiAssign)
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history
 ```

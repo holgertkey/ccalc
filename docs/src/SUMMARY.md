@@ -21,6 +21,7 @@
 - [Strings](./guide/strings.md)
 - [File I/O](./guide/file-io.md)
 - [Control Flow](./guide/control-flow.md)
+- [User-defined Functions](./guide/user-functions.md)
 
 # Architecture
 
@@ -46,3 +47,4 @@
 - [Phase 10.5 — File I/O and Filesystem Queries](./ccalc/phase105-fileio.md)
 - [Phase 11 — Core Control Flow](./ccalc/phase11-control-flow.md)
 - [Phase 11.5 — Extended Control Flow](./ccalc/phase115-extended-control-flow.md)
+- [Phase 12 — User-defined Functions](./ccalc/phase12-user-functions.md)

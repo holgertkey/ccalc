@@ -21,7 +21,7 @@ The work is divided into phases in order of architectural dependency.
 | 10.5 | File I/O (`fopen`, `dlmread`, `isfile`, `save`/`load` with path) | ✅ Done |
 | 11 | Core control flow (`if`, `for`, `while`, `break`, `continue`, `+=`) | ✅ Done |
 | 11.5 | Extended control flow (`switch`, `do...until`, `run`/`source`; `try`/`catch` deferred to Phase 14) | ✅ Done |
-| 12 | User-defined functions, multiple return values, `@(x)` lambdas | Planned |
+| 12 | User-defined functions, multiple return values, `@(x)` lambdas | ✅ Done |
 
 ## Key architectural decisions
 
@@ -130,7 +130,21 @@ A `thread_local! RUN_DEPTH` counter caps recursion at 64 levels.
 
 **Phase 12** adds user-defined functions with single and multiple return
 values (`[a, b] = f(x)`), and anonymous functions `@(x) expr` (closures).
-Requires Phase 11 for `return`, `break`, and multi-statement bodies.
+
+Named functions use `function [out1, out2] = name(p1, p2) ... end` syntax and
+are stored as `Value::Function { outputs, params, body_source }` in `Env`.
+`body_source` is stored as a string and re-parsed on each call to avoid a
+circular dependency between `eval.rs` and `parser.rs`.
+Anonymous functions are stored as `Value::Lambda(Rc<dyn Fn>)` — a closure
+compiled at definition time that captures the enclosing environment lexically.
+A thread-local `FnCallHook` bridges `eval.rs` (which dispatches the call) and
+`exec.rs` (which executes the body in an isolated scope).
+Each call gets a fresh environment seeded with `i`, `j`, `ans`, the declared
+parameters, `nargin`, and all callable values (`Function`/`Lambda`) from the
+caller's workspace — the last point enables self-recursion and mutual recursion
+without exposing caller data.
+`Stmt::FunctionDef`, `Stmt::Return`, `Stmt::MultiAssign`, and `Token::At` were
+added to the parser; `Signal::Return` to the executor.
 
 ## Compatibility notes
 

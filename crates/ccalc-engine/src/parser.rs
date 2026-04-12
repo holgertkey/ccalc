@@ -1119,14 +1119,14 @@ fn leading_keyword(line: &str) -> Option<&str> {
 /// - `[y1, y2] = name(params)` — multiple outputs
 fn parse_function_header(header: &str) -> Result<(String, Vec<String>, Vec<String>), String> {
     // Detect output list if there is an `=` (that is not `==`)
-    if let Some(eq_pos) = header.find('=') {
-        if !header[eq_pos + 1..].starts_with('=') {
-            let lhs = header[..eq_pos].trim();
-            let rhs = header[eq_pos + 1..].trim();
-            let outputs = parse_output_list(lhs)?;
-            let (name, params) = parse_func_name_params(rhs)?;
-            return Ok((name, outputs, params));
-        }
+    if let Some(eq_pos) = header.find('=')
+        && !header[eq_pos + 1..].starts_with('=')
+    {
+        let lhs = header[..eq_pos].trim();
+        let rhs = header[eq_pos + 1..].trim();
+        let outputs = parse_output_list(lhs)?;
+        let (name, params) = parse_func_name_params(rhs)?;
+        return Ok((name, outputs, params));
     }
     // No outputs: just name(params)
     let (name, params) = parse_func_name_params(header.trim())?;
@@ -1216,7 +1216,7 @@ fn parse_for_header(rest: &str) -> Result<(String, Expr), String> {
 
 /// If `input` matches `"[a, b] = rhs"` (not `==`), returns the target names and rhs string.
 /// All targets must be valid identifiers or `~` (discard placeholder).
-fn try_split_multi_assign<'a>(input: &'a str) -> Option<(Vec<String>, &'a str)> {
+fn try_split_multi_assign(input: &str) -> Option<(Vec<String>, &str)> {
     let trimmed = input.trim();
     if !trimmed.starts_with('[') {
         return None;

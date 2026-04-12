@@ -30,7 +30,7 @@ pub fn set_fn_call_hook(f: FnCallHook) {
 // ── Display context (thread-local, set by exec_stmts) ────────────────────────
 
 thread_local! {
-    static DISPLAY_FMT:     RefCell<FormatMode> = RefCell::new(FormatMode::Short);
+    static DISPLAY_FMT:     RefCell<FormatMode> = const { RefCell::new(FormatMode::Short) };
     static DISPLAY_BASE:    Cell<Base>           = const { Cell::new(Base::Dec) };
     static DISPLAY_COMPACT: Cell<bool>           = const { Cell::new(false) };
 }

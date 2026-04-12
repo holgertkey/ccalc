@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-04-12
+
+### Added
+
+- **Phase 12 — User-defined functions, multiple return values, and lambdas**:
+
+  - **Named functions** — `function [out1, out2] = name(p1, p2) ... end`
+    - Single and multiple return values
+    - `return` for early exit
+    - `nargin` / `nargout` variables injected into the function scope
+    - Fully isolated scope — caller's data variables are not visible inside
+    - All `Value::Function` and `Value::Lambda` values from the caller's workspace
+      are automatically forwarded, enabling recursion and mutual recursion
+    - Functions defined in the workspace persist until `clear` is called
+
+  - **Multi-assignment** — `[a, b, c] = f(x)` destructures a multi-return call;
+    `~` discards individual outputs: `[~, mx, ~] = stats(v)`
+
+  - **Anonymous functions (lambdas)** — `@(params) expr`
+    - Lexical closure: captures the enclosing environment at creation time
+    - Passed as arguments to named functions (higher-order functions)
+    - Stored in variables: `sq = @(x) x^2; sq(5)` → `25`
+    - Functions returning functions: `make_adder(c)` → `@(x) x + c`
+
+  - **`Value::Lambda` / `Value::Function` / `Value::Tuple`** — new `Value` variants
+    in `env.rs` supporting the function system
+
+  - **`Token::At`** (`@`) added to the tokenizer; `Stmt::FunctionDef`,
+    `Stmt::Return`, `Stmt::MultiAssign` added to the AST
+
+  - **`exec::init()`** — registers the `FnCallHook` that bridges `eval.rs`
+    (function dispatch) and `exec.rs` (function execution)
+
+  - **New example** `examples/user_functions.calc` — 10-section demo:
+    recursive factorial, GCD, `nargin` optional args, multiple return values,
+    `~` output discard, lambda basics, lexical capture, numerical integration
+    (midpoint rule), higher-order functions, iterative Fibonacci
+
+### Fixed
+
+- **Recursion in named functions** — isolated function scope now forwards all
+  `Function` and `Lambda` values from the caller's environment, so self-recursion
+  and mutual recursion work correctly.  The `FnCallHook` signature was extended
+  with `caller_env: &Env` to make this possible.
+
 ## [0.16.0] - 2026-04-11
 
 ### Added
