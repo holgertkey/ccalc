@@ -34,11 +34,16 @@ pub fn init() {
 
 /// Called by `eval_inner` whenever a user function (`Value::Function`) is invoked.
 ///
-/// Executes the function body in an isolated scope containing only the parameters.
-/// Built-in constants (`i`, `j`, `pi`, `e`, `nan`, `inf`) are not pre-seeded — they are
-/// handled at parse time (`pi`/`e`/`nan`/`inf`) or through `Value::Complex` env seeding.
+/// Executes the function body in an isolated scope containing only the parameters plus
+/// any callable values (`Function`/`Lambda`) from the caller's environment, enabling
+/// recursion and mutual recursion.
 /// Multi-return: if the function has >1 output, returns `Value::Tuple`.
-fn call_user_function(func: &Value, args: &[Value], io: &mut IoContext) -> Result<Value, String> {
+fn call_user_function(
+    func: &Value,
+    args: &[Value],
+    caller_env: &Env,
+    io: &mut IoContext,
+) -> Result<Value, String> {
     let Value::Function {
         outputs,
         params,
@@ -48,11 +53,18 @@ fn call_user_function(func: &Value, args: &[Value], io: &mut IoContext) -> Resul
         return Err("call_user_function: not a Function value".to_string());
     };
 
-    // Build isolated scope: seed imaginary unit and parameters
+    // Build isolated scope: seed imaginary unit and ans, then copy all callable
+    // values (Function/Lambda) from the caller's environment so that recursion
+    // and mutual recursion work correctly.
     let mut local_env = Env::new();
     local_env.insert("i".to_string(), Value::Complex(0.0, 1.0));
     local_env.insert("j".to_string(), Value::Complex(0.0, 1.0));
     local_env.insert("ans".to_string(), Value::Scalar(0.0));
+    for (name, val) in caller_env.iter() {
+        if matches!(val, Value::Function { .. } | Value::Lambda(_)) {
+            local_env.insert(name.clone(), val.clone());
+        }
+    }
 
     // Trim any trailing args beyond what the function declares.
     // The parser injects `ans` for empty `f()` calls; for 0-param functions

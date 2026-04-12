@@ -11,7 +11,10 @@ use crate::io::IoContext;
 ///
 /// Registered once by `exec::init()` before the REPL loop starts.
 /// Called by `eval_inner` when a `Value::Function` is invoked.
-pub type FnCallHook = fn(func: &Value, args: &[Value], io: &mut IoContext) -> Result<Value, String>;
+/// The `caller_env` is passed so the function body can access other user-defined
+/// functions (enabling recursion and mutual recursion).
+pub type FnCallHook =
+    fn(func: &Value, args: &[Value], caller_env: &Env, io: &mut IoContext) -> Result<Value, String>;
 
 thread_local! {
     static FN_CALL_HOOK: Cell<Option<FnCallHook>> = const { Cell::new(None) };
@@ -258,7 +261,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         }
                         return match io.as_deref_mut() {
                             Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
-                                Some(hook) => hook(&val, &evaled, io_ref),
+                                Some(hook) => hook(&val, &evaled, env, io_ref),
                                 None => Err(format!(
                                     "'{name}': user function execution not initialized \
                                          (call exec::init() first)"
@@ -269,7 +272,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                                 // file I/O in this path will silently fail to open files).
                                 let mut tmp_io = IoContext::new();
                                 FN_CALL_HOOK.with(|c| match c.get() {
-                                    Some(hook) => hook(&val, &evaled, &mut tmp_io),
+                                    Some(hook) => hook(&val, &evaled, env, &mut tmp_io),
                                     None => Err(format!(
                                         "'{name}': user function execution not initialized"
                                     )),
