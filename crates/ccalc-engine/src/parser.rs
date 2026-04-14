@@ -1569,10 +1569,11 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 && let Token::LParen = &tokens[*pos]
             {
                 *pos += 1;
-                // Empty args fn() → pass ans as sole argument
                 let args = if *pos < tokens.len() {
                     if let Token::RParen = &tokens[*pos] {
-                        vec![Expr::Var("ans".to_string())]
+                        // Empty call: no arguments. Builtins and lambdas inject `ans` at eval
+                        // time; user functions receive truly empty arg lists (varargin = {}).
+                        vec![]
                     } else {
                         let mut list = vec![parse_call_arg(tokens, pos)?];
                         while *pos < tokens.len() {

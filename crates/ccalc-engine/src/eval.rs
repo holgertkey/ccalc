@@ -260,15 +260,21 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 match &val {
                     Value::Lambda(f) => {
                         // Evaluate arguments and call the closure directly.
-                        let mut evaled = Vec::with_capacity(args.len());
+                        // Empty call → inject ans (convenience: sq() = sq(ans)).
+                        let mut evaled = Vec::with_capacity(args.len().max(1));
                         for a in args {
                             evaled.push(eval_inner(a, env, io.as_deref_mut())?);
+                        }
+                        if evaled.is_empty() {
+                            evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
                         }
                         let f = f.clone();
                         return f.0(&evaled, io);
                     }
                     Value::Function { .. } => {
                         // Evaluate arguments and dispatch to the registered hook in exec.rs.
+                        // User functions receive the raw arg list — NO ans injection. Empty call
+                        // means no arguments (varargin = {}), matching MATLAB semantics.
                         let mut evaled = Vec::with_capacity(args.len());
                         for a in args {
                             evaled.push(eval_inner(a, env, io.as_deref_mut())?);
@@ -297,9 +303,13 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     _ => return eval_index(&val, args, env),
                 }
             }
-            let mut evaled = Vec::with_capacity(args.len());
+            // Builtin path: empty call → inject ans (sqrt() = sqrt(ans)).
+            let mut evaled = Vec::with_capacity(args.len().max(1));
             for a in args {
                 evaled.push(eval_inner(a, env, io.as_deref_mut())?);
+            }
+            if evaled.is_empty() {
+                evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
             }
             call_builtin(name, &evaled, env, io)
         }

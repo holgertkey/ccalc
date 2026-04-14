@@ -137,21 +137,16 @@ fn call_user_function(
 
     // If varargin, collect remaining args into a Cell
     if has_varargin {
+        // Collect extra args beyond the fixed parameters into varargin.
+        // User functions do not receive an injected `ans`; the arg list reflects
+        // exactly what the caller passed.
         let extra: Vec<Value> = effective_args
             .get(fixed_params.len()..)
             .unwrap_or(&[])
             .iter()
-            // Strip the implicit `ans` injection if extra contains exactly 1 auto-injected arg
             .cloned()
             .collect();
-        // If the only "extra" arg is the implicit ans and it came from empty call injection,
-        // we want varargin to be empty. Detect this: if params list has only varargin (0 fixed)
-        // and effective_args == [ans] and it looks like an empty call, use empty cell.
-        let varargin = if extra.is_empty() || (extra.len() == 1 && args.len() == 1 && fixed_params.is_empty()) {
-            Value::Cell(vec![])
-        } else {
-            Value::Cell(extra)
-        };
+        let varargin = Value::Cell(extra);
         local_env.insert("varargin".to_string(), varargin);
     }
 
