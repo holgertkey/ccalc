@@ -22,6 +22,7 @@
 - [File I/O](./guide/file-io.md)
 - [Control Flow](./guide/control-flow.md)
 - [User-defined Functions](./guide/user-functions.md)
+- [Cell Arrays](./guide/cell-arrays.md)
 
 # Architecture
 
@@ -48,3 +49,4 @@
 - [Phase 11 — Core Control Flow](./ccalc/phase11-control-flow.md)
 - [Phase 11.5 — Extended Control Flow](./ccalc/phase115-extended-control-flow.md)
 - [Phase 12 — User-defined Functions](./ccalc/phase12-user-functions.md)
+- [Phase 12.5 — Cell Arrays](./ccalc/phase125-cell-arrays.md)

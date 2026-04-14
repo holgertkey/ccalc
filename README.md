@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.17.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.17.0+005** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -1013,6 +1013,62 @@ add5(3)            % 8
 add5(make_adder(10)(1))  % 16
 ```
 
+### Cell Arrays
+
+Cell arrays are heterogeneous 1-D containers where each element can be any value — scalar, matrix, string, or function handle.
+
+```matlab
+c = {42, 'hello', [1 2 3]};   % cell literal
+c{1}                           % 42   (brace indexing, 1-based)
+c{2}                           % hello
+c{3}                           % [1×3 double]
+c{4} = 'new';                  % auto-grows beyond current size
+
+iscell(c)                      % 1
+numel(c)                       % 4
+cell(5)                        % pre-allocated 1×5 cell of zeros
+```
+
+**`varargin` / `varargout`** — variadic functions:
+
+```matlab
+function s = sum_all(varargin)
+  s = 0;
+  for k = 1:numel(varargin)
+    s += varargin{k};
+  end
+end
+
+sum_all(1, 2, 3)    % 6
+sum_all(10, 20)     % 30
+```
+
+**`cellfun` / `arrayfun`** — apply a function to each element:
+
+```matlab
+cellfun(@sqrt, {1, 4, 9})          % [1  2  3]
+cellfun(@(x) x*2, {1, 4, 9})       % [2  8  18]
+arrayfun(@(x) x^2, [1 2 3 4])      % [1  4  9  16]
+```
+
+**`@funcname` handles** — wrap any builtin or named function as a callable:
+
+```matlab
+f = @sqrt;   f(16)            % 4
+g = @abs;    g(-7.5)          % 7.5
+```
+
+**`case {v1, v2}` in switch** — matches if the switch expression equals any element:
+
+```matlab
+switch x
+  case {1, 2, 3}
+    disp('small')
+  otherwise
+    disp('not small')
+end
+```
+
 ### `run()` / `source()`
 
 Execute a script file in the current workspace. Variables defined in the script persist in the caller's scope (MATLAB `run` semantics):
@@ -1067,7 +1123,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1311,6 +1367,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `control_flow.calc`          | Core control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |
 | `extended_control_flow.calc` | Extended control flow: switch/case, do...until, run()/source(); exit-code classifier, unit converter, digit sum, Euclidean GCD |
 | `user_functions.calc`        | User-defined functions and lambdas: recursion, multiple return values, nargin, anonymous functions, lexical capture, midpoint integration, higher-order functions |
+| `cell_arrays.calc`           | Cell arrays: literals, brace-indexing, auto-grow, `@funcname` handles, `cellfun`/`arrayfun`, `varargin`/`varargout`, `case {…}`, function pipelines |
 
 ```bash
 ccalc < examples/mortgage.calc
@@ -1338,7 +1395,7 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void/Lambda/Function/Tuple), Env type (HashMap<String, Value>), workspace save/load
+    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void/Lambda/Function/Tuple/Cell), Env type (HashMap<String, Value>), workspace save/load
     eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums + FnCallHook
     exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue/Return), call_user_function()
     io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd

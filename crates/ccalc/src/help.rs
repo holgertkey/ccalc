@@ -27,10 +27,13 @@ pub fn print(topic: Option<&str>) {
             "userfuncs" | "userfunc" | "ufunc" | "lambda" | "lambdas" | "anon" | "user"
             | "function" | "closures",
         ) => print_userfuncs(),
+        Some(
+            "cells" | "cell" | "cellfun" | "arrayfun" | "varargin" | "varargout" | "cell-arrays",
+        ) => print_cells(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
+                "Available topics: syntax  functions  userfuncs  cells  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
             );
         }
     }
@@ -120,9 +123,17 @@ Functions function y = f(x) ... end         named, single return
           [a,b] = f(x)   [~,b] = f(x)      multi-assign, ~ discards
           nargin                            # args actually passed
           return                            early exit
+          varargin / varargout              variadic args via cell array
 Lambda    f = @(x) expr                    anonymous function
           g = @(x,y) expr                  multi-arg lambda
-          h = @(x) f(g(x))                 compose via capture
+          h = @funcname                    function handle (wraps builtin/named)
+Cells     c = {{1, 'hi', [1 2 3]}}        cell literal (heterogeneous)
+          c{{2}}                           brace-index: returns element
+          c{{2}} = val                     assign to element (auto-grows)
+          iscell(c)  cell(n)  numel(c)     predicates, constructor, size
+          cellfun(@f, c)                   apply f to each cell element
+          arrayfun(@f, v)                  apply f to each vector element
+          case {{2, 3}}                    multi-value switch case
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
@@ -154,6 +165,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help syntax      operators, precedence, implicit multiplication
   help functions   built-in function reference with examples
   help userfuncs   user-defined functions, multiple return, lambdas
+  help cells       cell arrays, varargin/varargout, cellfun, arrayfun
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
@@ -351,10 +363,20 @@ String functions  (see also: help strings)
     ischar(s)          1 if s is a char array, else 0
     isstring(s)        1 if s is a string object, else 0
 
+Higher-order  (see also: help cells)
+    cellfun(f, c)   apply f to each element of cell c; returns Matrix if all scalar
+    arrayfun(f, v)  apply f to each element of numeric vector v; returns Matrix
+    @funcname       function handle — wraps a builtin or named function as a lambda
+
+    cellfun(@sqrt, {{1, 4, 9}})     →  [1 2 3]
+    arrayfun(@(x) x^2, [1 2 3])    →  [1 4 9]
+    f = @abs; f(-5)                 →  5
+
 See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
           help complex    (full complex number reference)
           help strings    (char arrays, string objects, full reference)
-          help script     (fprintf/sprintf reference with format specifiers)"
+          help script     (fprintf/sprintf reference with format specifiers)
+          help cells      (cell arrays, varargin, cellfun, arrayfun)"
     );
 }
 
@@ -1117,7 +1139,11 @@ Script files  (see examples/ directory)
     ccalc examples/vector_utils.calc
     ccalc examples/complex_numbers.calc
     ccalc examples/strings.calc
-    ccalc examples/file_io.calc"
+    ccalc examples/file_io.calc
+    ccalc examples/control_flow.calc
+    ccalc examples/extended_control_flow.calc
+    ccalc examples/user_functions.calc
+    ccalc examples/cell_arrays.calc"
     );
 }
 
@@ -1502,7 +1528,155 @@ USER-DEFINED FUNCTIONS AND LAMBDAS  (help userfuncs)
     add10(7)        →  17
     add5(add10(1))  →  16
 
-See also: help control  help functions
-Example:  ccalc examples/user_functions.calc"
+─── varargin — variadic input ─────────────────────────────────────────────────
+
+  When the last parameter is named varargin, all extra call arguments are
+  collected into a cell array bound to that name:
+
+    function s = sum_all(varargin)
+      s = 0;
+      for k = 1:numel(varargin)
+        s += varargin{{k}};
+      end
+    end
+
+    sum_all(1, 2, 3)        →  6
+    sum_all(10, 20, 30)     →  60
+    sum_all()               →  0   (empty varargin cell)
+
+  Fixed and variadic parameters may be mixed:
+
+    function show(label, varargin)
+      fprintf('[%s]', label)
+      for k = 1:numel(varargin)
+        fprintf(' %g', varargin{{k}})
+      end
+      fprintf('\\n')
+    end
+
+─── varargout — variadic output ───────────────────────────────────────────────
+
+  When the sole output variable is varargout, fill it as a cell array and
+  the caller receives one output per cell element:
+
+    function varargout = first_n(v, n)
+      for k = 1:n
+        varargout{{k}} = v(k);
+      end
+    end
+
+    [a, b, c] = first_n([10 20 30 40], 3)   →  a=10  b=20  c=30
+
+See also: help control  help functions  help cells
+Example:  ccalc examples/user_functions.calc
+          ccalc examples/cell_arrays.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help cells
+// ---------------------------------------------------------------------------
+
+fn print_cells() {
+    println!(
+        "\
+CELL ARRAYS  (help cells)
+
+A cell array is a heterogeneous 1-D container: each element can be any value
+(scalar, matrix, string, complex, another cell, or a function handle).
+
+─── Creating cell arrays ──────────────────────────────────────────────────────
+
+  {{e1, e2, e3}}            cell literal — one expression per element
+  cell(n)                   1×n cell pre-filled with zeros
+  cell(m, n)                1×(m*n) cell pre-filled with zeros
+
+  c = {{1, 'hello', [1 2 3]}}
+  c{{1}}                    →  1         (scalar)
+  c{{2}}                    →  hello     (char array)
+  c{{3}}                    →  [1 2 3]   (matrix)
+
+─── Brace indexing ────────────────────────────────────────────────────────────
+
+  c{{i}}                    access element i (1-based); returns its VALUE
+  c{{i}} = v               assign to element i; auto-grows if i > numel(c)
+
+  iscell(c)                 1 if c is a cell array, else 0
+  numel(c)                  number of elements
+  length(c)                 number of elements (same as numel for 1-D)
+  size(c)                   [1  numel(c)] as a 1×2 matrix
+
+  Note: c(i) with round parentheses returns an error — use c{{i}} for content.
+
+─── varargin / varargout ──────────────────────────────────────────────────────
+
+  varargin   — last parameter that collects all extra call arguments into a cell:
+    function s = sum_all(varargin)
+      s = 0;
+      for k = 1:numel(varargin)
+        s += varargin{{k}};
+      end
+    end
+    sum_all(1, 2, 3)    →  6
+
+  varargout  — sole output that is expanded into multiple return values:
+    function varargout = swap(a, b)
+      varargout{{1}} = b;
+      varargout{{2}} = a;
+    end
+    [x, y] = swap(10, 20)   →  x=20  y=10
+
+─── case with cell array ──────────────────────────────────────────────────────
+
+  Inside a switch block, case {{v1, v2}} matches if the switch expression
+  equals any element of the cell array:
+
+    switch x
+      case {{1, 2, 3}}
+        disp('small')
+      case {{4, 5, 6}}
+        disp('medium')
+      otherwise
+        disp('large')
+    end
+
+─── cellfun ───────────────────────────────────────────────────────────────────
+
+  cellfun(f, c)    apply f to each element of cell c
+  Returns Value::Matrix when all results are scalar; Value::Cell otherwise.
+
+    c = {{1, 4, 9}};
+    cellfun(@sqrt, c)          →  [1  2  3]
+    cellfun(@(x) x*2, c)       →  [2  8  18]
+
+─── arrayfun ──────────────────────────────────────────────────────────────────
+
+  arrayfun(f, v)   apply f to each element of numeric vector v
+  Returns a same-shape matrix (function must return a scalar per element).
+
+    arrayfun(@(x) x^2, [1 2 3])       →  [1  4  9]
+    arrayfun(@(x) x > 2, [1 2 3 4])   →  [0  0  1  1]
+
+─── @funcname — function handles ──────────────────────────────────────────────
+
+  @funcname creates a lambda that forwards its arguments to funcname.
+  Works with builtins and user-defined functions.
+
+    f = @sqrt;       f(16)       →  4
+    g = @abs;        g(-7.5)     →  7.5
+    h = @clamp01;    h(-0.5)     →  0   (user function)
+
+  Compose handles via a lambda that calls them sequentially:
+    compose = @(f, g) @(x) f(g(x));
+    sqrt_abs = compose(@sqrt, @abs);
+    sqrt_abs(-9)    →  3
+
+─── Workspace ─────────────────────────────────────────────────────────────────
+
+  Cell arrays are NOT persisted by ws/save — same policy as matrices.
+  who shows: c = {{1×N cell}}
+
+See also: help userfuncs  help functions  help control
+Example:  ccalc examples/cell_arrays.calc"
     );
 }

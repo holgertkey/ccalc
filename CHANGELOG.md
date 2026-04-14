@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.17.0+004] - 2026-04-14
+## [0.17.0+005] - 2026-04-14
+
+### Fixed
+
+- **varargin injection bug**: `sum_all(1)` was returning 0 instead of 1. Root cause: the parser
+  injected `ans` into empty `f()` calls at the AST level, making `sum_all(1)` and `sum_all()`
+  indistinguishable inside `call_user_function`, causing varargin to always be empty for
+  pure-varargin functions. Fix: ans-injection moved from parser to eval-time; builtins and lambdas
+  still receive `ans` on empty `f()` calls, but user functions (`Value::Function`) receive the raw
+  argument list — empty call means no arguments (MATLAB semantics).
 
 ### Added
 
@@ -21,7 +30,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `cellfun(f, c)` — applies function to each cell element; returns Matrix when all results are scalar
   - `arrayfun(f, v)` — applies function to each element of a numeric vector
   - `@funcname` function handle syntax (in addition to existing `@(params) body` lambda syntax)
-  - `split_stmts()` updated to track brace depth so `;` inside `{...}` is not treated as a statement separator
+  - `split_stmts()` updated to track brace depth so `;` inside `{...}` is not a statement separator
+  - `examples/cell_arrays.calc` — 9-section annotated example
+- **`help cells`** — new help topic covering cell arrays, varargin/varargout, cellfun/arrayfun, @funcname
 
 ## [0.17.0] - 2026-04-12
 
