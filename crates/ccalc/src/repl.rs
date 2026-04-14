@@ -600,7 +600,9 @@ pub fn run() {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                             },
@@ -649,7 +651,9 @@ pub fn run() {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                             },
@@ -1087,7 +1091,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                             },
@@ -1136,7 +1142,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
-                                        if !compact { println!(); }
+                                        if !compact {
+                                            println!();
+                                        }
                                     }
                                 }
                             },

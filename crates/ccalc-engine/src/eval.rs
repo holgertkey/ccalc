@@ -371,15 +371,17 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::FuncHandle(name) => {
             let name = name.clone();
             let captured_env = env.clone();
-            let lambda = LambdaFn(std::rc::Rc::new(move |args: &[Value], io: Option<&mut IoContext>| {
-                // First try the environment (user-defined function), then fall back to builtin.
-                if let Some(f) = captured_env.get(&name) {
-                    let f = f.clone();
-                    call_function_value(&f, args, io)
-                } else {
-                    call_builtin(&name, args, &captured_env, io)
-                }
-            }));
+            let lambda = LambdaFn(std::rc::Rc::new(
+                move |args: &[Value], io: Option<&mut IoContext>| {
+                    // First try the environment (user-defined function), then fall back to builtin.
+                    if let Some(f) = captured_env.get(&name) {
+                        let f = f.clone();
+                        call_function_value(&f, args, io)
+                    } else {
+                        call_builtin(&name, args, &captured_env, io)
+                    }
+                },
+            ));
             Ok(Value::Lambda(lambda))
         }
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
@@ -418,7 +420,10 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                                 "String elements in matrix literals are not supported".to_string()
                             );
                         }
-                        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) => {
+                        Value::Lambda(_)
+                        | Value::Function { .. }
+                        | Value::Tuple(_)
+                        | Value::Cell(_) => {
                             return Err(
                                 "Function values cannot be used in matrix literals".to_string()
                             );
@@ -826,9 +831,9 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
         Value::Str(_) | Value::StringObj(_) => Err(format!(
             "Function '{fname}' argument {pos} must be a scalar, got a string"
         )),
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) => Err(format!(
-            "Function '{fname}' argument {pos} must be a scalar, got a function"
-        )),
+        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) => Err(
+            format!("Function '{fname}' argument {pos} must be a scalar, got a function"),
+        ),
     }
 }
 
@@ -1723,7 +1728,7 @@ fn call_builtin(
                 | Value::Lambda(_)
                 | Value::Function { .. }
                 | Value::Tuple(_)
-            | Value::Cell(_) => Err("norm: not applicable to non-numeric values".to_string()),
+                | Value::Cell(_) => Err("norm: not applicable to non-numeric values".to_string()),
             }
         }
         // --- Cumulative reductions ---
@@ -1961,7 +1966,9 @@ fn call_builtin(
             Value::Matrix(_) => Ok(Value::Scalar(1.0)),
             // Strings are not real numbers; functions are not numbers
             Value::Str(_) | Value::StringObj(_) => Ok(Value::Scalar(0.0)),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) => Ok(Value::Scalar(0.0)),
+            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) => {
+                Ok(Value::Scalar(0.0))
+            }
         },
         // --- String built-ins ---
         // num2str(x) — convert number to char array string
@@ -2082,7 +2089,8 @@ fn call_builtin(
                     let elems = elems.clone();
                     let mut results = Vec::with_capacity(elems.len());
                     for elem in &elems {
-                        let result = call_function_value(&f, &[elem.clone()], io.as_deref_mut())?;
+                        let result =
+                            call_function_value(&f, std::slice::from_ref(elem), io.as_deref_mut())?;
                         results.push(result);
                     }
                     // Try uniform output (all scalars)
@@ -2090,7 +2098,13 @@ fn call_builtin(
                     if all_scalar {
                         let vals: Vec<f64> = results
                             .iter()
-                            .map(|v| if let Value::Scalar(n) = v { *n } else { unreachable!() })
+                            .map(|v| {
+                                if let Value::Scalar(n) = v {
+                                    *n
+                                } else {
+                                    unreachable!()
+                                }
+                            })
                             .collect();
                         let n = vals.len();
                         if n == 0 {
@@ -2120,7 +2134,11 @@ fn call_builtin(
                             let result = call_function_value(&f, &[elem], io.as_deref_mut())?;
                             match result {
                                 Value::Scalar(n) => flat.push(n),
-                                _ => return Err("arrayfun: function must return a scalar".to_string()),
+                                _ => {
+                                    return Err(
+                                        "arrayfun: function must return a scalar".to_string()
+                                    );
+                                }
                             }
                         }
                     }
@@ -2133,7 +2151,9 @@ fn call_builtin(
                     let result = call_function_value(&f, &[elem], io.as_deref_mut())?;
                     Ok(result)
                 }
-                _ => Err("arrayfun: second argument must be a numeric matrix or scalar".to_string()),
+                _ => {
+                    Err("arrayfun: second argument must be a numeric matrix or scalar".to_string())
+                }
             }
         }
         // lower(s) — convert to lowercase
@@ -2587,9 +2607,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
                     Err("Cannot index into a function value".to_string())
                 }
-                Value::Cell(_) => {
-                    Err("Use c{i} to index into a cell array, not c(i)".to_string())
-                }
+                Value::Cell(_) => Err("Use c{i} to index into a cell array, not c(i)".to_string()),
                 Value::Scalar(n) => {
                     let env1 = env_with_end(env, 1);
                     match resolve_dim(&args[0], 1, &env1)? {

@@ -42,8 +42,8 @@ fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool)>>, String>
         if let Some(body) = cache.get(body_source) {
             return Ok(Rc::clone(body));
         }
-        let stmts = parse_stmts(body_source)
-            .map_err(|e| format!("function body parse error: {e}"))?;
+        let stmts =
+            parse_stmts(body_source).map_err(|e| format!("function body parse error: {e}"))?;
         let silent: Vec<(Stmt, bool)> = stmts.into_iter().map(|(s, _)| (s, true)).collect();
         let rc = Rc::new(silent);
         cache.insert(body_source.to_string(), Rc::clone(&rc));
@@ -106,7 +106,11 @@ fn call_user_function(
 
     // Check for varargin: last parameter is 'varargin' → variadic function.
     let has_varargin = params.last().is_some_and(|p| p == "varargin");
-    let fixed_params = if has_varargin { &params[..params.len() - 1] } else { params.as_slice() };
+    let fixed_params = if has_varargin {
+        &params[..params.len() - 1]
+    } else {
+        params.as_slice()
+    };
 
     // Trim any trailing args beyond what the function declares.
     // The parser injects `ans` for empty `f()` calls; for 0-param functions
@@ -143,9 +147,7 @@ fn call_user_function(
         let extra: Vec<Value> = effective_args
             .get(fixed_params.len()..)
             .unwrap_or(&[])
-            .iter()
-            .cloned()
-            .collect();
+            .to_vec();
         let varargin = Value::Cell(extra);
         local_env.insert("varargin".to_string(), varargin);
     }
@@ -614,10 +616,8 @@ pub fn exec_stmts(
                         env.insert(cell_name.clone(), Value::Cell(v));
                     }
                 }
-                if !silent {
-                    if let Some(val) = env.get(cell_name) {
-                        print_value(Some(cell_name), val, fmt, base, compact);
-                    }
+                if !silent && let Some(val) = env.get(cell_name) {
+                    print_value(Some(cell_name), val, fmt, base, compact);
                 }
             }
 

@@ -2633,7 +2633,15 @@ fn test_cell_index_basic() {
     let mut env = run_block("c = {10, 20, 30}");
     let stmts = parse_stmts("ans = c{2}").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     assert_eq!(env.get("ans"), Some(&Value::Scalar(20.0)));
 }
 
@@ -2643,7 +2651,15 @@ fn test_cell_index_first() {
     let mut env = run_block("c = {42, 'hello'}");
     let stmts = parse_stmts("ans = c{1}").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     assert_eq!(env.get("ans"), Some(&Value::Scalar(42.0)));
 }
 
@@ -2653,7 +2669,15 @@ fn test_cell_index_string() {
     let mut env = run_block("c = {1, 'world', 3}");
     let stmts = parse_stmts("ans = c{2}").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     assert_eq!(env.get("ans"), Some(&Value::Str("world".to_string())));
 }
 
@@ -2663,7 +2687,15 @@ fn test_cell_set_basic() {
     let mut env = run_block("c = {1, 2, 3}");
     let stmts = parse_stmts("c{2} = 99").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     match env.get("c") {
         Some(Value::Cell(v)) => {
             assert_eq!(v[1], Value::Scalar(99.0));
@@ -2678,7 +2710,15 @@ fn test_cell_set_grows() {
     let mut env = run_block("c = {1}");
     let stmts = parse_stmts("c{3} = 5").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     match env.get("c") {
         Some(Value::Cell(v)) => {
             assert_eq!(v.len(), 3);
@@ -2694,7 +2734,15 @@ fn test_iscell() {
     let mut env = run_block("c = {1, 2}");
     let stmts = parse_stmts("ans = iscell(c)").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     assert_eq!(env.get("ans"), Some(&Value::Scalar(1.0)));
 }
 
@@ -2726,7 +2774,15 @@ fn test_numel_cell() {
     let mut env = run_block("c = {1, 2, 3, 4}");
     let stmts = parse_stmts("ans = numel(c)").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     assert_eq!(env.get("ans"), Some(&Value::Scalar(4.0)));
 }
 
@@ -2736,7 +2792,15 @@ fn test_length_cell() {
     let mut env = run_block("c = {1, 2, 3}");
     let stmts = parse_stmts("ans = length(c)").unwrap();
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
     assert_eq!(env.get("ans"), Some(&Value::Scalar(3.0)));
 }
 
@@ -2803,6 +2867,13 @@ fn test_cell_index_out_of_bounds() {
     let mut env = run_block("c = {1, 2}");
     let mut io = IoContext::new();
     let stmts = parse_stmts("ans = c{5}").unwrap();
-    let result = exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true);
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
     assert!(result.is_err());
 }
