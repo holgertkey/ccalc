@@ -27,6 +27,13 @@ fn main() {
                         eprintln!("Error opening '{}': {e}", path.display());
                         std::process::exit(1);
                     });
+                    // Push the script's directory so run()/source() calls inside the
+                    // script resolve helper files relative to the script's location.
+                    if let Some(dir) = path.canonicalize().ok().and_then(|p| {
+                        p.parent().map(|d| d.to_path_buf())
+                    }) {
+                        ccalc_engine::exec::script_dir_push(&dir);
+                    }
                     repl::run_pipe(std::io::BufReader::new(file));
                 } else {
                     repl::run_expr(arg);

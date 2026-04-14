@@ -18,6 +18,14 @@ thread_local! {
     /// Tracks the current script nesting depth to prevent infinite recursion via `run()`.
     static RUN_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 
+    /// Stack of directories for currently executing scripts.
+    ///
+    /// When `run()`/`source()` starts executing a script, the script's parent directory is
+    /// pushed here. `resolve_script_path` searches this stack (top-first) so that helper
+    /// scripts can be referenced by bare name relative to the calling script's directory.
+    static SCRIPT_DIR_STACK: std::cell::RefCell<Vec<std::path::PathBuf>> =
+        std::cell::RefCell::new(Vec::new());
+
     /// Parse cache for named function bodies.
     ///
     /// Key: body source string (verbatim text between `function` and `end`).
@@ -68,6 +76,20 @@ pub enum Signal {
 /// Must be called once at program startup before any evaluation takes place.
 pub fn init() {
     set_fn_call_hook(call_user_function);
+}
+
+/// Push a script directory onto the search stack.
+///
+/// Call this before executing a top-level script file so that `run()`/`source()` calls
+/// inside the script can find helper files by bare name relative to the script's directory.
+/// Always paired with a matching `script_dir_pop`.
+pub fn script_dir_push(dir: &std::path::Path) {
+    SCRIPT_DIR_STACK.with(|s| s.borrow_mut().push(dir.to_path_buf()));
+}
+
+/// Pop the most recently pushed script directory from the search stack.
+pub fn script_dir_pop() {
+    SCRIPT_DIR_STACK.with(|s| s.borrow_mut().pop());
 }
 
 /// Called by `eval_inner` whenever a user function (`Value::Function`) is invoked.
@@ -205,21 +227,31 @@ fn call_user_function(
 /// Otherwise, `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility).
 /// The search is relative to the current working directory.
 fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
+    // Build candidate base paths: CWD-relative first, then each stacked script dir (top-first).
     let p = std::path::Path::new(name);
-    if p.extension().is_some() {
-        return if p.exists() {
-            Some(p.to_path_buf())
-        } else {
-            None
-        };
-    }
-    let with_calc = p.with_extension("calc");
-    if with_calc.exists() {
-        return Some(with_calc);
-    }
-    let with_m = p.with_extension("m");
-    if with_m.exists() {
-        return Some(with_m);
+    let mut bases: Vec<std::path::PathBuf> = vec![p.to_path_buf()];
+    SCRIPT_DIR_STACK.with(|stack| {
+        for dir in stack.borrow().iter().rev() {
+            bases.push(dir.join(p));
+        }
+    });
+
+    for base in &bases {
+        if base.extension().is_some() {
+            if base.exists() {
+                return Some(base.clone());
+            }
+            // Explicit extension given but not found — try next base.
+            continue;
+        }
+        let with_calc = base.with_extension("calc");
+        if with_calc.exists() {
+            return Some(with_calc);
+        }
+        let with_m = base.with_extension("m");
+        if with_m.exists() {
+            return Some(with_m);
+        }
     }
     None
 }
@@ -384,10 +416,16 @@ pub fn exec_stmts(
                         ));
                     }
                     RUN_DEPTH.with(|d| d.set(depth + 1));
+                    // Push the script's directory so nested run()/source() calls resolve
+                    // helper scripts relative to the calling script's location.
+                    if let Some(dir) = script_path.parent() {
+                        SCRIPT_DIR_STACK.with(|s| s.borrow_mut().push(dir.to_path_buf()));
+                    }
                     let run_stmts = parse_stmts(&content).map_err(|e| {
                         format!("{fn_name}: parse error in '{}': {e}", script_path.display())
                     })?;
                     let result = exec_stmts(&run_stmts, env, io, fmt, base, compact);
+                    SCRIPT_DIR_STACK.with(|s| s.borrow_mut().pop());
                     RUN_DEPTH.with(|d| d.set(depth));
                     return result;
                 }
