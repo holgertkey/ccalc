@@ -24,7 +24,7 @@ thread_local! {
     /// pushed here. `resolve_script_path` searches this stack (top-first) so that helper
     /// scripts can be referenced by bare name relative to the calling script's directory.
     static SCRIPT_DIR_STACK: std::cell::RefCell<Vec<std::path::PathBuf>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 
     /// Parse cache for named function bodies.
     ///
