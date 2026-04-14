@@ -62,6 +62,10 @@ pub enum Stmt {
     /// The RHS must evaluate to a `Value::Tuple`; extra values are discarded,
     /// missing values produce an error.
     MultiAssign { targets: Vec<String>, expr: Expr },
+    /// `c{i} = v` — cell element assignment.
+    ///
+    /// Updates element `i` (1-based) of the cell array named `name`.
+    CellSet(String, Expr, Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +109,8 @@ enum Token {
     PipePipe, // ||
     Tilde,    // ~ / ! (unary NOT)
     At,       // @ (lambda / function handle prefix)
+    LBrace,   // {
+    RBrace,   // }
 }
 
 fn parse_integer_literal(
@@ -376,6 +382,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 tokens.push(Token::RBracket);
                 chars.next();
             }
+            '{' => {
+                tokens.push(Token::LBrace);
+                chars.next();
+            }
+            '}' => {
+                tokens.push(Token::RBrace);
+                chars.next();
+            }
             ';' => {
                 tokens.push(Token::Semicolon);
                 chars.next();
@@ -542,6 +556,29 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
     // 'return' statement
     if trimmed == "return" {
         return Ok(Stmt::Return);
+    }
+
+    // Cell element assignment: name{expr} = rhs
+    if let Some((name, idx_str, rhs)) = try_split_cell_assign(trimmed) {
+        let idx_tokens = tokenize(idx_str)?;
+        if idx_tokens.is_empty() {
+            return Err("Expected index expression inside '{}'".to_string());
+        }
+        let mut idx_pos = 0;
+        let idx_expr = parse_logical_or(&idx_tokens, &mut idx_pos)?;
+        if idx_pos != idx_tokens.len() {
+            return Err("Unexpected token in cell index expression".to_string());
+        }
+        let rhs_tokens = tokenize(rhs)?;
+        if rhs_tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut rhs_pos = 0;
+        let rhs_expr = parse_logical_or(&rhs_tokens, &mut rhs_pos)?;
+        if rhs_pos != rhs_tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::CellSet(name.to_string(), idx_expr, rhs_expr));
     }
 
     // Multi-assign: [a, b] = expr
@@ -717,6 +754,7 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
     let mut in_sq = false;
     let mut in_dq = false;
     let mut bracket_depth: i32 = 0;
+    let mut brace_depth: i32 = 0;
 
     for (i, c) in input.char_indices() {
         match c {
@@ -740,11 +778,17 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                     bracket_depth -= 1;
                 }
             }
-            '%' | '#' if !in_sq && !in_dq && bracket_depth == 0 => {
+            '{' if !in_sq && !in_dq => brace_depth += 1,
+            '}' if !in_sq && !in_dq => {
+                if brace_depth > 0 {
+                    brace_depth -= 1;
+                }
+            }
+            '%' | '#' if !in_sq && !in_dq && bracket_depth == 0 && brace_depth == 0 => {
                 comment_at = i;
                 break;
             }
-            ';' if !in_sq && !in_dq && bracket_depth == 0 => semis.push(i),
+            ';' if !in_sq && !in_dq && bracket_depth == 0 && brace_depth == 0 => semis.push(i),
             _ => {}
         }
     }
@@ -1240,6 +1284,29 @@ fn try_split_multi_assign(input: &str) -> Option<(Vec<String>, &str)> {
     Some((targets, rhs))
 }
 
+/// If `input` matches `"name{idx} = rhs"` (not `==`), returns `Some((name, idx, rhs))`.
+/// The name must be a valid identifier; otherwise returns `None`.
+fn try_split_cell_assign(input: &str) -> Option<(&str, &str, &str)> {
+    let trimmed = input.trim();
+    // Find an identifier followed immediately by '{'
+    let brace_pos = trimmed.find('{')?;
+    let name = trimmed[..brace_pos].trim();
+    if !is_valid_ident(name) {
+        return None;
+    }
+    // Find the matching '}'
+    let after_open = &trimmed[brace_pos + 1..];
+    let close_pos = after_open.find('}')?;
+    let idx_str = after_open[..close_pos].trim();
+    // After '}' must be '=' (not '==')
+    let after_close = after_open[close_pos + 1..].trim();
+    if !after_close.starts_with('=') || after_close.starts_with("==") {
+        return None;
+    }
+    let rhs = after_close[1..].trim();
+    Some((name, idx_str, rhs))
+}
+
 /// If `input` matches `"name = rhs"` (not `==`), returns `Some((name, rhs))`.
 /// The name must be a valid identifier; otherwise returns `None`.
 fn try_split_assignment(input: &str) -> Option<(&str, &str)> {
@@ -1457,11 +1524,48 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
             *pos += 1;
             Expr::Number(n)
         }
+        Token::LBrace => {
+            *pos += 1;
+            // Cell literal: { expr, expr, ... }
+            let mut elems = Vec::new();
+            loop {
+                match tokens.get(*pos) {
+                    None => return Err("Expected '}'".to_string()),
+                    Some(Token::RBrace) => {
+                        *pos += 1;
+                        break;
+                    }
+                    Some(Token::Comma) => {
+                        *pos += 1;
+                    }
+                    _ => {
+                        elems.push(parse_logical_or(tokens, pos)?);
+                    }
+                }
+            }
+            Expr::CellLiteral(elems)
+        }
         Token::Ident(name) => {
             let name = name.clone();
             *pos += 1;
-            // Function call: ident '(' [expr (',' expr)*] ')'
+            // Cell brace-indexing: ident '{' expr '}'
             if *pos < tokens.len()
+                && let Token::LBrace = &tokens[*pos]
+            {
+                *pos += 1;
+                let idx = parse_logical_or(tokens, pos)?;
+                if *pos >= tokens.len() {
+                    return Err("Expected '}'".to_string());
+                }
+                match &tokens[*pos] {
+                    Token::RBrace => {
+                        *pos += 1;
+                        Expr::CellIndex(Box::new(Expr::Var(name)), Box::new(idx))
+                    }
+                    _ => return Err("Expected '}'".to_string()),
+                }
+            // Function call: ident '(' [expr (',' expr)*] ')'
+            } else if *pos < tokens.len()
                 && let Token::LParen = &tokens[*pos]
             {
                 *pos += 1;
@@ -1536,9 +1640,15 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         }
         Token::At => {
             *pos += 1;
+            // @funcname — function handle (wraps named function as a lambda)
+            if let Some(Token::Ident(name)) = tokens.get(*pos) {
+                let name = name.clone();
+                *pos += 1;
+                return Ok(Expr::FuncHandle(name));
+            }
             // @(params) body — anonymous function (lambda)
             if !matches!(tokens.get(*pos), Some(Token::LParen)) {
-                return Err("Expected '(' after '@'".to_string());
+                return Err("Expected '(' or identifier after '@'".to_string());
             }
             *pos += 1;
             let mut params = Vec::new();

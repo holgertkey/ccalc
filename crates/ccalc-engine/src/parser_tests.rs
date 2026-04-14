@@ -2605,3 +2605,204 @@ fn test_too_many_args_error() {
     );
     assert!(result.is_err());
 }
+
+// ── Phase 12.5 — Cell arrays ─────────────────────────────────────────────────
+
+#[test]
+fn test_cell_literal_basic() {
+    // {1, 'hello', [1 2 3]}
+    let env = Env::new();
+    let stmt = parse("{1, 2, 3}").unwrap();
+    let expr = unwrap_expr(stmt);
+    let val = eval(&expr, &env).unwrap();
+    assert!(matches!(val, Value::Cell(ref v) if v.len() == 3));
+}
+
+#[test]
+fn test_cell_literal_empty() {
+    let env = Env::new();
+    let stmt = parse("{}").unwrap();
+    let expr = unwrap_expr(stmt);
+    let val = eval(&expr, &env).unwrap();
+    assert!(matches!(val, Value::Cell(ref v) if v.is_empty()));
+}
+
+#[test]
+fn test_cell_index_basic() {
+    crate::exec::init();
+    let mut env = run_block("c = {10, 20, 30}");
+    let stmts = parse_stmts("ans = c{2}").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(20.0)));
+}
+
+#[test]
+fn test_cell_index_first() {
+    crate::exec::init();
+    let mut env = run_block("c = {42, 'hello'}");
+    let stmts = parse_stmts("ans = c{1}").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(42.0)));
+}
+
+#[test]
+fn test_cell_index_string() {
+    crate::exec::init();
+    let mut env = run_block("c = {1, 'world', 3}");
+    let stmts = parse_stmts("ans = c{2}").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    assert_eq!(env.get("ans"), Some(&Value::Str("world".to_string())));
+}
+
+#[test]
+fn test_cell_set_basic() {
+    crate::exec::init();
+    let mut env = run_block("c = {1, 2, 3}");
+    let stmts = parse_stmts("c{2} = 99").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    match env.get("c") {
+        Some(Value::Cell(v)) => {
+            assert_eq!(v[1], Value::Scalar(99.0));
+        }
+        _ => panic!("expected Cell"),
+    }
+}
+
+#[test]
+fn test_cell_set_grows() {
+    crate::exec::init();
+    let mut env = run_block("c = {1}");
+    let stmts = parse_stmts("c{3} = 5").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    match env.get("c") {
+        Some(Value::Cell(v)) => {
+            assert_eq!(v.len(), 3);
+            assert_eq!(v[2], Value::Scalar(5.0));
+        }
+        _ => panic!("expected Cell"),
+    }
+}
+
+#[test]
+fn test_iscell() {
+    crate::exec::init();
+    let mut env = run_block("c = {1, 2}");
+    let stmts = parse_stmts("ans = iscell(c)").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_iscell_on_scalar() {
+    let env = Env::new();
+    let stmt = parse("iscell(5)").unwrap();
+    let val = eval(&unwrap_expr(stmt), &env).unwrap();
+    assert_eq!(val, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_cell_constructor() {
+    let env = Env::new();
+    let stmt = parse("cell(3)").unwrap();
+    let val = eval(&unwrap_expr(stmt), &env).unwrap();
+    match val {
+        Value::Cell(v) => {
+            assert_eq!(v.len(), 3);
+            assert!(v.iter().all(|x| matches!(x, Value::Scalar(n) if *n == 0.0)));
+        }
+        _ => panic!("expected Cell"),
+    }
+}
+
+#[test]
+fn test_numel_cell() {
+    crate::exec::init();
+    let mut env = run_block("c = {1, 2, 3, 4}");
+    let stmts = parse_stmts("ans = numel(c)").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(4.0)));
+}
+
+#[test]
+fn test_length_cell() {
+    crate::exec::init();
+    let mut env = run_block("c = {1, 2, 3}");
+    let stmts = parse_stmts("ans = length(c)").unwrap();
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true).unwrap();
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(3.0)));
+}
+
+#[test]
+fn test_cellfun_basic() {
+    crate::exec::init();
+    let src = "c = {1, 4, 9}\nans = cellfun(@sqrt, c)";
+    let mut env = run_block(src);
+    match env.get("ans") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m.nrows(), 1);
+            assert_eq!(m.ncols(), 3);
+            assert!((m[[0, 0]] - 1.0).abs() < 1e-10);
+            assert!((m[[0, 1]] - 2.0).abs() < 1e-10);
+            assert!((m[[0, 2]] - 3.0).abs() < 1e-10);
+        }
+        _ => panic!("expected Matrix from cellfun"),
+    }
+}
+
+#[test]
+fn test_arrayfun_basic() {
+    crate::exec::init();
+    let src = "ans = arrayfun(@(x) x^2, [1 2 3])";
+    let mut env = run_block(src);
+    match env.get("ans") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m.ncols(), 3);
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[0, 1]], 4.0);
+            assert_eq!(m[[0, 2]], 9.0);
+        }
+        _ => panic!("expected Matrix from arrayfun"),
+    }
+}
+
+#[test]
+fn test_switch_cell_case() {
+    crate::exec::init();
+    let src = "x = 3\nswitch x\n  case {2, 3}\n    ans = 1\n  otherwise\n    ans = 0\nend";
+    let env = run_block(src);
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_switch_cell_case_no_match() {
+    crate::exec::init();
+    let src = "x = 5\nswitch x\n  case {2, 3}\n    ans = 1\n  otherwise\n    ans = 0\nend";
+    let env = run_block(src);
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_varargin_basic() {
+    crate::exec::init();
+    let src = "function out = mysum(varargin)\nout = 0\nfor k = 1:numel(varargin)\n  out = out + varargin{k}\nend\nend\nans = mysum(1, 2, 3)";
+    let env = run_block(src);
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(6.0)));
+}
+
+#[test]
+fn test_cell_index_out_of_bounds() {
+    crate::exec::init();
+    let mut env = run_block("c = {1, 2}");
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = c{5}").unwrap();
+    let result = exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true);
+    assert!(result.is_err());
+}

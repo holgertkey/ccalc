@@ -104,30 +104,59 @@ fn call_user_function(
         }
     }
 
+    // Check for varargin: last parameter is 'varargin' → variadic function.
+    let has_varargin = params.last().is_some_and(|p| p == "varargin");
+    let fixed_params = if has_varargin { &params[..params.len() - 1] } else { params.as_slice() };
+
     // Trim any trailing args beyond what the function declares.
     // The parser injects `ans` for empty `f()` calls; for 0-param functions
     // we must silently ignore it. For N-param functions, allow up to N+1
     // args before complaining (one implicit `ans` is always present).
     let effective_args = if args.len() > params.len() {
-        if args.len() > params.len() + 1 {
+        if !has_varargin && args.len() > params.len() + 1 {
             return Err(format!(
                 "Too many arguments: expected at most {}, got {}",
                 params.len(),
                 args.len()
             ));
         }
-        // Exactly 1 extra: the implicit `ans` from empty-call injection — trim it.
-        &args[..params.len()]
+        if has_varargin {
+            args
+        } else {
+            // Exactly 1 extra: the implicit `ans` — trim it.
+            &args[..params.len()]
+        }
     } else {
         args
     };
-    for (p, a) in params.iter().zip(effective_args.iter()) {
+
+    // Bind fixed parameters
+    for (p, a) in fixed_params.iter().zip(effective_args.iter()) {
         local_env.insert(p.clone(), a.clone());
     }
-    local_env.insert(
-        "nargin".to_string(),
-        Value::Scalar(effective_args.len() as f64),
-    );
+
+    // If varargin, collect remaining args into a Cell
+    if has_varargin {
+        let extra: Vec<Value> = effective_args
+            .get(fixed_params.len()..)
+            .unwrap_or(&[])
+            .iter()
+            // Strip the implicit `ans` injection if extra contains exactly 1 auto-injected arg
+            .cloned()
+            .collect();
+        // If the only "extra" arg is the implicit ans and it came from empty call injection,
+        // we want varargin to be empty. Detect this: if params list has only varargin (0 fixed)
+        // and effective_args == [ans] and it looks like an empty call, use empty cell.
+        let varargin = if extra.is_empty() || (extra.len() == 1 && args.len() == 1 && fixed_params.is_empty()) {
+            Value::Cell(vec![])
+        } else {
+            Value::Cell(extra)
+        };
+        local_env.insert("varargin".to_string(), varargin);
+    }
+
+    let nargin = effective_args.len().min(params.len());
+    local_env.insert("nargin".to_string(), Value::Scalar(nargin as f64));
     local_env.insert("nargout".to_string(), Value::Scalar(outputs.len() as f64));
 
     // Retrieve (or parse-and-cache) the function body, then execute it.
@@ -145,6 +174,24 @@ fn call_user_function(
     if outputs.is_empty() {
         return Ok(Value::Void);
     }
+
+    // varargout: single output named 'varargout' — expand from cell
+    if outputs.len() == 1 && outputs[0] == "varargout" {
+        let cell = local_env.remove("varargout").unwrap_or(Value::Cell(vec![]));
+        return match cell {
+            Value::Cell(mut v) => {
+                if v.is_empty() {
+                    Ok(Value::Void)
+                } else if v.len() == 1 {
+                    Ok(v.remove(0))
+                } else {
+                    Ok(Value::Tuple(v))
+                }
+            }
+            other => Ok(other),
+        };
+    }
+
     if outputs.len() == 1 {
         return Ok(local_env.remove(&outputs[0]).unwrap_or(Value::Void));
     }
@@ -197,6 +244,8 @@ fn is_truthy(val: &Value) -> bool {
         // Functions are truthy (they exist), but comparing them to 0 makes no sense.
         // Treat as truthy so that `if f` doesn't silently fail.
         Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => true,
+        // A cell is truthy if nonempty.
+        Value::Cell(v) => !v.is_empty(),
     }
 }
 
@@ -266,6 +315,16 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
             for (i, v) in vals.iter().enumerate() {
                 print_value(label.map(|_| "ans").or(Some("ans")), v, fmt, base, compact);
                 let _ = i;
+            }
+        }
+        Value::Cell(_) => {
+            if let Some(full) = format_value_full(val, fmt) {
+                let prefix = label.unwrap_or("ans");
+                println!("{prefix} =");
+                println!("{full}");
+                if !compact {
+                    println!();
+                }
             }
         }
     }
@@ -439,18 +498,37 @@ pub fn exec_stmts(
                 'switch_loop: for (case_exprs, case_body) in cases {
                     for case_expr in case_exprs {
                         let case_val = eval_with_io(case_expr, env, io)?;
-                        let is_match = match (&switch_val, &case_val) {
-                            (Value::Scalar(a), Value::Scalar(b)) => a == b,
-                            _ => {
-                                let sv = match &switch_val {
-                                    Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
-                                    _ => None,
-                                };
-                                let cv = match &case_val {
-                                    Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
-                                    _ => None,
-                                };
-                                matches!((sv, cv), (Some(a), Some(b)) if a == b)
+                        // When the case expression is a Cell, check if switch_val
+                        // matches any element of the cell (Phase 12.5c).
+                        let is_match = if let Value::Cell(cell_elems) = &case_val {
+                            cell_elems.iter().any(|elem| match (&switch_val, elem) {
+                                (Value::Scalar(a), Value::Scalar(b)) => a == b,
+                                _ => {
+                                    let sv = match &switch_val {
+                                        Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
+                                        _ => None,
+                                    };
+                                    let cv = match elem {
+                                        Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
+                                        _ => None,
+                                    };
+                                    matches!((sv, cv), (Some(a), Some(b)) if a == b)
+                                }
+                            })
+                        } else {
+                            match (&switch_val, &case_val) {
+                                (Value::Scalar(a), Value::Scalar(b)) => a == b,
+                                _ => {
+                                    let sv = match &switch_val {
+                                        Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
+                                        _ => None,
+                                    };
+                                    let cv = match &case_val {
+                                        Value::Str(s) | Value::StringObj(s) => Some(s.as_str()),
+                                        _ => None,
+                                    };
+                                    matches!((sv, cv), (Some(a), Some(b)) if a == b)
+                                }
                             }
                         };
                         if is_match {
@@ -501,6 +579,52 @@ pub fn exec_stmts(
 
             // ── return ───────────────────────────────────────────────────────
             Stmt::Return => return Ok(Some(Signal::Return)),
+
+            // ── cell element assignment ──────────────────────────────────────
+            Stmt::CellSet(cell_name, idx_expr, val_expr) => {
+                let idx = eval_with_io(idx_expr, env, io)?;
+                let rhs = eval_with_io(val_expr, env, io)?;
+                let i = match idx {
+                    Value::Scalar(n) => n as isize,
+                    _ => return Err(format!("{cell_name}{{}}: index must be a scalar integer")),
+                };
+                match env.get_mut(cell_name) {
+                    Some(Value::Cell(v)) => {
+                        if i < 1 {
+                            return Err(format!(
+                                "{cell_name}{{}}: index {i} out of range (1..{})",
+                                v.len()
+                            ));
+                        }
+                        let idx = (i - 1) as usize;
+                        // Grow the cell if needed (MATLAB semantics: assigning beyond end grows it)
+                        if idx >= v.len() {
+                            v.resize(idx + 1, Value::Scalar(0.0));
+                        }
+                        v[idx] = rhs.clone();
+                    }
+                    Some(_) => {
+                        return Err(format!(
+                            "'{cell_name}' is not a cell array; use () for regular indexing"
+                        ));
+                    }
+                    None => {
+                        // Auto-create cell if not defined (MATLAB semantics)
+                        if i < 1 {
+                            return Err(format!("{cell_name}{{}}: index {i} must be >= 1"));
+                        }
+                        let idx = (i - 1) as usize;
+                        let mut v = vec![Value::Scalar(0.0); idx + 1];
+                        v[idx] = rhs.clone();
+                        env.insert(cell_name.clone(), Value::Cell(v));
+                    }
+                }
+                if !silent {
+                    if let Some(val) = env.get(cell_name) {
+                        print_value(Some(cell_name), val, fmt, base, compact);
+                    }
+                }
+            }
 
             // ── multi-assign ─────────────────────────────────────────────────
             Stmt::MultiAssign { targets, expr } => {

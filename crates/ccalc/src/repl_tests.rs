@@ -512,6 +512,11 @@ fn pipe_output(input: &str) -> Vec<String> {
                         Value::Lambda(_) => output.push("@<lambda>".to_string()),
                         Value::Function { .. } => output.push("@function".to_string()),
                         Value::Tuple(_) => {}
+                        Value::Cell(_) => {
+                            if let Some(full) = format_value_full(&v, &fmt) {
+                                output.push(full);
+                            }
+                        }
                     },
                     Err(e) => output.push(format!("Error: {e}")),
                 }
@@ -555,6 +560,12 @@ fn pipe_output(input: &str) -> Vec<String> {
                                     output.push(format!("{name} = @function"))
                                 }
                                 Value::Tuple(_) => {}
+                                Value::Cell(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        output.push(format!("{name} ="));
+                                        output.push(full);
+                                    }
+                                }
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
@@ -587,6 +598,12 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 Value::Lambda(_) => output.push("@<lambda>".to_string()),
                                 Value::Function { .. } => output.push("@function".to_string()),
                                 Value::Tuple(_) => {}
+                                Value::Cell(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        output.push("ans =".to_string());
+                                        output.push(full);
+                                    }
+                                }
                             },
                         }
                     }

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.17.0+004] - 2026-04-14
+
+### Added
+
+- **Phase 12.5 — Cell arrays**:
+  - `Value::Cell(Vec<Value>)` — heterogeneous 1-D cell array container
+  - `{e1, e2, e3}` cell literal syntax; `c{i}` brace-indexing (1-based, content access)
+  - `c{i} = v` cell assignment with auto-grow on out-of-bounds index (`Stmt::CellSet`)
+  - Built-ins: `iscell(v)`, `cell(n)`, `cell(m,n)` constructor
+  - `numel`, `length`, `size` extended to handle Cell values
+  - `varargin` / `varargout` support in user-defined functions (variadic args via Cell)
+  - `case {v1, v2}` multi-value switch cases — matches if any element equals the switch expression
+  - `cellfun(f, c)` — applies function to each cell element; returns Matrix when all results are scalar
+  - `arrayfun(f, v)` — applies function to each element of a numeric vector
+  - `@funcname` function handle syntax (in addition to existing `@(params) body` lambda syntax)
+  - `split_stmts()` updated to track brace depth so `;` inside `{...}` is not treated as a statement separator
+
 ## [0.17.0] - 2026-04-12
 
 ### Added

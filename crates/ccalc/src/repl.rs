@@ -227,6 +227,7 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
         Some(Value::Lambda(_)) => "@<lambda>".to_string(),
         Some(Value::Function { .. }) => "@<function>".to_string(),
         Some(Value::Tuple(_)) => "(...)".to_string(),
+        Some(Value::Cell(v)) => format!("{{1×{}}}", v.len()),
     }
 }
 
@@ -595,6 +596,13 @@ pub fn run() {
                                     println!("{name} = @function {out}{name}({p})");
                                 }
                                 Value::Tuple(_) => {}
+                                Value::Cell(_) => {
+                                    if let Some(full) = format_value_full(&val, &fmt) {
+                                        println!("{name} =");
+                                        println!("{full}");
+                                        if !compact { println!(); }
+                                    }
+                                }
                             },
                             EvalResult::Value(val) => match &val {
                                 Value::Void => {}
@@ -637,6 +645,13 @@ pub fn run() {
                                     println!("@function {out}f({p})");
                                 }
                                 Value::Tuple(_) => {}
+                                Value::Cell(_) => {
+                                    if let Some(full) = format_value_full(&val, &fmt) {
+                                        println!("ans =");
+                                        println!("{full}");
+                                        if !compact { println!(); }
+                                    }
+                                }
                             },
                         }
                     }
@@ -699,6 +714,12 @@ pub fn run_expr(expr: &str) {
                     println!("{name} = @function {out}{name}({p})");
                 }
                 Value::Tuple(_) => {}
+                Value::Cell(_) => {
+                    if let Some(full) = format_value_full(&v, &fmt) {
+                        println!("{name} =");
+                        println!("{full}");
+                    }
+                }
             },
             EvalResult::Value(v) => match &v {
                 Value::Void => {}
@@ -732,6 +753,12 @@ pub fn run_expr(expr: &str) {
                     println!("@function {out}f({p})");
                 }
                 Value::Tuple(_) => {}
+                Value::Cell(_) => {
+                    if let Some(full) = format_value_full(&v, &fmt) {
+                        println!("ans =");
+                        println!("{full}");
+                    }
+                }
             },
         },
         Err(e) => {
@@ -1056,6 +1083,13 @@ pub fn run_pipe(reader: impl BufRead) {
                                     println!("{name} = @function {out}{name}({p})");
                                 }
                                 Value::Tuple(_) => {}
+                                Value::Cell(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        println!("{name} =");
+                                        println!("{full}");
+                                        if !compact { println!(); }
+                                    }
+                                }
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
@@ -1098,6 +1132,13 @@ pub fn run_pipe(reader: impl BufRead) {
                                     println!("@function {out}f({p})");
                                 }
                                 Value::Tuple(_) => {}
+                                Value::Cell(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        println!("ans =");
+                                        println!("{full}");
+                                        if !compact { println!(); }
+                                    }
+                                }
                             },
                         }
                     }
@@ -1164,6 +1205,7 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Lambda(_) => println!("ans = @<lambda>"),
             Value::Function { .. } => println!("ans = @function"),
             Value::Tuple(_) => {}
+            Value::Cell(v) => println!("ans = {{1×{} cell}}", v.len()),
         }
     }
 
@@ -1201,6 +1243,9 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
                 scalars.push(format!("{name}({}) [function]", params.join(", ")));
             }
             Value::Tuple(_) => {}
+            Value::Cell(v) => {
+                matrices.push(format!("{name} = {{1×{} cell}}", v.len()));
+            }
         }
     }
 
@@ -1499,6 +1544,11 @@ fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
             Value::Lambda(_) => println!("@<lambda>"),
             Value::Function { .. } => println!("@function"),
             Value::Tuple(_) => {}
+            Value::Cell(_) => {
+                if let Some(full) = format_value_full(&v, fmt) {
+                    println!("{full}");
+                }
+            }
         },
         Err(e) => eprintln!("Error: {e}"),
     }

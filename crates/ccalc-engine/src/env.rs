@@ -59,6 +59,11 @@ pub enum Value {
     /// Produced by calling a function with `outputs.len() > 1`.
     /// Consumed by `Stmt::MultiAssign` in exec.rs. Not directly user-visible.
     Tuple(Vec<Value>),
+    /// Heterogeneous 1-D container: each element may be any `Value`.
+    ///
+    /// Created with `{1, 'hello', [1 2 3]}` syntax. Indexed with `c{i}` (1-based).
+    /// 2-D cell arrays are deferred; all cells are flat `Vec<Value>` for now.
+    Cell(Vec<Value>),
 }
 
 impl Value {
@@ -72,7 +77,8 @@ impl Value {
             | Value::StringObj(_)
             | Value::Lambda(_)
             | Value::Function { .. }
-            | Value::Tuple(_) => None,
+            | Value::Tuple(_)
+            | Value::Cell(_) => None,
         }
     }
 }
