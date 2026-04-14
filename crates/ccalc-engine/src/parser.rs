@@ -1,4 +1,4 @@
-use crate::eval::{Expr, Op};
+use crate::eval::{Expr, Op, expr_to_string};
 
 /// Top-level statement returned by [`parse`] and [`parse_stmts`].
 #[derive(Debug)]
@@ -107,10 +107,15 @@ enum Token {
     // --- Logical ---
     AmpAmp,   // &&
     PipePipe, // ||
+    Amp,      // & (element-wise AND)
+    Pipe,     // | (element-wise OR)
     Tilde,    // ~ / ! (unary NOT)
     At,       // @ (lambda / function handle prefix)
     LBrace,   // {
     RBrace,   // }
+    // --- Additional operators ---
+    StarStar,      // ** (alias for ^)
+    DotApostrophe, // .' (non-conjugate transpose)
 }
 
 fn parse_integer_literal(
@@ -225,11 +230,16 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             }
             '*' => {
                 chars.next();
-                if chars.peek() == Some(&'=') {
-                    chars.next();
-                    tokens.push(Token::StarEq);
-                } else {
-                    tokens.push(Token::Star);
+                match chars.peek() {
+                    Some('=') => {
+                        chars.next();
+                        tokens.push(Token::StarEq);
+                    }
+                    Some('*') => {
+                        chars.next();
+                        tokens.push(Token::StarStar);
+                    }
+                    _ => tokens.push(Token::Star),
                 }
             }
             '/' => {
@@ -318,6 +328,21 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             '.' => {
                 chars.next();
                 match chars.peek().copied() {
+                    Some('.') => {
+                        // Could be '...' (line continuation)
+                        chars.next(); // consume second '.'
+                        if chars.peek() == Some(&'.') {
+                            chars.next(); // consume third '.'
+                            // Line continuation: treat rest of input as a comment
+                            while chars.next().is_some() {}
+                        } else {
+                            return Err("Unexpected '..'".to_string());
+                        }
+                    }
+                    Some('\'') => {
+                        chars.next();
+                        tokens.push(Token::DotApostrophe);
+                    }
                     Some('*') => {
                         chars.next();
                         tokens.push(Token::DotStar);
@@ -440,7 +465,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     chars.next();
                     tokens.push(Token::AmpAmp);
                 } else {
-                    return Err("Use '&&' for logical AND".to_string());
+                    tokens.push(Token::Amp);
                 }
             }
             '|' => {
@@ -449,7 +474,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                     chars.next();
                     tokens.push(Token::PipePipe);
                 } else {
-                    return Err("Use '||' for logical OR".to_string());
+                    tokens.push(Token::Pipe);
                 }
             }
             '0'..='9' => {
@@ -749,14 +774,18 @@ pub fn is_partial(input: &str) -> bool {
 /// - Splits on `;` outside string literals and outside `[...]` brackets.
 /// - `silent = true` when the statement was terminated by `;`.
 pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
-    let mut semis: Vec<usize> = Vec::new();
+    // (position, is_silent): ';' → silent=true, ',' → silent=false
+    let mut separators: Vec<(usize, bool)> = Vec::new();
     let mut comment_at = input.len();
     let mut in_sq = false;
     let mut in_dq = false;
+    let mut paren_depth: i32 = 0;
     let mut bracket_depth: i32 = 0;
     let mut brace_depth: i32 = 0;
 
     for (i, c) in input.char_indices() {
+        let at_depth0 =
+            !in_sq && !in_dq && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0;
         match c {
             '\'' if !in_dq => {
                 if in_sq {
@@ -772,6 +801,12 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                 }
             }
             '"' if !in_sq => in_dq = !in_dq,
+            '(' if !in_sq && !in_dq => paren_depth += 1,
+            ')' if !in_sq && !in_dq => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                }
+            }
             '[' if !in_sq && !in_dq => bracket_depth += 1,
             ']' if !in_sq && !in_dq => {
                 if bracket_depth > 0 {
@@ -784,11 +819,12 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                     brace_depth -= 1;
                 }
             }
-            '%' | '#' if !in_sq && !in_dq && bracket_depth == 0 && brace_depth == 0 => {
+            '%' | '#' if at_depth0 => {
                 comment_at = i;
                 break;
             }
-            ';' if !in_sq && !in_dq && bracket_depth == 0 && brace_depth == 0 => semis.push(i),
+            ';' if at_depth0 => separators.push((i, true)),
+            ',' if at_depth0 => separators.push((i, false)),
             _ => {}
         }
     }
@@ -800,13 +836,13 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
 
     let mut result = Vec::new();
     let mut start = 0;
-    for &sc in &semis {
+    for &(sc, silent) in &separators {
         if sc >= content.len() {
             break;
         }
         let part = content[start..sc].trim();
         if !part.is_empty() {
-            result.push((part, true));
+            result.push((part, silent));
         }
         start = sc + 1;
     }
@@ -833,13 +869,135 @@ pub fn block_depth_delta(line: &str) -> i32 {
     }
 }
 
+/// Returns `true` when `line` is a self-contained single-line block, e.g.
+/// `if cond; body; end`.  These lines start with a block-opening keyword but
+/// also close themselves with `end` / `until` in the same line, so they do
+/// not need multi-line buffering.
+pub fn is_single_line_block(line: &str) -> bool {
+    let stripped = strip_line_comment(line).trim();
+    if !matches!(
+        leading_keyword(stripped),
+        Some("if" | "for" | "while" | "switch" | "do")
+    ) {
+        return false;
+    }
+    let parts = split_block_line(stripped);
+    matches!(
+        parts.last().map(|s| leading_keyword(s.trim())),
+        Some(Some("end" | "until"))
+    )
+}
+
+/// Joins lines ending with `...` (line continuation) into a single logical line.
+///
+/// `...` at the end of a line (after stripping trailing comments) causes the next
+/// line to be treated as a continuation. The `...` and newline are replaced by a space.
+fn join_line_continuations(input: &str) -> String {
+    let mut result = String::new();
+    let mut pending = String::new();
+
+    for line in input.lines() {
+        let stripped = strip_line_comment(line);
+        let trimmed = stripped.trim_end();
+        if let Some(before_dots) = trimmed.strip_suffix("...") {
+            // Append everything before `...` (and a space) to pending
+            pending.push_str(before_dots);
+            pending.push(' ');
+        } else if pending.is_empty() {
+            result.push_str(line);
+            result.push('\n');
+        } else {
+            // Continuation: join pending with this line
+            pending.push_str(line.trim_start());
+            result.push_str(&pending);
+            result.push('\n');
+            pending.clear();
+        }
+    }
+    // Any remaining pending (file ends with `...`)
+    if !pending.is_empty() {
+        result.push_str(pending.trim_end());
+    }
+    result
+}
+
+/// Splits a single-line block (e.g. `if x > 0; y = 1; end`) into individual
+/// statement strings, splitting on `;` at depth 0 (outside strings/brackets/parens).
+fn split_block_line(line: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_sq = false;
+    let mut in_dq = false;
+    let mut paren: i32 = 0;
+    let mut bracket: i32 = 0;
+    let mut brace: i32 = 0;
+
+    for c in line.chars() {
+        let at_depth0 = !in_sq && !in_dq && paren == 0 && bracket == 0 && brace == 0;
+        match c {
+            '\'' if !in_dq => {
+                in_sq = !in_sq;
+                current.push(c);
+            }
+            '"' if !in_sq => {
+                in_dq = !in_dq;
+                current.push(c);
+            }
+            '(' if !in_sq && !in_dq => {
+                paren += 1;
+                current.push(c);
+            }
+            ')' if !in_sq && !in_dq => {
+                if paren > 0 {
+                    paren -= 1;
+                }
+                current.push(c);
+            }
+            '[' if !in_sq && !in_dq => {
+                bracket += 1;
+                current.push(c);
+            }
+            ']' if !in_sq && !in_dq => {
+                if bracket > 0 {
+                    bracket -= 1;
+                }
+                current.push(c);
+            }
+            '{' if !in_sq && !in_dq => {
+                brace += 1;
+                current.push(c);
+            }
+            '}' if !in_sq && !in_dq => {
+                if brace > 0 {
+                    brace -= 1;
+                }
+                current.push(c);
+            }
+            ';' if at_depth0 => {
+                let trimmed = current.trim().to_string();
+                if !trimmed.is_empty() {
+                    parts.push(trimmed);
+                }
+                current.clear();
+            }
+            _ => current.push(c),
+        }
+    }
+    let last = current.trim().to_string();
+    if !last.is_empty() {
+        parts.push(last);
+    }
+    parts
+}
+
 /// Parses a multi-line block string into a sequence of `(Stmt, silent)` pairs.
 ///
 /// The input may contain multiple lines separated by `\n` or `\r\n`.
 /// Block keywords (`if`/`for`/`while`/`end`/…) are handled recursively.
 /// Each statement carries a `silent` flag (`true` when terminated by `;`).
 pub fn parse_stmts(input: &str) -> Result<Vec<(Stmt, bool)>, String> {
-    let lines: Vec<&str> = input.lines().collect();
+    let joined = join_line_continuations(input);
+    let lines: Vec<&str> = joined.lines().collect();
     let mut pos = 0;
     parse_stmts_from_lines(&lines, &mut pos, &[])
 }
@@ -867,6 +1025,28 @@ fn parse_stmts_from_lines(
             && stop_at.contains(&kw)
         {
             return Ok(stmts);
+        }
+
+        // Single-line block: `if cond; body; end` on one line.
+        // Detect: line starts with a block opener AND the last semicolon-split part is 'end'.
+        // Expand to virtual multi-line and re-parse.
+        if matches!(
+            leading_keyword(line),
+            Some("if" | "for" | "while" | "switch" | "do")
+        ) {
+            let virtual_parts = split_block_line(line);
+            let last_kw = virtual_parts
+                .last()
+                .map(|s| leading_keyword(s.trim()))
+                .unwrap_or(None);
+            if matches!(last_kw, Some("end") | Some("until")) {
+                let virtual_refs: Vec<&str> = virtual_parts.iter().map(|s| s.as_str()).collect();
+                let mut vpos = 0;
+                let inner = parse_stmts_from_lines(&virtual_refs, &mut vpos, stop_at)?;
+                stmts.extend(inner);
+                *pos += 1;
+                continue;
+            }
         }
 
         match leading_keyword(line) {
@@ -1355,13 +1535,35 @@ fn parse_logical_or(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// logical_and = comparison ('&&' comparison)*
+// logical_and = elem_or ('&&' elem_or)*
 fn parse_logical_and(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let mut left = parse_comparison(tokens, pos)?;
+    let mut left = parse_elem_or(tokens, pos)?;
     while matches!(tokens.get(*pos), Some(Token::AmpAmp)) {
         *pos += 1;
-        let right = parse_comparison(tokens, pos)?;
+        let right = parse_elem_or(tokens, pos)?;
         left = Expr::BinOp(Box::new(left), Op::And, Box::new(right));
+    }
+    Ok(left)
+}
+
+// elem_or = elem_and ('|' elem_and)*  -- element-wise OR, lower precedence than '&'
+fn parse_elem_or(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let mut left = parse_elem_and(tokens, pos)?;
+    while matches!(tokens.get(*pos), Some(Token::Pipe)) {
+        *pos += 1;
+        let right = parse_elem_and(tokens, pos)?;
+        left = Expr::BinOp(Box::new(left), Op::ElemOr, Box::new(right));
+    }
+    Ok(left)
+}
+
+// elem_and = comparison ('&' comparison)*  -- element-wise AND
+fn parse_elem_and(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
+    let mut left = parse_comparison(tokens, pos)?;
+    while matches!(tokens.get(*pos), Some(Token::Amp)) {
+        *pos += 1;
+        let right = parse_comparison(tokens, pos)?;
+        left = Expr::BinOp(Box::new(left), Op::ElemAnd, Box::new(right));
     }
     Ok(left)
 }
@@ -1470,12 +1672,13 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// power = unary (('^' | '.^') power)?   -- right-associative
+// power = unary (('^' | '.^' | '**') power)?   -- right-associative
+// '**' is an Octave alias for '^'.
 fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     let base = parse_unary(tokens, pos)?;
     if *pos < tokens.len() {
         match &tokens[*pos] {
-            Token::Caret => {
+            Token::Caret | Token::StarStar => {
                 *pos += 1;
                 let exp = parse_power(tokens, pos)?;
                 return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
@@ -1491,10 +1694,15 @@ fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(base)
 }
 
-// unary = '-' unary | '~' unary | primary
+// unary = '+' unary | '-' unary | '~' unary | primary
+// Unary '+' is a no-op: `+x` = `x`, `+[1 2 3]` = `[1 2 3]`.
 fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos < tokens.len() {
         match &tokens[*pos] {
+            Token::Plus => {
+                *pos += 1;
+                return parse_unary(tokens, pos); // noop
+            }
             Token::Minus => {
                 *pos += 1;
                 let expr = parse_unary(tokens, pos)?;
@@ -1671,9 +1879,11 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 }
             }
             let body = parse_logical_or(tokens, pos)?;
+            let source = format!("@({}) {}", params.join(", "), expr_to_string(&body));
             Expr::Lambda {
                 params,
                 body: Box::new(body),
+                source,
             }
         }
         _ => {
@@ -1683,13 +1893,18 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         }
     };
 
-    // Postfix transpose: ' binds tighter than any binary operator
+    // Postfix transpose: ' and .' bind tighter than any binary operator
     while *pos < tokens.len() {
-        if let Token::Apostrophe = &tokens[*pos] {
-            *pos += 1;
-            expr = Expr::Transpose(Box::new(expr));
-        } else {
-            break;
+        match &tokens[*pos] {
+            Token::Apostrophe => {
+                *pos += 1;
+                expr = Expr::Transpose(Box::new(expr));
+            }
+            Token::DotApostrophe => {
+                *pos += 1;
+                expr = Expr::PlainTranspose(Box::new(expr));
+            }
+            _ => break,
         }
     }
 

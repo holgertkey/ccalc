@@ -2257,6 +2257,218 @@ fn test_source_alias() {
     std::fs::remove_file(script).ok();
 }
 
+// ── Phase 12.6 tests ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_unary_plus_noop() {
+    assert_eq!(calc("+5"), 5.0);
+    assert_eq!(calc("+-3"), -3.0);
+}
+
+#[test]
+fn test_starstar_pow() {
+    assert_eq!(calc("2 ** 8"), 256.0);
+    assert_eq!(calc("3 ** 3"), 27.0);
+}
+
+#[test]
+fn test_elem_and_scalar() {
+    assert_eq!(calc("1 & 1"), 1.0);
+    assert_eq!(calc("1 & 0"), 0.0);
+    assert_eq!(calc("0 & 0"), 0.0);
+}
+
+#[test]
+fn test_elem_or_scalar() {
+    assert_eq!(calc("1 | 0"), 1.0);
+    assert_eq!(calc("0 | 0"), 0.0);
+}
+
+#[test]
+fn test_elem_and_matrix() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    use ndarray::array;
+    let env = Env::new();
+    let expr = unwrap_expr(parse("[1 0 1] & [1 1 0]").unwrap());
+    match eval(&expr, &env).unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m, array![[1.0, 0.0, 0.0]]);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_xor_builtin() {
+    assert_eq!(calc("xor(1, 0)"), 1.0);
+    assert_eq!(calc("xor(1, 1)"), 0.0);
+    assert_eq!(calc("xor(0, 0)"), 0.0);
+}
+
+#[test]
+fn test_not_builtin() {
+    assert_eq!(calc("not(0)"), 1.0);
+    assert_eq!(calc("not(5)"), 0.0);
+}
+
+#[test]
+fn test_plain_transpose_real() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    use ndarray::array;
+    let env = Env::new();
+    let expr = unwrap_expr(parse("[1 2; 3 4].'").unwrap());
+    match eval(&expr, &env).unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m, array![[1.0, 3.0], [2.0, 4.0]]);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_plain_transpose_complex_no_conjugate() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    let mut env = Env::new();
+    env.insert("z".to_string(), Value::Complex(1.0, 2.0));
+    let expr = unwrap_expr(parse("z.'").unwrap());
+    // Plain transpose: z.' = z (no sign flip on imaginary part)
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Complex(1.0, 2.0));
+}
+
+#[test]
+fn test_conjugate_transpose_complex() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    let mut env = Env::new();
+    env.insert("z".to_string(), Value::Complex(1.0, 2.0));
+    let expr = unwrap_expr(parse("z'").unwrap());
+    // Conjugate transpose: z' = conj(z)
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Complex(1.0, -2.0));
+}
+
+#[test]
+fn test_lambda_display() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    use crate::eval::{Base, FormatMode, format_value};
+    let env = Env::new();
+    let expr = unwrap_expr(parse("@(x) x + 1").unwrap());
+    let val = eval(&expr, &env).unwrap();
+    let displayed = format_value(&val, Base::Dec, &FormatMode::Short);
+    assert!(
+        displayed.starts_with("@(x)"),
+        "lambda display should show source, got: {displayed}"
+    );
+}
+
+#[test]
+fn test_single_line_if() {
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env("if 1 > 0; y = 42; end", &mut env);
+    assert_eq!(
+        match env.get("y") {
+            Some(Value::Scalar(n)) => *n,
+            _ => panic!(),
+        },
+        42.0
+    );
+}
+
+#[test]
+fn test_single_line_for() {
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env("for k = 1:3; s = k; end", &mut env);
+    assert_eq!(
+        match env.get("s") {
+            Some(Value::Scalar(n)) => *n,
+            _ => panic!(),
+        },
+        3.0
+    );
+}
+
+#[test]
+fn test_single_line_while() {
+    let mut env = Env::new();
+    env.insert("x".to_string(), Value::Scalar(3.0));
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env("while x > 0; x = x - 1; end", &mut env);
+    assert_eq!(
+        match env.get("x") {
+            Some(Value::Scalar(n)) => *n,
+            _ => panic!(),
+        },
+        0.0
+    );
+}
+
+#[test]
+fn test_line_continuation() {
+    let block = "x = 1 + ...\n  2 + ...\n  3";
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    run_block_with_env(block, &mut env);
+    assert_eq!(
+        match env.get("x") {
+            Some(Value::Scalar(n)) => *n,
+            _ => panic!(),
+        },
+        6.0
+    );
+}
+
+#[test]
+fn test_comma_separator() {
+    let stmts = split_stmts("a = 1, b = 2");
+    // 'a = 1' non-silent, 'b = 2' non-silent
+    assert_eq!(stmts.len(), 2);
+    assert_eq!(stmts[0].1, false); // non-silent (shown)
+    assert_eq!(stmts[1].1, false); // non-silent (shown)
+}
+
+#[test]
+fn test_int2str() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    let env = Env::new();
+    let expr = unwrap_expr(parse("int2str(3.7)").unwrap());
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Str("4".to_string()));
+}
+
+#[test]
+fn test_mat2str() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    let env = Env::new();
+    let expr = unwrap_expr(parse("mat2str([1 2; 3 4])").unwrap());
+    assert_eq!(
+        eval(&expr, &env).unwrap(),
+        Value::Str("[1 2;3 4]".to_string())
+    );
+}
+
+#[test]
+fn test_strsplit_basic() {
+    use crate::env::Value;
+    use crate::eval::eval;
+    let env = Env::new();
+    let expr = unwrap_expr(parse("strsplit('a,b,c', ',')").unwrap());
+    match eval(&expr, &env).unwrap() {
+        Value::Cell(parts) => {
+            assert_eq!(parts.len(), 3);
+            assert_eq!(parts[0], Value::Str("a".to_string()));
+            assert_eq!(parts[1], Value::Str("b".to_string()));
+            assert_eq!(parts[2], Value::Str("c".to_string()));
+        }
+        other => panic!("expected cell, got {other:?}"),
+    }
+}
+
 // ── Phase 12: User-defined functions and lambdas ─────────────────────────────
 
 // Helper: runs a block and calls a function defined in it.

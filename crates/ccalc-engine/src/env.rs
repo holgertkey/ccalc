@@ -14,11 +14,11 @@ use crate::io::IoContext;
 type LambdaFnInner = Rc<dyn Fn(&[Value], Option<&mut IoContext>) -> Result<Value, String>>;
 
 #[derive(Clone)]
-pub struct LambdaFn(pub LambdaFnInner);
+pub struct LambdaFn(pub LambdaFnInner, pub String);
 
 impl std::fmt::Debug for LambdaFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "@<lambda>")
+        write!(f, "{}", self.1)
     }
 }
 

@@ -90,7 +90,14 @@ pub enum Expr {
     Lambda {
         params: Vec<String>,
         body: Box<Expr>,
+        /// Source text for display (e.g. `@(x) x.^2 + 1`), stored at parse time.
+        source: String,
     },
+    /// Non-conjugate (plain) transpose: `A.'`.
+    ///
+    /// Transposes without complex conjugation. For real matrices, identical to `A'`.
+    /// For complex: `z.'` returns `z` unchanged (no sign flip on imaginary part).
+    PlainTranspose(Box<Expr>),
     /// Cell array literal: `{e1, e2, e3}`.
     ///
     /// Evaluates each element and produces `Value::Cell`.
@@ -127,6 +134,9 @@ pub enum Op {
     // --- Short-circuit logical (scalars only) ---
     And,
     Or,
+    // --- Element-wise logical (matrices allowed, no short-circuit) ---
+    ElemAnd,
+    ElemOr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -314,14 +324,19 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             call_builtin(name, &evaled, env, io)
         }
 
-        Expr::Lambda { params, body } => {
+        Expr::Lambda {
+            params,
+            body,
+            source,
+        } => {
             // Capture the current environment and body expression at definition time.
             // The resulting Value::Lambda is a closure that binds params on each call.
             let captured_env = env.clone();
             let captured_params = params.clone();
             let captured_body = *body.clone();
-            let lambda = LambdaFn(std::rc::Rc::new(
-                move |args: &[Value], io: Option<&mut IoContext>| {
+            let src = source.clone();
+            let lambda = LambdaFn(
+                std::rc::Rc::new(move |args: &[Value], io: Option<&mut IoContext>| {
                     // Allow up to params.len()+1 args: the parser injects `ans` for empty f() calls.
                     let effective = if args.len() > captured_params.len() {
                         if args.len() > captured_params.len() + 1 {
@@ -341,8 +356,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     }
                     local_env.insert("nargin".to_string(), Value::Scalar(effective.len() as f64));
                     eval_inner(&captured_body, &local_env, io)
-                },
-            ));
+                }),
+                src,
+            );
             Ok(Value::Lambda(lambda))
         }
         Expr::CellLiteral(elems) => {
@@ -371,8 +387,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::FuncHandle(name) => {
             let name = name.clone();
             let captured_env = env.clone();
-            let lambda = LambdaFn(std::rc::Rc::new(
-                move |args: &[Value], io: Option<&mut IoContext>| {
+            let src = format!("@{name}");
+            let lambda = LambdaFn(
+                std::rc::Rc::new(move |args: &[Value], io: Option<&mut IoContext>| {
                     // First try the environment (user-defined function), then fall back to builtin.
                     if let Some(f) = captured_env.get(&name) {
                         let f = f.clone();
@@ -380,10 +397,23 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     } else {
                         call_builtin(&name, args, &captured_env, io)
                     }
-                },
-            ));
+                }),
+                src,
+            );
             Ok(Value::Lambda(lambda))
         }
+        Expr::PlainTranspose(e) => match eval_inner(e, env, io)? {
+            Value::Void => Err("Transpose is not applicable to void".to_string()),
+            Value::Scalar(n) => Ok(Value::Scalar(n)),
+            Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
+            // Plain transpose: no conjugation — imaginary part unchanged
+            Value::Complex(re, im) => Ok(Value::Complex(re, im)),
+            Value::Str(s) => Ok(Value::Str(s)),
+            Value::StringObj(s) => Ok(Value::StringObj(s)),
+            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) => {
+                Err("Transpose is not applicable to functions".to_string())
+            }
+        },
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::Matrix(rows) => {
             if rows.is_empty() {
@@ -583,8 +613,8 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                 Op::Gt => bool_to_f64(lv > rv),
                 Op::LtEq => bool_to_f64(lv <= rv),
                 Op::GtEq => bool_to_f64(lv >= rv),
-                Op::And => bool_to_f64(lv != 0.0 && rv != 0.0),
-                Op::Or => bool_to_f64(lv != 0.0 || rv != 0.0),
+                Op::And | Op::ElemAnd => bool_to_f64(lv != 0.0 && rv != 0.0),
+                Op::Or | Op::ElemOr => bool_to_f64(lv != 0.0 || rv != 0.0),
             };
             Ok(Value::Scalar(result))
         }
@@ -633,7 +663,7 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                         .map_collect(|a, b| bool_to_f64(cmp_op(op, *a, *b))),
                 ))
             }
-            Op::And | Op::Or => {
+            Op::And | Op::Or | Op::ElemAnd | Op::ElemOr => {
                 check_same_shape(&lm, &rm)?;
                 Ok(Value::Matrix(
                     ndarray::Zip::from(&lm)
@@ -651,9 +681,16 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Div => Err("Scalar / Matrix: not supported".to_string()),
             Op::ElemDiv => Err("Scalar ./ Matrix: not supported".to_string()),
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
-            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq | Op::And | Op::Or => {
-                Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, s, x)))))
-            }
+            Op::Eq
+            | Op::NotEq
+            | Op::Lt
+            | Op::Gt
+            | Op::LtEq
+            | Op::GtEq
+            | Op::And
+            | Op::Or
+            | Op::ElemAnd
+            | Op::ElemOr => Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, s, x))))),
         },
         (Value::Matrix(m), Value::Scalar(s)) => match op {
             Op::Add => Ok(Value::Matrix(&m + s)),
@@ -661,9 +698,16 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Mul | Op::ElemMul => Ok(Value::Matrix(&m * s)),
             Op::Div | Op::ElemDiv => Ok(Value::Matrix(m.mapv(|x| x / s))),
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
-            Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq | Op::And | Op::Or => {
-                Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, x, s)))))
-            }
+            Op::Eq
+            | Op::NotEq
+            | Op::Lt
+            | Op::Gt
+            | Op::LtEq
+            | Op::GtEq
+            | Op::And
+            | Op::Or
+            | Op::ElemAnd
+            | Op::ElemOr => Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, x, s))))),
         },
     }
 }
@@ -682,8 +726,8 @@ fn cmp_op(op: &Op, a: f64, b: f64) -> bool {
         Op::Gt => a > b,
         Op::LtEq => a <= b,
         Op::GtEq => a >= b,
-        Op::And => a != 0.0 && b != 0.0,
-        Op::Or => a != 0.0 || b != 0.0,
+        Op::And | Op::ElemAnd => a != 0.0 && b != 0.0,
+        Op::Or | Op::ElemOr => a != 0.0 || b != 0.0,
         _ => unreachable!(),
     }
 }
@@ -761,10 +805,10 @@ fn complex_binop(re1: f64, im1: f64, op: &Op, re2: f64, im2: f64) -> Result<Valu
         Op::Lt | Op::Gt | Op::LtEq | Op::GtEq => {
             Err("Ordering is not defined for complex numbers".to_string())
         }
-        Op::And => Ok(Value::Scalar(bool_to_f64(
+        Op::And | Op::ElemAnd => Ok(Value::Scalar(bool_to_f64(
             (re1 != 0.0 || im1 != 0.0) && (re2 != 0.0 || im2 != 0.0),
         ))),
-        Op::Or => Ok(Value::Scalar(bool_to_f64(
+        Op::Or | Op::ElemOr => Ok(Value::Scalar(bool_to_f64(
             re1 != 0.0 || im1 != 0.0 || re2 != 0.0 || im2 != 0.0,
         ))),
     }
@@ -2349,6 +2393,88 @@ fn call_builtin(
             let delim = interpret_delim(string_arg(&args[2], name, 3)?);
             dlmwrite_impl(&path, &args[1], Some(delim))
         }
+        // xor(a, b) — element-wise XOR: (a != 0) XOR (b != 0)
+        ("xor", 2) => {
+            let a = &args[0];
+            let b = &args[1];
+            match (a, b) {
+                (Value::Scalar(x), Value::Scalar(y)) => {
+                    Ok(Value::Scalar(bool_to_f64((*x != 0.0) ^ (*y != 0.0))))
+                }
+                (Value::Matrix(mx), Value::Matrix(my)) => {
+                    if mx.shape() != my.shape() {
+                        return Err("xor: matrices must have the same dimensions".to_string());
+                    }
+                    Ok(Value::Matrix(ndarray::Zip::from(mx).and(my).map_collect(
+                        |a, b| bool_to_f64((*a != 0.0) ^ (*b != 0.0)),
+                    )))
+                }
+                (Value::Scalar(s), Value::Matrix(m)) => {
+                    let sv = *s != 0.0;
+                    Ok(Value::Matrix(m.mapv(|x| bool_to_f64(sv ^ (x != 0.0)))))
+                }
+                (Value::Matrix(m), Value::Scalar(s)) => {
+                    let sv = *s != 0.0;
+                    Ok(Value::Matrix(m.mapv(|x| bool_to_f64((x != 0.0) ^ sv))))
+                }
+                _ => Err("xor: arguments must be numeric".to_string()),
+            }
+        }
+        // not(a) — element-wise NOT (alias for ~a)
+        ("not", 1) => apply_elem(&args[0], |x| if x == 0.0 { 1.0 } else { 0.0 }),
+        // int2str(x) — round to nearest integer, return as char array
+        ("int2str", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Str(format!("{}", n.round() as i64))),
+            Value::Matrix(m) => {
+                let parts: Vec<String> =
+                    m.iter().map(|x| format!("{}", x.round() as i64)).collect();
+                Ok(Value::Str(parts.join("  ")))
+            }
+            _ => Err("int2str: argument must be numeric".to_string()),
+        },
+        // mat2str(A) — matrix to MATLAB literal syntax string
+        ("mat2str", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Str(format!("{n}"))),
+            Value::Matrix(m) => {
+                if m.nrows() == 0 || m.ncols() == 0 {
+                    return Ok(Value::Str("[]".to_string()));
+                }
+                let mut s = String::from("[");
+                for (r, row) in m.rows().into_iter().enumerate() {
+                    if r > 0 {
+                        s.push(';');
+                    }
+                    for (c, val) in row.iter().enumerate() {
+                        if c > 0 {
+                            s.push(' ');
+                        }
+                        s.push_str(&format!("{val}"));
+                    }
+                }
+                s.push(']');
+                Ok(Value::Str(s))
+            }
+            _ => Err("mat2str: argument must be numeric".to_string()),
+        },
+        // strsplit(s, delim) — split string by delimiter, return cell array
+        ("strsplit", 2) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let delim = string_arg(&args[1], name, 2)?.to_string();
+            let parts: Vec<Value> = s
+                .split(delim.as_str())
+                .map(|p| Value::Str(p.to_string()))
+                .collect();
+            Ok(Value::Cell(parts))
+        }
+        // strsplit(s) — split on whitespace
+        ("strsplit", 1) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let parts: Vec<Value> = s
+                .split_whitespace()
+                .map(|p| Value::Str(p.to_string()))
+                .collect();
+            Ok(Value::Cell(parts))
+        }
         _ => Err(format!("Unknown function: '{name}'")),
     }
 }
@@ -2895,6 +3021,86 @@ pub fn format_complex(re: f64, im: f64, mode: &FormatMode) -> String {
     }
 }
 
+/// Reconstructs a source-like string from an `Expr`.
+///
+/// Used to populate the display string of lambda values so that
+/// `f = @(x) x.^2` shows `f = @(x) x .^ 2` in the REPL.
+pub fn expr_to_string(e: &Expr) -> String {
+    match e {
+        Expr::Number(n) => {
+            if n.is_nan() {
+                "nan".to_string()
+            } else if n.is_infinite() {
+                if *n > 0.0 {
+                    "inf".to_string()
+                } else {
+                    "-inf".to_string()
+                }
+            } else {
+                format!("{n}")
+            }
+        }
+        Expr::Var(name) => name.clone(),
+        Expr::UnaryMinus(e) => format!("-{}", expr_to_string(e)),
+        Expr::UnaryNot(e) => format!("~{}", expr_to_string(e)),
+        Expr::BinOp(l, op, r) => {
+            let op_str = match op {
+                Op::Add => "+",
+                Op::Sub => "-",
+                Op::Mul => "*",
+                Op::Div => "/",
+                Op::Pow => "^",
+                Op::ElemMul => ".*",
+                Op::ElemDiv => "./",
+                Op::ElemPow => ".^",
+                Op::Eq => "==",
+                Op::NotEq => "~=",
+                Op::Lt => "<",
+                Op::Gt => ">",
+                Op::LtEq => "<=",
+                Op::GtEq => ">=",
+                Op::And => "&&",
+                Op::Or => "||",
+                Op::ElemAnd => "&",
+                Op::ElemOr => "|",
+            };
+            format!("{} {op_str} {}", expr_to_string(l), expr_to_string(r))
+        }
+        Expr::Call(name, args) => {
+            let args_str = args
+                .iter()
+                .map(expr_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}({args_str})")
+        }
+        Expr::Transpose(e) => format!("{}'", expr_to_string(e)),
+        Expr::PlainTranspose(e) => format!("{}.'", expr_to_string(e)),
+        Expr::Range(start, step, stop) => {
+            if let Some(step) = step {
+                format!(
+                    "{}:{}:{}",
+                    expr_to_string(start),
+                    expr_to_string(step),
+                    expr_to_string(stop)
+                )
+            } else {
+                format!("{}:{}", expr_to_string(start), expr_to_string(stop))
+            }
+        }
+        Expr::StrLiteral(s) => format!("'{s}'"),
+        Expr::StringObjLiteral(s) => format!("\"{s}\""),
+        Expr::Lambda { params, body, .. } => {
+            format!("@({}) {}", params.join(", "), expr_to_string(body))
+        }
+        Expr::FuncHandle(name) => format!("@{name}"),
+        Expr::Matrix(_) => "[...]".to_string(),
+        Expr::CellLiteral(_) => "{...}".to_string(),
+        Expr::CellIndex(e, i) => format!("{}{{{}}}", expr_to_string(e), expr_to_string(i)),
+        Expr::Colon => ":".to_string(),
+    }
+}
+
 /// Formats a `Value` compactly: scalars as a number string, matrices as `[NxM double]`.
 pub fn format_value(v: &Value, base: Base, mode: &FormatMode) -> String {
     match v {
@@ -2904,7 +3110,7 @@ pub fn format_value(v: &Value, base: Base, mode: &FormatMode) -> String {
         Value::Complex(re, im) => format_complex(*re, *im, mode),
         Value::Str(s) => s.clone(),
         Value::StringObj(s) => s.clone(),
-        Value::Lambda(_) => "@<lambda>".to_string(),
+        Value::Lambda(lf) => lf.1.clone(),
         Value::Function {
             params, outputs, ..
         } => {

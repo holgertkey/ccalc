@@ -13,7 +13,9 @@ use ccalc_engine::eval::{
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
-use ccalc_engine::parser::{Stmt, block_depth_delta, is_partial, parse, parse_stmts, split_stmts};
+use ccalc_engine::parser::{
+    Stmt, block_depth_delta, is_partial, is_single_line_block, parse, parse_stmts, split_stmts,
+};
 
 /// Result of evaluating one input line.
 enum EvalResult {
@@ -224,7 +226,7 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
                 format!("\"{display}\"")
             }
         }
-        Some(Value::Lambda(_)) => "@<lambda>".to_string(),
+        Some(Value::Lambda(lf)) => lf.1.clone(),
         Some(Value::Function { .. }) => "@<function>".to_string(),
         Some(Value::Tuple(_)) => "(...)".to_string(),
         Some(Value::Cell(v)) => format!("{{1×{}}}", v.len()),
@@ -254,9 +256,11 @@ pub fn run() {
     // Multi-line block buffering state
     let mut block_buf: Vec<String> = Vec::new();
     let mut block_depth: i32 = 0;
+    // Line continuation (`...`) buffer
+    let mut cont_buf: String = String::new();
 
     'repl: loop {
-        let prompt = if block_depth > 0 {
+        let prompt = if block_depth > 0 || !cont_buf.is_empty() {
             "  >> ".to_string()
         } else {
             format!("[ {} ]: ", format_prompt_ans(&env, base, &fmt))
@@ -265,10 +269,11 @@ pub fn run() {
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) => {
-                if block_depth > 0 {
-                    // Cancel current block
+                if block_depth > 0 || !cont_buf.is_empty() {
+                    // Cancel current block or continuation
                     block_buf.clear();
                     block_depth = 0;
+                    cont_buf.clear();
                     eprintln!("^C");
                     continue;
                 }
@@ -290,6 +295,61 @@ pub fn run() {
         // Exit/quit always works, even inside block mode
         if trimmed == "exit" || trimmed == "quit" {
             break 'repl;
+        }
+
+        // Line continuation: if line ends with `...`, buffer and read next line
+        {
+            let stripped_comment = {
+                let mut end = trimmed.len();
+                let mut in_sq = false;
+                let mut in_dq = false;
+                for (i, c) in trimmed.char_indices() {
+                    match c {
+                        '\'' if !in_dq => in_sq = !in_sq,
+                        '"' if !in_sq => in_dq = !in_dq,
+                        '%' | '#' if !in_sq && !in_dq => {
+                            end = i;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                trimmed[..end].trim_end()
+            };
+            if let Some(before_dots) = stripped_comment.strip_suffix("...") {
+                cont_buf.push_str(before_dots);
+                cont_buf.push(' ');
+                continue;
+            }
+        }
+
+        // Apply any pending continuation buffer
+        let effective = if cont_buf.is_empty() {
+            trimmed.to_string()
+        } else {
+            let mut s = cont_buf.clone();
+            s.push_str(trimmed);
+            cont_buf.clear();
+            s
+        };
+        let trimmed = effective.as_str();
+
+        // Single-line complete block: `if cond; body; end` — bypass block buffering.
+        if is_single_line_block(trimmed) {
+            match parse_stmts(trimmed) {
+                Ok(stmts) => match exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                    Ok(None) => {}
+                    Ok(Some(Signal::Break | Signal::Continue)) => {
+                        eprintln!("Error: 'break'/'continue' outside a loop");
+                    }
+                    Ok(Some(Signal::Return)) => {
+                        eprintln!("Error: 'return' outside a function");
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                },
+                Err(e) => eprintln!("Error: {e}"),
+            }
+            continue;
         }
 
         // Block mode: accumulate lines until block closes
@@ -583,7 +643,7 @@ pub fn run() {
                                 }
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
-                                Value::Lambda(_) => println!("{name} = @<lambda>"),
+                                Value::Lambda(lf) => println!("{name} = {}", lf.1),
                                 Value::Function {
                                     params, outputs, ..
                                 } => {
@@ -634,7 +694,7 @@ pub fn run() {
                                     println!("{}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
-                                Value::Lambda(_) => println!("@<lambda>"),
+                                Value::Lambda(lf) => println!("{}", lf.1),
                                 Value::Function {
                                     params, outputs, ..
                                 } => {
@@ -705,7 +765,7 @@ pub fn run_expr(expr: &str) {
                 }
                 Value::Str(s) => println!("{name} = {s}"),
                 Value::StringObj(s) => println!("{name} = {s}"),
-                Value::Lambda(_) => println!("{name} = @<lambda>"),
+                Value::Lambda(lf) => println!("{name} = {}", lf.1),
                 Value::Function {
                     params, outputs, ..
                 } => {
@@ -744,7 +804,7 @@ pub fn run_expr(expr: &str) {
                     println!("{}", format_complex(*re, *im, &fmt));
                 }
                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
-                Value::Lambda(_) => println!("@<lambda>"),
+                Value::Lambda(lf) => println!("{}", lf.1),
                 Value::Function {
                     params, outputs, ..
                 } => {
@@ -868,6 +928,19 @@ pub fn run_pipe(reader: impl BufRead) {
         if trimmed.is_empty() {
             if block_depth > 0 {
                 block_buf.push(String::new());
+            }
+            continue;
+        }
+
+        // Single-line complete block: `if cond; body; end` — bypass block buffering.
+        if is_single_line_block(trimmed) {
+            match parse_stmts(trimmed) {
+                Ok(stmts) => {
+                    if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                        eprintln!("Error: {e}");
+                    }
+                }
+                Err(e) => eprintln!("Error: {e}"),
             }
             continue;
         }
@@ -1074,7 +1147,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                 }
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
-                                Value::Lambda(_) => println!("{name} = @<lambda>"),
+                                Value::Lambda(lf) => println!("{name} = {}", lf.1),
                                 Value::Function {
                                     params, outputs, ..
                                 } => {
@@ -1125,7 +1198,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                     println!("{}", format_complex(*re, *im, &fmt));
                                 }
                                 Value::Str(s) | Value::StringObj(s) => println!("{s}"),
-                                Value::Lambda(_) => println!("@<lambda>"),
+                                Value::Lambda(lf) => println!("{}", lf.1),
                                 Value::Function {
                                     params, outputs, ..
                                 } => {
@@ -1210,7 +1283,7 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, fmt)),
             Value::Str(s) => println!("ans = {s}"),
             Value::StringObj(s) => println!("ans = {s}"),
-            Value::Lambda(_) => println!("ans = @<lambda>"),
+            Value::Lambda(lf) => println!("ans = {}", lf.1),
             Value::Function { .. } => println!("ans = @function"),
             Value::Tuple(_) => {}
             Value::Cell(v) => println!("ans = {{1×{} cell}}", v.len()),
@@ -1244,8 +1317,8 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::StringObj(_) => {
                 scalars.push(format!("{name} [string]"));
             }
-            Value::Lambda(_) => {
-                scalars.push(format!("{name} = @<lambda>"));
+            Value::Lambda(lf) => {
+                scalars.push(format!("{name} = {}", lf.1));
             }
             Value::Function { params, .. } => {
                 scalars.push(format!("{name}({}) [function]", params.join(", ")));
@@ -1549,7 +1622,7 @@ fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
             Value::Scalar(n) => println!("{}", format_scalar(*n, base, fmt)),
             Value::Complex(re, im) => println!("{}", format_complex(*re, *im, fmt)),
             Value::Str(s) | Value::StringObj(s) => println!("{s}"),
-            Value::Lambda(_) => println!("@<lambda>"),
+            Value::Lambda(lf) => println!("{}", lf.1),
             Value::Function { .. } => println!("@function"),
             Value::Tuple(_) => {}
             Value::Cell(_) => {
