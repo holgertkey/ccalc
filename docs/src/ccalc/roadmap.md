@@ -22,6 +22,8 @@ The work is divided into phases in order of architectural dependency.
 | 11 | Core control flow (`if`, `for`, `while`, `break`, `continue`, `+=`) | ✅ Done |
 | 11.5 | Extended control flow (`switch`, `do...until`, `run`/`source`; `try`/`catch` deferred to Phase 14) | ✅ Done |
 | 12 | User-defined functions, multiple return values, `@(x)` lambdas | ✅ Done |
+| 12.5 | Cell arrays, `varargin`/`varargout`, `cellfun`/`arrayfun`, `@funcname` | ✅ Done |
+| 12.6 | Language polish: `&`/`\|`, `...`, single-line blocks, `.'`, `**`, string utils | ✅ Done |
 
 ## Key architectural decisions
 
@@ -145,6 +147,34 @@ caller's workspace — the last point enables self-recursion and mutual recursio
 without exposing caller data.
 `Stmt::FunctionDef`, `Stmt::Return`, `Stmt::MultiAssign`, and `Token::At` were
 added to the parser; `Signal::Return` to the executor.
+
+**Phase 12.5** adds `Value::Cell(Vec<Value>)` — a heterogeneous 1-D cell array.
+Cell literals `{e1, e2}`, brace indexing `c{i}`, and brace assignment `c{i} = v`
+use new `Token::LBrace`/`RBrace` and `Expr::CellLiteral`/`CellIndex`/`Stmt::CellSet`.
+`varargin`/`varargout` collect extra call arguments into a `Value::Cell`.
+`case {v1, v2}` multi-value switch cases iterate the cell and test each element.
+`cellfun(f, c)` and `arrayfun(f, v)` apply a function to each element.
+`@funcname` desugars to `Expr::FuncHandle(name)` — a lambda wrapping any named function.
+`split_stmts()` updated to track brace depth so `;` inside `{...}` is not a separator.
+
+**Phase 12.6** delivers language polish across nine sub-items (12.6h deferred):
+- **12.6a** Single-line blocks: `if cond; body; end` — `is_single_line_block()`
+  detects self-contained blocks; REPL/pipe bypass the block buffer for them.
+- **12.6b** `...` line continuation: `cont_buf` in REPL and `run_pipe`;
+  `join_line_continuations()` pre-pass in `parse_stmts`; tokenizer drains rest of line.
+- **12.6c** `&`/`|` element-wise logical: new `Token::Amp`/`Pipe`, `Op::ElemAnd`/`ElemOr`,
+  and `parse_elem_or`/`parse_elem_and` precedence levels between `parse_logical_and` and
+  `parse_comparison`.
+- **12.6d** `xor(a,b)` and `not(a)` built-ins.
+- **12.6e** Lambda display: `LambdaFn` carries a source string; `expr_to_string()` helper
+  reconstructs readable source text from the AST at parse time.
+- **12.6f** `strsplit(s[,delim])`, `int2str(x)`, `mat2str(A)` built-ins.
+- **12.6g** `.'` plain transpose: `Token::DotApostrophe`, `Expr::PlainTranspose` — no
+  complex conjugation (contrast with `'` which is the Hermitian conjugate transpose).
+- **12.6j** Unary `+` (no-op), `**` alias for `^` (Octave), `,` non-silent separator.
+- **Bug fixes**: `4i` imaginary literal now works via tokenizer `push_imag_suffix()`;
+  `split_stmts` `'` disambiguation extended to recognise `.` as a transpose indicator
+  (fixing `B.';` mis-parse); `run_pipe` gained `cont_buf` for `...` continuation.
 
 ## Compatibility notes
 

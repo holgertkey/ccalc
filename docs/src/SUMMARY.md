@@ -50,3 +50,4 @@
 - [Phase 11.5 — Extended Control Flow](./ccalc/phase115-extended-control-flow.md)
 - [Phase 12 — User-defined Functions](./ccalc/phase12-user-functions.md)
 - [Phase 12.5 — Cell Arrays](./ccalc/phase125-cell-arrays.md)
+- [Phase 12.6 — Language Polish](./ccalc/phase126-language-polish.md)

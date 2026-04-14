@@ -7,14 +7,18 @@ imaginary unit.
 ## Creating complex numbers
 
 ```
-3 + 4*i          % 3 + 4i
-3 + 4*j          % same — j is also the imaginary unit
+3 + 4i           % 3 + 4i   — Ni suffix (no space before i/j)
+3 + 4*i          % same — explicit multiply also works
+3 + 4*j          % j is also the imaginary unit
 complex(3, 4)    % construct from real and imaginary parts
-5*i              % pure imaginary: 5i
-2 - 3*i          % 2 - 3i
+5i               % pure imaginary: 5i
+2 - 3i           % 2 - 3i
 ```
 
-`4i` works via implicit multiplication — `4 * i` — with no extra syntax.
+**`Ni` suffix syntax:** any decimal number immediately followed by `i` or `j`
+(no space, no further alphanumeric characters) is treated as a complex literal.
+The tokenizer expands `4i` to `4 * i` — the imaginary unit `i` must be in
+scope (it is always pre-seeded at startup).
 
 ## Arithmetic
 
@@ -108,16 +112,25 @@ isreal(5)        % 1
 imag(7)          % 0
 ```
 
-## Conjugate transpose
+## Conjugate and plain transpose
 
-The postfix `'` operator returns the complex conjugate for a scalar
-complex number (matching the matrix conjugate-transpose convention):
+The postfix `'` operator returns the **conjugate** of a complex scalar
+(matching the matrix Hermitian-transpose convention):
 
 ```
-z = 3 + 4*i
-z'               % 3 - 4i
-conj(z)          % 3 - 4i   (same result)
+z = 3 + 4i
+z'               % 3 - 4i   conjugate — flips imaginary sign
+conj(z)          % 3 - 4i   same result
 ```
+
+The postfix `.'` operator returns the **plain** transpose — no conjugation:
+
+```
+z.'              % 3 + 4i   plain transpose — imaginary part unchanged
+```
+
+For real scalars and matrices `'` and `.'` give identical results.
+The distinction only matters for complex values.
 
 ## Comparison
 

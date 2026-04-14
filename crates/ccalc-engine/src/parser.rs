@@ -195,10 +195,7 @@ fn try_consume_sci_exponent(
 /// followed by another identifier character, consume it and emit `* i` so
 /// that `4i` → `4 * i` = `Complex(0, 4)`.
 #[inline]
-fn push_imag_suffix(
-    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
-    tokens: &mut Vec<Token>,
-) {
+fn push_imag_suffix(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, tokens: &mut Vec<Token>) {
     if matches!(chars.peek(), Some('i') | Some('j')) {
         let mut la = chars.clone();
         la.next();
@@ -814,7 +811,12 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                 } else {
                     let before = input[..i].trim_end_matches([' ', '\t']);
                     let is_transpose = before.ends_with(|c: char| {
-                        c.is_alphanumeric() || c == '_' || c == ')' || c == ']' || c == '\'' || c == '.'
+                        c.is_alphanumeric()
+                            || c == '_'
+                            || c == ')'
+                            || c == ']'
+                            || c == '\''
+                            || c == '.'
                     });
                     if !is_transpose {
                         in_sq = true;

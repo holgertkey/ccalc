@@ -73,11 +73,14 @@ fn print_cheatsheet() {
         "\
 ccalc v{ver} — terminal calculator with Octave/MATLAB syntax
 
-Operators   + - * / ^        ^ is right-associative
+Operators   + - * / ^ **     ^ and ** are right-associative
             2(3+1) → 8       implicit multiplication
+            +x               unary + (no-op)   ...  line continuation
 Comparison  ==  ~= (!=)  <  >  <=  >=     return 1 (true) or 0 (false)
-Logical     ~expr (!expr)  &&  ||          NOT, AND, OR
-Constants   pi  e  ans  nan  inf  i  j  (imaginary unit)
+Logical     ~expr (!expr)  &&  ||          NOT, AND, OR (short-circuit)
+            &   |                          element-wise AND, OR (matrices)
+            xor(a,b)  not(a)               exclusive OR, logical NOT
+Constants   pi  e  ans  nan  inf  i  j  (imaginary unit, 4i works)
 Partial     [ 100 ]: / 4     starts with operator → uses ans
 
 1-arg   sqrt abs floor ceil round sign exp ln log
@@ -99,12 +102,13 @@ Vector  sum prod mean min max any all norm(v) norm(v,p)
         cumsum cumprod  sort  find  unique
         reshape(A,m,n)  fliplr  flipud
 NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
-Complex 3+4i  3+4j  complex(re,im)
+Complex 3+4i  3+4j  4i  complex(re,im)    (Ni syntax works directly)
         real(z) imag(z) abs(z) angle(z) conj(z) isreal(z)
-        z' = conj(z)  (conjugate transpose for scalars)
+        z' = conj(z)   z.' = plain transpose (no conjugation)
 Strings 'char array'  \"string object\"
         num2str  str2num  str2double  strcat  strcmp  strcmpi
         lower  upper  strtrim  strrep  ischar  isstring
+        strsplit(s,delim)  int2str(x)  mat2str(A)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -192,18 +196,22 @@ fn print_syntax() {
 SYNTAX
 
 Operators
-    +  -  *  /  ^
+    +  -  *  /  ^  **   (** is Octave alias for ^)
     Comparison:   ==  ~=  <  >  <=  >=    (return 1.0 or 0.0)
-    Logical:      ~expr   &&   ||
+    Logical:      ~expr   &&   ||          short-circuit scalars
+                  &    |                   element-wise (matrices OK)
+                  xor(a,b)  not(a)
 
     Precedence (high to low):
-      postfix '   transpose (matrices)
-      ^           exponentiation (right-associative)
-      unary -  ~  negation, logical NOT
+      postfix '  .'  transpose / plain transpose
+      ^  **       exponentiation (right-associative)
+      unary +  -  ~  no-op, negation, logical NOT
       *  /  .*  ./  .^   multiply, divide, element-wise
       +  -        addition, subtraction
       :           range (a:b, a:step:b)
       ==  ~=  <  >  <=  >=   comparison (non-associative)
+      &           element-wise AND
+      |           element-wise OR
       &&          short-circuit logical AND
       ||          short-circuit logical OR
 
@@ -211,6 +219,7 @@ Operators
     1 + 1 == 2         →  1    arithmetic evaluated first
     ~0                 →  1    logical NOT
     v > 3              →  element-wise mask (0/1 matrix)
+    +x                 →  x    unary + is a no-op
 
 Grouping
     (2 + 3) * 4     →  20
@@ -233,17 +242,30 @@ Comments
     10 * 5  % inline comment — expression still evaluates
     10 * 5  # hash-style inline comment
 
-Semicolon
+Semicolons and commas
     Trailing ; suppresses output.
     Expressions — ans is still updated:    0.06 / 12;
     Assignments — ans is never updated:    rate = 0.06 / 12;
 
-    Multiple statements on one line (; as separator):
-    a = 1; b = 2         a = 1 silent,  b = 2 shown
+    Statement separators on one line:
+    a = 1; b = 2         ;  → a silent, b shown
+    a = 1, b = 2         ,  → both shown (comma is non-silent separator)
     a = 1; b = 2;        both silent
 
     Inside a matrix literal [ ], ; is always a row separator:
     [1 2; 3 4]           2×2 matrix — the ; is not a statement separator
+
+Line continuation  (...)
+    Long lines can continue on the next line using ...:
+    result = 1 + ...
+             2 + ...
+             3;               → result = 6
+    A = [1 2 3; ...
+         4 5 6];              → 2×3 matrix
+    if value > 0 && ...
+       value < 100
+      disp('ok')
+    end
 
 Range operator
     a:b               row vector  [a, a+1, ..., b]   (step = 1)
@@ -735,13 +757,18 @@ Comparison  (return 1.0 = true, 0.0 = false)
 
 Logical
     ~expr   (!expr)  NOT: 1 if expr == 0, else 0
-    a && b           AND: 1 if both non-zero (scalar or element-wise)
-    a || b           OR:  1 if either non-zero (scalar or element-wise)
+    a && b           AND: short-circuit scalar (scalars only)
+    a || b           OR:  short-circuit scalar (scalars only)
+    a & b            element-wise AND (works on matrices, always evaluates both)
+    a | b            element-wise OR  (works on matrices, always evaluates both)
+    xor(a, b)        element-wise XOR
+    not(a)           element-wise NOT (alias for ~)
 
   ! and != are C/shell-style aliases for ~ and ~= (Octave extension).
+  Use & and | for matrix logical masks; && and || for scalar conditions.
 
 Precedence (low to high inside an expression)
-    ||  →  &&  →  comparisons  →  :  →  +/-  →  *//  →  ^  →  unary
+    ||  →  &&  →  |  →  &  →  comparisons  →  :  →  +/-  →  *//  →  ^  →  unary
 
 Scalar examples
     3 > 2             →  1
@@ -751,7 +778,8 @@ Scalar examples
     ~1                →  0
     2 > 1 && 3 > 2    →  1
     0 || 1            →  1
-    ~(3 == 3)         →  0
+    xor(1, 0)         →  1
+    not(5)            →  0
 
 Arithmetic + comparison
     1 + 1 == 2        →  1    (arithmetic first, then ==)
@@ -760,19 +788,25 @@ Arithmetic + comparison
 
 Element-wise on matrices
     v = [1 2 3 4 5]
-    v > 3             →  [0 0 0 1 1]
-    v == 3            →  [0 0 1 0 0]
-    v ~= 3            →  [1 1 0 1 1]
+    v > 3                      →  [0 0 0 1 1]
+    v == 3                     →  [0 0 1 0 0]
+    v ~= 3                     →  [1 1 0 1 1]
+
+    % & and | work on boolean matrices:
+    a = [1 0 1 0];  b = [1 1 0 0];
+    a & b                      →  [1 0 0 0]
+    a | b                      →  [1 1 1 0]
+    xor(a, b)                  →  [0 1 1 0]
+
+Logical mask pattern
+    v = [3, -1, 8, 0, 5, -2, 7];
+    mask = v > 0 & v < 6       →  [1 0 0 0 1 0 0]
 
 Soft masking — zero out elements that fail a condition
-    v .* (v > 3)      →  [0 0 0 4 5]    keep elements > 3 only
-
-Combining two masks with .*  (element-wise AND)
-    lo = v >= 2;  hi = v <= 4;
-    v .* (lo .* hi)   →  [0 2 3 4 0]
+    v .* (v > 3)               →  [0 0 0 4 5]  keep elements > 3 only
 
 See also: help matrices, help syntax
-Example:  ccalc examples/logic.calc"
+Example:  ccalc examples/logic.calc   ccalc examples/language_polish.calc"
     );
 }
 
@@ -871,13 +905,15 @@ fn print_complex() {
 COMPLEX NUMBERS
 
 Creating complex numbers
-    3 + 4*i          →  3 + 4i    (i is pre-set to the imaginary unit)
+    3 + 4i           →  3 + 4i    (Ni suffix: 4i = 4*i, tokenizer handles this)
+    3 + 4*i          →  3 + 4i    (explicit multiply — also works)
     3 + 4*j          →  3 + 4i    (j is also the imaginary unit)
     complex(3, 4)    →  3 + 4i    (construct from real and imaginary parts)
-    5*i              →  5i         (pure imaginary)
-    2 - 3*i          →  2 - 3i
+    5i               →  5i         (pure imaginary; 5*i also works)
+    2 - 3i           →  2 - 3i
 
-    4i works via implicit multiplication: 4 * i.
+    Ni suffix: any decimal number immediately followed by i or j (no space,
+    no further alphanumeric chars) is treated as a complex literal.
     When im is exactly 0, the result collapses to a real scalar.
 
 Arithmetic
@@ -896,10 +932,11 @@ Powers
     (1+i)^-1   →  0.5 - 0.5i
     i^0.5      →  0.7071... + 0.7071...i   (polar form for non-integers)
 
-Conjugate transpose
-    z = 3 + 4*i
-    z'         →  3 - 4i      (conjugate for complex scalars)
-    conj(z)    →  3 - 4i      (same result)
+Conjugate and plain transpose
+    z = 3 + 4i
+    z'         →  3 - 4i      (conjugate transpose — flips sign of imaginary part)
+    z.'        →  3 + 4i      (plain transpose — no conjugation)
+    conj(z)    →  3 - 4i      (same as z')
 
 Polar form
     abs(z)     →  5           modulus  sqrt(re² + im²)
@@ -975,8 +1012,12 @@ Escape sequences inside \"...\"  (also work in fprintf/sprintf)
 String built-in functions
     num2str(x)          number → char array ('3.1416' for pi)
     num2str(x, N)       number → char array with N decimal digits
+    int2str(x)          round to integer, then → char array ('4' for 3.7)
+    mat2str(A)          matrix → MATLAB literal string ('[1 2;3 4]')
     str2num(s)          char array → number  (error if not parseable)
     str2double(s)       char array → number  (NaN if not parseable)
+    strsplit(s)         split on whitespace → cell array of char arrays
+    strsplit(s, delim)  split on delimiter  → cell array of char arrays
     strcat(a, b, ...)   concatenate two or more strings
     strcmp(a, b)        1 if equal (case-sensitive), else 0
     strcmpi(a, b)       1 if equal (case-insensitive), else 0
@@ -987,6 +1028,11 @@ String built-in functions
     sprintf(fmt, ...)   format string using C printf specifiers; returns char array
     ischar(s)           1 if s is a char array, else 0
     isstring(s)         1 if s is a string object, else 0
+
+    strsplit examples
+    parts = strsplit('a,b,c', ',')   → {{'a', 'b', 'c'}}  (cell array)
+    parts{{1}}                       → 'a'
+    words = strsplit('hello world')  → {{'hello', 'world'}}
 
 Type checking
     ischar('hello')     →  1

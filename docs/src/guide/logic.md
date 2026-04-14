@@ -43,11 +43,12 @@ evaluated before the comparison:
 ~(3 ~= 3)    % 1
 ```
 
-## Logical AND and OR — `&&`, `||`
+## Short-circuit AND and OR — `&&`, `||`
 
 `&&` returns `1` when both operands are non-zero.
 `||` returns `1` when at least one operand is non-zero.
 `&&` binds more tightly than `||`.
+Both operators **short-circuit** and are intended for scalar conditions.
 
 ```
 1 && 1       % 1
@@ -69,10 +70,36 @@ x < 0  || x > 3.3    % 0  — out-of-range flag
 ~(x >= 0 && x <= 3.3) % 0  — fault flag (0 = OK)
 ```
 
-## Element-wise on matrices
+## Element-wise logical operators — `&`, `|`, `xor`, `not`
 
-When one or both operands are matrices, all comparison and logical
-operators apply element-wise and return a `0`/`1` matrix of the same size:
+`&` and `|` are **element-wise** operators — they work on matrices, always
+evaluate both sides (no short-circuit), and return a `0`/`1` matrix:
+
+```
+a = [1 0 1 0];
+b = [1 1 0 0];
+
+a & b                  % [1 0 0 0]   element-wise AND
+a | b                  % [1 1 1 0]   element-wise OR
+xor(a, b)              % [0 1 1 0]   element-wise XOR
+
+not(a)                 % [0 1 0 1]   element-wise NOT (alias for ~)
+```
+
+Use `&`/`|` for matrix logical masks; use `&&`/`||` for scalar conditions in `if`.
+
+### Logical mask pattern
+
+```
+v = [3, -1, 8, 0, 5, -2, 7];
+
+mask = v > 0 & v < 6   % [1 0 0 0 1 0 0]
+```
+
+## Element-wise on matrices (comparison)
+
+When one or both operands are matrices, all comparison operators
+apply element-wise and return a `0`/`1` matrix of the same size:
 
 ```
 v = [1 2 3 4 5];
@@ -114,15 +141,17 @@ v .* (lo .* hi)          % [0 2 3 4 0]
 From lowest to highest priority:
 
 ```
-||          logical OR
-&&          logical AND
+||          logical OR  (short-circuit)
+&&          logical AND (short-circuit)
+|           element-wise OR
+&           element-wise AND
 == ~= < > <= >=   comparison (non-associative)
 :           range
 + -         additive
 * / .* ./   multiplicative
-^ .^        power (right-associative)
-unary - ~   negation / logical NOT
-postfix '   transpose
+^ .^ **     power (right-associative)
+unary + - ~ negation / logical NOT
+postfix ' .' transpose / plain transpose
 ```
 
 ## REPL session

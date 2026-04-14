@@ -6,6 +6,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.18.0+001] - 2026-04-14
+
+### Fixed
+
+- **`4i` imaginary literal in pipe/file mode** — `z = 3 + 4i` was raising
+  "Unexpected token after expression" in pipe and script mode (worked in REPL
+  only by coincidence). Root cause: the tokenizer had no `Ni` suffix rule;
+  `4i` tokenized as `Number(4)` followed by `Ident("i")`, and `parse_term`
+  had no implicit-multiply path for a trailing identifier. Fix: added
+  `push_imag_suffix()` in the tokenizer — after any decimal number literal,
+  if the very next character is `i` or `j` (not followed by another
+  alphanumeric), consume it and emit `Token::Star + Token::Ident("i")`.
+  Multi-character identifiers beginning with `i`/`j` (e.g. `inside`) are
+  not affected.
+
+- **`B.';` mis-parsed as string start** — in `split_stmts()`, the `'`
+  disambiguation check tested whether the preceding character was alphanumeric,
+  `)`, `]`, `'` — but not `.`. So `B.'` was parsed as `B.` followed by the
+  start of a char-array literal, causing the `;` that followed to be swallowed
+  into the non-terminating string. Fix: added `'.'` to the transpose-detection
+  character set in `split_stmts`.
+
+- **`...` line continuation not working in pipe/file mode** — `run_pipe` had
+  no `cont_buf` logic, so multi-line expressions joined with `...` silently
+  failed. Fix: added the same comment-stripping + `cont_buf` continuation
+  logic to `run_pipe` that already existed in `run_repl`.
+
+### Added
+
+- **Phase 12.6 — Language polish and small completions** (v0.18.0):
+  - **12.6a** Single-line blocks: `if cond; body; end` on one line — REPL and
+    pipe mode bypass block buffering for self-contained blocks; `is_single_line_block()`
+    detects them via `split_block_line()` checking the last `;`-separated segment.
+  - **12.6b** `...` line continuation: REPL buffers via `cont_buf`; scripts use
+    `join_line_continuations()` pre-pass in `parse_stmts`; tokenizer drains
+    rest of input on `...`.
+  - **12.6c** `&` / `|` element-wise logical operators: `Token::Amp`/`Pipe`,
+    `Op::ElemAnd`/`ElemOr`, `parse_elem_or`/`parse_elem_and` levels between
+    `parse_logical_and` and `parse_comparison`.
+  - **12.6d** `xor(a, b)` and `not(a)` built-ins.
+  - **12.6e** Lambda display: `LambdaFn` now carries a source string; lambdas
+    display as `@(x) x + 1` instead of `@<lambda>`. `expr_to_string()` helper
+    reconstructs source text from the AST at parse time.
+  - **12.6f** String utilities: `strsplit(s, delim)` / `strsplit(s)`,
+    `int2str(x)`, `mat2str(A)`.
+  - **12.6g** `.'` non-conjugate transpose: `Token::DotApostrophe`,
+    `Expr::PlainTranspose` — transposes without conjugating the imaginary part.
+  - **12.6i** `@funcname` function handles (completed in Phase 12.5).
+  - **12.6j** Unary `+` (no-op), `**` exponentiation alias (Octave), `,` as
+    non-silent statement separator.
+  - **`examples/language_polish.calc`** — 10-section annotated demo script.
+  - **4 new regression tests**: `test_imag_literal_4i`,
+    `test_imag_literal_in_expression`, `test_imag_literal_not_confused_with_ident`,
+    `test_split_stmts_dot_apostrophe_not_string`.
+
+## [0.18.0] - 2026-04-14
+
+### Added
+
+- **Phase 12.6 — Language polish and small completions**:
+  - **12.6a** Single-line blocks (`if cond; body; end`, `for k=1:3; disp(k); end`, etc.)
+  - **12.6b** `...` line continuation in REPL, pipe mode, and scripts
+  - **12.6c** `&` / `|` element-wise logical operators (matrix-compatible, no short-circuit)
+  - **12.6d** `xor(a, b)` and `not(a)` built-ins
+  - **12.6e** Lambda source display: `@(x) x^2 + 1` shown instead of `@<lambda>`
+  - **12.6f** New string utilities: `strsplit(s[, delim])`, `int2str(x)`, `mat2str(A)`
+  - **12.6g** `.'` non-conjugate transpose (`Token::DotApostrophe`, `Expr::PlainTranspose`)
+  - **12.6j** Unary `+` (no-op), `**` exponentiation alias, `,` as non-silent statement separator
+  - `examples/language_polish.calc` — 10-section annotated demo
+
 ## [0.17.0+005] - 2026-04-14
 
 ### Fixed

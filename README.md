@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.17.0+005** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.18.0+001** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 

@@ -185,6 +185,44 @@ the dog sat
 Hello ccalc
 ```
 
+### Splitting strings
+
+`strsplit` splits a string on a delimiter and returns a **cell array** of char arrays:
+
+```
+[ 0 ]: parts = strsplit('alpha,beta,gamma', ',')
+[ 0 ]: numel(parts)
+[ 3 ]:
+[ 0 ]: parts{1}
+alpha
+[ 0 ]: parts{2}
+beta
+```
+
+Without a delimiter, `strsplit` splits on whitespace:
+
+```
+[ 0 ]: words = strsplit('hello world')
+[ 0 ]: words{1}
+hello
+```
+
+### Integer and matrix string conversion
+
+```
+[ 0 ]: int2str(3.2)          % round to nearest integer, return string
+3
+[ 0 ]: int2str(3.7)
+4
+[ 0 ]: int2str(-1.5)
+-2
+
+[ 0 ]: mat2str([1 2; 3 4])   % matrix → MATLAB literal syntax
+[1 2;3 4]
+[ 0 ]: mat2str([10 20 30])
+[10 20 30]
+```
+
 ### `sprintf`
 
 Single-argument form: returns a char array with escape sequences processed.
