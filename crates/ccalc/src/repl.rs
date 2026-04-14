@@ -915,6 +915,9 @@ pub fn run_pipe(reader: impl BufRead) {
     let mut block_buf: Vec<String> = Vec::new();
     let mut block_depth: i32 = 0;
 
+    // Line continuation buffer (for `...` at end of line)
+    let mut cont_buf: String = String::new();
+
     'lines: for line in reader.lines() {
         let line = match line {
             Ok(l) => l,
@@ -931,6 +934,41 @@ pub fn run_pipe(reader: impl BufRead) {
             }
             continue;
         }
+
+        // Line continuation: strip trailing comment, check for `...`
+        {
+            let stripped_comment = {
+                let mut end = trimmed.len();
+                let mut in_sq = false;
+                let mut in_dq = false;
+                for (i, c) in trimmed.char_indices() {
+                    match c {
+                        '\'' if !in_dq => in_sq = !in_sq,
+                        '"' if !in_sq => in_dq = !in_dq,
+                        '%' | '#' if !in_sq && !in_dq => {
+                            end = i;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+                trimmed[..end].trim_end()
+            };
+            if let Some(before_dots) = stripped_comment.strip_suffix("...") {
+                cont_buf.push_str(before_dots.trim_end());
+                cont_buf.push(' ');
+                continue;
+            }
+        }
+        let effective_owned;
+        let trimmed = if cont_buf.is_empty() {
+            trimmed
+        } else {
+            cont_buf.push_str(trimmed);
+            effective_owned = cont_buf.clone();
+            cont_buf.clear();
+            effective_owned.as_str()
+        };
 
         // Single-line complete block: `if cond; body; end` — bypass block buffering.
         if is_single_line_block(trimmed) {

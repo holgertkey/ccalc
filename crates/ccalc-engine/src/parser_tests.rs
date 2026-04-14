@@ -3073,6 +3073,44 @@ fn test_varargin_basic() {
     assert_eq!(env.get("ans"), Some(&Value::Scalar(6.0)));
 }
 
+// ── Phase 12.6 bug-fix tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_imag_literal_4i() {
+    // `4i` must tokenize as 4 * i, giving Complex(0, 4)
+    let mut env = Env::new();
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    let expr = unwrap_expr(parse("4i").unwrap());
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Complex(0.0, 4.0));
+}
+
+#[test]
+fn test_imag_literal_in_expression() {
+    // `3 + 4i` must give Complex(3, 4)
+    let mut env = Env::new();
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    let expr = unwrap_expr(parse("3 + 4i").unwrap());
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Complex(3.0, 4.0));
+}
+
+#[test]
+fn test_imag_literal_not_confused_with_ident() {
+    // `inside` must NOT strip leading `i` — only bare `i`/`j` get the suffix treatment
+    let mut env = Env::new();
+    env.insert("inside".to_string(), Value::Scalar(42.0));
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    let expr = unwrap_expr(parse("inside").unwrap());
+    assert_eq!(eval(&expr, &env).unwrap(), Value::Scalar(42.0));
+}
+
+#[test]
+fn test_split_stmts_dot_apostrophe_not_string() {
+    // `B.';` must split into one silent statement, not treat `'` as a string start
+    let parts: Vec<_> = crate::parser::split_stmts("Bt = B.';");
+    assert_eq!(parts.len(), 1);
+    assert_eq!(parts[0].1, true); // silent
+}
+
 #[test]
 fn test_cell_index_out_of_bounds() {
     crate::exec::init();

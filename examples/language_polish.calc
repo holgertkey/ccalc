@@ -1,0 +1,236 @@
+% language_polish.calc — Phase 12.6 (language polish and small completions)
+%
+% Topics covered:
+%   12.6a  Single-line blocks (if/for/while on one line)
+%   12.6b  Line continuation with ...
+%   12.6c  Element-wise & and | operators
+%   12.6d  xor() and not() built-ins
+%   12.6e  Lambda display (source text in REPL)
+%   12.6f  String utilities: strsplit, int2str, mat2str
+%   12.6g  Non-conjugate transpose .'
+%   12.6i  @funcname handles (recap from Phase 12)
+%   12.6j  Unary +, ** exponentiation, comma separator
+%
+% Usage: ccalc language_polish.calc
+
+% ── 1. Single-line blocks (12.6a) ────────────────────────────────────────────
+
+fprintf('=== 1. Single-line blocks ===\n')
+
+% if on one line
+x = 7;
+if x > 5; label = 'big'; end
+fprintf('  x=7: label = %s           (exact: big)\n', label)
+
+% Single-line if / else is not supported (else requires multi-line),
+% but the common guard pattern works fine:
+if x < 0; x = 0; end
+fprintf('  guard: x still = %g        (exact: 7)\n', x)
+
+% for on one line
+total = 0;
+for k = 1:5; total += k; end
+fprintf('  sum 1..5 = %g              (exact: 15)\n', total)
+
+% while on one line
+n = 8;
+while mod(n, 2) == 0; n = n / 2; end
+fprintf('  8 halved to odd: n = %g    (exact: 1)\n', n)
+
+% switch on one line
+day = 3;
+switch day; case 1; name = 'Mon'; case 2; name = 'Tue'; case 3; name = 'Wed'; otherwise; name = '?'; end
+fprintf('  day 3 = %s                 (exact: Wed)\n', name)
+
+% ── 2. Line continuation with ... (12.6b) ────────────────────────────────────
+
+fprintf('\n=== 2. Line continuation (...) ===\n')
+
+% Long arithmetic expression split across lines
+result = 1 + ...
+         2 + ...
+         3 + ...
+         4;
+fprintf('  1+2+3+4 = %g               (exact: 10)\n', result)
+
+% Matrix defined across multiple lines
+A = [1 2 3; ...
+     4 5 6; ...
+     7 8 9];
+fprintf('  A(2,2) = %g                (exact: 5)\n', A(2, 2))
+fprintf('  trace(A) = %g              (exact: 15)\n', trace(A))
+
+% Long condition split across lines
+threshold = 100;
+value = 42;
+if value > 0 && ...
+   value < threshold
+  status = 'in range';
+end
+fprintf('  42 in (0,100): %s       (exact: in range)\n', status)
+
+% ── 3. Element-wise & and | (12.6c) ──────────────────────────────────────────
+
+fprintf('\n=== 3. Element-wise & and | ===\n')
+
+a = [1 0 1 0];
+b = [1 1 0 0];
+
+r_and = a & b;
+fprintf('  [1 0 1 0] & [1 1 0 0]:\n')
+fprintf('    [%g %g %g %g]   (exact: [1 0 0 0])\n', r_and(1), r_and(2), r_and(3), r_and(4))
+
+r_or = a | b;
+fprintf('  [1 0 1 0] | [1 1 0 0]:\n')
+fprintf('    [%g %g %g %g]   (exact: [1 1 1 0])\n', r_or(1), r_or(2), r_or(3), r_or(4))
+
+% Logical mask — select elements in a range
+% Use commas so negative literals are parsed correctly
+v = [3, -1, 8, 0, 5, -2, 7];
+mask = v > 0 & v < 6;
+fprintf('  v>0 & v<6 mask: [')
+for k = 1:length(mask)
+  fprintf('%g ', mask(k))
+end
+fprintf(']  (exact: [1 0 0 0 1 0 0])\n')
+
+% ── 4. xor() and not() (12.6d) ───────────────────────────────────────────────
+
+fprintf('\n=== 4. xor() and not() ===\n')
+
+fprintf('  xor(1, 0)        = %g   (exact: 1)\n', xor(1, 0))
+fprintf('  xor(1, 1)        = %g   (exact: 0)\n', xor(1, 1))
+fprintf('  xor(0, 0)        = %g   (exact: 0)\n', xor(0, 0))
+fprintf('  not(0)           = %g   (exact: 1)\n', not(0))
+fprintf('  not(5)           = %g   (exact: 0)\n', not(5))
+
+% Vector xor (use commas for negative literals)
+p = [1, 0, 1, 0];
+q = [1, 1, 0, 0];
+r_xor = xor(p, q);
+fprintf('  xor([1 0 1 0],[1 1 0 0]): [%g %g %g %g]   (exact: [0 1 1 0])\n', ...
+        r_xor(1), r_xor(2), r_xor(3), r_xor(4))
+
+% ── 5. Lambda display (12.6e) ────────────────────────────────────────────────
+
+fprintf('\n=== 5. Lambda display ===\n')
+
+% In interactive mode these would show the source text, e.g.:
+%   f = @(x) x .^ 2 + 1
+% Here we verify the lambdas are callable and correct.
+
+square   = @(x) x^2;
+cube     = @(x) x^3;
+clamp01  = @(x) min(1, max(0, x));
+hypotenuse = @(a, b) sqrt(a^2 + b^2);
+
+fprintf('  square(5)        = %g   (exact: 25)\n',   square(5))
+fprintf('  cube(3)          = %g   (exact: 27)\n',   cube(3))
+fprintf('  clamp01(-0.5)    = %g   (exact: 0)\n',    clamp01(-0.5))
+fprintf('  clamp01(0.7)     = %g   (exact: 0.7)\n',  clamp01(0.7))
+fprintf('  clamp01(1.5)     = %g   (exact: 1)\n',    clamp01(1.5))
+fprintf('  hyp(3,4)         = %g   (exact: 5)\n',    hypotenuse(3, 4))
+
+% Composed lambda
+apply_twice = @(f, x) f(f(x));
+fprintf('  apply_twice(sq, 2) = %g (exact: 16)\n',  apply_twice(square, 2))
+
+% ── 6. String utilities (12.6f) ──────────────────────────────────────────────
+
+fprintf('\n=== 6. String utilities ===\n')
+
+% strsplit — split by delimiter, returns cell array
+parts = strsplit('alpha,beta,gamma', ',');
+fprintf('  strsplit result: %d parts   (exact: 3)\n', numel(parts))
+fprintf('    [1]: %s   (exact: alpha)\n',  parts{1})
+fprintf('    [2]: %s   (exact: beta)\n',   parts{2})
+fprintf('    [3]: %s   (exact: gamma)\n',  parts{3})
+
+% Split a sentence on whitespace
+words = strsplit('hello world');
+fprintf('  word count = %d            (exact: 2)\n', numel(words))
+
+% int2str — round to integer and convert
+fprintf('  int2str(3.2)  = %s         (exact: 3)\n',  int2str(3.2))
+fprintf('  int2str(3.7)  = %s         (exact: 4)\n',  int2str(3.7))
+fprintf('  int2str(-1.5) = %s         (exact: -2)\n', int2str(-1.5))
+
+% mat2str — matrix to MATLAB literal string
+M = [1 2; 3 4];
+s = mat2str(M);
+fprintf('  mat2str([1 2;3 4]) = %s    (exact: [1 2;3 4])\n', s)
+
+vec = [10 20 30];
+fprintf('  mat2str([10 20 30]) = %s   (exact: [10 20 30])\n', mat2str(vec))
+
+% ── 7. Non-conjugate transpose .' (12.6g) ────────────────────────────────────
+
+fprintf('\n=== 7. Non-conjugate transpose ===\n')
+
+% For real matrices .' and ' give the same result
+B = [1 2 3; 4 5 6];
+Bt = B.';
+fprintf('  B is 2x3, B-dot-T is %dx%d     (exact: 3x2)\n', size(Bt, 1), size(Bt, 2))
+fprintf('  Bt(1,1)=%g  Bt(2,1)=%g   (exact: 1, 2)\n', Bt(1, 1), Bt(2, 1))
+fprintf('  Bt(1,2)=%g  Bt(2,2)=%g   (exact: 4, 5)\n', Bt(1, 2), Bt(2, 2))
+
+% For complex numbers: .' does NOT conjugate (unlike ')
+z = 3 + 4i;
+zc = z.';
+zconj = z';
+fprintf('  z  = 3+4i\n')
+fprintf('  z-conjugate: real=%g imag=%g  (exact: 3, -4)\n', real(zconj), imag(zconj))
+fprintf('  z-plain-T:   real=%g imag=%g  (exact: 3, +4)\n', real(zc), imag(zc))
+
+% ── 8. Unary + and ** exponentiation (12.6j) ─────────────────────────────────
+
+fprintf('\n=== 8. Unary + and ** ===\n')
+
+fprintf('  +5           = %g   (exact: 5)\n',   +5)
+fprintf('  +(-3)        = %g   (exact: -3)\n',  +(-3))
+fprintf('  2 ** 10      = %g   (exact: 1024)\n', 2 ** 10)
+fprintf('  3 ** 3       = %g   (exact: 27)\n',   3 ** 3)
+fprintf('  2 ** 0.5     = %g   (exact: 1.414)\n', 2 ** 0.5)
+
+% ── 9. Practical example — CSV parsing pipeline ──────────────────────────────
+
+fprintf('\n=== 9. Practical: CSV parsing ===\n')
+
+% Simulate reading a CSV row and parsing it
+csv_row = '10,20,30,40,50';
+tokens = strsplit(csv_row, ',');
+
+total_sum = 0;
+for k = 1:numel(tokens)
+  total_sum += str2num(tokens{k});
+end
+
+fprintf('  CSV: %s\n', csv_row)
+fprintf('  Sum = %g   (exact: 150)\n', total_sum)
+fprintf('  Count = %d  (exact: 5)\n',  numel(tokens))
+
+% ── 10. Practical example — logical filtering ────────────────────────────────
+
+fprintf('\n=== 10. Logical filtering ===\n')
+
+scores = [72 45 88 91 60 55 78 95 40 83];
+pass_mask  = scores >= 60;
+fail_mask  = ~pass_mask;
+
+pass_count = sum(pass_mask);
+fail_count = sum(fail_mask);
+fprintf('  Scores: [72 45 88 91 60 55 78 95 40 83]\n')
+fprintf('  Pass (>=60): %d   (exact: 7)\n', pass_count)
+fprintf('  Fail (<60):  %d   (exact: 3)\n', fail_count)
+
+% Combined condition with &
+high_pass = scores >= 60 & scores < 90;
+fprintf('  60<=score<90: %d  (exact: 5)\n', sum(high_pass))
+
+% xor: exactly one of two conditions is true
+low  = scores < 60;
+high = scores >= 90;
+extreme = xor(low, high);
+fprintf('  Extreme (very low xor very high): %d   (exact: 5)\n', sum(extreme))
+
+fprintf('\nDone.\n')

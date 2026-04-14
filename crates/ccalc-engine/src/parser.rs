@@ -191,6 +191,25 @@ fn try_consume_sci_exponent(
     }
 }
 
+/// After parsing a decimal number, if the next char is `i` or `j` and NOT
+/// followed by another identifier character, consume it and emit `* i` so
+/// that `4i` → `4 * i` = `Complex(0, 4)`.
+#[inline]
+fn push_imag_suffix(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    tokens: &mut Vec<Token>,
+) {
+    if matches!(chars.peek(), Some('i') | Some('j')) {
+        let mut la = chars.clone();
+        la.next();
+        if !la.peek().is_some_and(|c| c.is_alphanumeric() || *c == '_') {
+            chars.next(); // consume i/j
+            tokens.push(Token::Star);
+            tokens.push(Token::Ident("i".to_string()));
+        }
+    }
+}
+
 fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
@@ -520,6 +539,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                                 .parse()
                                 .map_err(|_| format!("Invalid number: '{num_str}'"))?;
                             tokens.push(Token::Number(n));
+                            push_imag_suffix(&mut chars, &mut tokens);
                         }
                     }
                 } else {
@@ -546,6 +566,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                         .parse()
                         .map_err(|_| format!("Invalid number: '{num_str}'"))?;
                     tokens.push(Token::Number(n));
+                    push_imag_suffix(&mut chars, &mut tokens);
                 }
             }
             '@' => {
@@ -793,7 +814,7 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
                 } else {
                     let before = input[..i].trim_end_matches([' ', '\t']);
                     let is_transpose = before.ends_with(|c: char| {
-                        c.is_alphanumeric() || c == '_' || c == ')' || c == ']' || c == '\''
+                        c.is_alphanumeric() || c == '_' || c == ')' || c == ']' || c == '\'' || c == '.'
                     });
                     if !is_transpose {
                         in_sq = true;
