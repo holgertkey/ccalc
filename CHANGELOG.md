@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-04-15
+
+### Added
+
+- **Phase 13 — Scalar structs** (`Value::Struct(IndexMap<String, Value>)`):
+  - Field assignment: `s.x = 42` creates or updates a field; `s.a.b = 5`
+    creates nested structs automatically via `set_nested()` in `exec.rs`.
+  - Field read: `s.x`, `s.a.b` — `Expr::FieldGet` postfix chain in parser.
+  - `struct('k1', v1, 'k2', v2, ...)` constructor; `struct()` returns empty struct.
+  - `fieldnames(s)` — cell array of field names in insertion order.
+  - `isfield(s, 'name')` — returns 1/0.
+  - `rmfield(s, 'name')` — returns new struct without the named field.
+  - `isstruct(v)` — returns 1 if value is a struct, 0 otherwise.
+  - Display: `[1×1 struct]` inline; `struct with fields: / field: value` full form.
+  - Workspace save/load skips structs (same policy as matrices and complex).
+  - 19 regression tests added for all struct operations.
+
 ## [0.18.0+001] - 2026-04-14
 
 ### Fixed

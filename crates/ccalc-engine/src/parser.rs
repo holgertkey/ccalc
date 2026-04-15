@@ -66,6 +66,17 @@ pub enum Stmt {
     ///
     /// Updates element `i` (1-based) of the cell array named `name`.
     CellSet(String, Expr, Expr),
+    /// `s.x = v` / `s.a.b = v` — struct field assignment.
+    ///
+    /// `FieldSet(base_var, field_path, rhs)`:
+    /// - `base_var`: the top-level variable name (e.g. `"s"`).
+    /// - `field_path`: one or more field names leading to the target (e.g. `["x"]` or `["a", "b"]`).
+    /// - `rhs`: the value to store.
+    ///
+    /// At runtime the base variable is loaded (or a fresh empty struct is created),
+    /// the path is walked (creating intermediate structs on demand), and the final
+    /// field is set.
+    FieldSet(String, Vec<String>, Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +127,8 @@ enum Token {
     // --- Additional operators ---
     StarStar,      // ** (alias for ^)
     DotApostrophe, // .' (non-conjugate transpose)
+    // --- Struct field access ---
+    Dot, // '.' followed by an ASCII letter (field access)
 }
 
 fn parse_integer_literal(
@@ -387,6 +400,11 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                             .map_err(|_| format!("Invalid number: '{num_str}'"))?;
                         tokens.push(Token::Number(n));
                     }
+                    // Field access: '.' followed by an identifier letter/underscore.
+                    // Don't consume the letter — it will be tokenized as Ident on the next pass.
+                    Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+                        tokens.push(Token::Dot);
+                    }
                     _ => return Err("Unexpected '.'".to_string()),
                 }
             }
@@ -589,6 +607,61 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
+/// Detects `base.f1.f2...fn = rhs` at the string level (before tokenising).
+///
+/// Returns `Some((base, fields, rhs))` on a match, `None` otherwise.
+/// The detection is done at string level to avoid tokenising twice.
+fn try_split_field_assign(input: &str) -> Option<(String, Vec<String>, &str)> {
+    let trimmed = input.trim();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+
+    // Parse leading identifier (base variable name)
+    if i >= bytes.len() || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+        return None;
+    }
+    let base_start = i;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    let base_var = trimmed[base_start..i].to_string();
+
+    // Parse one or more `.field` segments
+    let mut fields = Vec::new();
+    while i < bytes.len() && bytes[i] == b'.' {
+        i += 1;
+        if i >= bytes.len() || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+            return None;
+        }
+        let field_start = i;
+        while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+            i += 1;
+        }
+        fields.push(trimmed[field_start..i].to_string());
+    }
+    if fields.is_empty() {
+        return None;
+    }
+
+    // Skip optional whitespace then expect a bare `=` (not `==`)
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'=' {
+        return None;
+    }
+    i += 1;
+    if i < bytes.len() && bytes[i] == b'=' {
+        return None; // '==' comparison
+    }
+
+    let rhs = trimmed[i..].trim();
+    if rhs.is_empty() {
+        return None;
+    }
+    Some((base_var, fields, rhs))
+}
+
 /// Parses a full input string into a [`Stmt`].
 ///
 /// Assignment (`name = expr`) is detected first. Everything else is treated as
@@ -599,6 +672,20 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
     // 'return' statement
     if trimmed == "return" {
         return Ok(Stmt::Return);
+    }
+
+    // Struct field assignment: name.field[.field]* = rhs
+    if let Some((base_var, fields, rhs)) = try_split_field_assign(trimmed) {
+        let tokens = tokenize(rhs)?;
+        if tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut pos = 0;
+        let rhs_expr = parse_logical_or(&tokens, &mut pos)?;
+        if pos != tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::FieldSet(base_var, fields, rhs_expr));
     }
 
     // Cell element assignment: name{expr} = rhs
@@ -1916,14 +2003,26 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         }
     };
 
-    // Postfix transpose: ' and .' bind tighter than any binary operator
-    while *pos < tokens.len() {
-        match &tokens[*pos] {
-            Token::Apostrophe => {
+    // Postfix operators: field access (`.field`), transpose (`'`), plain-transpose (`.'`)
+    // All bind tighter than any binary operator.
+    loop {
+        match tokens.get(*pos) {
+            Some(Token::Dot) => {
+                *pos += 1;
+                match tokens.get(*pos) {
+                    Some(Token::Ident(field)) => {
+                        let field = field.clone();
+                        *pos += 1;
+                        expr = Expr::FieldGet(Box::new(expr), field);
+                    }
+                    _ => return Err("Expected field name after '.'".to_string()),
+                }
+            }
+            Some(Token::Apostrophe) => {
                 *pos += 1;
                 expr = Expr::Transpose(Box::new(expr));
             }
-            Token::DotApostrophe => {
+            Some(Token::DotApostrophe) => {
                 *pos += 1;
                 expr = Expr::PlainTranspose(Box::new(expr));
             }

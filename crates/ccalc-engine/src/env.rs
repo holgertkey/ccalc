@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use indexmap::IndexMap;
 use ndarray::Array2;
 
 use crate::io::IoContext;
@@ -64,6 +65,11 @@ pub enum Value {
     /// Created with `{1, 'hello', [1 2 3]}` syntax. Indexed with `c{i}` (1-based).
     /// 2-D cell arrays are deferred; all cells are flat `Vec<Value>` for now.
     Cell(Vec<Value>),
+    /// Scalar struct: ordered field map, field names preserved in insertion order.
+    ///
+    /// Created with `s.field = val` or `struct('k', v, ...)`.
+    /// Fields can hold any `Value`, including nested structs.
+    Struct(IndexMap<String, Value>),
 }
 
 impl Value {
@@ -78,7 +84,8 @@ impl Value {
             | Value::Lambda(_)
             | Value::Function { .. }
             | Value::Tuple(_)
-            | Value::Cell(_) => None,
+            | Value::Cell(_)
+            | Value::Struct(_) => None,
         }
     }
 }

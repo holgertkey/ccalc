@@ -4,6 +4,7 @@ use std::rc::Rc;
 /// Parsed function body cache: body source string → pre-parsed, all-silent statements.
 type BodyCache = HashMap<String, Rc<Vec<(Stmt, bool)>>>;
 
+use indexmap::IndexMap;
 use ndarray::Array2;
 
 use crate::env::{Env, Value};
@@ -275,6 +276,8 @@ fn is_truthy(val: &Value) -> bool {
         Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => true,
         // A cell is truthy if nonempty.
         Value::Cell(v) => !v.is_empty(),
+        // A struct is always truthy (scalar struct is 1×1).
+        Value::Struct(_) => true,
     }
 }
 
@@ -346,7 +349,7 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
                 let _ = i;
             }
         }
-        Value::Cell(_) => {
+        Value::Cell(_) | Value::Struct(_) => {
             if let Some(full) = format_value_full(val, fmt) {
                 let prefix = label.unwrap_or("ans");
                 println!("{prefix} =");
@@ -357,6 +360,33 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
             }
         }
     }
+}
+
+/// Recursively sets a value at `path` inside a nested struct map.
+///
+/// Ownership-by-value approach: consumes the map, updates it, and returns the updated map.
+/// Intermediate structs are created on demand if a path segment does not yet exist.
+fn set_nested(
+    mut map: IndexMap<String, Value>,
+    path: &[String],
+    val: Value,
+) -> Result<IndexMap<String, Value>, String> {
+    let (first, rest) = path.split_first().expect("set_nested: empty path");
+    if rest.is_empty() {
+        map.insert(first.clone(), val);
+    } else {
+        let inner = match map.shift_remove(first) {
+            Some(Value::Struct(m)) => m,
+            None => IndexMap::new(),
+            Some(other) => {
+                map.insert(first.clone(), other);
+                return Err(format!("'{first}' is not a struct"));
+            }
+        };
+        let updated = set_nested(inner, rest, val)?;
+        map.insert(first.clone(), Value::Struct(updated));
+    }
+    Ok(map)
 }
 
 /// Executes a sequence of parsed statements, handling flow control signals.
@@ -657,6 +687,25 @@ pub fn exec_stmts(
                 if !silent && let Some(val) = env.get(cell_name) {
                     print_value(Some(cell_name), val, fmt, base, compact);
                 }
+            }
+
+            // ── struct field assignment ──────────────────────────────────────
+            Stmt::FieldSet(base_name, path, rhs_expr) => {
+                let rhs = eval_with_io(rhs_expr, env, io)?;
+                let root = match env.remove(base_name) {
+                    Some(Value::Struct(m)) => m,
+                    None => IndexMap::new(),
+                    Some(other) => {
+                        env.insert(base_name.clone(), other);
+                        return Err(format!("'{base_name}' is not a struct"));
+                    }
+                };
+                let updated = set_nested(root, path, rhs)?;
+                let struct_val = Value::Struct(updated);
+                if !silent {
+                    print_value(Some(base_name), &struct_val, fmt, base, compact);
+                }
+                env.insert(base_name.clone(), struct_val);
             }
 
             // ── multi-assign ─────────────────────────────────────────────────

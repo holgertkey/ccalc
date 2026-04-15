@@ -3127,3 +3127,209 @@ fn test_cell_index_out_of_bounds() {
     );
     assert!(result.is_err());
 }
+
+// ── Phase 13: Structs ────────────────────────────────────────────────────────
+
+#[test]
+fn test_struct_field_assign_basic() {
+    let env = run_block("s.x = 42");
+    match env.get("s").unwrap() {
+        Value::Struct(map) => assert_eq!(map.get("x"), Some(&Value::Scalar(42.0))),
+        other => panic!("expected Struct, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_field_read() {
+    let env = run_block("s.x = 7; ans = s.x");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(7.0)));
+}
+
+#[test]
+fn test_struct_multiple_fields() {
+    let env = run_block("s.a = 1; s.b = 2; s.c = 3");
+    let map = match env.get("s").unwrap() {
+        Value::Struct(m) => m,
+        other => panic!("expected Struct, got {other:?}"),
+    };
+    assert_eq!(map.get("a"), Some(&Value::Scalar(1.0)));
+    assert_eq!(map.get("b"), Some(&Value::Scalar(2.0)));
+    assert_eq!(map.get("c"), Some(&Value::Scalar(3.0)));
+}
+
+#[test]
+fn test_struct_field_overwrite() {
+    let env = run_block("s.x = 1; s.x = 99");
+    match env.get("s").unwrap() {
+        Value::Struct(map) => assert_eq!(map.get("x"), Some(&Value::Scalar(99.0))),
+        other => panic!("expected Struct, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_nested_assign() {
+    let env = run_block("s.a.b = 5");
+    let outer = match env.get("s").unwrap() {
+        Value::Struct(m) => m,
+        other => panic!("expected Struct, got {other:?}"),
+    };
+    let inner = match outer.get("a").unwrap() {
+        Value::Struct(m) => m,
+        other => panic!("expected nested Struct, got {other:?}"),
+    };
+    assert_eq!(inner.get("b"), Some(&Value::Scalar(5.0)));
+}
+
+#[test]
+fn test_struct_nested_read() {
+    let env = run_block("s.a.b = 10; ans = s.a.b");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(10.0)));
+}
+
+#[test]
+fn test_struct_constructor_basic() {
+    let env = run_block("s = struct('x', 1, 'y', 2)");
+    let map = match env.get("s").unwrap() {
+        Value::Struct(m) => m,
+        other => panic!("expected Struct, got {other:?}"),
+    };
+    assert_eq!(map.get("x"), Some(&Value::Scalar(1.0)));
+    assert_eq!(map.get("y"), Some(&Value::Scalar(2.0)));
+}
+
+#[test]
+fn test_struct_constructor_empty() {
+    let env = run_block("s = struct()");
+    match env.get("s").unwrap() {
+        Value::Struct(map) => assert!(map.is_empty()),
+        other => panic!("expected Struct, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_fieldnames() {
+    let env = run_block("s.a = 1; s.b = 2; fn = fieldnames(s)");
+    match env.get("fn").unwrap() {
+        Value::Cell(v) => {
+            assert_eq!(v.len(), 2);
+            assert!(matches!(&v[0], Value::Str(s) if s == "a"));
+            assert!(matches!(&v[1], Value::Str(s) if s == "b"));
+        }
+        other => panic!("expected Cell, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_isfield_true() {
+    let env = run_block("s.x = 1; ans = isfield(s, 'x')");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_struct_isfield_false() {
+    let env = run_block("s.x = 1; ans = isfield(s, 'y')");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_struct_rmfield() {
+    let env = run_block("s.a = 1; s.b = 2; s = rmfield(s, 'a')");
+    let map = match env.get("s").unwrap() {
+        Value::Struct(m) => m,
+        other => panic!("expected Struct, got {other:?}"),
+    };
+    assert!(!map.contains_key("a"));
+    assert_eq!(map.get("b"), Some(&Value::Scalar(2.0)));
+}
+
+#[test]
+fn test_struct_isstruct_true() {
+    let env = run_block("s.x = 1; ans = isstruct(s)");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_struct_isstruct_false() {
+    let env = run_block("ans = isstruct(42)");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_struct_field_missing_error() {
+    crate::exec::init();
+    let mut env = run_block("s.x = 1");
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = s.z").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_struct_field_on_non_struct_error() {
+    crate::exec::init();
+    let mut env = run_block("x = 5");
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = x.field").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_struct_constructor_odd_args_error() {
+    crate::exec::init();
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("s = struct('x')").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_struct_rmfield_missing_error() {
+    crate::exec::init();
+    let mut env = run_block("s.x = 1");
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("s = rmfield(s, 'z')").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_struct_field_insertion_order() {
+    let env = run_block("s.c = 3; s.a = 1; s.b = 2");
+    let map = match env.get("s").unwrap() {
+        Value::Struct(m) => m,
+        other => panic!("expected Struct, got {other:?}"),
+    };
+    let keys: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
+    assert_eq!(keys, vec!["c", "a", "b"]);
+}
