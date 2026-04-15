@@ -24,6 +24,7 @@ The work is divided into phases in order of architectural dependency.
 | 12 | User-defined functions, multiple return values, `@(x)` lambdas | ✅ Done |
 | 12.5 | Cell arrays, `varargin`/`varargout`, `cellfun`/`arrayfun`, `@funcname` | ✅ Done |
 | 12.6 | Language polish: `&`/`\|`, `...`, single-line blocks, `.'`, `**`, string utils | ✅ Done |
+| 13 | Scalar structs (`s.field`, `struct()`, `fieldnames`, `isfield`, `rmfield`) | ✅ Done |
 
 ## Key architectural decisions
 
@@ -175,6 +176,16 @@ use new `Token::LBrace`/`RBrace` and `Expr::CellLiteral`/`CellIndex`/`Stmt::Cell
 - **Bug fixes**: `4i` imaginary literal now works via tokenizer `push_imag_suffix()`;
   `split_stmts` `'` disambiguation extended to recognise `.` as a transpose indicator
   (fixing `B.';` mis-parse); `run_pipe` gained `cont_buf` for `...` continuation.
+
+**Phase 13** adds `Value::Struct(IndexMap<String, Value>)` — scalar structs
+with insertion-order-preserving fields (using the `indexmap` crate).
+`Token::Dot` is emitted only when `.` is followed by an ASCII letter/underscore,
+leaving `DotStar`/`DotSlash`/`DotCaret`/`DotApostrophe` unaffected.
+`Expr::FieldGet` handles chained reads (`s.a.b`); `Stmt::FieldSet(String,
+Vec<String>, Expr)` handles writes with arbitrary depth paths via the
+`set_nested()` recursive helper in `exec.rs`.
+Built-ins: `struct()`, `fieldnames`, `isfield`, `rmfield`, `isstruct`.
+19 regression tests added; 488 total.
 
 ## Compatibility notes
 

@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.18.0+001** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.19.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -1013,6 +1013,47 @@ add5(3)            % 8
 add5(make_adder(10)(1))  % 16
 ```
 
+### Structs
+
+Scalar structs group named fields of any type. Fields are accessed with `.` notation; intermediate structs are created automatically on write.
+
+```matlab
+pt.x = 3;
+pt.y = 4;
+dist = sqrt(pt.x^2 + pt.y^2)    % 5
+
+car.engine.hp = 190;             % nested struct created automatically
+car.engine.hp                    % 190
+
+p = struct('name', 'Alice', 'score', 98.5);
+p.name                           % Alice
+p.score                          % 98.5
+```
+
+**Struct utilities:**
+
+```matlab
+fieldnames(s)         % cell array of field names (insertion order)
+isfield(s, 'x')       % 1 if field exists, else 0
+rmfield(s, 'x')       % copy of s without field 'x'
+isstruct(v)           % 1 if v is a struct, else 0
+```
+
+Structs are displayed MATLAB-style:
+
+```
+s =
+
+  struct with fields:
+
+    x: 3
+    y: 4
+```
+
+Nested or complex fields show compact inline: `[1×1 struct]`, `[1×3 double]`.
+
+---
+
 ### Cell Arrays
 
 Cell arrays are heterogeneous 1-D containers where each element can be any value — scalar, matrix, string, or function handle.
@@ -1123,7 +1164,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1368,6 +1409,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `extended_control_flow.calc` | Extended control flow: switch/case, do...until, run()/source(); exit-code classifier, unit converter, digit sum, Euclidean GCD |
 | `user_functions.calc`        | User-defined functions and lambdas: recursion, multiple return values, nargin, anonymous functions, lexical capture, midpoint integration, higher-order functions |
 | `cell_arrays.calc`           | Cell arrays: literals, brace-indexing, auto-grow, `@funcname` handles, `cellfun`/`arrayfun`, `varargin`/`varargout`, `case {…}`, function pipelines |
+| `structs.calc`               | Scalar structs: field assignment/read, nested structs, `struct()` constructor, `fieldnames`/`isfield`/`rmfield`/`isstruct`, 3-D vector example |
 
 ```bash
 ccalc < examples/mortgage.calc
@@ -1395,7 +1437,7 @@ crates/
     help.rs      — help text
   ccalc-engine/src/
     lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void/Lambda/Function/Tuple/Cell), Env type (HashMap<String, Value>), workspace save/load
+    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void/Lambda/Function/Tuple/Cell/Struct), Env type (HashMap<String, Value>), workspace save/load
     eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums + FnCallHook
     exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue/Return), call_user_function()
     io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd

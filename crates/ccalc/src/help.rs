@@ -30,10 +30,13 @@ pub fn print(topic: Option<&str>) {
         Some(
             "cells" | "cell" | "cellfun" | "arrayfun" | "varargin" | "varargout" | "cell-arrays",
         ) => print_cells(),
+        Some(
+            "structs" | "struct" | "fieldnames" | "isfield" | "rmfield" | "isstruct",
+        ) => print_structs(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
             );
         }
     }
@@ -170,6 +173,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help functions   built-in function reference with examples
   help userfuncs   user-defined functions, multiple return, lambdas
   help cells       cell arrays, varargin/varargout, cellfun, arrayfun
+  help structs     scalar structs, field access, fieldnames/isfield/rmfield
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
@@ -1722,7 +1726,81 @@ A cell array is a heterogeneous 1-D container: each element can be any value
   Cell arrays are NOT persisted by ws/save — same policy as matrices.
   who shows: c = {{1×N cell}}
 
-See also: help userfuncs  help functions  help control
+See also: help userfuncs  help functions  help control  help structs
 Example:  ccalc examples/cell_arrays.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help structs
+// ---------------------------------------------------------------------------
+
+fn print_structs() {
+    println!(
+        "\
+STRUCTS  (help structs)
+
+A scalar struct groups named fields, each holding any value (scalar, matrix,
+string, complex, cell, or another struct).  Fields are ordered by insertion.
+
+─── Creating structs ──────────────────────────────────────────────────────────
+
+  s.x = 1               field assignment; creates struct if s doesn't exist yet
+  s.y = [1 2 3]         field can hold any Value
+  s.a.b = 42            nested field — creates s.a as an empty struct if needed
+
+  s = struct()                  empty struct
+  s = struct('x', 1, 'y', 2)   constructor; pairs: string key + value
+
+─── Reading fields ────────────────────────────────────────────────────────────
+
+  s.x                   read field value
+  s.a.b                 chained: read nested field (any depth)
+  v = s.x + s.y         fields are ordinary values — use them in expressions
+
+─── Built-in utilities ────────────────────────────────────────────────────────
+
+  fieldnames(s)         Value::Cell of Value::Str field names, insertion order
+  isfield(s, 'x')       1 if field 'x' exists, else 0
+  rmfield(s, 'x')       copy of s with field 'x' removed; error if absent
+  isstruct(v)           1 if v is a struct, else 0
+
+─── Display ───────────────────────────────────────────────────────────────────
+
+  s =
+
+    struct with fields:
+
+      x: 1
+      y: [1×3 double]
+      inner: [1×1 struct]
+
+  Nested struct fields are shown as [1×1 struct] inline; expanded when accessed.
+
+─── Example ───────────────────────────────────────────────────────────────────
+
+  % 3-D point struct
+  pt.x = 3;  pt.y = 4;  pt.z = 0;
+  dist = sqrt(pt.x^2 + pt.y^2 + pt.z^2)   →  5
+
+  % struct() constructor + fieldnames
+  p = struct('name', 'Alice', 'score', 98.5);
+  fn = fieldnames(p);
+  fn{{1}}    →  name
+  fn{{2}}    →  score
+
+  % Check, remove, iterate
+  isfield(p, 'score')       →  1
+  isfield(p, 'rank')        →  0
+  p2 = rmfield(p, 'score');
+  numel(fieldnames(p2))     →  1
+
+─── Workspace ─────────────────────────────────────────────────────────────────
+
+  Structs are NOT persisted by ws/save — same policy as matrices and cells.
+  who shows: s = [1×1 struct]
+
+See also: help cells  help userfuncs  help control
+Example:  ccalc examples/structs.calc"
     );
 }
