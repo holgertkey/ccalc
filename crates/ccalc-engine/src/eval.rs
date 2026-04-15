@@ -241,9 +241,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::Function { .. }
             | Value::Tuple(_)
             | Value::Cell(_)
-            | Value::Struct(_) => {
-                Err("Unary minus is not applicable to this type".to_string())
-            }
+            | Value::Struct(_) => Err("Unary minus is not applicable to this type".to_string()),
         },
         Expr::UnaryNot(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Logical NOT is not applicable to void".to_string()),
@@ -266,9 +264,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::Function { .. }
             | Value::Tuple(_)
             | Value::Cell(_)
-            | Value::Struct(_) => {
-                Err("Logical NOT is not applicable to this type".to_string())
-            }
+            | Value::Struct(_) => Err("Logical NOT is not applicable to this type".to_string()),
         },
         Expr::BinOp(left, op, right) => {
             let l = eval_inner(left, env, io.as_deref_mut())?;
@@ -335,8 +331,14 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // or constructors where zero args is meaningful.
             let no_ans_inject = matches!(
                 name.as_str(),
-                "struct" | "fieldnames" | "isfield" | "rmfield" | "isstruct"
-                    | "cell" | "iscell" | "cellfun"
+                "struct"
+                    | "fieldnames"
+                    | "isfield"
+                    | "rmfield"
+                    | "isstruct"
+                    | "cell"
+                    | "iscell"
+                    | "cellfun"
             );
             if evaled.is_empty() && !no_ans_inject {
                 evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
@@ -411,7 +413,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     .get(field)
                     .cloned()
                     .ok_or_else(|| format!("No field '{field}' in struct")),
-                _ => Err(format!("Cannot access field '{field}' on a non-struct value")),
+                _ => Err(format!(
+                    "Cannot access field '{field}' on a non-struct value"
+                )),
             }
         }
         Expr::FuncHandle(name) => {
@@ -440,9 +444,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             Value::Complex(re, im) => Ok(Value::Complex(re, im)),
             Value::Str(s) => Ok(Value::Str(s)),
             Value::StringObj(s) => Ok(Value::StringObj(s)),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-                Err("Transpose is not applicable to this type".to_string())
-            }
+            Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_)
+            | Value::Cell(_)
+            | Value::Struct(_) => Err("Transpose is not applicable to this type".to_string()),
         },
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::Matrix(rows) => {
@@ -485,10 +491,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         | Value::Tuple(_)
                         | Value::Cell(_)
                         | Value::Struct(_) => {
-                            return Err(
-                                "Struct/function values cannot be used in matrix literals"
-                                    .to_string(),
-                            );
+                            return Err("Struct/function values cannot be used in matrix literals"
+                                .to_string());
                         }
                     }
                 }
@@ -521,9 +525,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // Transpose of a char array or string object: return as-is (1×N not fully supported)
             Value::Str(s) => Ok(Value::Str(s)),
             Value::StringObj(s) => Ok(Value::StringObj(s)),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-                Err("Transpose is not applicable to this type".to_string())
-            }
+            Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_)
+            | Value::Cell(_)
+            | Value::Struct(_) => Err("Transpose is not applicable to this type".to_string()),
         },
         Expr::StrLiteral(s) => Ok(Value::Str(s.clone())),
         Expr::StringObjLiteral(s) => Ok(Value::StringObj(s.clone())),
@@ -912,9 +918,13 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
         Value::Str(_) | Value::StringObj(_) => Err(format!(
             "Function '{fname}' argument {pos} must be a scalar, got a string"
         )),
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => Err(
-            format!("Function '{fname}' argument {pos} must be a scalar, got a non-numeric value"),
-        ),
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => Err(format!(
+            "Function '{fname}' argument {pos} must be a scalar, got a non-numeric value"
+        )),
     }
 }
 
@@ -930,9 +940,11 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
         Value::Str(_) | Value::StringObj(_) => {
             Err("Element-wise function not applicable to strings".to_string())
         }
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-            Err("Element-wise function not applicable to this type".to_string())
-        }
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => Err("Element-wise function not applicable to this type".to_string()),
     }
 }
 
@@ -952,9 +964,11 @@ where
         Value::Str(_) | Value::StringObj(_) => {
             Err("Reduction not applicable to strings".to_string())
         }
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-            Err("Reduction not applicable to this type".to_string())
-        }
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => Err("Reduction not applicable to this type".to_string()),
         Value::Matrix(m) => {
             if m.nrows() == 1 || m.ncols() == 1 {
                 let vals: Vec<f64> = m.iter().copied().collect();
@@ -991,9 +1005,11 @@ where
         Value::Str(_) | Value::StringObj(_) => {
             Err("Cumulative reduction not applicable to strings".to_string())
         }
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-            Err("Cumulative reduction not applicable to this type".to_string())
-        }
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => Err("Cumulative reduction not applicable to this type".to_string()),
         Value::Matrix(m) => {
             let initial = combine(0.0, 0.0); // detect identity: 0+0=0 or 0*0=0
             // Use 0.0 as additive identity, 1.0 as multiplicative identity.
@@ -1032,9 +1048,11 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
     match v {
         Value::Void => Err("find: not applicable to void".to_string()),
         Value::Str(_) | Value::StringObj(_) => Err("find: not applicable to strings".to_string()),
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-            Err("find: not applicable to this type".to_string())
-        }
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => Err("find: not applicable to this type".to_string()),
         Value::Complex(re, im) => {
             if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
                 Ok(Value::Matrix(
@@ -1273,9 +1291,11 @@ fn printf_string(v: &Value) -> Result<String, String> {
         Value::Complex(re, im) => Ok(format_complex(*re, *im, &FormatMode::Custom(6))),
         Value::Void => Err("fprintf: cannot format void as string".to_string()),
         Value::Matrix(_) => Err("fprintf: cannot format matrix as string".to_string()),
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-            Err("fprintf: cannot format this type as string".to_string())
-        }
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => Err("fprintf: cannot format this type as string".to_string()),
     }
 }
 
@@ -1557,7 +1577,9 @@ fn call_builtin(
             let dim = scalar_arg(&args[1], name, 2)? as usize;
             match &args[0] {
                 Value::Void => Err("size: not applicable to void".to_string()),
-                Value::Scalar(_) | Value::Complex(_, _) | Value::Struct(_) => Ok(Value::Scalar(1.0)),
+                Value::Scalar(_) | Value::Complex(_, _) | Value::Struct(_) => {
+                    Ok(Value::Scalar(1.0))
+                }
                 Value::Matrix(m) => match dim {
                     1 => Ok(Value::Scalar(m.nrows() as f64)),
                     2 => Ok(Value::Scalar(m.ncols() as f64)),
@@ -2062,9 +2084,11 @@ fn call_builtin(
             Value::Matrix(_) => Ok(Value::Scalar(1.0)),
             // Strings are not real numbers; functions are not numbers
             Value::Str(_) | Value::StringObj(_) => Ok(Value::Scalar(0.0)),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-                Ok(Value::Scalar(0.0))
-            }
+            Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_)
+            | Value::Cell(_)
+            | Value::Struct(_) => Ok(Value::Scalar(0.0)),
         },
         // --- String built-ins ---
         // num2str(x) — convert number to char array string
@@ -2082,9 +2106,11 @@ fn call_builtin(
                     .join("  ");
                 Ok(Value::Str(s))
             }
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-                Err("num2str: not applicable to this type".to_string())
-            }
+            Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_)
+            | Value::Cell(_)
+            | Value::Struct(_) => Err("num2str: not applicable to this type".to_string()),
         },
         // num2str(x, N) — N significant digits
         ("num2str", 2) => {
@@ -2105,9 +2131,11 @@ fn call_builtin(
                         .join("  ");
                     Ok(Value::Str(s))
                 }
-                Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
-                    Err("num2str: not applicable to this type".to_string())
-                }
+                Value::Lambda(_)
+                | Value::Function { .. }
+                | Value::Tuple(_)
+                | Value::Cell(_)
+                | Value::Struct(_) => Err("num2str: not applicable to this type".to_string()),
             }
         }
         // str2double(s) — parse string as f64; return NaN on failure
@@ -2161,8 +2189,10 @@ fn call_builtin(
         // --- Struct built-ins ---
         // struct('k1',v1,'k2',v2,...) — construct a scalar struct from name-value pairs
         ("struct", _) => {
-            if args.len() % 2 != 0 {
-                return Err("struct: requires an even number of arguments (name, value, ...)".to_string());
+            if !args.len().is_multiple_of(2) {
+                return Err(
+                    "struct: requires an even number of arguments (name, value, ...)".to_string(),
+                );
             }
             let mut map = IndexMap::new();
             for pair in args.chunks(2) {
@@ -2190,7 +2220,11 @@ fn call_builtin(
             };
             Ok(Value::Scalar(match &args[0] {
                 Value::Struct(map) => {
-                    if map.contains_key(&field) { 1.0 } else { 0.0 }
+                    if map.contains_key(&field) {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 }
                 _ => 0.0,
             }))
@@ -2847,7 +2881,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     Err("Cannot index into a function value".to_string())
                 }
                 Value::Cell(_) => Err("Use c{i} to index into a cell array, not c(i)".to_string()),
-                Value::Struct(_) => Err("Use s.field to access struct fields, not s(i)".to_string()),
+                Value::Struct(_) => {
+                    Err("Use s.field to access struct fields, not s(i)".to_string())
+                }
                 Value::Scalar(n) => {
                     let env1 = env_with_end(env, 1);
                     match resolve_dim(&args[0], 1, &env1)? {
@@ -3067,7 +3103,11 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
         Value::Str(_) | Value::StringObj(_) => {
             return Err("Index must be numeric, not a string".to_string());
         }
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) | Value::Cell(_) | Value::Struct(_) => {
+        Value::Lambda(_)
+        | Value::Function { .. }
+        | Value::Tuple(_)
+        | Value::Cell(_)
+        | Value::Struct(_) => {
             return Err("Index must be numeric, not a function".to_string());
         }
     };
@@ -3299,7 +3339,11 @@ fn format_cell(elems: &[Value], mode: &FormatMode) -> String {
 
 /// Formats a struct in MATLAB 2014b+ multi-line style.
 fn format_struct(map: &IndexMap<String, Value>, mode: &FormatMode) -> String {
-    let mut lines = vec![String::new(), "  struct with fields:".to_string(), String::new()];
+    let mut lines = vec![
+        String::new(),
+        "  struct with fields:".to_string(),
+        String::new(),
+    ];
     for (key, val) in map {
         let val_str = match val {
             Value::Struct(_) => "[1×1 struct]".to_string(),

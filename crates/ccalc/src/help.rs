@@ -30,9 +30,9 @@ pub fn print(topic: Option<&str>) {
         Some(
             "cells" | "cell" | "cellfun" | "arrayfun" | "varargin" | "varargout" | "cell-arrays",
         ) => print_cells(),
-        Some(
-            "structs" | "struct" | "fieldnames" | "isfield" | "rmfield" | "isstruct",
-        ) => print_structs(),
+        Some("structs" | "struct" | "fieldnames" | "isfield" | "rmfield" | "isstruct") => {
+            print_structs()
+        }
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
