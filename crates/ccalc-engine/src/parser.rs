@@ -77,6 +77,17 @@ pub enum Stmt {
     /// the path is walked (creating intermediate structs on demand), and the final
     /// field is set.
     FieldSet(String, Vec<String>, Expr),
+    /// `s(i).field = v` / `s(i).a.b = v` — struct array element field assignment.
+    ///
+    /// `StructArrayFieldSet(base_var, idx_expr, field_path, rhs)`:
+    /// - `base_var`: the top-level variable name (e.g. `"s"`).
+    /// - `idx_expr`: the 1-based integer index expression (e.g. `1` or `i+1`).
+    /// - `field_path`: one or more field names (e.g. `["x"]` or `["a", "b"]`).
+    /// - `rhs`: the value to store.
+    ///
+    /// At runtime the struct array is loaded (or created), grown if necessary,
+    /// and the field of element `idx` is set.
+    StructArrayFieldSet(String, Expr, Vec<String>, Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -607,6 +618,85 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
+/// Detects `base(idx_expr).f1.f2...fn = rhs` at the string level (before tokenising).
+///
+/// Returns `Some((base, idx_str, fields, rhs))` on a match, `None` otherwise.
+fn try_split_struct_array_field_assign(input: &str) -> Option<(String, &str, Vec<String>, &str)> {
+    let trimmed = input.trim();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+
+    // Parse leading identifier
+    if i >= bytes.len() || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+        return None;
+    }
+    let base_start = i;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    let base_var = trimmed[base_start..i].to_string();
+
+    // Expect '('
+    if i >= bytes.len() || bytes[i] != b'(' {
+        return None;
+    }
+    i += 1;
+
+    // Scan for the matching ')' (tracking nested parens/brackets/braces)
+    let idx_start = i;
+    let mut depth = 1usize;
+    while i < bytes.len() && depth > 0 {
+        match bytes[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    let idx_str = &trimmed[idx_start..i - 1]; // exclude the closing ')'
+
+    // Expect '.field' (at least one field access)
+    if i >= bytes.len() || bytes[i] != b'.' {
+        return None;
+    }
+    let mut fields = Vec::new();
+    while i < bytes.len() && bytes[i] == b'.' {
+        i += 1;
+        if i >= bytes.len() || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+            return None;
+        }
+        let field_start = i;
+        while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+            i += 1;
+        }
+        fields.push(trimmed[field_start..i].to_string());
+    }
+    if fields.is_empty() {
+        return None;
+    }
+
+    // Skip optional whitespace then expect bare `=` (not `==`)
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'=' {
+        return None;
+    }
+    i += 1;
+    if i < bytes.len() && bytes[i] == b'=' {
+        return None; // '==' comparison
+    }
+
+    let rhs = trimmed[i..].trim();
+    if rhs.is_empty() {
+        return None;
+    }
+    Some((base_var, idx_str, fields, rhs))
+}
+
 /// Detects `base.f1.f2...fn = rhs` at the string level (before tokenising).
 ///
 /// Returns `Some((base, fields, rhs))` on a match, `None` otherwise.
@@ -672,6 +762,31 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
     // 'return' statement
     if trimmed == "return" {
         return Ok(Stmt::Return);
+    }
+
+    // Struct array element field assignment: name(idx).field[.field]* = rhs
+    if let Some((base_var, idx_str, fields, rhs)) = try_split_struct_array_field_assign(trimmed) {
+        let idx_tokens = tokenize(idx_str)?;
+        if idx_tokens.is_empty() {
+            return Err("Expected index expression inside '()'".to_string());
+        }
+        let mut idx_pos = 0;
+        let idx_expr = parse_logical_or(&idx_tokens, &mut idx_pos)?;
+        if idx_pos != idx_tokens.len() {
+            return Err("Unexpected token in struct array index expression".to_string());
+        }
+        let rhs_tokens = tokenize(rhs)?;
+        if rhs_tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut rhs_pos = 0;
+        let rhs_expr = parse_logical_or(&rhs_tokens, &mut rhs_pos)?;
+        if rhs_pos != rhs_tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::StructArrayFieldSet(
+            base_var, idx_expr, fields, rhs_expr,
+        ));
     }
 
     // Struct field assignment: name.field[.field]* = rhs

@@ -276,8 +276,8 @@ fn is_truthy(val: &Value) -> bool {
         Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => true,
         // A cell is truthy if nonempty.
         Value::Cell(v) => !v.is_empty(),
-        // A struct is always truthy (scalar struct is 1×1).
-        Value::Struct(_) => true,
+        // A struct / struct array is always truthy.
+        Value::Struct(_) | Value::StructArray(_) => true,
     }
 }
 
@@ -349,7 +349,7 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
                 let _ = i;
             }
         }
-        Value::Cell(_) | Value::Struct(_) => {
+        Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
             if let Some(full) = format_value_full(val, fmt) {
                 let prefix = label.unwrap_or("ans");
                 println!("{prefix} =");
@@ -706,6 +706,48 @@ pub fn exec_stmts(
                     print_value(Some(base_name), &struct_val, fmt, base, compact);
                 }
                 env.insert(base_name.clone(), struct_val);
+            }
+
+            // ── struct array element field assignment ────────────────────────
+            Stmt::StructArrayFieldSet(base_name, idx_expr, path, rhs_expr) => {
+                let rhs = eval_with_io(rhs_expr, env, io)?;
+                let idx_val = eval_with_io(idx_expr, env, io)?;
+                let idx = match &idx_val {
+                    Value::Scalar(n) => {
+                        let i = *n as isize;
+                        if i < 1 {
+                            return Err(format!(
+                                "Struct array index must be a positive integer, got {n}"
+                            ));
+                        }
+                        i as usize
+                    }
+                    _ => return Err("Struct array index must be a scalar integer".to_string()),
+                };
+                // Load or create the struct array
+                let mut arr: Vec<IndexMap<String, Value>> = match env.remove(base_name) {
+                    Some(Value::StructArray(v)) => v,
+                    // A scalar struct with no index yet — promote to 1-element array
+                    Some(Value::Struct(m)) => vec![m],
+                    None => Vec::new(),
+                    Some(other) => {
+                        env.insert(base_name.clone(), other);
+                        return Err(format!("'{base_name}' is not a struct array"));
+                    }
+                };
+                // Grow the array if needed (fill with empty structs)
+                while arr.len() < idx {
+                    arr.push(IndexMap::new());
+                }
+                // Set the field(s) on element idx (1-based → 0-based)
+                let elem = arr[idx - 1].clone();
+                let updated_elem = set_nested(elem, path, rhs)?;
+                arr[idx - 1] = updated_elem;
+                let arr_val = Value::StructArray(arr);
+                if !silent {
+                    print_value(Some(base_name), &arr_val, fmt, base, compact);
+                }
+                env.insert(base_name.clone(), arr_val);
             }
 
             // ── multi-assign ─────────────────────────────────────────────────

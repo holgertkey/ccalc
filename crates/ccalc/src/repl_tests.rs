@@ -512,7 +512,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                         Value::Lambda(_) => output.push("@<lambda>".to_string()),
                         Value::Function { .. } => output.push("@function".to_string()),
                         Value::Tuple(_) => {}
-                        Value::Cell(_) | Value::Struct(_) => {
+                        Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                             if let Some(full) = format_value_full(&v, &fmt) {
                                 output.push(full);
                             }
@@ -560,7 +560,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                                     output.push(format!("{name} = @function"))
                                 }
                                 Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) => {
+                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push(format!("{name} ="));
                                         output.push(full);
@@ -598,7 +598,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 Value::Lambda(_) => output.push("@<lambda>".to_string()),
                                 Value::Function { .. } => output.push("@function".to_string()),
                                 Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) => {
+                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push("ans =".to_string());
                                         output.push(full);

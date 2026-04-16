@@ -3333,3 +3333,165 @@ fn test_struct_field_insertion_order() {
     let keys: Vec<&str> = map.keys().map(|k| k.as_str()).collect();
     assert_eq!(keys, vec!["c", "a", "b"]);
 }
+
+// ── Phase 13.5 — Struct arrays ────────────────────────────────────────────────
+
+#[test]
+fn test_struct_array_basic_create_and_read() {
+    // s(1).x = 1; s(2).x = 5 → StructArray with 2 elements
+    let env = run_block("s(1).x = 1; s(2).x = 5");
+    match env.get("s").unwrap() {
+        Value::StructArray(arr) => {
+            assert_eq!(arr.len(), 2);
+            assert_eq!(arr[0].get("x"), Some(&Value::Scalar(1.0)));
+            assert_eq!(arr[1].get("x"), Some(&Value::Scalar(5.0)));
+        }
+        other => panic!("expected StructArray, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_array_index_read() {
+    // s(1).x should return the scalar value 1.0
+    let env = run_block("s(1).x = 1; s(2).x = 5");
+    let stmts = parse_stmts("ans = s(1).x").unwrap();
+    let mut env = env;
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "ans"), 1.0);
+}
+
+#[test]
+fn test_struct_array_collect_field() {
+    // s.x on a struct array returns a 1×N matrix when all fields are scalars
+    let env = run_block("s(1).x = 1; s(2).x = 5");
+    let stmts = parse_stmts("v = s.x").unwrap();
+    let mut env = env;
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    match env.get("v").unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m.nrows(), 1);
+            assert_eq!(m.ncols(), 2);
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[0, 1]], 5.0);
+        }
+        other => panic!("expected Matrix for s.x, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_array_numel() {
+    let env = run_block("s(1).x = 1; s(2).x = 5; s(3).x = 9");
+    let stmts = parse_stmts("n = numel(s)").unwrap();
+    let mut env = env;
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "n"), 3.0);
+}
+
+#[test]
+fn test_struct_array_isstruct() {
+    let env = run_block("s(1).x = 1; s(2).x = 5");
+    let stmts = parse_stmts("r = isstruct(s)").unwrap();
+    let mut env = env;
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(scalar(&env, "r"), 1.0);
+}
+
+#[test]
+fn test_struct_array_fieldnames() {
+    let env = run_block("s(1).x = 1; s(1).y = 2; s(2).x = 3; s(2).y = 4");
+    let stmts = parse_stmts("fn = fieldnames(s)").unwrap();
+    let mut env = env;
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    match env.get("fn").unwrap() {
+        Value::Cell(v) => {
+            assert_eq!(v.len(), 2);
+            assert_eq!(v[0], Value::Str("x".to_string()));
+            assert_eq!(v[1], Value::Str("y".to_string()));
+        }
+        other => panic!("expected Cell, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_array_growing() {
+    // Assigning s(3).x = 7 when s only has 2 elements should grow it to 3
+    let env = run_block("s(1).x = 1; s(2).x = 5; s(3).x = 7");
+    match env.get("s").unwrap() {
+        Value::StructArray(arr) => {
+            assert_eq!(arr.len(), 3);
+            assert_eq!(arr[2].get("x"), Some(&Value::Scalar(7.0)));
+        }
+        other => panic!("expected StructArray, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_struct_array_collect_mixed_field_gives_cell() {
+    // When field values are not all scalars, s.field returns a Cell
+    let env = run_block("s(1).name = 'Alice'; s(2).name = 'Bob'");
+    let stmts = parse_stmts("c = s.name").unwrap();
+    let mut env = env;
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    match env.get("c").unwrap() {
+        Value::Cell(v) => {
+            assert_eq!(v.len(), 2);
+            assert_eq!(v[0], Value::Str("Alice".to_string()));
+            assert_eq!(v[1], Value::Str("Bob".to_string()));
+        }
+        other => panic!("expected Cell, got {other:?}"),
+    }
+}

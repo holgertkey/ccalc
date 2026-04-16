@@ -231,6 +231,7 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
         Some(Value::Tuple(_)) => "(...)".to_string(),
         Some(Value::Cell(v)) => format!("{{1×{}}}", v.len()),
         Some(Value::Struct(_)) => "[1×1 struct]".to_string(),
+        Some(Value::StructArray(arr)) => format!("[1×{} struct]", arr.len()),
     }
 }
 
@@ -657,7 +658,7 @@ pub fn run() {
                                     println!("{name} = @function {out}{name}({p})");
                                 }
                                 Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) => {
+                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
@@ -708,7 +709,7 @@ pub fn run() {
                                     println!("@function {out}f({p})");
                                 }
                                 Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) => {
+                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
@@ -779,7 +780,7 @@ pub fn run_expr(expr: &str) {
                     println!("{name} = @function {out}{name}({p})");
                 }
                 Value::Tuple(_) => {}
-                Value::Cell(_) | Value::Struct(_) => {
+                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                     if let Some(full) = format_value_full(&v, &fmt) {
                         println!("{name} =");
                         println!("{full}");
@@ -818,7 +819,7 @@ pub fn run_expr(expr: &str) {
                     println!("@function {out}f({p})");
                 }
                 Value::Tuple(_) => {}
-                Value::Cell(_) | Value::Struct(_) => {
+                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                     if let Some(full) = format_value_full(&v, &fmt) {
                         println!("ans =");
                         println!("{full}");
@@ -1199,7 +1200,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                     println!("{name} = @function {out}{name}({p})");
                                 }
                                 Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) => {
+                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
@@ -1250,7 +1251,7 @@ pub fn run_pipe(reader: impl BufRead) {
                                     println!("@function {out}f({p})");
                                 }
                                 Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) => {
+                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
@@ -1327,6 +1328,7 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Tuple(_) => {}
             Value::Cell(v) => println!("ans = {{1×{} cell}}", v.len()),
             Value::Struct(_) => println!("ans = [1×1 struct]"),
+            Value::StructArray(arr) => println!("ans = [1×{} struct]", arr.len()),
         }
     }
 
@@ -1369,6 +1371,9 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             }
             Value::Struct(_) => {
                 matrices.push(format!("{name} = [1×1 struct]"));
+            }
+            Value::StructArray(arr) => {
+                matrices.push(format!("{name} = [1×{} struct]", arr.len()));
             }
         }
     }
@@ -1668,7 +1673,7 @@ fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
             Value::Lambda(lf) => println!("{}", lf.1),
             Value::Function { .. } => println!("@function"),
             Value::Tuple(_) => {}
-            Value::Cell(_) | Value::Struct(_) => {
+            Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                 if let Some(full) = format_value_full(&v, fmt) {
                     println!("{full}");
                 }

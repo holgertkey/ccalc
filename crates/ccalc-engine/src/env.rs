@@ -70,6 +70,11 @@ pub enum Value {
     /// Created with `s.field = val` or `struct('k', v, ...)`.
     /// Fields can hold any `Value`, including nested structs.
     Struct(IndexMap<String, Value>),
+    /// 1-D array of structs (all sharing the same field schema).
+    ///
+    /// Created with `s(i).field = val` (1-based). Indexed with `s(i)` which returns
+    /// a `Value::Struct`. `s.field` collects the field across all elements.
+    StructArray(Vec<IndexMap<String, Value>>),
 }
 
 impl Value {
@@ -85,7 +90,8 @@ impl Value {
             | Value::Function { .. }
             | Value::Tuple(_)
             | Value::Cell(_)
-            | Value::Struct(_) => None,
+            | Value::Struct(_)
+            | Value::StructArray(_) => None,
         }
     }
 }

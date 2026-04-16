@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.0+001] - 2026-04-16
+
+### Added
+
+- **Phase 13.5 — Struct arrays** (`Value::StructArray(Vec<IndexMap<String, Value>>)`):
+  - Element assignment: `s(i).field = val` creates or grows a 1-based struct array;
+    `s(i).a.b = val` sets nested fields.
+  - Array indexing read: `s(i)` returns element `i` as a `Value::Struct`.
+  - Field collection: `s.field` across a struct array returns a `1×N` matrix when
+    all values are scalar, or a cell array otherwise.
+  - `s(:)` returns the full struct array unchanged.
+  - Built-ins extended: `isstruct`, `fieldnames`, `isfield`, `rmfield`, `numel`,
+    `size`, `length` all handle `StructArray`.
+  - Display: `[1×N struct]` inline; multi-line shows field names for N>1, full
+    field values for N=1 (same as scalar struct display).
+  - 8 regression tests added covering creation, read, field collection, `numel`,
+    `isstruct`, `fieldnames`, auto-growing, and mixed-type field collection.
+
 ## [0.19.0] - 2026-04-15
 
 ### Added
