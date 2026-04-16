@@ -11,12 +11,12 @@
 //!                     └─► evaluator (eval::eval)  →  f64
 //! ```
 //!
-//! It also hosts [`env`] (variable environment and workspace persistence),
+//! It also hosts [`mod@env`] (variable environment and workspace persistence),
 //! and will grow to host the Octave/MATLAB compatibility layer in future phases.
 //!
 //! ## Modules
 //!
-//! - [`env`]    — [`Env`](env::Env) type, workspace save/load
+//! - [`mod@env`]    — [`Env`](env::Env) type, workspace save/load
 //! - [`eval`]   — AST types, evaluator, number formatters, [`Base`](eval::Base)
 //! - [`parser`] — tokenizer and recursive-descent parser, [`Stmt`](parser::Stmt)
 
