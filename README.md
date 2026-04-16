@@ -1013,7 +1013,7 @@ add5(3)            % 8
 add5(make_adder(10)(1))  % 16
 ```
 
-### Structs
+### Structs and Struct Arrays
 
 Scalar structs group named fields of any type. Fields are accessed with `.` notation; intermediate structs are created automatically on write.
 
@@ -1030,13 +1030,27 @@ p.name                           % Alice
 p.score                          % 98.5
 ```
 
+**Struct arrays** store collections of records. Use indexed assignment to create or grow the array:
+
+```matlab
+pts(1).x = 1;  pts(1).y = 0;
+pts(2).x = 3;  pts(2).y = 4;
+pts(3).x = 0;  pts(3).y = 5;
+
+numel(pts)   % 3
+pts(2).x     % 3
+
+xs = pts.x   % [1 3 0]  — field collection across all elements
+ys = pts.y   % [0 4 5]
+```
+
 **Struct utilities:**
 
 ```matlab
 fieldnames(s)         % cell array of field names (insertion order)
 isfield(s, 'x')       % 1 if field exists, else 0
 rmfield(s, 'x')       % copy of s without field 'x'
-isstruct(v)           % 1 if v is a struct, else 0
+isstruct(v)           % 1 if v is a struct or struct array, else 0
 ```
 
 Structs are displayed MATLAB-style:
@@ -1048,6 +1062,12 @@ s =
 
     x: 3
     y: 4
+
+pts =
+
+  1×3 struct array with fields:
+    x
+    y
 ```
 
 Nested or complex fields show compact inline: `[1×1 struct]`, `[1×3 double]`.
@@ -1410,6 +1430,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `user_functions.calc`        | User-defined functions and lambdas: recursion, multiple return values, nargin, anonymous functions, lexical capture, midpoint integration, higher-order functions |
 | `cell_arrays.calc`           | Cell arrays: literals, brace-indexing, auto-grow, `@funcname` handles, `cellfun`/`arrayfun`, `varargin`/`varargout`, `case {…}`, function pipelines |
 | `structs.calc`               | Scalar structs: field assignment/read, nested structs, `struct()` constructor, `fieldnames`/`isfield`/`rmfield`/`isstruct`, 3-D vector example |
+| `struct_arrays.calc`         | Struct arrays: indexed creation, element access, field collection → matrix/cell, loop building, `fieldnames`/`isfield`, nested fields, inventory ledger |
 
 ```bash
 ccalc < examples/mortgage.calc

@@ -173,7 +173,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help functions   built-in function reference with examples
   help userfuncs   user-defined functions, multiple return, lambdas
   help cells       cell arrays, varargin/varargout, cellfun, arrayfun
-  help structs     scalar structs, field access, fieldnames/isfield/rmfield
+  help structs     scalar structs + struct arrays, field access, fieldnames/isfield/rmfield
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
@@ -1191,9 +1191,11 @@ Script files  (see examples/ directory)
     ccalc examples/strings.calc
     ccalc examples/file_io.calc
     ccalc examples/control_flow.calc
-    ccalc examples/extended_control_flow.calc
+    ccalc examples/extended_control_flow/extended_control_flow.calc
     ccalc examples/user_functions.calc
-    ccalc examples/cell_arrays.calc"
+    ccalc examples/cell_arrays.calc
+    ccalc examples/structs.calc
+    ccalc examples/struct_arrays.calc"
     );
 }
 
@@ -1738,12 +1740,12 @@ Example:  ccalc examples/cell_arrays.calc"
 fn print_structs() {
     println!(
         "\
-STRUCTS  (help structs)
+STRUCTS AND STRUCT ARRAYS  (help structs)
 
 A scalar struct groups named fields, each holding any value (scalar, matrix,
 string, complex, cell, or another struct).  Fields are ordered by insertion.
 
-─── Creating structs ──────────────────────────────────────────────────────────
+─── Scalar struct ─────────────────────────────────────────────────────────────
 
   s.x = 1               field assignment; creates struct if s doesn't exist yet
   s.y = [1 2 3]         field can hold any Value
@@ -1752,55 +1754,59 @@ string, complex, cell, or another struct).  Fields are ordered by insertion.
   s = struct()                  empty struct
   s = struct('x', 1, 'y', 2)   constructor; pairs: string key + value
 
-─── Reading fields ────────────────────────────────────────────────────────────
-
   s.x                   read field value
   s.a.b                 chained: read nested field (any depth)
-  v = s.x + s.y         fields are ordinary values — use them in expressions
 
 ─── Built-in utilities ────────────────────────────────────────────────────────
 
-  fieldnames(s)         Value::Cell of Value::Str field names, insertion order
+  fieldnames(s)         cell array of field names, insertion order
   isfield(s, 'x')       1 if field 'x' exists, else 0
   rmfield(s, 'x')       copy of s with field 'x' removed; error if absent
-  isstruct(v)           1 if v is a struct, else 0
+  isstruct(v)           1 if v is a struct or struct array, else 0
+
+─── Struct arrays ─────────────────────────────────────────────────────────────
+
+  s(i).field = val      indexed assignment; creates/grows struct array
+  s(i).field            read field from element i  (1-based)
+  s.field               collect field across ALL elements:
+                            all scalars → 1×N matrix
+                            mixed types → 1×N cell array
+
+  pts(1).x = 1;  pts(1).y = 0;
+  pts(2).x = 3;  pts(2).y = 4;
+  pts(3).x = 0;  pts(3).y = 5;
+
+  numel(pts)     →  3
+  pts(2).x       →  3
+
+  xs = pts.x     →  [1 3 0]   (field collection)
+  ys = pts.y     →  [0 4 5]
+
+  String fields collect into a cell array:
+  roster(1).name = 'Alice';  roster(2).name = 'Bob';
+  names = roster.name        →  {{'Alice', 'Bob'}}
 
 ─── Display ───────────────────────────────────────────────────────────────────
 
-  s =
+  Scalar struct:
+    s =
+      struct with fields:
+        x: 1
+        y: [1×3 double]
 
-    struct with fields:
-
-      x: 1
-      y: [1×3 double]
-      inner: [1×1 struct]
-
-  Nested struct fields are shown as [1×1 struct] inline; expanded when accessed.
-
-─── Example ───────────────────────────────────────────────────────────────────
-
-  % 3-D point struct
-  pt.x = 3;  pt.y = 4;  pt.z = 0;
-  dist = sqrt(pt.x^2 + pt.y^2 + pt.z^2)   →  5
-
-  % struct() constructor + fieldnames
-  p = struct('name', 'Alice', 'score', 98.5);
-  fn = fieldnames(p);
-  fn{{1}}    →  name
-  fn{{2}}    →  score
-
-  % Check, remove, iterate
-  isfield(p, 'score')       →  1
-  isfield(p, 'rank')        →  0
-  p2 = rmfield(p, 'score');
-  numel(fieldnames(p2))     →  1
+  Struct array (N > 1):
+    pts =
+      1×3 struct array with fields:
+        x
+        y
 
 ─── Workspace ─────────────────────────────────────────────────────────────────
 
   Structs are NOT persisted by ws/save — same policy as matrices and cells.
-  who shows: s = [1×1 struct]
+  who shows: s = [1×1 struct]  or  pts = [1×3 struct]
 
 See also: help cells  help userfuncs  help control
-Example:  ccalc examples/structs.calc"
+Examples: ccalc examples/structs.calc
+          ccalc examples/struct_arrays.calc"
     );
 }

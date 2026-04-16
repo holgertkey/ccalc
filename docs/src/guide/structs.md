@@ -1,4 +1,4 @@
-# Structs
+# Structs and Struct Arrays
 
 A **scalar struct** groups named fields into a single value. Each field can
 hold any type — scalar, matrix, string, complex, cell array, or another struct.
@@ -165,8 +165,108 @@ s = [1×1 struct]
 
 ---
 
+---
+
+## Struct arrays
+
+A **struct array** is a 1-D array of structs that all share the same field
+schema. Use indexed assignment to create and grow the array:
+
+```matlab
+pts(1).x = 1;  pts(1).y = 0;
+pts(2).x = 3;  pts(2).y = 4;
+pts(3).x = 0;  pts(3).y = 5;
+
+numel(pts)     % 3
+isstruct(pts)  % 1
+pts(2).x       % 3
+```
+
+Access an element by index — it returns a scalar struct:
+
+```matlab
+p = pts(1);
+p.x      % 1
+p.y      % 0
+
+pts(3).y   % 5  (chained access also works)
+```
+
+### Field collection
+
+Applying `.field` to the array (without an index) collects that field across
+all elements:
+
+```matlab
+xs = pts.x;   % [1 3 0]   — 1×3 row vector (all scalars)
+ys = pts.y;   % [0 4 5]
+
+dists = (xs .^ 2 + ys .^ 2) .^ 0.5;   % [1 5 5]
+```
+
+If the field holds non-scalar values, the result is a cell array instead of
+a matrix.
+
+### Building in a loop
+
+Struct arrays grow automatically:
+
+```matlab
+for k = 1:5
+  data(k).value = k * k;
+  data(k).label = num2str(k);
+end
+
+vals = data.value;   % [1 4 9 16 25]
+sum(vals)            % 55
+```
+
+### String fields → cell array
+
+When a collected field holds strings, the result is a cell array:
+
+```matlab
+roster(1).name = 'Alice';  roster(1).score = 92;
+roster(2).name = 'Bob';    roster(2).score = 78;
+
+names  = roster.name;    % {'Alice', 'Bob'}  — cell array
+scores = roster.score;   % [92 78]           — matrix
+
+names{1}      % Alice
+mean(scores)  % 85
+```
+
+### Built-in utilities on struct arrays
+
+`fieldnames`, `isfield`, `rmfield`, `numel`, `size`, `length`, and `isstruct`
+all work on struct arrays the same way they do on scalar structs.
+
+```matlab
+fn = fieldnames(pts);
+fn{1}               % x
+numel(fn)           % 2
+isfield(pts, 'x')   % 1
+isfield(pts, 'z')   % 0
+```
+
+### Display
+
+```
+pts =
+
+  1×3 struct array with fields:
+    x
+    y
+```
+
+A single-element struct array (`[1×1 struct]`) displays its full field values
+like a scalar struct.
+
+---
+
 ## See also
 
 - `help structs` — in-REPL reference
 - `help cells` — cell arrays, `varargin`/`varargout`
-- `ccalc examples/structs.calc` — annotated 9-section example
+- `ccalc examples/structs.calc` — annotated scalar struct example
+- `ccalc examples/struct_arrays.calc` — annotated struct array example

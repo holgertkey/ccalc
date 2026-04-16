@@ -25,6 +25,7 @@ The work is divided into phases in order of architectural dependency.
 | 12.5 | Cell arrays, `varargin`/`varargout`, `cellfun`/`arrayfun`, `@funcname` | ✅ Done |
 | 12.6 | Language polish: `&`/`\|`, `...`, single-line blocks, `.'`, `**`, string utils | ✅ Done |
 | 13 | Scalar structs (`s.field`, `struct()`, `fieldnames`, `isfield`, `rmfield`) | ✅ Done |
+| 13.5 | Struct arrays (`s(i).field`, field collection, `numel`/`isstruct` extended) | ✅ Done |
 
 ## Key architectural decisions
 
@@ -186,6 +187,20 @@ Vec<String>, Expr)` handles writes with arbitrary depth paths via the
 `set_nested()` recursive helper in `exec.rs`.
 Built-ins: `struct()`, `fieldnames`, `isfield`, `rmfield`, `isstruct`.
 19 regression tests added; 488 total.
+
+**Phase 13.5** adds `Value::StructArray(Vec<IndexMap<String, Value>>)` — a
+separate variant for 1-D arrays of structs, keeping `Value::Struct` for scalar
+structs unchanged. `s(i).field = val` is intercepted at string level by
+`try_split_struct_array_field_assign()` before tokenization and parsed into a
+new `Stmt::StructArrayFieldSet(base, idx_expr, path, rhs)` statement. The
+executor in `exec.rs` resolves the index, grows the array if needed (filling
+gaps with empty field maps), and calls the existing `set_nested()` helper to
+write nested field paths. `s(i)` indexing returns a `Value::Struct` for a
+single element and a `Value::StructArray` for a slice or `:`. `s.field` on a
+struct array collects the field across all elements, returning `Value::Matrix`
+when all elements are scalar, or `Value::Cell` when types are mixed.
+Extended built-ins: `isstruct`, `fieldnames`, `isfield`, `rmfield`, `numel`,
+`size`, `length`. 8 regression tests added.
 
 ## Compatibility notes
 

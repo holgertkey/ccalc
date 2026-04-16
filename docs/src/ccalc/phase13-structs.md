@@ -1,7 +1,7 @@
 # Phase 13 — Structs
 
-**Version:** 0.19.0
-**Status:** Complete (13a — scalar structs)
+**Version:** 0.19.0 / 0.19.0+001
+**Status:** Complete (13a — scalar structs, 13.5 — struct arrays)
 
 ---
 
@@ -130,10 +130,74 @@ s =
 
 ---
 
-## 13b — Struct arrays (deferred → Phase 13.5)
+---
 
-`s(i).field` — indexing into a vector of structs. Required for `e.stack` in
-`catch e` (Phase 14). Design decision deferred.
+## 13.5 — Struct arrays (complete, v0.19.0+001)
+
+### Value type
+
+`Value::StructArray(Vec<IndexMap<String, Value>>)` — a separate enum variant
+for 1-D arrays of structs. Scalar `Value::Struct` remains unchanged.
+
+### AST changes
+
+| Node | Description |
+|------|-------------|
+| `Stmt::StructArrayFieldSet(String, Expr, Vec<String>, Expr)` | `s(i).field = rhs` — base name, index expr, field path, right-hand side |
+
+### Parser
+
+`try_split_struct_array_field_assign()` — byte-level string scan detecting
+`name(...)(.ident)+ =` before tokenization. Called before
+`try_split_field_assign` in `parse()` (order matters to prevent mis-parsing).
+
+### Execution — `Stmt::StructArrayFieldSet`
+
+Implemented in `exec.rs`:
+
+1. Evaluate the index expression; resolve to a 1-based `usize`.
+2. Remove the root variable from `Env` — accept `StructArray`, promote
+   `Struct` to a 1-element array, or start with an empty `Vec`.
+3. Auto-grow: push empty `IndexMap`s until `arr.len() >= idx`.
+4. Call existing `set_nested(elem, path, rhs)` on the target element.
+5. Re-insert the updated `Value::StructArray`.
+
+### Field read — `Expr::FieldGet` on `StructArray`
+
+`s(i).field` uses existing `eval_index` (returns `Value::Struct`) then
+`FieldGet` reads the field from the returned scalar struct.
+
+`s.field` (no index) on a `StructArray` collects the field across all
+elements:
+- All elements are `Scalar` → `Value::Matrix` 1×N row vector.
+- Mixed types → `Value::Cell`.
+
+### Built-ins extended
+
+`isstruct`, `fieldnames`, `isfield`, `rmfield`, `numel`, `size(1)`,
+`size(2)`, `length` — all handle `Value::StructArray`.
+
+### Display
+
+- Inline (`format_value`): `[1×N struct]`
+- Full (`format_value_full`): field names list for N > 1; full values for N = 1 (same as scalar struct).
+
+### Tests
+
+8 new regression tests in `parser_tests.rs`:
+
+| Test | What it checks |
+|------|---------------|
+| `test_struct_array_create_and_read` | `s(1).x = 1; s(2).x = 3` |
+| `test_struct_array_numel` | `numel(s)` returns 2 |
+| `test_struct_array_isstruct` | `isstruct(s)` returns 1 |
+| `test_struct_array_field_collection_scalar` | `s.x` → `[1 3]` matrix |
+| `test_struct_array_auto_grow` | `s(3).x` fills gap |
+| `test_struct_array_nested_field` | `s(1).reading.temp = 22.5` |
+| `test_struct_array_fieldnames` | `fieldnames` on struct array |
+| `test_struct_array_isfield` | `isfield` on struct array |
+
+---
 
 ## 13c — Dynamic field access (deferred → §3)
 
