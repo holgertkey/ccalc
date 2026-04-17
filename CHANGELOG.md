@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.0+003] - 2026-04-17
+
+### Changed
+
+- **`inv(A)` and `det(A)` upgraded to partial pivoting** (pure Rust, zero new
+  dependencies). Both functions previously searched for the first non-zero pivot
+  element; they now select the row with the largest absolute value (`max_by |abs|`),
+  matching the strategy used by LAPACK `dgetrf`. This improves numerical stability
+  for ill-conditioned matrices at no cost to portability.
+- `--features blas` scope narrowed: the flag now accelerates only `A*B` matrix
+  multiply (`ndarray/blas`). The `inv`/`det` path is pure Rust regardless of features.
+- Benchmark `inv/{100,500}` added to `benches/engine.rs` to track `inv` performance
+  (baseline: ~16 ms / ~240 ms on this machine, release build, no BLAS).
+
 ## [0.19.0+002] - 2026-04-17
 
 ### Added

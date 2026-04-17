@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.19.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.19.0+003** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -1444,6 +1444,14 @@ ccalc < examples/mortgage.calc
 cargo build            # debug build
 cargo build --release  # optimized build
 cargo test             # run all tests
+cargo bench            # run Criterion benchmarks (release)
+cargo bench --bench engine -- loop_10k   # run one benchmark
+```
+
+Optional feature — accelerates matrix multiply via system OpenBLAS:
+
+```bash
+cargo build --release --features blas
 ```
 
 ---
@@ -1463,6 +1471,8 @@ crates/
     exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue/Return), call_user_function()
     io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum (incl. If/For/While/FunctionDef/Return/MultiAssign)
+  ccalc-engine/benches/
+    engine.rs    — Criterion benchmark suite (scalar ops, fib, loop, matmul, inv, fn calls)
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history
 ```
