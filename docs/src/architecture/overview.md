@@ -12,11 +12,15 @@ ccalc/
 │   │       ├── repl.rs         ← REPL loop, pipe mode, evaluate()
 │   │       └── help.rs         ← help text
 │   └── ccalc-engine/           ← library crate (computation)
-│       └── src/
-│           ├── lib.rs          ← public API
-│           ├── env.rs          ← Env type, workspace save/load
-│           ├── eval.rs         ← AST + evaluator + formatters + Base enum
-│           └── parser.rs       ← tokenizer + recursive-descent parser, Stmt enum
+│       ├── src/
+│       │   ├── lib.rs          ← public API
+│       │   ├── env.rs          ← Env/Value types, workspace save/load
+│       │   ├── eval.rs         ← AST + evaluator + formatters + Base enum
+│       │   ├── parser.rs       ← tokenizer + recursive-descent parser, Stmt enum
+│       │   ├── exec.rs         ← block executor (if/for/while/switch/do), exec_stmts()
+│       │   └── io.rs           ← IoContext — file descriptor table for fopen/fgetl/etc.
+│       └── benches/
+│           └── engine.rs       ← Criterion benchmark suite
 └── docs/                       ← this mdBook
 ```
 
@@ -46,17 +50,27 @@ stdout
 | `main.rs` | Parse CLI args, detect stdin mode (REPL / pipe / file / arg), dispatch |
 | `repl.rs` | REPL event loop, pipe line-reader, shared `evaluate()`, display logic |
 | `help.rs` | Static help string |
-| `env.rs` | `Env` type (`HashMap<String, f64>`), workspace save/load to disk |
-| `eval.rs` | `Expr` AST, `Op`, `Base`; `eval()`, `format_value()`, `format_number()` |
-| `parser.rs` | Tokenizer, recursive-descent parser, `parse()`, `is_partial()`, `Stmt` enum |
+| `env.rs` | `Value` enum, `Env` type (`HashMap<String, Value>`), workspace save/load to disk |
+| `eval.rs` | `Expr` AST, `Op`, `Base`; `eval()`, `format_value()`, `format_number()`, built-ins |
+| `parser.rs` | Tokenizer, recursive-descent parser, `parse()`, `parse_stmts()`, `Stmt` enum |
+| `exec.rs` | Block statement executor: `exec_stmts()`, `Signal` enum, user function hook |
+| `io.rs` | `IoContext` — file descriptor table for `fopen`/`fgetl`/`fprintf`/etc. |
+| `benches/engine.rs` | Criterion benchmarks: scalar ops, fib, loop throughput, matmul, fn calls |
 
 ## Dependency graph
 
 ```
 ccalc (binary)
   ├── ccalc-engine (local)
-  │     └── dirs
-  └── rustyline
+  │     ├── dirs
+  │     ├── ndarray
+  │     └── indexmap
+  ├── rustyline
+  ├── toml
+  └── serde
+
+ccalc-engine (dev / benches only)
+  └── criterion
 ```
 
 ## Design principles

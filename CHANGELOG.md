@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.19.0+002] - 2026-04-17
+
+### Added
+
+- **Criterion benchmark suite** (`crates/ccalc-engine/benches/engine.rs`):
+  - `scalar_ops_sum_1M` — `sum(1:1000000)`: range construction + 1 M reductions.
+  - `fib/fib_30` — naive recursive `fib(30)` (~2.7 M interpreter calls); exercises
+    function call overhead and body cache. Configured with `sample_size=10` and
+    `measurement_time=90s` due to long per-iteration time (~7 s).
+  - `loop_10k` — `for k=1:10000; s+=k; end`: interpreter loop throughput.
+  - `matmul/{100,500,1000}` — `ones(N,N)*ones(N,N)` at three matrix sizes.
+  - `fn_calls_1000` — 1 000 calls to a trivial 1-line named function via a loop.
+  - HTML reports written to `target/criterion/` after each run.
+  - Run all: `cargo bench`; run one: `cargo bench --bench engine -- loop_10k`.
+
 ## [0.19.0+001] - 2026-04-16
 
 ### Added
