@@ -209,6 +209,7 @@ fn is_valid_ident(s: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_save_load_roundtrip() {
         let path = std::env::temp_dir().join("ccalc_test_workspace_roundtrip.toml");

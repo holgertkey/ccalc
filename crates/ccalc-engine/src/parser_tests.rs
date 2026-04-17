@@ -35,6 +35,7 @@ fn calc_with_var(input: &str, name: &str, val: f64) -> f64 {
     eval_s(&unwrap_expr(parse(input).unwrap()), &env)
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_single_number() {
     assert_eq!(calc("42"), 42.0);
@@ -1003,7 +1004,7 @@ fn test_comparison_matrix_scalar() {
     );
     // v > 3  → [0 0 0 1 1]
     let result = match eval_with("v > 3", &env) {
-        Value::Matrix(m) => m.into_raw_vec(),
+        Value::Matrix(m) => m.into_raw_vec_and_offset().0,
         _ => panic!("expected matrix"),
     };
     assert_eq!(result, vec![0.0, 0.0, 0.0, 1.0, 1.0]);
@@ -1017,7 +1018,7 @@ fn test_comparison_matrix_matrix() {
     env.insert("b".to_string(), Value::Matrix(array![[2.0, 4.0, 3.0]]));
     // a == b → [0 0 1]
     let result = match eval_with("a == b", &env) {
-        Value::Matrix(m) => m.into_raw_vec(),
+        Value::Matrix(m) => m.into_raw_vec_and_offset().0,
         _ => panic!("expected matrix"),
     };
     assert_eq!(result, vec![0.0, 0.0, 1.0]);
@@ -1029,7 +1030,7 @@ fn test_not_matrix() {
     let mut env = Env::new();
     env.insert("v".to_string(), Value::Matrix(array![[0.0, 1.0, 0.0, 5.0]]));
     let result = match eval_with("~v", &env) {
-        Value::Matrix(m) => m.into_raw_vec(),
+        Value::Matrix(m) => m.into_raw_vec_and_offset().0,
         _ => panic!("expected matrix"),
     };
     assert_eq!(result, vec![1.0, 0.0, 1.0, 0.0]);
@@ -2351,7 +2352,6 @@ fn test_conjugate_transpose_complex() {
 
 #[test]
 fn test_lambda_display() {
-    use crate::env::Value;
     use crate::eval::eval;
     use crate::eval::{Base, FormatMode, format_value};
     let env = Env::new();
@@ -2427,8 +2427,8 @@ fn test_comma_separator() {
     let stmts = split_stmts("a = 1, b = 2");
     // 'a = 1' non-silent, 'b = 2' non-silent
     assert_eq!(stmts.len(), 2);
-    assert_eq!(stmts[0].1, false); // non-silent (shown)
-    assert_eq!(stmts[1].1, false); // non-silent (shown)
+    assert!(!stmts[0].1); // non-silent (shown)
+    assert!(!stmts[1].1); // non-silent (shown)
 }
 
 #[test]
@@ -2652,7 +2652,7 @@ fn test_multi_assign_extra_discarded() {
     )
     .unwrap();
     assert_eq!(env.get("x").cloned(), Some(Value::Scalar(10.0)));
-    assert!(env.get("b").is_none() || env.get("b").cloned() != Some(Value::Scalar(20.0)));
+    assert!(!env.contains_key("b") || env.get("b").cloned() != Some(Value::Scalar(20.0)));
 }
 
 #[test]
@@ -3020,7 +3020,7 @@ fn test_length_cell() {
 fn test_cellfun_basic() {
     crate::exec::init();
     let src = "c = {1, 4, 9}\nans = cellfun(@sqrt, c)";
-    let mut env = run_block(src);
+    let env = run_block(src);
     match env.get("ans") {
         Some(Value::Matrix(m)) => {
             assert_eq!(m.nrows(), 1);
@@ -3037,7 +3037,7 @@ fn test_cellfun_basic() {
 fn test_arrayfun_basic() {
     crate::exec::init();
     let src = "ans = arrayfun(@(x) x^2, [1 2 3])";
-    let mut env = run_block(src);
+    let env = run_block(src);
     match env.get("ans") {
         Some(Value::Matrix(m)) => {
             assert_eq!(m.ncols(), 3);
@@ -3108,7 +3108,7 @@ fn test_split_stmts_dot_apostrophe_not_string() {
     // `B.';` must split into one silent statement, not treat `'` as a string start
     let parts: Vec<_> = crate::parser::split_stmts("Bt = B.';");
     assert_eq!(parts.len(), 1);
-    assert_eq!(parts[0].1, true); // silent
+    assert!(parts[0].1); // silent
 }
 
 #[test]

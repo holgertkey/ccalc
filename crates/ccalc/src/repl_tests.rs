@@ -217,6 +217,7 @@ fn test_format_for_base_oct() {
     assert_eq!(format_for_base(255.0, Base::Oct), "0o377");
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_format_for_base_dec() {
     assert_eq!(format_for_base(42.0, Base::Dec), "42");
@@ -961,6 +962,7 @@ fn test_try_parse_unrelated_returns_none() {
     assert!(try_parse_save_load("fprintf('hi')", &env).is_none());
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_pipe_save_load_roundtrip() {
     use ccalc_engine::env::load_workspace;

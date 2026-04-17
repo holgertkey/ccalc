@@ -275,6 +275,7 @@ fn test_format_number_integer() {
     assert_eq!(format_number(400.0), "400");
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_format_number_float() {
     assert_eq!(format_number(2.5), "2.5");
@@ -304,6 +305,7 @@ fn test_format_value_dec_integer() {
     );
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_format_value_dec_float() {
     assert_eq!(
@@ -1196,6 +1198,7 @@ fn test_num2str() {
     assert_eq!(eval(&expr, &env), Ok(Value::Str("42".to_string())));
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_str2double_valid() {
     let env = empty_env();
@@ -1390,6 +1393,7 @@ fn test_printf_d_float_truncated() {
     assert_eq!(format_printf("%d", &args).unwrap(), "3");
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_printf_f_default() {
     let args = vec![Value::Scalar(3.14159)];
@@ -1397,6 +1401,7 @@ fn test_printf_f_default() {
     assert_eq!(s, "3.141590");
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_printf_f_precision() {
     let args = vec![Value::Scalar(3.14159)];
@@ -1422,6 +1427,7 @@ fn test_printf_e_precision() {
     assert_eq!(format_printf("%.2e", &args).unwrap(), "1.00e+00");
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_printf_g_small() {
     let args = vec![Value::Scalar(3.14)];
@@ -1823,6 +1829,7 @@ fn test_dlmread_non_numeric_error() {
     let _ = std::fs::remove_file(&tmp);
 }
 
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_dlmwrite_scalar() {
     let env = empty_env();
