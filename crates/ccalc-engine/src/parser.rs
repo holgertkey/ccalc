@@ -1027,22 +1027,16 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
             }
             '"' if !in_sq => in_dq = !in_dq,
             '(' if !in_sq && !in_dq => paren_depth += 1,
-            ')' if !in_sq && !in_dq => {
-                if paren_depth > 0 {
-                    paren_depth -= 1;
-                }
+            ')' if !in_sq && !in_dq && paren_depth > 0 => {
+                paren_depth -= 1;
             }
             '[' if !in_sq && !in_dq => bracket_depth += 1,
-            ']' if !in_sq && !in_dq => {
-                if bracket_depth > 0 {
-                    bracket_depth -= 1;
-                }
+            ']' if !in_sq && !in_dq && bracket_depth > 0 => {
+                bracket_depth -= 1;
             }
             '{' if !in_sq && !in_dq => brace_depth += 1,
-            '}' if !in_sq && !in_dq => {
-                if brace_depth > 0 {
-                    brace_depth -= 1;
-                }
+            '}' if !in_sq && !in_dq && brace_depth > 0 => {
+                brace_depth -= 1;
             }
             '%' | '#' if at_depth0 => {
                 comment_at = i;

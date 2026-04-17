@@ -2325,19 +2325,11 @@ fn call_builtin(
                 _ => return Err("isfield: second argument must be a string".to_string()),
             };
             Ok(Value::Scalar(match &args[0] {
-                Value::Struct(map) => {
-                    if map.contains_key(&field) {
-                        1.0
-                    } else {
-                        0.0
-                    }
-                }
-                Value::StructArray(arr) => {
-                    if arr.first().is_some_and(|m| m.contains_key(&field)) {
-                        1.0
-                    } else {
-                        0.0
-                    }
+                Value::Struct(map) if map.contains_key(&field) => 1.0,
+                Value::StructArray(arr)
+                    if arr.first().is_some_and(|m| m.contains_key(&field)) =>
+                {
+                    1.0
                 }
                 _ => 0.0,
             }))
@@ -3690,7 +3682,7 @@ fn fmt_auto_sig(n: f64, sig: usize) -> String {
         abs_n.log10().floor() as i32
     };
     if exp >= -3 && exp < sig as i32 {
-        let dp = ((sig as i32 - 1 - exp) as usize).max(0);
+        let dp = (sig as i32 - 1 - exp) as usize;
         let s = format!("{:.prec$}", n, prec = dp);
         // Only strip trailing zeros when there is a decimal point.
         if s.contains('.') {
