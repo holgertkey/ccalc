@@ -2326,9 +2326,7 @@ fn call_builtin(
             };
             Ok(Value::Scalar(match &args[0] {
                 Value::Struct(map) if map.contains_key(&field) => 1.0,
-                Value::StructArray(arr)
-                    if arr.first().is_some_and(|m| m.contains_key(&field)) =>
-                {
+                Value::StructArray(arr) if arr.first().is_some_and(|m| m.contains_key(&field)) => {
                     1.0
                 }
                 _ => 0.0,
