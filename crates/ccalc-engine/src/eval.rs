@@ -2899,6 +2899,8 @@ fn to_bits(v: f64, fname: &str, pos: usize) -> Result<u64, String> {
 }
 
 /// Computes determinant of a square matrix via Gaussian elimination.
+/// Computes the determinant of a square matrix via Gaussian elimination with
+/// partial pivoting (pure Rust, no external dependencies).
 fn det_matrix(m: &Array2<f64>) -> Result<f64, String> {
     let n = m.nrows();
     if m.ncols() != n {
@@ -2910,33 +2912,35 @@ fn det_matrix(m: &Array2<f64>) -> Result<f64, String> {
     let mut a = m.clone();
     let mut sign: f64 = 1.0;
     for col in 0..n {
-        let pivot_row = (col..n).find(|&r| a[[r, col]].abs() > 1e-15);
-        match pivot_row {
-            None => return Ok(0.0),
-            Some(p) => {
-                if p != col {
-                    for j in 0..n {
-                        let tmp = a[[p, j]];
-                        a[[p, j]] = a[[col, j]];
-                        a[[col, j]] = tmp;
-                    }
-                    sign = -sign;
-                }
-                let pv = a[[col, col]];
-                for row in (col + 1)..n {
-                    let factor = a[[row, col]] / pv;
-                    for j in col..n {
-                        let val = a[[col, j]] * factor;
-                        a[[row, j]] -= val;
-                    }
-                }
+        // Partial pivoting: swap in the row with the largest absolute value.
+        let pivot = (col..n)
+            .max_by(|&r1, &r2| a[[r1, col]].abs().partial_cmp(&a[[r2, col]].abs()).unwrap())
+            .unwrap();
+        if a[[pivot, col]].abs() < 1e-15 {
+            return Ok(0.0); // singular
+        }
+        if pivot != col {
+            for j in 0..n {
+                let tmp = a[[pivot, j]];
+                a[[pivot, j]] = a[[col, j]];
+                a[[col, j]] = tmp;
+            }
+            sign = -sign;
+        }
+        let pv = a[[col, col]];
+        for row in (col + 1)..n {
+            let factor = a[[row, col]] / pv;
+            for j in col..n {
+                let val = a[[col, j]] * factor;
+                a[[row, j]] -= val;
             }
         }
     }
     Ok(sign * (0..n).map(|i| a[[i, i]]).product::<f64>())
 }
 
-/// Computes inverse of a square matrix via Gauss-Jordan elimination.
+/// Computes the inverse of a square matrix via Gauss-Jordan elimination with
+/// partial pivoting (pure Rust, no external dependencies).
 fn inv_matrix(m: &Array2<f64>) -> Result<Array2<f64>, String> {
     let n = m.nrows();
     if m.ncols() != n {
@@ -2951,12 +2955,19 @@ fn inv_matrix(m: &Array2<f64>) -> Result<Array2<f64>, String> {
         aug[i * cols + n + i] = 1.0;
     }
     for col in 0..n {
-        let pivot_row = (col..n)
-            .find(|&r| aug[r * cols + col].abs() > 1e-12)
+        // Partial pivoting: swap in the row with the largest absolute value.
+        let pivot = (col..n)
+            .max_by(|&r1, &r2| {
+                aug[r1 * cols + col]
+                    .abs()
+                    .partial_cmp(&aug[r2 * cols + col].abs())
+                    .unwrap()
+            })
+            .filter(|&r| aug[r * cols + col].abs() > 1e-12)
             .ok_or_else(|| "inv: matrix is singular".to_string())?;
-        if pivot_row != col {
+        if pivot != col {
             for j in 0..cols {
-                aug.swap(col * cols + j, pivot_row * cols + j);
+                aug.swap(col * cols + j, pivot * cols + j);
             }
         }
         let pv = aug[col * cols + col];

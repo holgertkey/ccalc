@@ -123,7 +123,34 @@ fn bench_matmul(c: &mut Criterion) {
     group.finish();
 }
 
-// ── 5: function call overhead ─────────────────────────────────────────────────
+// ── 5: inv(A) — pure-Rust vs LAPACK ──────────────────────────────────────────
+
+/// inv(A) for A = ones(N,N) + eye(N) at N ∈ {100, 500}.
+///
+/// Uses pure-Rust Gauss-Jordan by default; LAPACK `dgetrf`/`dgetri` when built
+/// with `--features blas`. Run both builds to compare.
+fn bench_inv(c: &mut Criterion) {
+    let mut group = c.benchmark_group("inv");
+    group.measurement_time(Duration::from_secs(15));
+    group.sample_size(20);
+
+    for &n in &[100usize, 500] {
+        let mut env = new_env();
+        let mut io = IoContext::new();
+        // ones(N,N) + eye(N) is invertible (eigenvalues = N+1 or 1).
+        run(&format!("A = ones({n},{n}) + eye({n});"), &mut env);
+
+        let stmts = parse_stmts("inv(A)").expect("parse");
+
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| exec_checked(black_box(&stmts), &mut env, &mut io))
+        });
+    }
+
+    group.finish();
+}
+
+// ── 6: function call overhead ─────────────────────────────────────────────────
 
 /// 1 000 calls to a trivial 1-line function — isolates per-call overhead.
 fn bench_fn_calls(c: &mut Criterion) {
@@ -154,6 +181,7 @@ criterion_group!(
     bench_fib,
     bench_loop_throughput,
     bench_matmul,
+    bench_inv,
     bench_fn_calls,
 );
 criterion_main!(benches);

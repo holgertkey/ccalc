@@ -10,18 +10,18 @@ description = "Core computation engine for ccalc: tokenizer, parser, AST evaluat
 [features]
 default = []
 
-# Link against a system-installed OpenBLAS (dynamic).
-# Requires OpenBLAS headers and shared library on the build host.
+# Accelerate matrix multiply (A*B, A.*B) via system-installed OpenBLAS.
+# Does NOT affect inv(A) / det(A) — those use linfa-linalg (pure Rust, always on).
 #   Linux:   sudo apt install libopenblas-dev
-#   macOS:   brew install openblas  (or use Accelerate — see below)
+#   macOS:   brew install openblas
 #   Windows: install OpenBLAS via vcpkg or MSYS2
 # Build: cargo build --release --features blas
 blas = ["dep:blas-src", "ndarray/blas"]
 
-# Build and statically link OpenBLAS from source.
-# Requires a Fortran compiler (gfortran), cmake, and make.
+# Statically link OpenBLAS from source (same scope as blas — only matrix multiply).
+# Requires gfortran + cmake.
 #   Linux/macOS: sudo apt install gfortran cmake  /  brew install gcc cmake
-#   Windows: requires MSYS2 + MinGW + gfortran — non-trivial; prefer system OpenBLAS instead.
+#   Windows: requires MSYS2 + MinGW + gfortran — non-trivial; prefer blas instead.
 # Build: cargo build --release --features blas-static
 blas-static = ["blas", "dep:openblas-src"]
 
