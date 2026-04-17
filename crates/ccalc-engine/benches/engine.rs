@@ -164,8 +164,7 @@ end";
     let mut env = new_env();
     run(fn_def, &mut env);
 
-    let stmts =
-        parse_stmts("s = 0\nfor k = 1:1000\n  s = inc(k)\nend").expect("parse");
+    let stmts = parse_stmts("s = 0\nfor k = 1:1000\n  s = inc(k)\nend").expect("parse");
     let mut io = IoContext::new();
 
     c.bench_function("fn_calls_1000", |b| {
