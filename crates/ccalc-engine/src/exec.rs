@@ -290,7 +290,7 @@ fn call_user_function(
 /// If `name` already has an extension, it is used verbatim.
 /// Otherwise, `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility).
 /// The search is relative to the current working directory.
-fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
+pub fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
     // Build candidate base paths: CWD-relative first, then each stacked script dir (top-first),
     // then the session search path entries in order.
     let p = std::path::Path::new(name);

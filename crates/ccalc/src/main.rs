@@ -21,9 +21,23 @@ fn main() {
                 return;
             }
             arg if !arg.starts_with('-') => {
-                let path = std::path::Path::new(arg);
-                if path.is_file() {
-                    let file = std::fs::File::open(path).unwrap_or_else(|e| {
+                // Load config and init the session search path so that script
+                // files can be found by name even when they are not in CWD.
+                let config_path =
+                    ccalc_engine::env::config_dir().join("config.toml");
+                if let Ok(cfg) = config::load(&config_path) {
+                    ccalc_engine::exec::session_path_init(cfg.search_path());
+                }
+
+                // Try to locate the file: first as a literal path, then via
+                // the session search path (which includes the configured dirs).
+                let resolved = std::path::Path::new(arg)
+                    .is_file()
+                    .then(|| std::path::PathBuf::from(arg))
+                    .or_else(|| ccalc_engine::exec::resolve_script_path(arg));
+
+                if let Some(path) = resolved {
+                    let file = std::fs::File::open(&path).unwrap_or_else(|e| {
                         eprintln!("Error opening '{}': {e}", path.display());
                         std::process::exit(1);
                     });
