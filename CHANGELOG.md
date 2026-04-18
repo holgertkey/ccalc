@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-04-18
+
+### Added
+
+- **Phase 13.6a — Backslash operator `\` (left division / linear solve):**
+  - `a \ b` for scalars returns `b / a`.
+  - `A \ b` for a square matrix `A` and column vector (or matrix) `b` solves the
+    linear system `A * x = b` using Gaussian elimination with partial pivoting.
+  - `scalar \ matrix` broadcasts as `matrix / scalar`.
+  - Same operator precedence as `*` and `/` (left-associative).
+- **Phase 13.6b — Path system (`addpath` / `rmpath` / `path`):**
+  - `addpath('dir')` — prepend a directory to the session search path.
+  - `addpath('dir', '-end')` — append instead of prepend.
+  - `rmpath('dir')` — remove a directory from the session search path.
+  - `path()` — display the current search path.
+  - `run()` / `source()` now search the session path after the current directory.
+  - `path` array in `~/.config/ccalc/config.toml` sets the initial path at startup.
+  - `~` is expanded to the home directory (cross-platform).
+  - 13 new regression tests.
+
 ## [0.19.0+003] - 2026-04-17
 
 ### Changed

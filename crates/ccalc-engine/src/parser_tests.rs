@@ -3495,3 +3495,227 @@ fn test_struct_array_collect_mixed_field_gives_cell() {
         other => panic!("expected Cell, got {other:?}"),
     }
 }
+
+// ── Phase 13.6a — Backslash operator (left division / linear solve) ──────────
+
+#[test]
+fn test_ldiv_scalar() {
+    // a \ b = b / a  (use raw strings to avoid Rust escape interpretation)
+    assert_eq!(calc(r"3 \ 12"), 4.0);
+    assert_eq!(calc(r"2 \ 8"), 4.0);
+    assert_eq!(calc(r"4 \ 1"), 0.25);
+}
+
+#[test]
+fn test_ldiv_scalar_precedence() {
+    // Same precedence as *, left-associative:
+    // 6 \ 12 * 2  =>  (6 \ 12) * 2  =>  2 * 2  =>  4
+    assert_eq!(calc(r"6 \ 12 * 2"), 4.0);
+}
+
+#[test]
+fn test_ldiv_zero_divisor() {
+    let env = Env::new();
+    let result = parse(r"0 \ 5").and_then(|s| match s {
+        Stmt::Expr(e) => eval(&e, &env),
+        _ => Err("unexpected".to_string()),
+    });
+    assert!(result.is_err(), "0 \\ 5 should be an error");
+}
+
+#[test]
+fn test_ldiv_matrix_solve() {
+    // A = [2 1; 1 3]; b = [5; 10] => x = [1; 3]
+    use crate::eval::{Base, FormatMode};
+    use crate::exec::exec_stmts;
+    use crate::io::IoContext;
+    let stmts = crate::parser::parse_stmts(r"A = [2 1; 1 3]; b = [5; 10]; x = A \ b").unwrap();
+    let mut env = Env::new();
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::default(),
+        Base::Dec,
+        false,
+    )
+    .unwrap();
+    match env.get("x").unwrap() {
+        Value::Matrix(m) => {
+            assert_eq!(m.nrows(), 2);
+            assert_eq!(m.ncols(), 1);
+            assert!((m[[0, 0]] - 1.0).abs() < 1e-10, "x[0] = {}", m[[0, 0]]);
+            assert!((m[[1, 0]] - 3.0).abs() < 1e-10, "x[1] = {}", m[[1, 0]]);
+        }
+        other => panic!("expected Matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_ldiv_matrix_solve_identity() {
+    // I \ b = b
+    use crate::eval::{Base, FormatMode};
+    use crate::exec::exec_stmts;
+    use crate::io::IoContext;
+    let stmts = crate::parser::parse_stmts(r"b = [3; 7]; x = eye(2) \ b").unwrap();
+    let mut env = Env::new();
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::default(),
+        Base::Dec,
+        false,
+    )
+    .unwrap();
+    match env.get("x").unwrap() {
+        Value::Matrix(m) => {
+            assert!((m[[0, 0]] - 3.0).abs() < 1e-10);
+            assert!((m[[1, 0]] - 7.0).abs() < 1e-10);
+        }
+        other => panic!("expected Matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_ldiv_scalar_times_matrix() {
+    // 2 \ [4; 8] = [2; 4]
+    use crate::eval::{Base, FormatMode};
+    use crate::exec::exec_stmts;
+    use crate::io::IoContext;
+    let stmts = crate::parser::parse_stmts(r"x = 2 \ [4; 8]").unwrap();
+    let mut env = Env::new();
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::default(),
+        Base::Dec,
+        false,
+    )
+    .unwrap();
+    match env.get("x").unwrap() {
+        Value::Matrix(m) => {
+            assert!((m[[0, 0]] - 2.0).abs() < 1e-10);
+            assert!((m[[1, 0]] - 4.0).abs() < 1e-10);
+        }
+        other => panic!("expected Matrix, got {other:?}"),
+    }
+}
+
+// ── Phase 13.6b — Path system ────────────────────────────────────────────────
+
+#[test]
+fn test_session_path_init_and_list() {
+    use crate::exec::{session_path_init, session_path_list};
+    let paths = vec![
+        std::path::PathBuf::from("/a/b"),
+        std::path::PathBuf::from("/c/d"),
+    ];
+    session_path_init(paths.clone());
+    let got = session_path_list();
+    assert_eq!(got, paths);
+    // cleanup
+    session_path_init(vec![]);
+}
+
+#[test]
+fn test_session_path_add_prepend() {
+    use crate::exec::{session_path_add, session_path_init, session_path_list};
+    session_path_init(vec![std::path::PathBuf::from("/existing")]);
+    session_path_add(std::path::PathBuf::from("/new"), false); // prepend
+    let got = session_path_list();
+    assert_eq!(got[0], std::path::PathBuf::from("/new"));
+    assert_eq!(got[1], std::path::PathBuf::from("/existing"));
+    session_path_init(vec![]);
+}
+
+#[test]
+fn test_session_path_add_append() {
+    use crate::exec::{session_path_add, session_path_init, session_path_list};
+    session_path_init(vec![std::path::PathBuf::from("/existing")]);
+    session_path_add(std::path::PathBuf::from("/new"), true); // append
+    let got = session_path_list();
+    assert_eq!(got[0], std::path::PathBuf::from("/existing"));
+    assert_eq!(got[1], std::path::PathBuf::from("/new"));
+    session_path_init(vec![]);
+}
+
+#[test]
+fn test_session_path_add_deduplicates() {
+    use crate::exec::{session_path_add, session_path_init, session_path_list};
+    session_path_init(vec![
+        std::path::PathBuf::from("/a"),
+        std::path::PathBuf::from("/b"),
+    ]);
+    // Adding /a again (prepend) should remove it from position 0, re-insert at front
+    session_path_add(std::path::PathBuf::from("/a"), false);
+    let got = session_path_list();
+    assert_eq!(got.len(), 2, "no duplicates: {got:?}");
+    assert_eq!(got[0], std::path::PathBuf::from("/a"));
+    session_path_init(vec![]);
+}
+
+#[test]
+fn test_session_path_remove() {
+    use crate::exec::{session_path_init, session_path_list, session_path_remove};
+    session_path_init(vec![
+        std::path::PathBuf::from("/a"),
+        std::path::PathBuf::from("/b"),
+    ]);
+    session_path_remove(std::path::Path::new("/a"));
+    let got = session_path_list();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0], std::path::PathBuf::from("/b"));
+    session_path_init(vec![]);
+}
+
+#[test]
+fn test_addpath_via_exec() {
+    use crate::eval::{Base, FormatMode};
+    use crate::exec::{exec_stmts, session_path_init, session_path_list};
+    use crate::io::IoContext;
+    session_path_init(vec![]);
+    let stmts = crate::parser::parse_stmts(r#"addpath('/tmp/mylib')"#).unwrap();
+    let mut env = Env::new();
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::default(),
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    let got = session_path_list();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0], std::path::PathBuf::from("/tmp/mylib"));
+    session_path_init(vec![]);
+}
+
+#[test]
+fn test_rmpath_via_exec() {
+    use crate::eval::{Base, FormatMode};
+    use crate::exec::{exec_stmts, session_path_init, session_path_list};
+    use crate::io::IoContext;
+    session_path_init(vec![std::path::PathBuf::from("/tmp/mylib")]);
+    let stmts = crate::parser::parse_stmts(r#"rmpath('/tmp/mylib')"#).unwrap();
+    let mut env = Env::new();
+    let mut io = IoContext::new();
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::default(),
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    let got = session_path_list();
+    assert!(got.is_empty());
+    session_path_init(vec![]);
+}

@@ -17,6 +17,10 @@ precision = 10
 
 # Default number base for output: "dec", "hex", "bin", "oct"
 base = "dec"
+
+# Search path for run() / source() — directories checked after the current working directory.
+# Tilde (~) is expanded to the home directory.
+# path = ["~/.config/ccalc/lib"]
 "#;
 
 // ---------------------------------------------------------------------------
@@ -26,6 +30,9 @@ base = "dec"
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub display: DisplayConfig,
+    /// Directories added to the script search path at startup.
+    #[serde(default)]
+    pub path: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,6 +62,32 @@ impl Config {
             "oct" => Base::Oct,
             _ => Base::Dec,
         }
+    }
+
+    /// Returns the search path as `PathBuf`s with `~` expanded.
+    pub fn search_path(&self) -> Vec<std::path::PathBuf> {
+        self.path
+            .iter()
+            .map(|s| std::path::PathBuf::from(expand_tilde(s)))
+            .collect()
+    }
+}
+
+fn expand_tilde(path: &str) -> String {
+    if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return path.to_string();
+        }
+        if path == "~" {
+            home
+        } else {
+            format!("{}{}", home, &path[1..])
+        }
+    } else {
+        path.to_string()
     }
 }
 

@@ -142,6 +142,8 @@ pub enum Op {
     // --- Element-wise logical (matrices allowed, no short-circuit) ---
     ElemAnd,
     ElemOr,
+    /// Left division: `A \ b` solves `A*x = b`. Scalar: `a \ b = b / a`.
+    LDiv,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -691,6 +693,12 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                     }
                     lv / rv
                 }
+                Op::LDiv => {
+                    if lv == 0.0 {
+                        return Err("Left division by zero (a \\ b requires a ≠ 0)".to_string());
+                    }
+                    rv / lv
+                }
                 Op::Pow | Op::ElemPow => lv.powf(rv),
                 Op::Eq => bool_to_f64(lv == rv),
                 Op::NotEq => bool_to_f64(lv != rv),
@@ -757,6 +765,7 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                 ))
             }
             Op::Div => Err("Matrix / Matrix: use inv(B)*A or A*inv(B)".to_string()),
+            Op::LDiv => Ok(Value::Matrix(solve_linear(&lm, &rm)?)),
             Op::Pow => Err("Matrix ^ Matrix: not supported".to_string()),
         },
         (Value::Scalar(s), Value::Matrix(m)) => match op {
@@ -765,6 +774,12 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Mul | Op::ElemMul => Ok(Value::Matrix(s * &m)),
             Op::Div => Err("Scalar / Matrix: not supported".to_string()),
             Op::ElemDiv => Err("Scalar ./ Matrix: not supported".to_string()),
+            Op::LDiv => {
+                if s == 0.0 {
+                    return Err("Left division by zero (a \\ B requires a ≠ 0)".to_string());
+                }
+                Ok(Value::Matrix(m.mapv(|x| x / s)))
+            }
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
             Op::Eq
             | Op::NotEq
@@ -782,6 +797,10 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             Op::Sub => Ok(Value::Matrix(&m - s)),
             Op::Mul | Op::ElemMul => Ok(Value::Matrix(&m * s)),
             Op::Div | Op::ElemDiv => Ok(Value::Matrix(m.mapv(|x| x / s))),
+            Op::LDiv => {
+                let b = Array2::from_elem((m.nrows(), 1), s);
+                Ok(Value::Matrix(solve_linear(&m, &b)?))
+            }
             Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
             Op::Eq
             | Op::NotEq
@@ -896,6 +915,7 @@ fn complex_binop(re1: f64, im1: f64, op: &Op, re2: f64, im2: f64) -> Result<Valu
         Op::Or | Op::ElemOr => Ok(Value::Scalar(bool_to_f64(
             re1 != 0.0 || im1 != 0.0 || re2 != 0.0 || im2 != 0.0,
         ))),
+        Op::LDiv => Err("Left division (\\) is not supported for complex numbers".to_string()),
     }
 }
 
@@ -2984,6 +3004,83 @@ fn inv_matrix(m: &Array2<f64>) -> Result<Array2<f64>, String> {
     Ok(result)
 }
 
+/// Solves the linear system `A * x = B` using Gaussian elimination with partial pivoting.
+///
+/// `A` must be square (n×n); `B` must have n rows. Returns x (n × k where k = B.ncols()).
+/// This is the engine for the `\` left-division operator.
+fn solve_linear(a: &Array2<f64>, b: &Array2<f64>) -> Result<Array2<f64>, String> {
+    let n = a.nrows();
+    if a.ncols() != n {
+        return Err(format!(
+            "\\: coefficient matrix must be square, got {}×{}",
+            n,
+            a.ncols()
+        ));
+    }
+    let k = b.ncols();
+    if b.nrows() != n {
+        return Err(format!(
+            "\\: size mismatch — A is {}×{} but b has {} rows",
+            n,
+            n,
+            b.nrows()
+        ));
+    }
+    if n == 0 {
+        return Ok(Array2::zeros((0, k)));
+    }
+    let cols = n + k;
+    let mut aug = vec![0.0f64; n * cols];
+    for i in 0..n {
+        for j in 0..n {
+            aug[i * cols + j] = a[[i, j]];
+        }
+        for j in 0..k {
+            aug[i * cols + n + j] = b[[i, j]];
+        }
+    }
+    for col in 0..n {
+        let pivot = (col..n)
+            .max_by(|&r1, &r2| {
+                aug[r1 * cols + col]
+                    .abs()
+                    .partial_cmp(&aug[r2 * cols + col].abs())
+                    .unwrap()
+            })
+            .filter(|&r| aug[r * cols + col].abs() > 1e-12)
+            .ok_or_else(|| "\\: matrix is singular or nearly singular".to_string())?;
+        if pivot != col {
+            for j in 0..cols {
+                aug.swap(col * cols + j, pivot * cols + j);
+            }
+        }
+        let pv = aug[col * cols + col];
+        for j in col..cols {
+            aug[col * cols + j] /= pv;
+        }
+        for row in 0..n {
+            if row == col {
+                continue;
+            }
+            let factor = aug[row * cols + col];
+            if factor == 0.0 {
+                continue;
+            }
+            for j in col..cols {
+                let val = aug[col * cols + j] * factor;
+                aug[row * cols + j] -= val;
+            }
+        }
+    }
+    let mut result = Array2::<f64>::zeros((n, k));
+    for i in 0..n {
+        for j in 0..k {
+            result[[i, j]] = aug[i * cols + n + j];
+        }
+    }
+    Ok(result)
+}
+
 // ---------------------------------------------------------------------------
 // Indexing
 // ---------------------------------------------------------------------------
@@ -3392,6 +3489,7 @@ pub fn expr_to_string(e: &Expr) -> String {
                 Op::Or => "||",
                 Op::ElemAnd => "&",
                 Op::ElemOr => "|",
+                Op::LDiv => "\\",
             };
             format!("{} {op_str} {}", expr_to_string(l), expr_to_string(r))
         }

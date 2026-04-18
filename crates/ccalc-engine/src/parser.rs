@@ -138,6 +138,7 @@ enum Token {
     // --- Additional operators ---
     StarStar,      // ** (alias for ^)
     DotApostrophe, // .' (non-conjugate transpose)
+    Backslash,     // \ (left division / linear solve)
     // --- Struct field access ---
     Dot, // '.' followed by an ASCII letter (field access)
 }
@@ -597,6 +598,10 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             }
             '@' => {
                 tokens.push(Token::At);
+                chars.next();
+            }
+            '\\' => {
+                tokens.push(Token::Backslash);
                 chars.next();
             }
             'a'..='z' | 'A'..='Z' | '_' => {
@@ -1878,6 +1883,11 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 *pos += 1;
                 let right = parse_power(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::ElemDiv, Box::new(right));
+            }
+            Token::Backslash => {
+                *pos += 1;
+                let right = parse_power(tokens, pos)?;
+                left = Expr::BinOp(Box::new(left), Op::LDiv, Box::new(right));
             }
             Token::LParen => {
                 // Implicit multiplication: expr(...)

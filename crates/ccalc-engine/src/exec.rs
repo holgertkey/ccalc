@@ -4,6 +4,28 @@ use std::rc::Rc;
 /// Parsed function body cache: body source string → pre-parsed, all-silent statements.
 type BodyCache = HashMap<String, Rc<Vec<(Stmt, bool)>>>;
 
+/// Expands a leading `~` to the user's home directory.
+///
+/// On Windows `USERPROFILE` is tried as a fallback for `HOME`. If neither is set the
+/// string is returned unchanged.
+fn expand_tilde(path: &str) -> String {
+    if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return path.to_string();
+        }
+        if path == "~" {
+            home
+        } else {
+            format!("{}{}", home, &path[1..])
+        }
+    } else {
+        path.to_string()
+    }
+}
+
 use indexmap::IndexMap;
 use ndarray::Array2;
 
@@ -25,6 +47,13 @@ thread_local! {
     /// pushed here. `resolve_script_path` searches this stack (top-first) so that helper
     /// scripts can be referenced by bare name relative to the calling script's directory.
     static SCRIPT_DIR_STACK: std::cell::RefCell<Vec<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Session search path — initialized from `config.toml` at startup.
+    ///
+    /// `addpath`/`rmpath` mutate this list for the current session; changes are never
+    /// written back to `config.toml`. `resolve_script_path` searches here after CWD.
+    static SESSION_PATH: std::cell::RefCell<Vec<std::path::PathBuf>> =
         const { std::cell::RefCell::new(Vec::new()) };
 
     /// Parse cache for named function bodies.
@@ -91,6 +120,40 @@ pub fn script_dir_push(dir: &std::path::Path) {
 /// Pop the most recently pushed script directory from the search stack.
 pub fn script_dir_pop() {
     SCRIPT_DIR_STACK.with(|s| s.borrow_mut().pop());
+}
+
+/// Initializes the session search path from the config `path` array.
+///
+/// Called once at startup (after loading `config.toml`). Each entry has `~` already
+/// expanded by the caller.
+pub fn session_path_init(paths: Vec<std::path::PathBuf>) {
+    SESSION_PATH.with(|p| *p.borrow_mut() = paths);
+}
+
+/// Prepends (default) or appends a directory to the session search path.
+///
+/// If the same path is already present it is removed from its current position
+/// before being re-inserted, so the path list contains no duplicates.
+pub fn session_path_add(path: std::path::PathBuf, append: bool) {
+    SESSION_PATH.with(|p| {
+        let mut v = p.borrow_mut();
+        v.retain(|e| e != &path);
+        if append {
+            v.push(path);
+        } else {
+            v.insert(0, path);
+        }
+    });
+}
+
+/// Removes a directory from the session search path (exact match).
+pub fn session_path_remove(path: &std::path::Path) {
+    SESSION_PATH.with(|p| p.borrow_mut().retain(|e| e.as_path() != path));
+}
+
+/// Returns a snapshot of the current session search path.
+pub fn session_path_list() -> Vec<std::path::PathBuf> {
+    SESSION_PATH.with(|p| p.borrow().clone())
 }
 
 /// Called by `eval_inner` whenever a user function (`Value::Function`) is invoked.
@@ -228,11 +291,17 @@ fn call_user_function(
 /// Otherwise, `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility).
 /// The search is relative to the current working directory.
 fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
-    // Build candidate base paths: CWD-relative first, then each stacked script dir (top-first).
+    // Build candidate base paths: CWD-relative first, then each stacked script dir (top-first),
+    // then the session search path entries in order.
     let p = std::path::Path::new(name);
     let mut bases: Vec<std::path::PathBuf> = vec![p.to_path_buf()];
     SCRIPT_DIR_STACK.with(|stack| {
         for dir in stack.borrow().iter().rev() {
+            bases.push(dir.join(p));
+        }
+    });
+    SESSION_PATH.with(|sp| {
+        for dir in sp.borrow().iter() {
             bases.push(dir.join(p));
         }
     });
@@ -421,6 +490,92 @@ pub fn exec_stmts(
             }
 
             Stmt::Expr(expr) => {
+                // Intercept addpath()/rmpath()/path() — mutate the session search path.
+                if let Expr::Call(fn_name, args) = expr
+                    && matches!(fn_name.as_str(), "addpath" | "rmpath" | "path")
+                {
+                    match fn_name.as_str() {
+                        "addpath" => {
+                            if args.is_empty() || args.len() > 2 {
+                                return Err(
+                                    "addpath: expects 1 or 2 arguments: addpath(dir) or addpath(dir, '-end')".to_string()
+                                );
+                            }
+                            let path_val = eval_with_io(&args[0], env, io)?;
+                            let path_str = match &path_val {
+                                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                                _ => {
+                                    return Err(
+                                        "addpath: argument must be a string (directory path)"
+                                            .to_string(),
+                                    );
+                                }
+                            };
+                            let append = if args.len() == 2 {
+                                let flag_val = eval_with_io(&args[1], env, io)?;
+                                match &flag_val {
+                                    Value::Str(s) | Value::StringObj(s) if s == "-end" => true,
+                                    Value::Str(_) | Value::StringObj(_) => {
+                                        return Err(
+                                            "addpath: second argument must be '-end' (to append) or omitted (to prepend)".to_string()
+                                        );
+                                    }
+                                    _ => {
+                                        return Err(
+                                            "addpath: second argument must be a string '-end'"
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            } else {
+                                false
+                            };
+                            let expanded = expand_tilde(&path_str);
+                            let pb = std::path::PathBuf::from(&expanded);
+                            session_path_add(pb, append);
+                            if !silent {
+                                for p in session_path_list() {
+                                    println!("{}", p.display());
+                                }
+                            }
+                        }
+                        "rmpath" => {
+                            if args.len() != 1 {
+                                return Err("rmpath: expects exactly 1 argument".to_string());
+                            }
+                            let path_val = eval_with_io(&args[0], env, io)?;
+                            let path_str = match &path_val {
+                                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                                _ => {
+                                    return Err(
+                                        "rmpath: argument must be a string (directory path)"
+                                            .to_string(),
+                                    );
+                                }
+                            };
+                            let expanded = expand_tilde(&path_str);
+                            session_path_remove(std::path::Path::new(&expanded));
+                        }
+                        "path" => {
+                            if !args.is_empty() {
+                                return Err("path: takes no arguments".to_string());
+                            }
+                            if !silent {
+                                let paths = session_path_list();
+                                if paths.is_empty() {
+                                    println!("(search path is empty)");
+                                } else {
+                                    for p in &paths {
+                                        println!("{}", p.display());
+                                    }
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    continue;
+                }
+
                 // Intercept run()/source() — execute a script file in the current workspace.
                 // Variables defined in the script persist in the caller's scope (MATLAB `run` semantics).
                 if let Expr::Call(fn_name, args) = expr

@@ -243,6 +243,7 @@ pub fn run() {
     let mut fmt = FormatMode::Custom(cfg.precision());
     let mut compact = false;
     let mut base = cfg.base();
+    ccalc_engine::exec::session_path_init(cfg.search_path());
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     let history_path = config_dir().join("history");
@@ -592,6 +593,11 @@ pub fn run() {
                 continue;
             }
 
+            // addpath() / rmpath() / path() — search path management
+            if try_path_cmd(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
             // MultiAssign / FunctionDef / Return — can't go through evaluate()
             if try_exec_stmt(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
                 continue;
@@ -904,6 +910,36 @@ fn try_run_source(
     }
 }
 
+/// Tries to handle `addpath(...)`, `rmpath(...)`, `path()` commands.
+///
+/// These are intercepted at the exec_stmts level when called from blocks, but for
+/// single-line evaluation in REPL/pipe mode they must also be caught here.
+/// Returns `true` if the statement was handled (regardless of success/failure).
+fn try_path_cmd(
+    stmt: &str,
+    silent: bool,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> bool {
+    let s = stmt.trim_start();
+    if !s.starts_with("addpath(") && !s.starts_with("rmpath(") && !s.starts_with("path()") {
+        return false;
+    }
+    match parse(stmt) {
+        Ok(parsed) => {
+            match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
+                Ok(_) => {}
+                Err(e) => eprintln!("Error: {e}"),
+            }
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// Process lines from a non-interactive reader (pipe, file redirect).
 /// Prints one result per expression line; no prompts.
 pub fn run_pipe(reader: impl BufRead) {
@@ -912,6 +948,12 @@ pub fn run_pipe(reader: impl BufRead) {
     let mut fmt = FormatMode::default();
     let mut compact = false;
     let mut base = Base::Dec;
+    {
+        let config_path = ccalc_engine::env::config_dir().join("config.toml");
+        if let Ok(cfg) = crate::config::load(&config_path) {
+            ccalc_engine::exec::session_path_init(cfg.search_path());
+        }
+    }
 
     // Multi-line block buffering state
     let mut block_buf: Vec<String> = Vec::new();
@@ -1150,6 +1192,11 @@ pub fn run_pipe(reader: impl BufRead) {
 
             // run() / source() — execute a script file in the current workspace
             if try_run_source(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
+            // addpath() / rmpath() / path() — search path management
+            if try_path_cmd(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
                 continue;
             }
 
