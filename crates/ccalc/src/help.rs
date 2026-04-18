@@ -23,9 +23,7 @@ pub fn print(topic: Option<&str>) {
         Some(
             "control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source"
             | "path" | "addpath" | "rmpath",
-        ) => {
-            print_control()
-        }
+        ) => print_control(),
         Some(
             "userfuncs" | "userfunc" | "ufunc" | "lambda" | "lambdas" | "anon" | "user"
             | "function" | "closures",
