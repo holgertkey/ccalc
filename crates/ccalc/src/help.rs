@@ -20,7 +20,10 @@ pub fn print(topic: Option<&str>) {
         Some("complex" | "cplx" | "imag") => print_complex(),
         Some("strings" | "string" | "str" | "char") => print_strings(),
         Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose") => print_fileio(),
-        Some("control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source") => {
+        Some(
+            "control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source"
+            | "path" | "addpath" | "rmpath",
+        ) => {
             print_control()
         }
         Some(
@@ -36,7 +39,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -96,6 +99,7 @@ Bases   0xFF  0b1010  0o17    hex dec bin oct base
 
 Matrix  [1 2 3]   [1;2;3]   [1 2;3 4]
         A*B (matmul)  A' (transpose)  A.*B  A./B  A.^n
+        A\\b (left-divide / linear solve)  a\\b = b/a (scalar)
         zeros(m,n)  ones(m,n)  eye(n)  size  det  inv  trace
 Range   1:5  →  [1 2 3 4 5]     1:2:9  →  [1 3 5 7 9]
         linspace(a,b,n)   [1:3, 10]  →  [1 2 3 10]
@@ -125,6 +129,10 @@ Control   if cond / elseif / else / end
           break   continue
 Scripts   run('file.calc')  run('file')     .calc first, then .m
           source('file')                    Octave alias for run()
+Path      addpath('/dir')                   prepend to session search path
+          addpath('/dir', '-end')           append to session search path
+          rmpath('/dir')                    remove from search path
+          path()                            display current search path
 Functions function y = f(x) ... end         named, single return
           function [a,b] = f(x) ... end     multiple return values
           [a,b] = f(x)   [~,b] = f(x)      multi-assign, ~ discards
@@ -184,7 +192,8 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
   help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
-  help control     if/for/while, break/continue, compound assignment
+  help control     if/for/while, break/continue, compound assignment, run/source
+  help path        addpath/rmpath/path() — session search path
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -210,7 +219,7 @@ Operators
       postfix '  .'  transpose / plain transpose
       ^  **       exponentiation (right-associative)
       unary +  -  ~  no-op, negation, logical NOT
-      *  /  .*  ./  .^   multiply, divide, element-wise
+      *  /  \\  .*  ./  .^  multiply, divide, left-divide, element-wise
       +  -        addition, subtraction
       :           range (a:b, a:step:b)
       ==  ~=  <  >  <=  >=   comparison (non-associative)
@@ -679,6 +688,16 @@ Element-wise operators  (.* ./ .^ — shapes must match)
     A .* B            element-wise product  (Hadamard product)
     A ./ B            element-wise division
     A .^ 2            element-wise power  (same as A .* A)
+
+Left division (backslash)
+    A \\ b            solve A*x = b  (Gaussian elim with partial pivoting)
+                      more stable than inv(A) * b
+    a \\ b            scalar: equivalent to b / a
+    A \\ B            multiple RHS: solve for each column of B independently
+
+    A = [2 1; 5 7];  b = [11; 13];
+    x = A \\ b              →  [3; 5]   (solves exactly)
+    4 \\ 20                 →  5        (scalar: 20 / 4)
 
 Built-in functions
     zeros(m,n)        m×n matrix of zeros
@@ -1195,7 +1214,9 @@ Script files  (see examples/ directory)
     ccalc examples/user_functions.calc
     ccalc examples/cell_arrays.calc
     ccalc examples/structs.calc
-    ccalc examples/struct_arrays.calc"
+    ccalc examples/struct_arrays.calc
+    ccalc examples/matrix_ops.calc
+    ccalc examples/path_system.calc"
     );
 }
 
@@ -1434,6 +1455,30 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
     run('euclid_helper')       % defines g = gcd(a, b) in workspace
     fprintf('gcd = %d\\n', g)   % 21
 
+─── Search path (addpath / rmpath / path) ─────────────────────────────────────
+
+  addpath('/dir')             prepend directory to the session search path
+  addpath('/dir', '-end')     append directory to the session search path
+  rmpath('/dir')              remove directory from the session search path
+  path()                      display all search path entries
+
+  Search order for run() and script lookup:
+    1. Current working directory
+    2. Session path entries in order (first entry wins)
+
+  Duplicate entries are silently deduplicated (last addpath wins position).
+  path changes are session-only; they are NOT written back to config.toml.
+  ~ is expanded to the user's home directory on all platforms.
+
+  To make paths persistent, add them to ~/.config/ccalc/config.toml:
+    path = [\"~/.config/ccalc/lib\", \"/home/user/scripts\"]
+
+  Example:
+    addpath('/my/scripts')
+    addpath('/my/utils', '-end')
+    path()                     % list the current path
+    rmpath('/my/utils')        % remove an entry
+
 ─── REPL multi-line input ─────────────────────────────────────────────────────
 
   The REPL detects unclosed blocks by tracking depth changes:
@@ -1442,9 +1487,11 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
   Lines accumulate with a continuation prompt until the block is complete.
   Press Ctrl+C to cancel an in-progress block.
 
-See also: help syntax  help logic  help userfuncs
+See also: help syntax  help logic  help userfuncs  help path
 Examples: ccalc examples/control_flow.calc
-          ccalc examples/extended_control_flow.calc"
+          ccalc examples/extended_control_flow.calc
+          ccalc examples/matrix_ops.calc   (backslash linear solve)
+          ccalc examples/path_system.calc  (addpath/rmpath/path demo)"
     );
 }
 

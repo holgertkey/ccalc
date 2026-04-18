@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.19.0+003** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.20.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -382,6 +382,7 @@ ans =
 | `trace(A)`      | Sum of diagonal elements              |
 | `det(A)`        | Determinant                           |
 | `inv(A)`        | Inverse matrix                        |
+| `A \ b`         | Solve linear system `A*x = b`         |
 
 The REPL prompt shows the matrix dimensions when `ans` is a matrix.
 `who` displays dimensions: `A = [2×2 double]`.
@@ -1143,6 +1144,23 @@ source('utils')           % Octave alias for run()
 ```
 
 Extension resolution for bare names: `.calc` is tried first (native), then `.m` (compatibility).
+
+### Search path (`addpath` / `rmpath` / `path`)
+
+A session search path controls where `run()` looks for scripts. Entries are checked after the current working directory:
+
+```matlab
+addpath('/my/scripts')            % prepend — highest priority
+addpath('/my/utils', '-end')      % append  — lowest priority
+rmpath('/my/scripts')             % remove entry
+path()                            % display current path
+```
+
+Persistent paths can be configured in `~/.config/ccalc/config.toml`:
+
+```toml
+path = ["~/.config/ccalc/lib", "/home/user/scripts"]
+```
 
 ### Compound assignment operators
 
