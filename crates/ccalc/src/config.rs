@@ -11,16 +11,19 @@ use ccalc_engine::eval::Base;
 const DEFAULT_CONFIG: &str = r#"# ccalc configuration
 # Edit this file and run 'config reload' in the REPL to apply changes.
 
+# Search path for run() / source() — directories checked after the current working directory.
+# Tilde (~) is expanded to the home directory.
+# On Windows use forward slashes or escaped backslashes:
+#   path = ["C:/Users/me/scripts", "D:/work/calc"]
+#   path = ["C:\\Users\\me\\scripts"]
+# path = ["~/.config/ccalc/lib"]
+
 [display]
 # Default decimal precision (number of digits after the decimal point, 0–15).
 precision = 10
 
 # Default number base for output: "dec", "hex", "bin", "oct"
 base = "dec"
-
-# Search path for run() / source() — directories checked after the current working directory.
-# Tilde (~) is expanded to the home directory.
-# path = ["~/.config/ccalc/lib"]
 "#;
 
 // ---------------------------------------------------------------------------
@@ -180,5 +183,58 @@ mod tests {
         std::fs::write(&path, "[display]\nprecision = 10\nbase = \"invalid\"\n").unwrap();
         let cfg = load(&path).unwrap();
         assert!(matches!(cfg.base(), Base::Dec));
+    }
+
+    #[test]
+    fn search_path_loaded_from_top_level() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        // path must be at the TOML root, not under [display]
+        std::fs::write(
+            &path,
+            "path = [\"/my/scripts\", \"/home/user/calc\"]\n\n[display]\nprecision = 10\nbase = \"dec\"\n",
+        )
+        .unwrap();
+        let cfg = load(&path).unwrap();
+        let sp = cfg.search_path();
+        assert_eq!(sp.len(), 2);
+        assert_eq!(sp[0], std::path::PathBuf::from("/my/scripts"));
+        assert_eq!(sp[1], std::path::PathBuf::from("/home/user/calc"));
+    }
+
+    #[test]
+    fn search_path_under_display_is_ignored() {
+        // Regression: old DEFAULT_CONFIG placed the path comment under [display].
+        // If a user uncommented it there, path was silently ignored.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[display]\nprecision = 10\nbase = \"dec\"\npath = [\"/wrong\"]\n",
+        )
+        .unwrap();
+        // TOML parses this as display.path (unknown field) — serde should ignore it
+        // and cfg.path (root level) stays empty.
+        let cfg = load(&path).unwrap();
+        assert!(cfg.search_path().is_empty());
+    }
+
+    #[test]
+    fn search_path_windows_forward_slashes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        // Windows paths with forward slashes are valid TOML and valid PathBuf on Windows
+        std::fs::write(
+            &path,
+            "path = [\"e:/github.com/holgertkey/ccalc/examples\"]\n\n[display]\nprecision = 10\nbase = \"dec\"\n",
+        )
+        .unwrap();
+        let cfg = load(&path).unwrap();
+        let sp = cfg.search_path();
+        assert_eq!(sp.len(), 1);
+        assert_eq!(
+            sp[0],
+            std::path::PathBuf::from("e:/github.com/holgertkey/ccalc/examples")
+        );
     }
 }
