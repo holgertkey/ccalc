@@ -1,0 +1,54 @@
+% Path system demo — Phase 13.6b
+%
+% Covers: addpath, rmpath, path()
+%
+% The session search path controls where run() and source() look for scripts.
+% Search order: current working directory → session path entries (in order).
+%
+% Usage: ccalc path_system.calc
+
+% --- 1. View the initial search path ---
+
+fprintf('Initial search path:\n')
+path()
+
+% --- 2. Add directories ---
+
+addpath('/tmp/mylib');
+fprintf('\nAfter addpath(''/tmp/mylib'') — prepended:\n')
+path()
+
+addpath('/tmp/utils', '-end');
+fprintf('\nAfter addpath(''/tmp/utils'',''-end'') — appended:\n')
+path()
+
+% --- 3. Prepend takes priority ---
+
+addpath('/tmp/priority');
+fprintf('\nAfter addpath(''/tmp/priority'') — at the front:\n')
+path()
+
+% --- 4. Adding a duplicate moves it to the front (no duplicates kept) ---
+
+addpath('/tmp/mylib');
+fprintf('\nAfter addpath(''/tmp/mylib'') again — moved to front, no duplicate:\n')
+path()
+
+% --- 5. Remove an entry ---
+
+rmpath('/tmp/utils');
+fprintf('\nAfter rmpath(''/tmp/utils''):\n')
+path()
+
+% --- 6. Clean up for the session ---
+
+rmpath('/tmp/mylib');
+rmpath('/tmp/priority');
+fprintf('\nCleaned up — search path restored:\n')
+path()
+
+fprintf('\nDone.\n')
+fprintf('\nNote: addpath/rmpath affect this session only.\n')
+fprintf('To persist paths across sessions, add them to:\n')
+fprintf('  ~/.config/ccalc/config.toml\n')
+fprintf('  path = [\"/my/scripts\", \"~/.config/ccalc/lib\"]\n')

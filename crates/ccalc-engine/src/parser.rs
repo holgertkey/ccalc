@@ -1008,13 +1008,22 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
     let mut bracket_depth: i32 = 0;
     let mut brace_depth: i32 = 0;
 
-    for (i, c) in input.char_indices() {
+    let chars: Vec<(usize, char)> = input.char_indices().collect();
+    let mut ci = 0;
+    while ci < chars.len() {
+        let (i, c) = chars[ci];
         let at_depth0 =
             !in_sq && !in_dq && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0;
         match c {
             '\'' if !in_dq => {
                 if in_sq {
-                    in_sq = false;
+                    // Check for '' (escaped single quote) — stay inside the string.
+                    let next = chars.get(ci + 1).map(|&(_, c)| c);
+                    if next == Some('\'') {
+                        ci += 1; // skip the second '
+                    } else {
+                        in_sq = false;
+                    }
                 } else {
                     let before = input[..i].trim_end_matches([' ', '\t']);
                     let is_transpose = before.ends_with(|c: char| {
@@ -1051,6 +1060,7 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
             ',' if at_depth0 => separators.push((i, false)),
             _ => {}
         }
+        ci += 1;
     }
 
     let content = input[..comment_at].trim_end();

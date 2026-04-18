@@ -1,7 +1,8 @@
-% Matrix operations — Phase 4 feature demo
+% Matrix operations — Phase 4 + Phase 13.6 feature demo
 %
 % Covers: matrix multiply (*), transpose ('), element-wise (.* ./ .^),
-%         and built-ins: zeros, ones, eye, size, numel, trace, det, inv
+%         built-ins: zeros, ones, eye, size, numel, trace, det, inv,
+%         and the backslash operator \ (left division / linear solve)
 %
 % Usage: ccalc matrix_ops.calc
 
@@ -37,22 +38,31 @@ fprintf('R'' * q (back to p):\n')
 disp(p_back)
 
 % --- 3. Solving a 2x2 linear system: A*x = b ---
+%
+% Two equivalent approaches:
+%   inv(A)*b  — forms the inverse explicitly (less stable, two operations)
+%   A \ b     — left division: solves directly via Gaussian elimination (preferred)
 
 A = [2 1; 5 7];
 b = [11; 13];
 
-x = inv(A) * b;
 fprintf('A:\n')
 disp(A)
 fprintf('b: ')
 disp(b')
-fprintf('Solution x = inv(A)*b: ')
-disp(x')
 
+x1 = inv(A) * b;
+fprintf('Solution via inv(A)*b: ')
+disp(x1')
+
+x2 = A \ b;
+fprintf('Solution via A \\ b:    ')
+disp(x2')
+
+% Both give the same result; \ is numerically more stable and concise.
 % Verify: residual A*x - b should be near zero
-r = A * x - b;
-fprintf('Residual ||A*x - b||:\n')
-disp(r' * r)
+r = A * x2 - b;
+fprintf('Residual ||A*x - b||:  %.2e\n', norm(r))
 
 % --- 4. Element-wise operations on a column vector ---
 
@@ -94,3 +104,25 @@ fprintf('inv(B):\n')
 disp(Binv)
 fprintf('inv(B) * B — should be identity:\n')
 disp(Binv * B)
+
+% --- 6. Backslash: solving multiple right-hand sides at once ---
+%
+% A \ B where B has multiple columns solves each column independently.
+% Equivalent to [A\b1, A\b2, ...] but in a single operation.
+
+C = [4 1; 2 3];
+B2 = [5 1; 10 0];        % two right-hand sides as columns
+
+X = C \ B2;
+fprintf('\nC \ B (two RHS at once):\n')
+disp(X)
+fprintf('Verify C * X - B (should be ~0):\n')
+disp(C * X - B2)
+
+% --- 7. Scalar left division ---
+%
+% a \ b = b / a  — useful shorthand when a is a scalar denominator
+
+fprintf('Scalar: 4 \ 20 = %g\n', 4 \ 20)
+fprintf('Scalar: 3 \ [6; 9; 12] = ')
+disp((3 \ [6; 9; 12])')

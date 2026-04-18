@@ -3719,3 +3719,24 @@ fn test_rmpath_via_exec() {
     assert!(got.is_empty());
     session_path_init(vec![]);
 }
+
+// ── Bug regression: split_stmts must handle '' (escaped quote) correctly ──
+
+#[test]
+fn test_split_stmts_escaped_quote_no_false_split() {
+    // A string with '' and a comma inside must NOT be split on the comma.
+    // Before fix: the '' confused in_sq tracking, making the comma appear
+    // to be at depth-0, producing a spurious second statement.
+    let stmts = crate::parser::split_stmts(r"fprintf('hello ''world'', no split')");
+    assert_eq!(stmts.len(), 1, "must be one statement, got: {stmts:?}");
+    assert_eq!(stmts[0].0, r"fprintf('hello ''world'', no split')");
+}
+
+#[test]
+fn test_split_stmts_escaped_quote_with_semicolon_split() {
+    // A real semicolon outside the string should still split.
+    let stmts = crate::parser::split_stmts(r"x = 'it''s fine'; y = 2");
+    assert_eq!(stmts.len(), 2, "must be two statements, got: {stmts:?}");
+    assert!(stmts[0].1, "first stmt (x=...) should be silent");
+    assert!(!stmts[1].1, "second stmt (y=2) should be non-silent");
+}
