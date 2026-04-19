@@ -25,6 +25,10 @@ pub fn print(topic: Option<&str>) {
             | "path" | "addpath" | "rmpath",
         ) => print_control(),
         Some(
+            "errors" | "error" | "warning" | "try" | "catch" | "pcall" | "lasterr"
+            | "error-handling" | "exceptions",
+        ) => print_errors(),
+        Some(
             "userfuncs" | "userfunc" | "ufunc" | "lambda" | "lambdas" | "anon" | "user"
             | "function" | "closures",
         ) => print_userfuncs(),
@@ -37,7 +41,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -125,6 +129,13 @@ Control   if cond / elseif / else / end
           switch expr / case val / otherwise / end
           do / until (cond)                 body runs at least once
           break   continue
+Errors    error('msg')  error('fmt', v...)  raise a runtime error
+          warning('fmt', v...)              print warning, continue
+          lasterr()                         last error message
+          try / catch / end                 protected block (anonymous)
+          try / catch e / end              named: e.message = error string
+          try(expr, default)               inline fallback (lazy default)
+          pcall(@f, args...)               [ok, val] = pcall(...)
 Scripts   run('file.calc')  run('file')     .calc first, then .m
           source('file')                    Octave alias for run()
 Path      addpath('/dir')                   prepend to session search path
@@ -181,6 +192,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help userfuncs   user-defined functions, multiple return, lambdas
   help cells       cell arrays, varargin/varargout, cellfun, arrayfun
   help structs     scalar structs + struct arrays, field access, fieldnames/isfield/rmfield
+  help errors      error/warning, try/catch, try(expr,default), pcall
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
@@ -1490,14 +1502,15 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
 ─── REPL multi-line input ─────────────────────────────────────────────────────
 
   The REPL detects unclosed blocks by tracking depth changes:
-    Keywords that open a block (+1): if  for  while  switch  do
+    Keywords that open a block (+1): if  for  while  switch  do  try
     Keywords that close a block (-1): end  until
   Lines accumulate with a continuation prompt until the block is complete.
   Press Ctrl+C to cancel an in-progress block.
 
-See also: help syntax  help logic  help userfuncs  help path
+See also: help syntax  help logic  help userfuncs  help path  help errors
 Examples: ccalc examples/control_flow.calc
           ccalc examples/extended_control_flow.calc
+          ccalc examples/error_handling.calc
           ccalc examples/matrix_ops.calc   (backslash linear solve)
           ccalc examples/path_system.calc  (addpath/rmpath/path demo)"
     );
@@ -1863,5 +1876,141 @@ string, complex, cell, or another struct).  Fields are ordered by insertion.
 See also: help cells  help userfuncs  help control
 Examples: ccalc examples/structs.calc
           ccalc examples/struct_arrays.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help errors
+// ---------------------------------------------------------------------------
+
+fn print_errors() {
+    println!(
+        "\
+ERROR HANDLING  (help errors)
+
+─── error() and warning() ─────────────────────────────────────────────────────
+
+  error(msg)               raise a runtime error; stops execution in current
+                           block (caught by try/catch or propagates to REPL)
+  error(fmt, v1, v2, ...)  printf-formatted message (same specifiers as fprintf)
+  warning(msg)             print warning to stderr; execution continues
+  warning(fmt, v1, ...)    printf-formatted warning
+
+  Examples:
+    error('value must be positive')
+    error('expected %d arguments, got %d', 2, nargin)
+    warning('result may be inaccurate: condition number = %.1e', cond(A))
+
+─── lasterr ───────────────────────────────────────────────────────────────────
+
+  lasterr()       return the message from the most recent runtime error
+  lasterr(msg)    set the last-error string; returns the previous value
+  lasterr('')     clear the last-error string (returns previous)
+
+  lasterr is set automatically whenever the REPL or a try/catch block
+  catches a runtime error.
+
+  Examples:
+    inv([1 0; 0 0]);          % triggers an error
+    msg = lasterr()           % 'singular matrix'
+    lasterr('');              % clear it
+
+─── try / catch / end ─────────────────────────────────────────────────────────
+
+  MATLAB-compatible protected block.  Two forms:
+
+  Anonymous catch — no error variable:
+    try
+      risky_code()
+    catch
+      fallback_code()
+    end
+
+  Named catch — e is bound to a struct with field 'message':
+    try
+      result = risky_function(data)
+    catch e
+      fprintf('caught: %s\\n', e.message)
+      result = default_value
+    end
+
+  try with no catch — silently swallows the error:
+    try
+      might_fail()
+    end
+
+  Behaviour:
+    If the try body completes without error, the catch body is skipped.
+    If any statement in the try body raises an error, execution jumps
+    immediately to the catch body (remaining try statements are skipped).
+    lasterr is set on entry to the catch body.
+    break/continue/return inside a try or catch work as normal.
+
+  Example:
+    for k = 1:10
+      try
+        results(k) = compute(data(k))
+      catch e
+        fprintf('step %d failed: %s\\n', k, e.message)
+        results(k) = 0
+      end
+    end
+
+─── try(expr, default) — inline fallback ──────────────────────────────────────
+
+  x = try(expr, default)
+
+  Evaluates expr; returns its value on success. If expr raises an error,
+  evaluates and returns default instead (lazy — default is only evaluated
+  on failure).
+
+  Examples:
+    x = try(inv(A), eye(n))          % fallback to identity if singular
+    n = try(str2num(s), 0)           % fallback to 0 if not a number
+    v = try(risky(data), NaN)        % NaN sentinel on error
+
+  Note: try(expr, default) is a special form, not a regular function call.
+  The default expression is NOT evaluated unless expr fails.
+
+─── pcall — protected call ────────────────────────────────────────────────────
+
+  [ok, val] = pcall(@func, arg1, arg2, ...)
+
+  Calls @func with the given arguments in a protected context.
+  Returns a two-element tuple:
+    ok = 1   val = function return value   (on success)
+    ok = 0   val = error message string    (on failure)
+
+  Compatible with anonymous functions and named function handles.
+  lasterr is set to the error message on failure.
+
+  Examples:
+    [ok, x] = pcall(@inv, A)
+    if ~ok
+      fprintf('inv failed: %s\\n', x)
+      x = eye(n)
+    end
+
+    [ok, y] = pcall(@(x) sqrt(x), -1)   % ok=0, y='sqrt of negative'
+
+    for k = 1:numel(data)
+      [ok, v] = pcall(@process, data(k))
+      results(k) = ok * v             % 0 on failure
+    end
+
+─── 'e' as a catch variable ───────────────────────────────────────────────────
+
+  The constant 'e' (Euler's number, 2.718...) and the catch variable 'e'
+  do not conflict. Variable assignments always shadow built-in constants:
+
+    try
+      error('oops')
+    catch e
+      fprintf('message: %s\\n', e.message)   % e is a struct here
+    end
+    e                                         % back to 2.718... after block
+
+See also: help control  help userfuncs  help structs
+Example:  ccalc examples/error_handling.calc"
     );
 }

@@ -1,0 +1,58 @@
+# Error Handling
+
+ccalc provides MATLAB-compatible error handling so scripts can recover from runtime errors without crashing the session.
+
+## Raising errors
+
+```matlab
+error('message')                   % plain message
+error('expected %d, got %d', 2, n) % formatted (same as fprintf)
+warning('result may be inaccurate') % prints to stderr, continues
+```
+
+## try / catch / end
+
+```matlab
+try
+  result = risky_computation(x)
+catch e
+  fprintf('failed: %s\n', e.message)
+  result = default_value
+end
+```
+
+- If the `try` body succeeds, `catch` is skipped.
+- `catch e` binds a struct with field `message` to the catch variable.
+- Anonymous `catch` (no variable) silently handles the error.
+- `try` with no `catch` silently swallows errors.
+
+## Inline fallback: `try(expr, default)`
+
+```matlab
+n = try(str2num(s), 0)      % 0 if s is not a valid number
+x = try(inv(A), eye(n))     % identity matrix if A is singular
+```
+
+The default is only evaluated if `expr` raises an error.
+
+## Protected call: `pcall`
+
+```matlab
+[ok, val] = pcall(@func, arg1, arg2)
+if ok
+  % use val
+else
+  fprintf('error: %s\n', val)
+end
+```
+
+Returns `[1, result]` on success and `[0, message]` on failure.
+
+## Last error message
+
+```matlab
+lasterr()      % message from most recent error
+lasterr('')    % clear
+```
+
+See [`help errors`](../ccalc/phase14-error-handling.md) for the full reference.

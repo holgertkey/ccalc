@@ -1168,6 +1168,46 @@ path = [
 ]
 ```
 
+### Error Handling
+
+Scripts can raise, catch, and recover from runtime errors without crashing the session.
+
+```matlab
+% Raise an error with a formatted message
+error('value must be positive, got %g', x)
+
+% Print a warning and continue
+warning('result may be inaccurate')
+
+% try/catch — anonymous (swallow error)
+try
+  x = risky_compute(data)
+catch
+  x = 0
+end
+
+% try/catch — named: e.message holds the error string
+try
+  result = inv(A) * b
+catch e
+  fprintf('caught: %s\n', e.message)
+  result = zeros(size(b))
+end
+
+% Inline fallback — default evaluated only on error
+n = try(str2num(s), 0)          % 0 if s is not a valid number
+
+% Protected call — returns [ok, value_or_message]
+[ok, x] = pcall(@inv, A)
+if ~ok
+  fprintf('inv failed: %s\n', x)
+end
+
+% Last error message
+lasterr()                        % message from most recent error
+lasterr('')                      % clear
+```
+
 ### Compound assignment operators
 
 | Operator | Meaning         |
@@ -1208,7 +1248,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1455,6 +1495,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `cell_arrays.calc`           | Cell arrays: literals, brace-indexing, auto-grow, `@funcname` handles, `cellfun`/`arrayfun`, `varargin`/`varargout`, `case {…}`, function pipelines |
 | `structs.calc`               | Scalar structs: field assignment/read, nested structs, `struct()` constructor, `fieldnames`/`isfield`/`rmfield`/`isstruct`, 3-D vector example |
 | `struct_arrays.calc`         | Struct arrays: indexed creation, element access, field collection → matrix/cell, loop building, `fieldnames`/`isfield`, nested fields, inventory ledger |
+| `error_handling.calc`        | Error handling: `error`/`warning`, `lasterr`, `try/catch`, `try(expr,default)`, `pcall`, nested and loop-safe error recovery |
 
 ```bash
 ccalc < examples/mortgage.calc

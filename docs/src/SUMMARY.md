@@ -24,6 +24,7 @@
 - [User-defined Functions](./guide/user-functions.md)
 - [Cell Arrays](./guide/cell-arrays.md)
 - [Structs and Struct Arrays](./guide/structs.md)
+- [Error Handling](./guide/error-handling.md)
 
 # Architecture
 
@@ -55,3 +56,4 @@
 - [Phase 13 — Structs](./ccalc/phase13-structs.md)
 - [Phase 13.5 — Struct Arrays](./ccalc/phase135-struct-arrays.md)
 - [Phase 13.6 — Backslash Operator and Path System](./ccalc/phase136-backslash-path.md)
+- [Phase 14 — Error Handling](./ccalc/phase14-error-handling.md)
