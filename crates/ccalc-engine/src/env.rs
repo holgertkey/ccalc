@@ -14,6 +14,10 @@ use crate::io::IoContext;
 /// Two `LambdaFn` values are equal only if they are the exact same allocation.
 type LambdaFnInner = Rc<dyn Fn(&[Value], Option<&mut IoContext>) -> Result<Value, String>>;
 
+/// A compiled anonymous function closure with its source text.
+///
+/// The first field is the callable closure; the second is the display source
+/// (e.g. `@(x) x^2`) used by `format_value` and the `who` command.
 #[derive(Clone)]
 pub struct LambdaFn(pub LambdaFnInner, pub String);
 
@@ -34,7 +38,10 @@ impl PartialEq for LambdaFn {
 pub enum Value {
     /// No display value — returned by side-effectful functions like `fprintf`.
     Void,
+    /// A single real number.
     Scalar(f64),
+    /// A 2-D real matrix (row-major). Scalars are represented as 1×1 matrices
+    /// only when produced by matrix operations; standalone numbers use `Scalar`.
     Matrix(Array2<f64>),
     /// Complex number `re + im*i`.
     Complex(f64, f64),
@@ -51,8 +58,11 @@ pub enum Value {
     /// Named functions execute in an isolated scope (only params are visible,
     /// plus built-in constants `i`, `j`).
     Function {
+        /// Output variable names in declaration order (e.g. `["y"]` for `function y = f(x)`).
         outputs: Vec<String>,
+        /// Parameter names in declaration order (e.g. `["x", "n"]`).
         params: Vec<String>,
+        /// Raw source text of the function body (text between `function` header and `end`).
         body_source: String,
     },
     /// Multiple return values from a multi-output function call (internal use).
@@ -78,6 +88,16 @@ pub enum Value {
 }
 
 impl Value {
+    /// Returns the inner `f64` if this value is a [`Value::Scalar`], otherwise `None`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ccalc_engine::env::Value;
+    ///
+    /// assert_eq!(Value::Scalar(3.14).as_scalar(), Some(3.14));
+    /// assert_eq!(Value::Void.as_scalar(), None);
+    /// ```
     pub fn as_scalar(&self) -> Option<f64> {
         match self {
             Value::Scalar(n) => Some(*n),
@@ -102,6 +122,10 @@ impl Value {
 /// that was not assigned to a named variable (Octave/MATLAB convention).
 pub type Env = HashMap<String, Value>;
 
+/// Returns the platform-specific configuration directory for ccalc.
+///
+/// On Linux/macOS this is typically `~/.config/ccalc`; on Windows `%APPDATA%\ccalc`.
+/// Falls back to the current directory if the platform config dir cannot be determined.
 pub fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -189,10 +213,12 @@ pub fn load_workspace(path: &Path) -> Result<Env, String> {
     Ok(env)
 }
 
+/// Saves scalars and strings from `env` to the default workspace path (`~/.config/ccalc/workspace.toml`).
 pub fn save_workspace_default(env: &Env) -> Result<(), String> {
     save_workspace(env, &workspace_path())
 }
 
+/// Loads variables from the default workspace path (`~/.config/ccalc/workspace.toml`) into a new [`Env`].
 pub fn load_workspace_default() -> Result<Env, String> {
     load_workspace(&workspace_path())
 }

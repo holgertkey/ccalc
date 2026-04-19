@@ -8,20 +8,30 @@
 //! input string
 //!     └─► tokenizer (parser::tokenize)
 //!             └─► recursive-descent parser (parser::parse)  →  Stmt AST
-//!                     └─► evaluator (eval::eval)  →  f64
+//!                     └─► evaluator (eval::eval)  →  Value
 //! ```
-//!
-//! It also hosts [`mod@env`] (variable environment and workspace persistence),
-//! and will grow to host the Octave/MATLAB compatibility layer in future phases.
 //!
 //! ## Modules
 //!
-//! - [`mod@env`]    — [`Env`](env::Env) type, workspace save/load
+//! - [`mod@env`]    — [`Env`](env::Env) type, [`Value`](env::Value) enum, workspace save/load
 //! - [`eval`]   — AST types, evaluator, number formatters, [`Base`](eval::Base)
 //! - [`parser`] — tokenizer and recursive-descent parser, [`Stmt`](parser::Stmt)
+//! - [`exec`]   — block/loop/function executor, script search path
+//! - [`io`]     — file descriptor table for `fopen`/`fclose`/`fgetl`/`fprintf`
 
+#![warn(missing_docs)]
+
+/// Variable environment, [`Value`](env::Value) type, and workspace persistence.
 pub mod env;
+
+/// AST node types ([`Expr`](eval::Expr), [`Op`](eval::Op)), evaluator, and number formatters.
 pub mod eval;
+
+/// Block statement executor: loops, functions, `run`/`source`, search path management.
 pub mod exec;
+
+/// File I/O context ([`IoContext`](io::IoContext)) for the REPL session.
 pub mod io;
+
+/// Tokenizer, recursive-descent parser, and [`Stmt`](parser::Stmt) AST.
 pub mod parser;

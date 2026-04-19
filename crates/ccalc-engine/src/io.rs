@@ -25,6 +25,7 @@ impl Default for IoContext {
 }
 
 impl IoContext {
+    /// Creates an empty I/O context with no open file handles.
     pub fn new() -> Self {
         Self {
             handles: HashMap::new(),

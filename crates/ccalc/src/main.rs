@@ -1,3 +1,8 @@
+//! `ccalc` — a command-line calculator with an Octave/MATLAB-compatible syntax.
+//!
+//! Supports single-expression mode, pipe mode, and an interactive REPL.
+//! The computation engine lives in the `ccalc-engine` crate.
+
 mod config;
 mod help;
 mod repl;

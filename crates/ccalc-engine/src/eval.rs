@@ -79,16 +79,29 @@ pub fn get_display_compact() -> bool {
 
 // ── AST types ────────────────────────────────────────────────────────────────
 
+/// An expression node in the AST.
+///
+/// Produced by the parser and consumed by [`eval`] / [`eval_with_io`].
 #[derive(Debug, Clone)]
 pub enum Expr {
+    /// A numeric literal (e.g. `3`, `2.5`, `1e-3`).
     Number(f64),
+    /// A variable or constant reference (e.g. `x`, `pi`, `ans`).
     Var(String),
+    /// Arithmetic negation: `-expr`.
     UnaryMinus(Box<Expr>),
     /// Logical NOT: `~expr`. Result is 1.0 if expr == 0.0, else 0.0.
     UnaryNot(Box<Expr>),
+    /// Binary operation: `lhs op rhs`.
     BinOp(Box<Expr>, Op, Box<Expr>),
+    /// Function call or variable indexing: `name(arg1, arg2, ...)`.
+    ///
+    /// Disambiguation happens at eval time: if `name` exists in the environment
+    /// it is treated as indexing, otherwise as a built-in or user function call.
     Call(String, Vec<Expr>),
+    /// Matrix literal: `[row1; row2; ...]` where each row is a list of expressions.
     Matrix(Vec<Vec<Expr>>),
+    /// Conjugate transpose: `A'`. For complex scalars, returns the conjugate.
     Transpose(Box<Expr>),
     /// Range expression: `start:stop` or `start:step:stop`.
     /// Evaluates to a 1×N row vector.
@@ -105,7 +118,9 @@ pub enum Expr {
     /// At evaluation time this is converted to `Value::Lambda`, capturing the
     /// current environment as a lexical closure.
     Lambda {
+        /// Parameter names in declaration order (e.g. `["x", "n"]`).
         params: Vec<String>,
+        /// Body expression evaluated when the lambda is called.
         body: Box<Expr>,
         /// Source text for display (e.g. `@(x) x.^2 + 1`), stored at parse time.
         source: String,
@@ -135,39 +150,63 @@ pub enum Expr {
     FieldGet(Box<Expr>, String),
 }
 
+/// A binary operator used in [`Expr::BinOp`].
 #[derive(Debug, Clone)]
 pub enum Op {
+    /// Addition: `a + b` or element-wise matrix addition.
     Add,
+    /// Subtraction: `a - b` or element-wise matrix subtraction.
     Sub,
+    /// Multiplication: scalar `a * b` or matrix product `A * B`.
     Mul,
+    /// Division: scalar `a / b` or matrix right-division `A / B` (solves `X * B = A`).
     Div,
+    /// Exponentiation: scalar `a ^ b` or matrix power `A ^ n`.
     Pow,
+    /// Element-wise multiplication: `A .* B`.
     ElemMul,
+    /// Element-wise division: `A ./ B`.
     ElemDiv,
+    /// Element-wise exponentiation: `A .^ B`.
     ElemPow,
     // --- Comparison (element-wise, return 0.0/1.0) ---
+    /// Equality comparison: `a == b`. Returns 1.0 if equal, 0.0 otherwise.
     Eq,
+    /// Inequality comparison: `a ~= b`. Returns 1.0 if not equal, 0.0 otherwise.
     NotEq,
+    /// Less-than comparison: `a < b`.
     Lt,
+    /// Greater-than comparison: `a > b`.
     Gt,
+    /// Less-than-or-equal comparison: `a <= b`.
     LtEq,
+    /// Greater-than-or-equal comparison: `a >= b`.
     GtEq,
     // --- Short-circuit logical (scalars only) ---
+    /// Short-circuit logical AND: `a && b`. Only evaluates `b` if `a` is truthy.
     And,
+    /// Short-circuit logical OR: `a || b`. Only evaluates `b` if `a` is falsy.
     Or,
     // --- Element-wise logical (matrices allowed, no short-circuit) ---
+    /// Element-wise logical AND: `A & B`. Evaluates both sides; works on matrices.
     ElemAnd,
+    /// Element-wise logical OR: `A | B`. Evaluates both sides; works on matrices.
     ElemOr,
     /// Left division: `A \ b` solves `A*x = b`. Scalar: `a \ b = b / a`.
     LDiv,
 }
 
+/// The numeric base used when displaying integer-valued scalars.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Base {
+    /// Decimal (base 10) — the default.
     #[default]
     Dec,
+    /// Hexadecimal (base 16), prefix `0x` (e.g. `0xff`).
     Hex,
+    /// Binary (base 2), prefix `0b` (e.g. `0b1010`).
     Bin,
+    /// Octal (base 8), prefix `0o` (e.g. `0o17`).
     Oct,
 }
 

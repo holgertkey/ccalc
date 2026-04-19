@@ -96,7 +96,9 @@ fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool)>>, String>
 /// Loop implementations catch `Break`/`Continue`; function call implementation catches `Return`.
 /// Uncaught signals at the top level are reported as errors.
 pub enum Signal {
+    /// `break` — exit the innermost enclosing loop immediately.
     Break,
+    /// `continue` — skip the rest of the current iteration and advance to the next.
     Continue,
     /// `return` inside a named function — carries no value (outputs are read from env).
     Return,

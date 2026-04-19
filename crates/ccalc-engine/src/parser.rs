@@ -9,19 +9,31 @@ pub enum Stmt {
     Expr(Expr),
     /// `if cond; body; elseif cond; ...; else; ...; end`
     If {
+        /// The condition expression evaluated to decide which branch to take.
         cond: Expr,
+        /// Statements to execute when `cond` is truthy.
         body: Vec<(Stmt, bool)>,
+        /// Zero or more `elseif (cond) body` branches, in source order.
         elseif_branches: Vec<(Expr, Vec<(Stmt, bool)>)>,
+        /// Statements to execute when no condition matched, or `None` if there is no `else`.
         else_body: Option<Vec<(Stmt, bool)>>,
     },
     /// `for var = range_expr; body; end` — iterates over columns of the range matrix
     For {
+        /// The loop variable assigned on each iteration.
         var: String,
+        /// Expression that produces the matrix whose columns are iterated.
         range_expr: Expr,
+        /// Loop body statements.
         body: Vec<(Stmt, bool)>,
     },
     /// `while cond; body; end`
-    While { cond: Expr, body: Vec<(Stmt, bool)> },
+    While {
+        /// Loop condition — re-evaluated before each iteration.
+        cond: Expr,
+        /// Loop body statements.
+        body: Vec<(Stmt, bool)>,
+    },
     /// `break` — exits the innermost enclosing loop
     Break,
     /// `continue` — advances to next iteration of the innermost enclosing loop
@@ -33,22 +45,34 @@ pub enum Stmt {
     /// `otherwise` is optional.
     #[allow(clippy::type_complexity)]
     Switch {
+        /// The expression whose value is matched against each `case`.
         expr: Expr,
+        /// Each case is a list of match patterns and the body to run on a match.
         cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)>,
+        /// Fallback body executed when no `case` matches, or `None` if there is no `otherwise`.
         otherwise_body: Option<Vec<(Stmt, bool)>>,
     },
     /// `do; body; until (cond)` — Octave-specific post-test loop.
     ///
     /// The body always executes at least once. `break` and `continue` work as in `while`.
-    DoUntil { body: Vec<(Stmt, bool)>, cond: Expr },
+    DoUntil {
+        /// Loop body — always executed at least once before the condition is checked.
+        body: Vec<(Stmt, bool)>,
+        /// Condition tested after each iteration; loop exits when it becomes truthy.
+        cond: Expr,
+    },
     /// `function [outputs] = name(params) body end` — named user function definition.
     ///
     /// The body is stored as raw source text and re-parsed on each call by `exec.rs`.
     /// Named functions execute in an isolated scope (only params and built-in constants visible).
     FunctionDef {
+        /// The function name (e.g. `"fib"` in `function y = fib(n)`).
         name: String,
+        /// Output variable names in declaration order.
         outputs: Vec<String>,
+        /// Parameter names in declaration order.
         params: Vec<String>,
+        /// Raw source text of the function body, stored verbatim for re-parsing on each call.
         body_source: String,
     },
     /// `return` — exits the current function immediately.
@@ -61,14 +85,22 @@ pub enum Stmt {
     /// Produced when the LHS is a bracket list of identifiers.
     /// The RHS must evaluate to a `Value::Tuple`; extra values are discarded,
     /// missing values produce an error.
-    MultiAssign { targets: Vec<String>, expr: Expr },
+    MultiAssign {
+        /// The list of output variable names on the LHS (e.g. `["a", "b"]` in `[a, b] = f()`).
+        targets: Vec<String>,
+        /// The RHS expression — must evaluate to [`Value::Tuple`](crate::env::Value::Tuple).
+        expr: Expr,
+    },
     /// `try; body; catch [e]; catch_body; end` — protected block.
     ///
     /// If `catch_var` is `Some(name)`, the catch variable is bound to a struct
     /// with field `message` containing the error string.
     TryCatch {
+        /// Statements in the protected `try` block.
         try_body: Vec<(Stmt, bool)>,
+        /// Optional name of the catch variable bound to a struct with a `message` field.
         catch_var: Option<String>,
+        /// Statements executed when an error is caught.
         catch_body: Vec<(Stmt, bool)>,
     },
     /// `c{i} = v` — cell element assignment.
