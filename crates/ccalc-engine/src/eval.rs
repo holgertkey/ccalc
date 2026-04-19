@@ -2621,6 +2621,30 @@ fn call_builtin(
             let is_dir = std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false);
             Ok(Value::Scalar(bool_to_f64(is_dir)))
         }
+        // genpath(dir) — return dir and all subdirectories as a path separator-delimited string
+        ("genpath", 1) => {
+            let root = string_arg(&args[0], name, 1)?;
+            let sep = if cfg!(windows) { ';' } else { ':' };
+            let mut dirs: Vec<String> = Vec::new();
+            let mut stack = vec![std::path::PathBuf::from(root)];
+            while let Some(dir) = stack.pop() {
+                if !dir.is_dir() {
+                    continue;
+                }
+                dirs.push(dir.to_string_lossy().into_owned());
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    let mut children: Vec<std::path::PathBuf> = entries
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.is_dir())
+                        .collect();
+                    children.sort();
+                    children.reverse();
+                    stack.extend(children);
+                }
+            }
+            Ok(Value::Str(dirs.join(&sep.to_string())))
+        }
         // pwd() — current working directory as a char array (parser sends ans as sole arg for empty calls)
         ("pwd", _) => {
             let cwd = std::env::current_dir()

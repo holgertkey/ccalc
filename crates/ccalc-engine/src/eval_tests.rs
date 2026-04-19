@@ -1998,3 +1998,64 @@ fn test_exist_one_arg_checks_var_then_file() {
     );
     assert_eq!(eval(&expr2, &env), Ok(Value::Scalar(0.0)));
 }
+
+// --- genpath ---
+
+#[test]
+fn test_genpath_includes_root() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir();
+    let expr = Expr::Call(
+        "genpath".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    let result = eval(&expr, &env).unwrap();
+    match result {
+        Value::Str(s) => {
+            let sep = if cfg!(windows) { ';' } else { ':' };
+            let parts: Vec<&str> = s.split(sep).collect();
+            assert!(
+                parts[0] == tmp.to_string_lossy().as_ref(),
+                "root dir must be first entry"
+            );
+        }
+        other => panic!("expected Str, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_genpath_includes_subdirs() {
+    let env = empty_env();
+    let tmp = std::env::temp_dir().join("ccalc_genpath_test");
+    let sub = tmp.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    let expr = Expr::Call(
+        "genpath".to_string(),
+        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+    );
+    let result = eval(&expr, &env).unwrap();
+
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    match result {
+        Value::Str(s) => {
+            let sep = if cfg!(windows) { ';' } else { ':' };
+            let parts: Vec<&str> = s.split(sep).collect();
+            assert!(parts.len() >= 2, "should include root and at least one subdir");
+            assert!(parts.iter().any(|p| p.ends_with("sub")));
+        }
+        other => panic!("expected Str, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_genpath_nonexistent_returns_empty() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "genpath".to_string(),
+        vec![Expr::StrLiteral("/does/not/exist/ccalc_xyz".to_string())],
+    );
+    let result = eval(&expr, &env).unwrap();
+    assert_eq!(result, Value::Str(String::new()));
+}
