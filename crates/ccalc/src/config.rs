@@ -75,7 +75,11 @@ impl Config {
         let mut result = Vec::new();
         for s in &self.path {
             let recursive = s.ends_with('/') || s.ends_with('\\');
-            let trimmed = if recursive { s.trim_end_matches(['/', '\\']) } else { s.as_str() };
+            let trimmed = if recursive {
+                s.trim_end_matches(['/', '\\'])
+            } else {
+                s.as_str()
+            };
             let expanded = expand_tilde(trimmed);
             let root = std::path::PathBuf::from(&expanded);
             if recursive {

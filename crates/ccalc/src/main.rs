@@ -23,8 +23,7 @@ fn main() {
             arg if !arg.starts_with('-') => {
                 // Load config and init the session search path so that script
                 // files can be found by name even when they are not in CWD.
-                let config_path =
-                    ccalc_engine::env::config_dir().join("config.toml");
+                let config_path = ccalc_engine::env::config_dir().join("config.toml");
                 if let Ok(cfg) = config::load(&config_path) {
                     ccalc_engine::exec::session_path_init(cfg.search_path());
                 }

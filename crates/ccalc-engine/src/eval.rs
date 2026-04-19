@@ -2860,7 +2860,7 @@ fn call_builtin(
                     let f = f.clone();
                     f.0(call_args, io)
                 }
-                Value::Function { .. } => match io.as_deref_mut() {
+                Value::Function { .. } => match io {
                     Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
                         Some(hook) => hook(&callable, call_args, env, io_ref),
                         None => Err("pcall: function execution not initialized".to_string()),
@@ -2873,7 +2873,11 @@ fn call_builtin(
                         })
                     }
                 },
-                _ => return Err("pcall: first argument must be a function handle (@func)".to_string()),
+                _ => {
+                    return Err(
+                        "pcall: first argument must be a function handle (@func)".to_string()
+                    );
+                }
             };
             match result {
                 Ok(v) => Ok(Value::Tuple(vec![Value::Scalar(1.0), v])),

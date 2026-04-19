@@ -2042,7 +2042,10 @@ fn test_genpath_includes_subdirs() {
         Value::Str(s) => {
             let sep = if cfg!(windows) { ';' } else { ':' };
             let parts: Vec<&str> = s.split(sep).collect();
-            assert!(parts.len() >= 2, "should include root and at least one subdir");
+            assert!(
+                parts.len() >= 2,
+                "should include root and at least one subdir"
+            );
             assert!(parts.iter().any(|p| p.ends_with("sub")));
         }
         other => panic!("expected Str, got {other:?}"),

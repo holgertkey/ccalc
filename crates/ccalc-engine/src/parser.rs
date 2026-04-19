@@ -1532,7 +1532,9 @@ fn parse_stmts_from_lines(
                     } else if is_valid_ident(catch_rest) {
                         Some(catch_rest.to_string())
                     } else {
-                        return Err(format!("Expected identifier after 'catch', got '{catch_rest}'"));
+                        return Err(format!(
+                            "Expected identifier after 'catch', got '{catch_rest}'"
+                        ));
                     };
                     *pos += 1;
                     let catch_body = parse_stmts_from_lines(lines, pos, &["end"])?;

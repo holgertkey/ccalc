@@ -786,23 +786,21 @@ pub fn exec_stmts(
                 try_body,
                 catch_var,
                 catch_body,
-            } => {
-                match exec_stmts(try_body, env, io, fmt, base, compact) {
-                    Ok(None) => {}
-                    Ok(Some(sig)) => return Ok(Some(sig)),
-                    Err(msg) => {
-                        set_last_err(&msg);
-                        if let Some(var) = catch_var {
-                            let mut map = IndexMap::new();
-                            map.insert("message".to_string(), Value::Str(msg));
-                            env.insert(var.clone(), Value::Struct(map));
-                        }
-                        if let Some(sig) = exec_stmts(catch_body, env, io, fmt, base, compact)? {
-                            return Ok(Some(sig));
-                        }
+            } => match exec_stmts(try_body, env, io, fmt, base, compact) {
+                Ok(None) => {}
+                Ok(Some(sig)) => return Ok(Some(sig)),
+                Err(msg) => {
+                    set_last_err(&msg);
+                    if let Some(var) = catch_var {
+                        let mut map = IndexMap::new();
+                        map.insert("message".to_string(), Value::Str(msg));
+                        env.insert(var.clone(), Value::Struct(map));
+                    }
+                    if let Some(sig) = exec_stmts(catch_body, env, io, fmt, base, compact)? {
+                        return Ok(Some(sig));
                     }
                 }
-            }
+            },
 
             // ── function definition ──────────────────────────────────────────
             Stmt::FunctionDef {

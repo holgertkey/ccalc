@@ -3730,7 +3730,14 @@ fn run_block_result(src: &str) -> Result<Env, String> {
     env.insert("i".to_string(), Value::Complex(0.0, 1.0));
     env.insert("j".to_string(), Value::Complex(0.0, 1.0));
     let mut io = IoContext::new();
-    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)?;
+    exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )?;
     Ok(env)
 }
 
@@ -3770,17 +3777,13 @@ fn test_lasterr_set_and_get() {
 
 #[test]
 fn test_try_catch_anonymous() {
-    let env = run_block(
-        "try\n  error('boom')\ncatch\n  x = 99;\nend",
-    );
+    let env = run_block("try\n  error('boom')\ncatch\n  x = 99;\nend");
     assert_eq!(scalar(&env, "x"), 99.0);
 }
 
 #[test]
 fn test_try_catch_named_binds_message() {
-    let env = run_block(
-        "try\n  error('oops')\ncatch e\n  msg = e.message;\nend",
-    );
+    let env = run_block("try\n  error('oops')\ncatch e\n  msg = e.message;\nend");
     match env.get("msg") {
         Some(Value::Str(s)) => assert_eq!(s, "oops"),
         other => panic!("expected Str, got {other:?}"),
@@ -3789,9 +3792,7 @@ fn test_try_catch_named_binds_message() {
 
 #[test]
 fn test_try_no_error_skips_catch() {
-    let env = run_block(
-        "x = 1;\ntry\n  x = 2;\ncatch\n  x = 99;\nend",
-    );
+    let env = run_block("x = 1;\ntry\n  x = 2;\ncatch\n  x = 99;\nend");
     assert_eq!(scalar(&env, "x"), 2.0);
 }
 
