@@ -13,10 +13,10 @@ const DEFAULT_CONFIG: &str = r#"# ccalc configuration
 
 # Search path for run() / source() — directories checked after the current working directory.
 # Tilde (~) is expanded to the home directory.
+# Trailing slash means the directory AND all its subdirectories are added (genpath semantics).
 # On Windows use forward slashes or escaped backslashes:
-#   path = ["C:/Users/me/scripts", "D:/work/calc"]
-#   path = ["C:\\Users\\me\\scripts"]
-# path = ["~/.config/ccalc/lib"]
+#   path = ["C:/Users/me/scripts", "D:/work/calc/"]
+# path = ["~/.config/ccalc/lib/"]
 
 [display]
 # Default decimal precision (number of digits after the decimal point, 0–15).
@@ -68,11 +68,41 @@ impl Config {
     }
 
     /// Returns the search path as `PathBuf`s with `~` expanded.
+    ///
+    /// A trailing `/` or `\` triggers genpath semantics: the directory and all
+    /// its subdirectories (recursively, sorted) are added to the path.
     pub fn search_path(&self) -> Vec<std::path::PathBuf> {
-        self.path
-            .iter()
-            .map(|s| std::path::PathBuf::from(expand_tilde(s)))
-            .collect()
+        let mut result = Vec::new();
+        for s in &self.path {
+            let recursive = s.ends_with('/') || s.ends_with('\\');
+            let trimmed = if recursive { s.trim_end_matches(['/', '\\']) } else { s.as_str() };
+            let expanded = expand_tilde(trimmed);
+            let root = std::path::PathBuf::from(&expanded);
+            if recursive {
+                collect_dirs_recursive(&root, &mut result);
+            } else {
+                result.push(root);
+            }
+        }
+        result
+    }
+}
+
+fn collect_dirs_recursive(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if !root.is_dir() {
+        return;
+    }
+    out.push(root.to_path_buf());
+    if let Ok(entries) = std::fs::read_dir(root) {
+        let mut children: Vec<std::path::PathBuf> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        children.sort();
+        for child in children {
+            collect_dirs_recursive(&child, out);
+        }
     }
 }
 
@@ -217,6 +247,47 @@ mod tests {
         // and cfg.path (root level) stays empty.
         let cfg = load(&path).unwrap();
         assert!(cfg.search_path().is_empty());
+    }
+
+    #[test]
+    fn search_path_trailing_slash_includes_subdirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        let path = dir.path().join("config.toml");
+        let root_with_slash = format!("{}/", dir.path().to_string_lossy().replace('\\', "/"));
+        std::fs::write(
+            &path,
+            format!(
+                "path = [\"{root_with_slash}\"]\n\n[display]\nprecision = 10\nbase = \"dec\"\n"
+            ),
+        )
+        .unwrap();
+        let cfg = load(&path).unwrap();
+        let sp = cfg.search_path();
+        assert!(sp.len() >= 2, "root + at least one subdir expected");
+        assert_eq!(sp[0], dir.path());
+        assert!(sp.iter().any(|p| p == &sub));
+    }
+
+    #[test]
+    fn search_path_no_trailing_slash_exact_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+
+        let path = dir.path().join("config.toml");
+        let root = dir.path().to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            &path,
+            format!("path = [\"{root}\"]\n\n[display]\nprecision = 10\nbase = \"dec\"\n"),
+        )
+        .unwrap();
+        let cfg = load(&path).unwrap();
+        let sp = cfg.search_path();
+        assert_eq!(sp.len(), 1);
+        assert_eq!(sp[0], dir.path());
     }
 
     #[test]
