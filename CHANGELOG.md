@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`genpath(dir)`** built-in: returns `dir` and all its subdirectories
+  (recursively, sorted) as a path-separator-delimited string (`;` on Windows,
+  `:` on Unix). Designed to be composed with `addpath`:
+  `addpath(genpath('/my/libs'))`.
+- **Trailing-slash convention in `config.toml`**: a `path` entry ending with
+  `/` (or `\` on Windows) triggers genpath semantics at startup — the directory
+  and all its subdirectories are added to the session search path.
+  `path = ["~/.config/ccalc/lib/"]` is equivalent to calling
+  `addpath(genpath('~/.config/ccalc/lib'))` at session start.
+
 ## [0.20.0] - 2026-04-18
 
 ### Added

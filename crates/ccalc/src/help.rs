@@ -131,6 +131,7 @@ Path      addpath('/dir')                   prepend to session search path
           addpath('/dir', '-end')           append to session search path
           rmpath('/dir')                    remove from search path
           path()                            display current search path
+          genpath('/dir')                   return dir + all subdirs as path string
 Functions function y = f(x) ... end         named, single return
           function [a,b] = f(x) ... end     multiple return values
           [a,b] = f(x)   [~,b] = f(x)      multi-assign, ~ discards
@@ -191,7 +192,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help strings     char arrays, string objects, strcmp, num2str, ...
   help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
   help control     if/for/while, break/continue, compound assignment, run/source
-  help path        addpath/rmpath/path() — session search path
+  help path        addpath/rmpath/path()/genpath() — session search path
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -1453,12 +1454,16 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
     run('euclid_helper')       % defines g = gcd(a, b) in workspace
     fprintf('gcd = %d\\n', g)   % 21
 
-─── Search path (addpath / rmpath / path) ─────────────────────────────────────
+─── Search path (addpath / rmpath / path / genpath) ───────────────────────────
 
   addpath('/dir')             prepend directory to the session search path
   addpath('/dir', '-end')     append directory to the session search path
   rmpath('/dir')              remove directory from the session search path
   path()                      display all search path entries
+  genpath('/dir')             return '/dir' and all subdirectories as a
+                              path-separator-delimited string (';' on Windows,
+                              ':' on Unix); combine with addpath to add the
+                              whole tree at once
 
   Search order for run() and script lookup:
     1. Current working directory
@@ -1471,11 +1476,16 @@ to any depth. Multi-line blocks work in both REPL and script/pipe mode.
   To make paths persistent, add them to ~/.config/ccalc/config.toml:
     path = [\"~/.config/ccalc/lib\", \"/home/user/scripts\"]
 
+  A trailing slash on a config entry enables genpath semantics — the directory
+  and all its subdirectories are added at startup:
+    path = [\"~/.config/ccalc/lib/\", \"/home/user/scripts\"]
+
   Example:
     addpath('/my/scripts')
+    addpath(genpath('/my/libs'))   % add /my/libs and every subdir
     addpath('/my/utils', '-end')
-    path()                     % list the current path
-    rmpath('/my/utils')        % remove an entry
+    path()                         % list the current path
+    rmpath('/my/utils')            % remove an entry
 
 ─── REPL multi-line input ─────────────────────────────────────────────────────
 

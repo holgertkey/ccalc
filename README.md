@@ -1145,7 +1145,7 @@ source('utils')           % Octave alias for run()
 
 Extension resolution for bare names: `.calc` is tried first (native), then `.m` (compatibility).
 
-### Search path (`addpath` / `rmpath` / `path`)
+### Search path (`addpath` / `rmpath` / `path` / `genpath`)
 
 A session search path controls where `run()` looks for scripts. Entries are checked after the current working directory:
 
@@ -1154,12 +1154,18 @@ addpath('/my/scripts')            % prepend — highest priority
 addpath('/my/utils', '-end')      % append  — lowest priority
 rmpath('/my/scripts')             % remove entry
 path()                            % display current path
+addpath(genpath('/my/libs'))      % add /my/libs and all its subdirectories
 ```
+
+`genpath(dir)` returns `dir` and all its subdirectories as a path-separator-delimited string (`;` on Windows, `:` on Unix).
 
 Persistent paths can be configured in `~/.config/ccalc/config.toml`:
 
 ```toml
-path = ["~/.config/ccalc/lib", "/home/user/scripts"]
+path = [
+  "~/.config/ccalc/lib",    # exact directory only
+  "/home/user/scripts/",    # trailing slash → dir + all subdirectories
+]
 ```
 
 ### Compound assignment operators
