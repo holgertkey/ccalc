@@ -28,6 +28,22 @@ pub fn set_fn_call_hook(f: FnCallHook) {
     FN_CALL_HOOK.with(|c| c.set(Some(f)));
 }
 
+// ── Last error (thread-local) ────────────────────────────────────────────────
+
+thread_local! {
+    static LAST_ERR: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+/// Sets the last-error string (called on every caught runtime error).
+pub fn set_last_err(msg: &str) {
+    LAST_ERR.with(|e| *e.borrow_mut() = msg.to_string());
+}
+
+/// Returns the last-error string.
+pub fn get_last_err() -> String {
+    LAST_ERR.with(|e| e.borrow().clone())
+}
+
 // ── Display context (thread-local, set by exec_stmts) ────────────────────────
 
 thread_local! {
@@ -222,10 +238,14 @@ pub fn eval_with_io(expr: &Expr, env: &Env, io: &mut IoContext) -> Result<Value,
 fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<Value, String> {
     match expr {
         Expr::Number(n) => Ok(Value::Scalar(*n)),
-        Expr::Var(name) => env
-            .get(name)
-            .cloned()
-            .ok_or_else(|| format!("Undefined variable: '{name}'")),
+        Expr::Var(name) => env.get(name).cloned().ok_or(()).or_else(|_| {
+            // 'e' falls back to Euler's number if not defined in env
+            if name == "e" {
+                Ok(Value::Scalar(std::f64::consts::E))
+            } else {
+                Err(format!("Undefined variable: '{name}'"))
+            }
+        }),
         Expr::UnaryMinus(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Unary minus is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
@@ -280,6 +300,18 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             eval_binop(l, op, r)
         }
         Expr::Call(name, args) => {
+            // try(expr, default) — special form: evaluate expr; on error evaluate default.
+            // Arguments are NOT pre-evaluated; lazy semantics.
+            if name == "try" && args.len() == 2 {
+                return match eval_inner(&args[0], env, io.as_deref_mut()) {
+                    Ok(v) => Ok(v),
+                    Err(msg) => {
+                        set_last_err(&msg);
+                        eval_inner(&args[1], env, io.as_deref_mut())
+                    }
+                };
+            }
+
             // If the name resolves to a variable in env, check its type.
             // User functions (Lambda, Function) are called; other values are indexed.
             // Variables shadow built-in function names (Octave semantics).
@@ -347,6 +379,10 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     | "cell"
                     | "iscell"
                     | "cellfun"
+                    | "error"
+                    | "warning"
+                    | "lasterr"
+                    | "pcall"
             );
             if evaled.is_empty() && !no_ans_inject {
                 evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
@@ -2784,6 +2820,68 @@ fn call_builtin(
                 .map(|p| Value::Str(p.to_string()))
                 .collect();
             Ok(Value::Cell(parts))
+        }
+        // error(fmt, args...) — raise a runtime error with a formatted message
+        ("error", _) if !args.is_empty() => {
+            let fmt_str = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("error: first argument must be a format string".to_string()),
+            };
+            let msg = format_printf(&fmt_str, &args[1..])?;
+            Err(msg)
+        }
+        // warning(fmt, args...) — print a warning to stderr, continue execution
+        ("warning", _) if !args.is_empty() => {
+            let fmt_str = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("warning: first argument must be a format string".to_string()),
+            };
+            let msg = format_printf(&fmt_str, &args[1..])?;
+            eprintln!("warning: {msg}");
+            Ok(Value::Void)
+        }
+        // lasterr() — return last error message; lasterr(msg) — set and return previous
+        ("lasterr", 0) => Ok(Value::Str(get_last_err())),
+        ("lasterr", 1) => {
+            let prev = get_last_err();
+            let new_msg = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("lasterr: argument must be a string".to_string()),
+            };
+            set_last_err(&new_msg);
+            Ok(Value::Str(prev))
+        }
+        // pcall(@func, args...) — protected call; returns [ok, result_or_msg]
+        ("pcall", _) if !args.is_empty() => {
+            let callable = args[0].clone();
+            let call_args = &args[1..];
+            let result = match &callable {
+                Value::Lambda(f) => {
+                    let f = f.clone();
+                    f.0(call_args, io)
+                }
+                Value::Function { .. } => match io.as_deref_mut() {
+                    Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
+                        Some(hook) => hook(&callable, call_args, env, io_ref),
+                        None => Err("pcall: function execution not initialized".to_string()),
+                    }),
+                    None => {
+                        let mut tmp_io = IoContext::new();
+                        FN_CALL_HOOK.with(|c| match c.get() {
+                            Some(hook) => hook(&callable, call_args, env, &mut tmp_io),
+                            None => Err("pcall: function execution not initialized".to_string()),
+                        })
+                    }
+                },
+                _ => return Err("pcall: first argument must be a function handle (@func)".to_string()),
+            };
+            match result {
+                Ok(v) => Ok(Value::Tuple(vec![Value::Scalar(1.0), v])),
+                Err(msg) => {
+                    set_last_err(&msg);
+                    Ok(Value::Tuple(vec![Value::Scalar(0.0), Value::Str(msg)]))
+                }
+            }
         }
         _ => Err(format!("Unknown function: '{name}'")),
     }

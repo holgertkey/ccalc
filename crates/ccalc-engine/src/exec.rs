@@ -33,6 +33,7 @@ use crate::env::{Env, Value};
 use crate::eval::{
     Base, Expr, FormatMode, eval_with_io, format_complex, format_scalar, format_value_full,
     get_display_base, get_display_compact, get_display_fmt, set_display_ctx, set_fn_call_hook,
+    set_last_err,
 };
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
@@ -779,6 +780,29 @@ pub fn exec_stmts(
                     break;
                 }
             },
+
+            // ── try / catch / end ────────────────────────────────────────────
+            Stmt::TryCatch {
+                try_body,
+                catch_var,
+                catch_body,
+            } => {
+                match exec_stmts(try_body, env, io, fmt, base, compact) {
+                    Ok(None) => {}
+                    Ok(Some(sig)) => return Ok(Some(sig)),
+                    Err(msg) => {
+                        set_last_err(&msg);
+                        if let Some(var) = catch_var {
+                            let mut map = IndexMap::new();
+                            map.insert("message".to_string(), Value::Str(msg));
+                            env.insert(var.clone(), Value::Struct(map));
+                        }
+                        if let Some(sig) = exec_stmts(catch_body, env, io, fmt, base, compact)? {
+                            return Ok(Some(sig));
+                        }
+                    }
+                }
+            }
 
             // ── function definition ──────────────────────────────────────────
             Stmt::FunctionDef {

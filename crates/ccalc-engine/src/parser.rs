@@ -62,6 +62,15 @@ pub enum Stmt {
     /// The RHS must evaluate to a `Value::Tuple`; extra values are discarded,
     /// missing values produce an error.
     MultiAssign { targets: Vec<String>, expr: Expr },
+    /// `try; body; catch [e]; catch_body; end` — protected block.
+    ///
+    /// If `catch_var` is `Some(name)`, the catch variable is bound to a struct
+    /// with field `message` containing the error string.
+    TryCatch {
+        try_body: Vec<(Stmt, bool)>,
+        catch_var: Option<String>,
+        catch_body: Vec<(Stmt, bool)>,
+    },
     /// `c{i} = v` — cell element assignment.
     ///
     /// Updates element `i` (1-based) of the cell array named `name`.
@@ -1097,7 +1106,7 @@ pub fn block_depth_delta(line: &str) -> i32 {
     let stripped = strip_line_comment(line).trim();
     match leading_keyword(stripped) {
         Some("if") | Some("for") | Some("while") | Some("switch") | Some("do")
-        | Some("function") => 1,
+        | Some("function") | Some("try") => 1,
         Some("end") | Some("until") => -1,
         _ => 0,
     }
@@ -1504,8 +1513,48 @@ fn parse_stmts_from_lines(
                 *pos += 1;
             }
 
+            // ── try / catch / end ────────────────────────────────────────────
+            Some("try") => {
+                *pos += 1;
+                let try_body = parse_stmts_from_lines(lines, pos, &["catch", "end"])?;
+
+                if *pos >= lines.len() {
+                    return Err(
+                        "Unexpected end of input inside 'try': expected 'catch' or 'end'"
+                            .to_string(),
+                    );
+                }
+                let kw_line = strip_line_comment(lines[*pos]).trim();
+                let (catch_var, catch_body) = if leading_keyword(kw_line) == Some("catch") {
+                    let catch_rest = kw_line["catch".len()..].trim();
+                    let catch_var = if catch_rest.is_empty() {
+                        None
+                    } else if is_valid_ident(catch_rest) {
+                        Some(catch_rest.to_string())
+                    } else {
+                        return Err(format!("Expected identifier after 'catch', got '{catch_rest}'"));
+                    };
+                    *pos += 1;
+                    let catch_body = parse_stmts_from_lines(lines, pos, &["end"])?;
+                    (catch_var, catch_body)
+                } else {
+                    // 'end' closes the try block with no catch body
+                    (None, vec![])
+                };
+
+                expect_end(lines, pos, "try")?;
+                stmts.push((
+                    Stmt::TryCatch {
+                        try_body,
+                        catch_var,
+                        catch_body,
+                    },
+                    false,
+                ));
+            }
+
             // ── unexpected terminators ───────────────────────────────────────
-            Some(kw @ ("end" | "else" | "elseif" | "case" | "otherwise" | "until")) => {
+            Some(kw @ ("end" | "else" | "elseif" | "case" | "otherwise" | "until" | "catch")) => {
                 return Err(format!("Unexpected '{kw}' without matching block opener"));
             }
 
@@ -1564,7 +1613,9 @@ fn leading_keyword(line: &str) -> Option<&str> {
     let word = &line[..end];
     match word {
         "if" | "elseif" | "else" | "end" | "for" | "while" | "break" | "continue" | "switch"
-        | "case" | "otherwise" | "do" | "until" | "function" | "return" => Some(word),
+        | "case" | "otherwise" | "do" | "until" | "function" | "return" | "try" | "catch" => {
+            Some(word)
+        }
         _ => None,
     }
 }
@@ -2050,7 +2101,8 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 // Built-in constants
                 match name.as_str() {
                     "pi" => Expr::Number(std::f64::consts::PI),
-                    "e" => Expr::Number(std::f64::consts::E),
+                    // 'e' is a variable-shadowing constant: env lookup first, fallback to Euler's number.
+                    "e" => Expr::Var("e".to_string()),
                     "nan" => Expr::Number(f64::NAN),
                     "inf" => Expr::Number(f64::INFINITY),
                     // All other identifiers → variable reference (resolved at eval time)

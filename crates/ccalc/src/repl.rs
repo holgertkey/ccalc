@@ -9,7 +9,7 @@ use ccalc_engine::env::{
 };
 use ccalc_engine::eval::{
     Base, Expr, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
-    format_value_full,
+    format_value_full, set_last_err,
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
@@ -348,7 +348,7 @@ pub fn run() {
                     Ok(Some(Signal::Return)) => {
                         eprintln!("Error: 'return' outside a function");
                     }
-                    Err(e) => eprintln!("Error: {e}"),
+                    Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
                 },
                 Err(e) => eprintln!("Error: {e}"),
             }
@@ -373,7 +373,7 @@ pub fn run() {
                         Ok(Some(Signal::Return)) => {
                             eprintln!("Error: 'return' outside a function");
                         }
-                        Err(e) => eprintln!("Error: {e}"),
+                        Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
                     },
                     Err(e) => eprintln!("Error: {e}"),
                 }
@@ -728,7 +728,7 @@ pub fn run() {
                         }
                     }
                 }
-                Err(e) => eprintln!("Error: {e}"),
+                Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
             }
         }
     }
@@ -869,7 +869,7 @@ fn try_exec_stmt(
                     eprintln!("Error: 'break'/'continue' outside a loop");
                 }
                 Ok(None) => {}
-                Err(e) => eprintln!("Error: {e}"),
+                Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
             }
             true
         }
@@ -902,7 +902,7 @@ fn try_run_source(
         Ok(parsed) => {
             match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
                 Ok(_) => {}
-                Err(e) => eprintln!("Error: {e}"),
+                Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
             }
             true
         }
@@ -932,7 +932,7 @@ fn try_path_cmd(
         Ok(parsed) => {
             match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
                 Ok(_) => {}
-                Err(e) => eprintln!("Error: {e}"),
+                Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
             }
             true
         }
@@ -1019,6 +1019,7 @@ pub fn run_pipe(reader: impl BufRead) {
             match parse_stmts(trimmed) {
                 Ok(stmts) => {
                     if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                        set_last_err(&e);
                         eprintln!("Error: {e}");
                     }
                 }
@@ -1042,6 +1043,7 @@ pub fn run_pipe(reader: impl BufRead) {
                 match parse_stmts(&block_input) {
                     Ok(stmts) => {
                         if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                            set_last_err(&e);
                             eprintln!("Error: {e}");
                         }
                     }
@@ -1311,7 +1313,7 @@ pub fn run_pipe(reader: impl BufRead) {
                         }
                     }
                 }
-                Err(e) => eprintln!("Error: {e}"),
+                Err(e) => { set_last_err(&e); eprintln!("Error: {e}"); }
             }
         }
     }

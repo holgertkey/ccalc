@@ -3720,6 +3720,123 @@ fn test_rmpath_via_exec() {
     session_path_init(vec![]);
 }
 
+// ── Phase 14 — Error handling ────────────────────────────────────────────────
+
+fn run_block_result(src: &str) -> Result<Env, String> {
+    crate::exec::init();
+    let stmts = parse_stmts(src).expect("parse_stmts failed");
+    let mut env = Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+    let mut io = IoContext::new();
+    exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)?;
+    Ok(env)
+}
+
+#[test]
+fn test_error_builtin_raises() {
+    let result = run_block_result("error('something went wrong')");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("something went wrong"));
+}
+
+#[test]
+fn test_error_builtin_format() {
+    let result = run_block_result("error('expected %d args', 2)");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("expected 2 args"));
+}
+
+#[test]
+fn test_warning_does_not_stop_execution() {
+    let env = run_block("warning('just a warning'); x = 42;");
+    assert_eq!(scalar(&env, "x"), 42.0);
+}
+
+#[test]
+fn test_lasterr_returns_empty_initially() {
+    crate::eval::set_last_err("");
+    let v = crate::eval::get_last_err();
+    assert_eq!(v, "");
+}
+
+#[test]
+fn test_lasterr_set_and_get() {
+    crate::eval::set_last_err("test error");
+    assert_eq!(crate::eval::get_last_err(), "test error");
+    crate::eval::set_last_err("");
+}
+
+#[test]
+fn test_try_catch_anonymous() {
+    let env = run_block(
+        "try\n  error('boom')\ncatch\n  x = 99;\nend",
+    );
+    assert_eq!(scalar(&env, "x"), 99.0);
+}
+
+#[test]
+fn test_try_catch_named_binds_message() {
+    let env = run_block(
+        "try\n  error('oops')\ncatch e\n  msg = e.message;\nend",
+    );
+    match env.get("msg") {
+        Some(Value::Str(s)) => assert_eq!(s, "oops"),
+        other => panic!("expected Str, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_try_no_error_skips_catch() {
+    let env = run_block(
+        "x = 1;\ntry\n  x = 2;\ncatch\n  x = 99;\nend",
+    );
+    assert_eq!(scalar(&env, "x"), 2.0);
+}
+
+#[test]
+fn test_try_end_no_catch() {
+    // try block with no catch arm — error is silently swallowed
+    let env = run_block("x = 1;\ntry\n  error('silent')\nend");
+    assert_eq!(scalar(&env, "x"), 1.0);
+}
+
+#[test]
+fn test_try_functional_fallback() {
+    let env = run_block("x = try(1/0, -1);");
+    assert!(scalar(&env, "x").is_infinite() || scalar(&env, "x") == -1.0);
+}
+
+#[test]
+fn test_try_functional_catches_error() {
+    let env = run_block("x = try(error('bad'), 42);");
+    assert_eq!(scalar(&env, "x"), 42.0);
+}
+
+#[test]
+fn test_try_functional_no_error_returns_value() {
+    let env = run_block("x = try(2 + 3, 99);");
+    assert_eq!(scalar(&env, "x"), 5.0);
+}
+
+#[test]
+fn test_pcall_success() {
+    let env = run_block("f = @(x) x * 2; [ok, v] = pcall(f, 5);");
+    assert_eq!(scalar(&env, "ok"), 1.0);
+    assert_eq!(scalar(&env, "v"), 10.0);
+}
+
+#[test]
+fn test_pcall_failure() {
+    let env = run_block("[ok, msg] = pcall(@(x) error('bad %d', x), 7);");
+    assert_eq!(scalar(&env, "ok"), 0.0);
+    match env.get("msg") {
+        Some(Value::Str(s)) => assert!(s.contains("bad 7"), "msg = {s}"),
+        other => panic!("expected Str msg, got {other:?}"),
+    }
+}
+
 // ── Bug regression: split_stmts must handle '' (escaped quote) correctly ──
 
 #[test]

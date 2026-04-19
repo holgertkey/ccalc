@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 14 — Error handling:**
+  - **`error(fmt, args...)`** — raises a runtime error with a printf-formatted message.
+  - **`warning(fmt, args...)`** — prints a warning to stderr and continues execution.
+  - **`lasterr()`** — returns the message from the most recent runtime error.
+  - **`lasterr(msg)`** — sets the last-error string, returns the previous value.
+  - **`try/catch/end` block** — MATLAB-compatible protected block; anonymous (`catch`) and named (`catch e`) forms; `e` is a struct with field `message`.
+  - **`try(expr, default)`** — inline functional fallback; evaluates `default` only if `expr` raises an error.
+  - **`pcall(@func, args...)`** — protected call; returns `[ok, result]` tuple where `ok=1` on success and `ok=0` with the error message on failure.
+  - **`e` constant now variable-shadowing**: `e` (Euler's number) falls back gracefully when `e` is defined as a variable (e.g. `catch e`).
+
 - **`genpath(dir)`** built-in: returns `dir` and all its subdirectories
   (recursively, sorted) as a path-separator-delimited string (`;` on Windows,
   `:` on Unix). Designed to be composed with `addpath`:
