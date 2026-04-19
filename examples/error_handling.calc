@@ -1,0 +1,180 @@
+% error_handling.calc — Phase 14 (error handling)
+%
+% Topic: raising and recovering from runtime errors using error/warning,
+%        try/catch blocks, the try() functional form, and pcall.
+%
+% Usage: ccalc error_handling.calc
+
+% ── 1. error() and warning() ────────────────────────────────────────────────
+
+fprintf('=== 1. error() and warning() ===\n')
+
+% warning() prints to stderr but does not stop execution
+warning('this is just a warning, continuing...')
+x = 10;
+fprintf('  x after warning = %g   (exact: 10)\n', x)
+
+% error() raises a runtime error — caught below by try/catch
+try
+  error('something failed: value = %d', 42)
+catch e
+  fprintf('  caught: %s\n', e.message)
+end
+
+% ── 2. lasterr ───────────────────────────────────────────────────────────────
+
+fprintf('\n=== 2. lasterr ===\n')
+
+lasterr('');
+try
+  error('division by zero')
+catch
+end
+msg = lasterr();
+fprintf('  lasterr() = "%s"   (exact: division by zero)\n', msg)
+
+% lasterr(msg) sets the message and returns the previous one
+prev = lasterr('reset');
+fprintf('  previous  = "%s"   (exact: division by zero)\n', prev)
+fprintf('  now       = "%s"   (exact: reset)\n', lasterr())
+
+% ── 3. try/catch — anonymous ─────────────────────────────────────────────────
+
+fprintf('\n=== 3. try/catch (anonymous) ===\n')
+
+result = 0;
+try
+  result = 1 / 0;        % Inf, not an error in IEEE 754
+  result = sqrt(-1);     % Complex — also not an error
+  error('forced failure')
+  result = 999;          % never reached
+catch
+  result = -1;
+end
+fprintf('  result = %g   (exact: -1)\n', result)
+
+% When try body succeeds, catch is skipped
+ok = 0;
+try
+  ok = 1;
+catch
+  ok = -99;
+end
+fprintf('  ok     = %g   (exact: 1)\n', ok)
+
+% ── 4. try/catch — named catch variable ──────────────────────────────────────
+
+fprintf('\n=== 4. try/catch with named variable ===\n')
+
+function y = risky(x)
+  if x < 0
+    error('risky: negative input %g', x)
+  end
+  y = sqrt(x);
+end
+
+for val = [4, -1, 9]
+  try
+    r = risky(val);
+    fprintf('  risky(%2g) = %g\n', val, r)
+  catch e
+    fprintf('  risky(%2g) error: %s\n', val, e.message)
+  end
+end
+
+% ── 5. try(expr, default) — inline fallback ───────────────────────────────────
+
+fprintf('\n=== 5. try(expr, default) ===\n')
+
+% Succeeds — returns the value
+a = try(2 + 3, 99);
+fprintf('  try(2+3, 99)       = %g   (exact: 5)\n', a)
+
+% Fails — returns the default
+b = try(error('bad'), 42);
+fprintf('  try(error, 42)     = %g   (exact: 42)\n', b)
+
+% Useful pattern: safe string-to-number conversion
+s1 = '3.14';
+s2 = 'hello';
+n1 = try(str2num(s1), 0);
+n2 = try(str2num(s2), 0);
+fprintf('  str2num("%s")  = %g   (exact: 3.14)\n', s1, n1)
+fprintf('  str2num("%s") = %g   (exact: 0)\n',    s2, n2)
+
+% ── 6. pcall — protected call ─────────────────────────────────────────────────
+
+fprintf('\n=== 6. pcall ===\n')
+
+function y = safe_log(x)
+  if x <= 0
+    error('safe_log: x must be positive, got %g', x)
+  end
+  y = log(x);
+end
+
+inputs = [100, -5, 1];
+for k = 1:3
+  x = inputs(k);
+  [ok, val] = pcall(@safe_log, x);
+  if ok
+    fprintf('  safe_log(%4g) = %.4f\n', x, val)
+  else
+    fprintf('  safe_log(%4g) failed: %s\n', x, val)
+  end
+end
+
+% pcall with anonymous function
+[ok, v] = pcall(@(x) x^2, 7);
+fprintf('  pcall(@(x)x^2, 7): ok=%g, v=%g   (exact: ok=1, v=49)\n', ok, v)
+
+[ok, v] = pcall(@(x) error('always fails: %g', x), 3);
+fprintf('  pcall(always_fail): ok=%g   (exact: ok=0)\n', ok)
+fprintf('    message: %s\n', v)
+
+% ── 7. Nested try/catch ───────────────────────────────────────────────────────
+
+fprintf('\n=== 7. Nested try/catch ===\n')
+
+outer_caught = 0;
+inner_caught = 0;
+
+try
+  try
+    error('inner error')
+  catch e
+    inner_caught = 1;
+    fprintf('  inner caught: %s\n', e.message)
+    error('re-raised: %s', e.message)
+  end
+catch e
+  outer_caught = 1;
+  fprintf('  outer caught: %s\n', e.message)
+end
+
+fprintf('  inner_caught = %g   (exact: 1)\n', inner_caught)
+fprintf('  outer_caught = %g   (exact: 1)\n', outer_caught)
+
+% ── 8. try/catch in a loop ───────────────────────────────────────────────────
+
+fprintf('\n=== 8. try/catch in a loop ===\n')
+
+errors = 0;
+successes = 0;
+data = [4, -1, 9, -4, 16];
+
+for k = 1:5
+  [ok, val] = pcall(@risky, data(k));
+  if ok
+    successes++;
+    fprintf('  risky(%3g) = %g\n', data(k), val)
+  else
+    errors++;
+    fprintf('  risky(%3g) failed: %s\n', data(k), val)
+  end
+end
+
+fprintf('  successes = %g   (exact: 3)\n', successes)
+fprintf('  errors    = %g   (exact: 2)\n', errors)
+
+fprintf('\nDone.\n')
