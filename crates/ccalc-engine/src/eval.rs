@@ -433,7 +433,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // Autoload: search for <name>.calc / <name>.m if not in env or cache.
             let cached = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned());
             let autoloaded_val = cached.or_else(|| {
-                let loaded = AUTOLOAD_HOOK.with(|c| c.get())
+                let loaded = AUTOLOAD_HOOK
+                    .with(|c| c.get())
                     .is_some_and(|hook| hook(name));
                 if loaded {
                     AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())

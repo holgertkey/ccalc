@@ -31,10 +31,9 @@ use ndarray::Array2;
 
 use crate::env::{Env, Value};
 use crate::eval::{
-    Base, Expr, FormatMode, eval_with_io, format_complex, format_scalar, format_value_full,
-    autoload_cache_insert, get_display_base, get_display_compact, get_display_fmt,
-    set_autoload_hook, set_display_ctx, set_fn_call_hook,
-    set_last_err,
+    Base, Expr, FormatMode, autoload_cache_insert, eval_with_io, format_complex, format_scalar,
+    format_value_full, get_display_base, get_display_compact, get_display_fmt, set_autoload_hook,
+    set_display_ctx, set_fn_call_hook, set_last_err,
 };
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
@@ -121,9 +120,15 @@ pub fn init() {
 fn try_autoload(name: &str) -> bool {
     let candidates = [format!("{name}.calc"), format!("{name}.m")];
     for candidate in &candidates {
-        let Some(path) = resolve_script_path(candidate) else { continue };
-        let Ok(content) = std::fs::read_to_string(&path) else { continue };
-        let Ok(stmts) = parse_stmts(&content) else { continue };
+        let Some(path) = resolve_script_path(candidate) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(stmts) = parse_stmts(&content) else {
+            continue;
+        };
         if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _))) {
             continue;
         }
@@ -133,24 +138,41 @@ fn try_autoload(name: &str) -> bool {
         };
         let mut locals: IndexMap<String, Value> = IndexMap::new();
         for (stmt, _) in &stmts {
-            if let Stmt::FunctionDef { name: n, outputs, params, body_source } = stmt
+            if let Stmt::FunctionDef {
+                name: n,
+                outputs,
+                params,
+                body_source,
+            } = stmt
                 && n != &primary_name
             {
-                locals.insert(n.clone(), Value::Function {
+                locals.insert(
+                    n.clone(),
+                    Value::Function {
+                        outputs: outputs.clone(),
+                        params: params.clone(),
+                        body_source: body_source.clone(),
+                        locals: IndexMap::new(),
+                    },
+                );
+            }
+        }
+        if let Stmt::FunctionDef {
+            outputs,
+            params,
+            body_source,
+            ..
+        } = &stmts[0].0
+        {
+            autoload_cache_insert(
+                primary_name,
+                Value::Function {
                     outputs: outputs.clone(),
                     params: params.clone(),
                     body_source: body_source.clone(),
-                    locals: IndexMap::new(),
-                });
-            }
-        }
-        if let Stmt::FunctionDef { outputs, params, body_source, .. } = &stmts[0].0{
-            autoload_cache_insert(primary_name, Value::Function {
-                outputs: outputs.clone(),
-                params: params.clone(),
-                body_source: body_source.clone(),
-                locals,
-            });
+                    locals,
+                },
+            );
             return true;
         }
     }
