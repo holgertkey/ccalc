@@ -10,8 +10,9 @@
 | `ceil(x)`  | Smallest integer ≥ `x` (round toward +∞)                | `ceil(2.1)` → `3`                 |
 | `round(x)` | Nearest integer; ties round away from zero               | `round(2.5)` → `3`                |
 | `sign(x)`  | −1 if `x < 0`, 0 if `x = 0`, 1 if `x > 0`              | `sign(-5)` → `-1`                 |
-| `log(x)`   | Base-10 logarithm of `x` (requires `x > 0`)             | `log(1000)` → `3`                 |
-| `ln(x)`    | Natural logarithm of `x`, base *e* (requires `x > 0`)   | `ln(e)` → `1`                     |
+| `log(x)`   | Natural logarithm of `x`, base *e* (requires `x > 0`)   | `log(e)` → `1`                    |
+| `log2(x)`  | Base-2 logarithm of `x` (requires `x > 0`)              | `log2(8)` → `3`                   |
+| `log10(x)` | Base-10 logarithm of `x` (requires `x > 0`)             | `log10(1000)` → `3`               |
 | `exp(x)`   | *e* raised to the power `x`                              | `exp(1)` → `2.71828…`             |
 | `sin(x)`   | Sine of `x`, where `x` is in **radians**                 | `sin(pi/6)` → `0.5`               |
 | `cos(x)`   | Cosine of `x`, where `x` is in **radians**               | `cos(0)` → `1`                    |
@@ -30,8 +31,9 @@ Compare: `floor(-2.5) → -3`, `ceil(-2.5) → -2`, `round(-2.5) → -3`.
 
 **`sign(x)`** — Returns `NaN` when `x` is `NaN` (sign of NaN is undefined).
 
-**`log(x)`, `ln(x)`** — Return `NaN` for `x < 0` and `-Inf` for `x = 0`. No error is raised.  
-`log` is base 10; use `ln` for the natural logarithm. For an arbitrary base see `log(x, base)`.
+**`log(x)`** — Natural logarithm (base *e*), MATLAB/Octave-compatible. Returns `NaN` for `x < 0` and `-Inf` for `x = 0`. No error is raised.  
+**`log2(x)`** — Base-2 logarithm. **`log10(x)`** — Base-10 logarithm.  
+For an arbitrary base see `log(x, base)`.
 
 **`sin`, `cos`, `tan`** — Expect `x` in **radians**. To convert from degrees: `deg * pi / 180`.  
 `tan(x)` is undefined at `x = π/2 + n·π`; it returns `±Inf` at those points.
@@ -50,9 +52,10 @@ floor(2.9)          →    2
 ceil(2.1)           →    3
 round(2.5)          →    3
 sign(-5)            →   -1
-log(1000)           →    3
-ln(e)               →    1
-exp(ln(5))          →    5     (round-trip)
+log(e)              →    1     (natural log)
+log2(8)             →    3
+log10(1000)         →    3
+exp(log(5))         →    5     (round-trip)
 sin(pi / 6)         →    0.5
 cos(pi / 3)         →    0.5
 tan(pi / 4)         →    1
@@ -111,7 +114,7 @@ min(3, 7)              →    3
 hypot(3, 4)            →    5
 hypot(5, 12)           →   13
 log(8, 2)              →    3     (log base 2 of 8)
-log(100, 10)           →    2     (same as log(100))
+log(100, 10)           →    2     (same as log10(100))
 ```
 
 ### `mod` vs `rem`
@@ -190,8 +193,8 @@ Calling a function with empty parentheses uses **ans** as the argument:
 |-------|-----------------------------------------------------------|
 | `pi`  | 3.14159265358979…                                         |
 | `e`   | 2.71828182845904…                                         |
-| `nan` | IEEE 754 Not-a-Number — propagates through all arithmetic |
-| `inf` | Positive infinity; use `-inf` for negative infinity       |
+| `nan` / `NaN` | IEEE 754 Not-a-Number — propagates through all arithmetic |
+| `inf` / `Inf` | Positive infinity; use `-inf` for negative infinity       |
 | `ans` | Result of the last expression                             |
 
 **`nan`** — Not a number. Any arithmetic operation involving `nan` returns `nan`.
@@ -226,7 +229,7 @@ Functions can be nested freely:
 
 ```
 sqrt(abs(-16))          →    4
-ln(exp(1))              →    1
+log(exp(1))             →    1
 floor(sqrt(10))         →    3
 max(hypot(3,4), 6)      →    6
 ```
@@ -236,7 +239,7 @@ max(hypot(3,4), 6)      →    6
 ```
 sqrt(144) + 3           →   15
 2 * sin(pi / 6)         →    1
-log(1000) ^ 2           →    9
+log10(1000) ^ 2         →    9
 hypot(3, 4) * 2         →   10
 atan2(1, 1) * 180 / pi  →   45
 ```

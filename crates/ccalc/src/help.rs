@@ -322,8 +322,9 @@ One-argument
     ceil(x)       round up to integer
     round(x)      round to nearest integer
     sign(x)       sign: -1, 0, or 1
-    log(x)        base-10 logarithm
-    ln(x)         natural logarithm (base e)
+    log(x)        natural logarithm (base e)
+    log2(x)       base-2 logarithm
+    log10(x)      base-10 logarithm
     exp(x)        e raised to the power x
     sin(x)        sine (radians)
     cos(x)        cosine (radians)
@@ -1724,6 +1725,21 @@ USER-DEFINED FUNCTIONS AND LAMBDAS  (help userfuncs)
   are forwarded, enabling:
     - self-recursion: a function can call itself by name
     - mutual recursion: two functions can call each other
+
+─── Function files and autoload ───────────────────────────────────────────────
+
+  A file starting with 'function' is a function file:
+    - Only the PRIMARY function is added to the workspace on source().
+    - Helper functions after the primary are LOCAL — invisible outside the
+      file but available to the primary (MATLAB-style local scoping).
+
+  AUTOLOAD: calling an unknown function name triggers an automatic search
+  for <name>.calc / <name>.m on the current directory and session path.
+  No explicit source() needed:
+
+    [c, k] = bisect(@(x) x^2-2, 1, 2, 1e-8)   % bisect.calc auto-loaded
+
+  source() still works for explicit loading.
 
 ─── Anonymous functions (lambdas) ─────────────────────────────────────────────
 

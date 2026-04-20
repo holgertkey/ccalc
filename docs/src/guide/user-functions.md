@@ -172,6 +172,44 @@ add5(add10(1))  % 16
 
 ---
 
+## Function files and autoload
+
+A `.calc` (or `.m`) file that begins with a `function` definition is a
+**function file**. ccalc handles it differently from a script:
+
+- Only the **primary function** (the first one) is exposed to the caller's workspace.
+- Any additional functions in the file are **local helpers** — invisible outside
+  the file, but available to the primary function (MATLAB-style scoping).
+- When a function name is called that is not in the workspace, ccalc
+  automatically searches for `<name>.calc` / `<name>.m` on the current
+  directory and the session path, loads it, and calls it — no explicit
+  `source()` required.
+
+```matlab
+% bisect.calc — primary function + private helper
+function [c, k] = bisect(fun, a, b, tol)
+% help text goes here, right after the function line
+  steps = ceil(log2((b - a) / tol));
+  [c, k] = bisect_r(fun, a, b, 0, steps);   % calls local helper
+end
+
+function [c, k] = bisect_r(fun, a, b, k, maxSteps)
+  % bisect_r is local — not visible outside bisect.calc
+  ...
+end
+```
+
+If `bisect.calc` is on the path, calling `bisect(...)` without any `source()`
+works automatically:
+
+```matlab
+[c, k] = bisect(@(x) x^2 - 2, 1, 2, 1e-8)   % bisect.calc auto-loaded
+```
+
+`source('bisect.calc')` still works for explicit loading.
+
+---
+
 ## Full example
 
 ```bash

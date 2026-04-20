@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+005] - 2026-04-20
+
+### Added
+
+- **Autoload**: calling an unknown function triggers automatic search for
+  `<name>.calc` / `<name>.m` on CWD and session path — no explicit `source()`
+  needed (MATLAB/Octave-compatible).
+- **MATLAB-style local function scoping**: a function file may contain multiple
+  `function` definitions; only the primary function is exposed to the caller's
+  workspace; all other functions are local helpers, bundled inside
+  `Value::Function.locals` and invisible outside the file.
+- **`log2(x)`** and **`log10(x)`** built-ins added.
+- **`Inf`** and **`NaN`** (capital variants) recognised as aliases for `inf` / `nan`.
+
+### Fixed
+
+- **`log(x)` now returns the natural logarithm** (base *e*), matching
+  MATLAB/Octave. Previously it incorrectly computed log base 10.
+- **Stack overflow on deep recursion** fixed: `main` is now spawned on a
+  dedicated thread with a 64 MB stack, supporting hundreds of recursive
+  function calls.
+
 ## [0.21.0] - 2026-04-20
 
 ### Added
