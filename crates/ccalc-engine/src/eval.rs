@@ -28,6 +28,32 @@ pub fn set_fn_call_hook(f: FnCallHook) {
     FN_CALL_HOOK.with(|c| c.set(Some(f)));
 }
 
+// ── Autoload hook ───────────────────────────────────────────────────────────
+
+/// Signature for the hook that auto-loads a function file by name.
+///
+/// Called by `eval_inner` when a name is not found in the environment and not
+/// a built-in. The hook searches for `<name>.calc` / `<name>.m` on the path
+/// and, if found, inserts the primary function into the autoload cache via
+/// [`autoload_cache_insert`]. Returns `true` if the function was loaded.
+pub type AutoloadHook = fn(name: &str) -> bool;
+
+thread_local! {
+    static AUTOLOAD_HOOK: Cell<Option<AutoloadHook>> = const { Cell::new(None) };
+    /// Cache of autoloaded functions — populated by the autoload hook, read by eval_inner.
+    static AUTOLOAD_CACHE: RefCell<Env> = RefCell::new(Env::new());
+}
+
+/// Registers the autoload hook. Called by `exec::init()`.
+pub fn set_autoload_hook(f: AutoloadHook) {
+    AUTOLOAD_HOOK.with(|c| c.set(Some(f)));
+}
+
+/// Inserts a function into the autoload cache. Called by `exec::try_autoload`.
+pub fn autoload_cache_insert(name: String, val: Value) {
+    AUTOLOAD_CACHE.with(|c| c.borrow_mut().insert(name, val));
+}
+
 // ── Last error (thread-local) ────────────────────────────────────────────────
 
 thread_local! {
@@ -401,6 +427,40 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     _ => return eval_index(&val, args, env),
                 }
             }
+            // Autoload: if name is not in env and not yet tried as a builtin,
+            // ask exec.rs to search for <name>.calc / <name>.m on the path.
+            // If found, the function is inserted into env and we call it directly.
+            // Autoload: search for <name>.calc / <name>.m if not in env or cache.
+            let cached = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned());
+            let autoloaded_val = cached.or_else(|| {
+                let loaded = AUTOLOAD_HOOK.with(|c| c.get())
+                    .is_some_and(|hook| hook(name));
+                if loaded {
+                    AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
+                } else {
+                    None
+                }
+            });
+            if let Some(val) = autoloaded_val {
+                let mut evaled = Vec::with_capacity(args.len());
+                for a in args {
+                    evaled.push(eval_inner(a, env, io.as_deref_mut())?);
+                }
+                return match io.as_deref_mut() {
+                    Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
+                        Some(hook) => hook(&val, &evaled, env, io_ref),
+                        None => Err(format!("'{name}': exec::init() not called")),
+                    }),
+                    None => {
+                        let mut tmp_io = IoContext::new();
+                        FN_CALL_HOOK.with(|c| match c.get() {
+                            Some(hook) => hook(&val, &evaled, env, &mut tmp_io),
+                            None => Err(format!("'{name}': exec::init() not called")),
+                        })
+                    }
+                };
+            }
+
             // Builtin path: empty call → inject ans (sqrt() = sqrt(ans)).
             let mut evaled = Vec::with_capacity(args.len().max(1));
             for a in args {

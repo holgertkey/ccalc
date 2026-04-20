@@ -32,7 +32,8 @@ use ndarray::Array2;
 use crate::env::{Env, Value};
 use crate::eval::{
     Base, Expr, FormatMode, eval_with_io, format_complex, format_scalar, format_value_full,
-    get_display_base, get_display_compact, get_display_fmt, set_display_ctx, set_fn_call_hook,
+    autoload_cache_insert, get_display_base, get_display_compact, get_display_fmt,
+    set_autoload_hook, set_display_ctx, set_fn_call_hook,
     set_last_err,
 };
 use crate::io::IoContext;
@@ -109,6 +110,51 @@ pub enum Signal {
 /// Must be called once at program startup before any evaluation takes place.
 pub fn init() {
     set_fn_call_hook(call_user_function);
+    set_autoload_hook(try_autoload);
+}
+
+/// Searches for `<name>.calc` or `<name>.m` on the session path and loads it.
+///
+/// Mirrors MATLAB/Octave autoload: when a function name is not found in the
+/// environment, ccalc looks for a matching file on the path, loads its primary
+/// function into the autoload cache, and returns `true` on success.
+fn try_autoload(name: &str) -> bool {
+    let candidates = [format!("{name}.calc"), format!("{name}.m")];
+    for candidate in &candidates {
+        let Some(path) = resolve_script_path(candidate) else { continue };
+        let Ok(content) = std::fs::read_to_string(&path) else { continue };
+        let Ok(stmts) = parse_stmts(&content) else { continue };
+        if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _))) {
+            continue;
+        }
+        let primary_name = match &stmts[0].0 {
+            Stmt::FunctionDef { name, .. } => name.clone(),
+            _ => continue,
+        };
+        let mut locals: IndexMap<String, Value> = IndexMap::new();
+        for (stmt, _) in &stmts {
+            if let Stmt::FunctionDef { name: n, outputs, params, body_source } = stmt
+                && n != &primary_name
+            {
+                locals.insert(n.clone(), Value::Function {
+                    outputs: outputs.clone(),
+                    params: params.clone(),
+                    body_source: body_source.clone(),
+                    locals: IndexMap::new(),
+                });
+            }
+        }
+        if let Stmt::FunctionDef { outputs, params, body_source, .. } = &stmts[0].0{
+            autoload_cache_insert(primary_name, Value::Function {
+                outputs: outputs.clone(),
+                params: params.clone(),
+                body_source: body_source.clone(),
+                locals,
+            });
+            return true;
+        }
+    }
+    false
 }
 
 /// Push a script directory onto the search stack.
