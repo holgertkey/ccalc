@@ -64,6 +64,9 @@ pub enum Value {
         params: Vec<String>,
         /// Raw source text of the function body (text between `function` header and `end`).
         body_source: String,
+        /// Local helper functions defined in the same function file (MATLAB-style scoping).
+        /// Populated when a function file is sourced; empty for inline definitions.
+        locals: IndexMap<String, Value>,
     },
     /// Multiple return values from a multi-output function call (internal use).
     ///

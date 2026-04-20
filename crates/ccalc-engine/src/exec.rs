@@ -175,6 +175,7 @@ fn call_user_function(
         outputs,
         params,
         body_source,
+        locals,
     } = func
     else {
         return Err("call_user_function: not a Function value".to_string());
@@ -187,6 +188,11 @@ fn call_user_function(
     local_env.insert("i".to_string(), Value::Complex(0.0, 1.0));
     local_env.insert("j".to_string(), Value::Complex(0.0, 1.0));
     local_env.insert("ans".to_string(), Value::Scalar(0.0));
+    // Local helper functions from the same function file (MATLAB-style scoping).
+    // These take priority and are always available regardless of the caller's env.
+    for (name, val) in locals.iter() {
+        local_env.insert(name.clone(), val.clone());
+    }
     for (name, val) in caller_env.iter() {
         if matches!(val, Value::Function { .. } | Value::Lambda(_)) {
             local_env.insert(name.clone(), val.clone());
@@ -612,7 +618,59 @@ pub fn exec_stmts(
                     let run_stmts = parse_stmts(&content).map_err(|e| {
                         format!("{fn_name}: parse error in '{}': {e}", script_path.display())
                     })?;
-                    let result = exec_stmts(&run_stmts, env, io, fmt, base, compact);
+
+                    // MATLAB scoping: if the file starts with a function definition,
+                    // treat it as a function file — expose only the primary function and
+                    // bundle all helpers into its `locals` (invisible to the caller).
+                    let is_fn_file =
+                        matches!(run_stmts.first(), Some((Stmt::FunctionDef { .. }, _)));
+                    let result = if is_fn_file {
+                        let primary_name = match &run_stmts[0].0 {
+                            Stmt::FunctionDef { name, .. } => name.clone(),
+                            _ => unreachable!(),
+                        };
+                        let mut locals: IndexMap<String, Value> = IndexMap::new();
+                        for (stmt, _) in &run_stmts {
+                            if let Stmt::FunctionDef {
+                                name,
+                                outputs,
+                                params,
+                                body_source,
+                            } = stmt
+                                && name != &primary_name
+                            {
+                                locals.insert(
+                                    name.clone(),
+                                    Value::Function {
+                                        outputs: outputs.clone(),
+                                        params: params.clone(),
+                                        body_source: body_source.clone(),
+                                        locals: IndexMap::new(),
+                                    },
+                                );
+                            }
+                        }
+                        if let Stmt::FunctionDef {
+                            outputs,
+                            params,
+                            body_source,
+                            ..
+                        } = &run_stmts[0].0
+                        {
+                            env.insert(
+                                primary_name,
+                                Value::Function {
+                                    outputs: outputs.clone(),
+                                    params: params.clone(),
+                                    body_source: body_source.clone(),
+                                    locals,
+                                },
+                            );
+                        }
+                        Ok(None)
+                    } else {
+                        exec_stmts(&run_stmts, env, io, fmt, base, compact)
+                    };
                     SCRIPT_DIR_STACK.with(|s| s.borrow_mut().pop());
                     RUN_DEPTH.with(|d| d.set(depth));
                     return result;
@@ -817,6 +875,7 @@ pub fn exec_stmts(
                         outputs: outputs.clone(),
                         params: params.clone(),
                         body_source: body_source.clone(),
+                        locals: IndexMap::new(),
                     },
                 );
             }
