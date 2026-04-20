@@ -57,3 +57,4 @@
 - [Phase 13.5 — Struct Arrays](./ccalc/phase135-struct-arrays.md)
 - [Phase 13.6 — Backslash Operator and Path System](./ccalc/phase136-backslash-path.md)
 - [Phase 14 — Error Handling](./ccalc/phase14-error-handling.md)
+- [Phase 15 — Indexed Assignment](./ccalc/phase15-indexed-assignment.md)

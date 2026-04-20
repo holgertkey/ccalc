@@ -14,6 +14,7 @@ pub fn print(topic: Option<&str>) {
         Some("script" | "pipe" | "printf") => print_script(),
         Some("format" | "fmt") => print_format(),
         Some("matrices" | "matrix" | "mat") => print_matrices(),
+        Some("index" | "indexing" | "indexed" | "assignment") => print_index_assign(),
         Some("logic" | "logical" | "comparison") => print_logic(),
         Some("examples" | "ex") => print_examples(),
         Some("vectors" | "vector" | "utils") => print_vectors(),
@@ -41,7 +42,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  bases  vars  script  format  matrices  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -107,6 +108,8 @@ Range   1:5  →  [1 2 3 4 5]     1:2:9  →  [1 3 5 7 9]
         linspace(a,b,n)   [1:3, 10]  →  [1 2 3 10]
 Index   v(3)  v(2:4)  v(:)  v(end)  v(end-1:end)   1-based
         A(i,j)  A(:,j)  A(i,:)  A(end,:)  A(1:end-1, 2:end)
+        v(i) = x  v(1:3) = 0  v(end+1) = x  A(:,j) = col
+        v(v > 0)  v(mask) = 0  (logical mask indexing)
 Vector  sum prod mean min max any all norm(v) norm(v,p)
         cumsum cumprod  sort  find  unique
         reshape(A,m,n)  fliplr  flipud
@@ -198,6 +201,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help vars        variables and workspace
   help script      pipe/script mode, semicolons, disp, fprintf
   help matrices    matrix literals, arithmetic, ranges, indexing
+  help index       indexed assignment, growing vectors, logical masks
   help vectors     nan/inf, reductions, sort/find/unique, end, reshape
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
@@ -712,7 +716,9 @@ Left division (backslash)
 
 Built-in functions
     zeros(m,n)        m×n matrix of zeros
+    zeros(n)          n×n matrix of zeros
     ones(m,n)         m×n matrix of ones
+    ones(n)           n×n matrix of ones
     eye(n)            n×n identity matrix
     size(A)           [rows cols] as a 1×2 row vector
     size(A, dim)      rows (dim=1) or cols (dim=2) as scalar
@@ -766,9 +772,138 @@ Display
        3   4
     Prompt shows size when ans is a matrix:  [ [2×2] ]:
 
+Indexed assignment  (write path — mirrors the read forms above)
+    v(3) = 42             set single element
+    v(1:3) = [10 20 30]   slice: RHS same length as selection
+    v(4:6) = 0            scalar broadcast to all selected positions
+    v(:) = 0              reset all elements at once
+    A(2,3) = 7            2-D element
+    A(:,1) = [1;2;3;4]   entire column
+    A(1,:) = [1 2 3 4]   entire row
+    A(2:3,2:3) = eye(2)   submatrix
+
+Growing vectors — assigning beyond current length extends with zeros
+    v = [];  v(end+1) = x   append: end resolves to current length
+    v(7) = 99               pads to length 7, fills gap with zeros
+    v(i) = x                auto-creates row vector if v is undefined
+
+Logical (boolean mask) indexing
+    v(v > 0)              read: select elements where mask is true
+    v(v < 0) = 0          write: modify elements where mask is true
+    m = v > 3;  v(m) = 0  using a pre-computed mask variable
+    M(M > 5)              2-D matrix: elements in column-major order
+    M(M > 5) = 0          2-D masked write
+
 Workspace
     ws  saves only scalar variables — matrices are not persisted.
-    who shows dimensions:  A = [2×2 double]"
+    who shows dimensions:  A = [2×2 double]
+
+See also: help index   (full indexed-assignment reference)"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help index
+// ---------------------------------------------------------------------------
+
+fn print_index_assign() {
+    println!(
+        "\
+INDEXED ASSIGNMENT  (help index)
+
+All read-index forms work as write targets. The left-hand side must be a
+variable name — arbitrary expressions are not allowed as assignment targets.
+
+─── Scalar and slice assignment ────────────────────────────────────────────────
+
+  v = zeros(1, 6);
+  v(3) = 42;               % set element 3
+  v(1:2) = [10, 20];       % slice: RHS length must equal selection
+  v(4:6) = 99;             % scalar broadcast to 3 positions
+  v(:) = 0;                % reset all elements at once
+
+─── 2-D matrix assignment ──────────────────────────────────────────────────────
+
+  A = zeros(4);
+  A(2, 3) = 7;               % scalar at row 2, col 3
+  A(:, 1) = [1; 2; 3; 4];   % full column (RHS must be column vector)
+  A(1, :) = [10 20 30 40];   % full row
+  A(2:3, 2:3) = eye(2);      % 2×2 submatrix
+
+─── Broadcasting rule ──────────────────────────────────────────────────────────
+
+  When RHS is a scalar and the LHS index selects multiple elements,
+  the scalar is broadcast to every selected position:
+
+  v(1:5) = 0                 zero five elements
+  A(:, 2) = 1                fill column 2 with ones
+
+─── Growing vectors ────────────────────────────────────────────────────────────
+
+  v = [];
+  for k = 1:5
+    v(end+1) = k^2;          % end = current length, so this appends
+  end
+  % v = [1 4 9 16 25]
+
+  v = [1 2 3];
+  v(7) = 99;                 % → [1 2 3 0 0 0 99]  (gap padded with zeros)
+
+  If the variable does not exist, the first indexed assignment creates it
+  as a 1×N row vector.
+
+─── Logical (boolean mask) indexing ────────────────────────────────────────────
+
+  A 0/1 vector whose element count equals the dimension size is a boolean
+  mask rather than a list of indices.  This enables compact read/write idioms:
+
+  Read — select elements where mask is 1:
+    v = [3, -1, 8, 0, 5, -2, 7];
+    pos = v(v > 0);            % → [3  8  5  7]
+
+  Write — modify elements where mask is 1:
+    v(v < 0) = 0;              % zero out negatives (half-wave rectifier)
+
+  Using a separate mask variable:
+    signal = [0.5, -1.2, 0.8, -0.3, 1.5, -2.0, 0.1];
+    noise  = signal < 0;
+    signal(noise) = 0;         % zero out noise samples
+
+  2-D matrix logical mask (elements in column-major order):
+    M = [1 2 3; 4 5 6; 7 8 9];
+    M(M > 5)                   % → [7 8 6 9]
+    M(M > 5) = 0;              % zero those elements in place
+
+─── end in index expressions ───────────────────────────────────────────────────
+
+  end resolves to the current length of the dimension being indexed,
+  enabling relative addressing from the tail:
+
+    v(end)       last element (read)
+    v(end) = x   overwrite last element (write)
+    v(end+1) = x append (write — extends the vector)
+    v(end-1:end) = [a b]   overwrite last two elements
+
+─── Practical patterns ─────────────────────────────────────────────────────────
+
+  % Build a Fibonacci sequence element by element
+  fib = [];
+  fib(1) = 1;  fib(2) = 1;
+  for k = 3:12
+    fib(end+1) = fib(end) + fib(end-1);
+  end
+
+  % Collect even numbers, then cap at 10
+  evens = [];
+  for k = 1:20
+    if mod(k, 2) == 0
+      evens(end+1) = k;
+    end
+  end
+  evens(evens > 10) = 10;
+
+See also: help matrices  help vectors  help logic
+Example:  ccalc examples/indexed_assignment.calc"
     );
 }
 

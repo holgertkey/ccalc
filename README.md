@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.20.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.21.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -445,6 +445,44 @@ ans =
 ans =
    2   3
    5   6
+```
+
+### Indexed assignment
+
+All read forms work as write targets. A scalar RHS is broadcast to all
+selected positions:
+
+```matlab
+v = zeros(1, 6);
+v(3) = 42;            % set element 3
+v(1:2) = [10, 20];    % slice assignment
+v(4:6) = 99;          % broadcast scalar to three positions
+v(:) = 0;             % reset all elements
+
+A = zeros(4);
+A(2, 3) = 7;               % 2-D element
+A(:, 1) = [1; 2; 3; 4];   % full column
+A(2:3, 2:3) = eye(2);      % submatrix
+```
+
+**Growing vectors** — assigning beyond the current length pads with zeros.
+`end+1` is the idiomatic append:
+
+```matlab
+v = [];
+for k = 1:8
+  v(end+1) = k^2;     % append k-squared
+end
+% v = [1 4 9 16 25 36 49 64]
+```
+
+**Logical (boolean mask) indexing** — a 0/1 mask selects positions for
+reading or writing:
+
+```matlab
+temps = [18, 22, 35, 12, 29, 41, 8, 33];
+hot   = temps(temps >= 30);   % read: [35 41 33]
+temps(temps >= 30) = 30;      % write: cap all hot values at 30
 ```
 
 ---
@@ -1496,6 +1534,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `structs.calc`               | Scalar structs: field assignment/read, nested structs, `struct()` constructor, `fieldnames`/`isfield`/`rmfield`/`isstruct`, 3-D vector example |
 | `struct_arrays.calc`         | Struct arrays: indexed creation, element access, field collection → matrix/cell, loop building, `fieldnames`/`isfield`, nested fields, inventory ledger |
 | `error_handling.calc`        | Error handling: `error`/`warning`, `lasterr`, `try/catch`, `try(expr,default)`, `pcall`, nested and loop-safe error recovery |
+| `indexed_assignment.calc`    | Indexed assignment: element/slice/submatrix write, growing vectors with `end+1`, cell array growth, logical mask read/write |
 
 ```bash
 ccalc < examples/mortgage.calc

@@ -142,7 +142,9 @@ linspace(0, 1, 0)      % []   (empty)
 | Function        | Description                              |
 |-----------------|------------------------------------------|
 | `zeros(m, n)`   | m×n matrix of zeros                      |
+| `zeros(n)`      | n×n matrix of zeros                      |
 | `ones(m, n)`    | m×n matrix of ones                       |
+| `ones(n)`       | n×n matrix of ones                       |
 | `eye(n)`        | n×n identity matrix                      |
 | `size(A)`       | `[rows cols]` as a 1×2 row vector        |
 | `size(A, dim)`  | Rows (dim=1) or columns (dim=2) as scalar|
@@ -240,6 +242,86 @@ A = [1 2 3; 4 5 6; 7 8 9];
 A(end, :)        % → [7 8 9]     last row
 A(:, end)        % → [3;6;9]     last column
 A(1:end-1, 2:end) % → [2 3; 5 6] all but last row, columns 2 onward
+```
+
+## Indexed Assignment
+
+All index forms that work for reading also work for writing. The right-hand
+side can be a single scalar (broadcast to all selected positions) or a
+matrix/vector matching the selected size.
+
+### Scalar and slice assignment
+
+```
+v = zeros(1, 6);
+v(3) = 42;            % set one element
+v(1:2) = [10, 20];    % set a slice from a vector
+v(4:6) = 99;          % broadcast scalar to three positions
+v(:) = 0;             % reset all elements at once
+```
+
+### 2-D matrix assignment
+
+```
+A = zeros(4);
+A(2, 3) = 7;               % single element
+A(:, 1) = [1; 2; 3; 4];   % entire column
+A(1, :) = [10, 20, 30, 40]; % entire row
+A(2:3, 2:3) = eye(2);      % submatrix
+```
+
+### Growing vectors
+
+Assigning beyond the current length extends the vector and fills gaps with
+zeros. `end+1` is the canonical Octave idiom for appending:
+
+```
+squares = [];
+for k = 1:8
+  squares(end+1) = k^2;
+end
+% squares = [1 4 9 16 25 36 49 64]
+
+v = [1, 2, 3];
+v(7) = 99;   % → [1 2 3 0 0 0 99]  (zeros fill the gap)
+```
+
+Assigning to a non-existent variable creates a new 1×N row vector:
+
+```
+fib(1) = 1;   % creates a 1×1 vector
+fib(2) = 1;   % extends to 1×2
+for k = 3:10
+  fib(end+1) = fib(end) + fib(end-1);
+end
+```
+
+### Logical (boolean mask) indexing
+
+A 0/1 vector whose length equals the dimension selects positions where the
+mask is 1. Masks can be produced by any comparison expression.
+
+```
+temps = [18, 22, 35, 12, 29, 41, 8, 33];
+
+% Read: extract elements where mask is true
+hot = temps(temps >= 30);   % → [35 41 33]
+
+% Write: modify elements where mask is true
+temps(temps >= 30) = 30;    % cap all hot days at 30
+
+% Using a separate mask variable
+mask = signal < 0;
+signal(mask) = 0;           % half-wave rectifier
+```
+
+2-D matrices support logical masks as well — elements are selected in
+column-major order (same as Octave/MATLAB):
+
+```
+M = [1 2 3; 4 5 6; 7 8 9];
+M(M > 5)        % → [7 8 6 9]   (column-major order)
+M(M > 5) = 0;   % zero out those elements
 ```
 
 ## Semicolon inside matrix literals
