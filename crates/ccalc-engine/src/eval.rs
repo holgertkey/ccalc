@@ -3536,10 +3536,23 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
             vec![re]
         }
         Value::Matrix(m) => {
-            if m.nrows() > 1 && m.ncols() > 1 {
+            // Allow 2-D matrices only when they qualify as a logical mask (same numel as dim_size).
+            let total = m.nrows() * m.ncols();
+            if m.nrows() > 1 && m.ncols() > 1 && total != dim_size {
                 return Err("Index must be a scalar or vector, not a matrix".to_string());
             }
-            m.iter().copied().collect()
+            // Collect in column-major order so mask positions align with linear indexing.
+            if m.nrows() > 1 && m.ncols() > 1 {
+                let mut v = Vec::with_capacity(total);
+                for col in 0..m.ncols() {
+                    for row in 0..m.nrows() {
+                        v.push(m[[row, col]]);
+                    }
+                }
+                v
+            } else {
+                m.iter().copied().collect()
+            }
         }
         Value::Str(_) | Value::StringObj(_) => {
             return Err("Index must be numeric, not a string".to_string());
@@ -3553,7 +3566,7 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
             return Err("Index must be numeric, not a function".to_string());
         }
     };
-    // Logical mask: a 0/1 vector whose length matches dim_size selects by boolean mask.
+    // Logical mask: a 0/1 array whose element count matches dim_size selects by boolean mask.
     if dim_size > 0 && floats.len() == dim_size && floats.iter().all(|&f| f == 0.0 || f == 1.0) {
         let idxs: Vec<usize> = floats
             .iter()

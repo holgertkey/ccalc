@@ -3969,6 +3969,34 @@ fn test_index_set_logical_mask_read() {
 }
 
 #[test]
+fn test_index_set_logical_mask_2d_read() {
+    let env = run_block("A = [1,2,3;4,5,6;7,8,9]; w = A(A > 5);");
+    match env.get("w") {
+        // column-major order: 7, 8, 6, 9
+        Some(Value::Matrix(m)) => assert_eq!(
+            m.clone().into_raw_vec_and_offset().0,
+            vec![7.0, 8.0, 6.0, 9.0]
+        ),
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_logical_mask_2d_write() {
+    let env = run_block("A = [1,2,3;4,5,6;7,8,9]; A(A > 5) = 0;");
+    match env.get("A") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[1, 0]], 4.0);
+            assert_eq!(m[[2, 0]], 0.0); // was 7
+            assert_eq!(m[[1, 2]], 0.0); // was 6
+            assert_eq!(m[[2, 2]], 0.0); // was 9
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_zeros_single_arg() {
     let env = run_block("A = zeros(3);");
     match env.get("A") {

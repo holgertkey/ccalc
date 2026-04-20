@@ -999,14 +999,26 @@ fn resolve_write_dim(
             vec![re]
         }
         Value::Matrix(m) => {
-            if m.nrows() > 1 && m.ncols() > 1 {
+            let total = m.nrows() * m.ncols();
+            if m.nrows() > 1 && m.ncols() > 1 && total != dim_size {
                 return Err("Index must be a scalar or vector, not a 2-D matrix".to_string());
             }
-            m.iter().copied().collect()
+            // Collect in column-major order so mask positions align with linear indexing.
+            if m.nrows() > 1 && m.ncols() > 1 {
+                let mut v = Vec::with_capacity(total);
+                for col in 0..m.ncols() {
+                    for row in 0..m.nrows() {
+                        v.push(m[[row, col]]);
+                    }
+                }
+                v
+            } else {
+                m.iter().copied().collect()
+            }
         }
         _ => return Err("Index must be numeric".to_string()),
     };
-    // Logical mask: a 0/1 vector whose length matches dim_size.
+    // Logical mask: a 0/1 array whose element count matches dim_size.
     if dim_size > 0 && floats.len() == dim_size && floats.iter().all(|&f| f == 0.0 || f == 1.0) {
         let positions: Vec<usize> = floats
             .iter()
@@ -1114,23 +1126,27 @@ fn exec_index_set(
                 (mat.nrows(), mat.ncols())
             };
 
-            // Build flat column-major representation, padding with zeros.
-            let mut flat: Vec<f64> = Vec::with_capacity(required);
-            for col in 0..mat.ncols() {
-                for row in 0..mat.nrows() {
-                    flat.push(mat[[row, col]]);
+            // Grow matrix if needed, preserving existing data at correct column-major positions.
+            if required > total || out_rows != mat.nrows() || out_cols != mat.ncols() {
+                let mut new_mat = Array2::<f64>::zeros((out_rows, out_cols));
+                for old_p in 0..total {
+                    let old_row = old_p % mat.nrows().max(1);
+                    let old_col = old_p / mat.nrows().max(1);
+                    let new_row = old_p % out_rows;
+                    let new_col = old_p / out_rows;
+                    if old_row < mat.nrows() && old_col < mat.ncols() {
+                        new_mat[[new_row, new_col]] = mat[[old_row, old_col]];
+                    }
                 }
+                mat = new_mat;
             }
-            flat.resize(required, 0.0);
 
-            // Write values.
+            // Write values at column-major positions directly.
             for (&pos, &val) in positions.iter().zip(rhs_vals.iter()) {
-                flat[pos] = val;
+                let row = pos % mat.nrows();
+                let col = pos / mat.nrows();
+                mat[[row, col]] = val;
             }
-
-            // Rebuild matrix.
-            mat = Array2::from_shape_vec((out_rows, out_cols), flat)
-                .map_err(|e| format!("Internal shape error: {e}"))?;
         }
         2 => {
             let nrows = mat.nrows();
