@@ -3969,6 +3969,20 @@ fn test_index_set_logical_mask_read() {
 }
 
 #[test]
+fn test_cell_set_end_plus_one() {
+    let env = run_block("c = {};\nc{end+1} = 10;\nc{end+1} = 20;\nc{end+1} = 30;");
+    match env.get("c") {
+        Some(Value::Cell(v)) => {
+            assert_eq!(v.len(), 3);
+            assert_eq!(v[0], Value::Scalar(10.0));
+            assert_eq!(v[1], Value::Scalar(20.0));
+            assert_eq!(v[2], Value::Scalar(30.0));
+        }
+        other => panic!("expected cell, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_index_set_logical_mask_2d_read() {
     let env = run_block("A = [1,2,3;4,5,6;7,8,9]; w = A(A > 5);");
     match env.get("w") {

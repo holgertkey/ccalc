@@ -826,7 +826,13 @@ pub fn exec_stmts(
 
             // ── cell element assignment ──────────────────────────────────────
             Stmt::CellSet(cell_name, idx_expr, val_expr) => {
-                let idx = eval_with_io(idx_expr, env, io)?;
+                // Inject `end` so that c{end+1} works (end = current cell length).
+                let cell_len = match env.get(cell_name) {
+                    Some(Value::Cell(v)) => v.len(),
+                    _ => 0,
+                };
+                let env_end = write_env_with_end(env, cell_len);
+                let idx = eval_with_io(idx_expr, &env_end, io)?;
                 let rhs = eval_with_io(val_expr, env, io)?;
                 let i = match idx {
                     Value::Scalar(n) => n as isize,
