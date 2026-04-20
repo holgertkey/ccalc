@@ -196,14 +196,21 @@ fn test_fn_round() {
 
 #[test]
 fn test_fn_log() {
-    assert!((calc("log(1000)") - 3.0).abs() < 1e-10);
+    // log is natural log (MATLAB-compatible)
     assert_eq!(calc("log(1)"), 0.0);
+    assert!((calc("log(e)") - 1.0).abs() < 1e-15);
 }
 
 #[test]
-fn test_fn_ln() {
-    assert_eq!(calc("ln(1)"), 0.0);
-    assert!((calc("ln(e)") - 1.0).abs() < 1e-15);
+fn test_fn_log10() {
+    assert!((calc("log10(1000)") - 3.0).abs() < 1e-10);
+    assert_eq!(calc("log10(1)"), 0.0);
+}
+
+#[test]
+fn test_fn_log2() {
+    assert!((calc("log2(8)") - 3.0).abs() < 1e-10);
+    assert_eq!(calc("log2(1)"), 0.0);
 }
 
 #[test]

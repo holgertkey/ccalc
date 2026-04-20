@@ -1643,9 +1643,9 @@ fn call_builtin(
         ("ceil", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ceil())),
         ("round", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.round())),
         ("sign", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.signum())),
-        // Note: log(x) = log10; use ln(x) for natural logarithm.
-        ("log", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.log10())),
-        ("ln", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ln())),
+        ("log", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ln())),
+        ("log2", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.log2())),
+        ("log10", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.log10())),
         ("exp", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.exp())),
         ("sin", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sin())),
         ("cos", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.cos())),

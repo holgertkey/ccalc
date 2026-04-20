@@ -2254,8 +2254,8 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                     "pi" => Expr::Number(std::f64::consts::PI),
                     // 'e' is a variable-shadowing constant: env lookup first, fallback to Euler's number.
                     "e" => Expr::Var("e".to_string()),
-                    "nan" => Expr::Number(f64::NAN),
-                    "inf" => Expr::Number(f64::INFINITY),
+                    "nan" | "NaN" => Expr::Number(f64::NAN),
+                    "inf" | "Inf" => Expr::Number(f64::INFINITY),
                     // All other identifiers → variable reference (resolved at eval time)
                     _ => Expr::Var(name),
                 }

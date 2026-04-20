@@ -141,14 +141,15 @@ fn test_eval_call_round() {
 
 #[test]
 fn test_eval_call_log() {
-    let expr = Expr::Call("log".to_string(), vec![Expr::Number(1000.0)]);
-    assert!((eval_s(&expr, &empty_env()) - 3.0).abs() < 1e-10);
+    // log is natural log (MATLAB-compatible)
+    let expr = Expr::Call("log".to_string(), vec![Expr::Number(std::f64::consts::E)]);
+    assert!((eval_s(&expr, &empty_env()) - 1.0).abs() < 1e-10);
 }
 
 #[test]
-fn test_eval_call_ln() {
-    let expr = Expr::Call("ln".to_string(), vec![Expr::Number(1.0)]);
-    assert_eq!(eval_s(&expr, &empty_env()), 0.0);
+fn test_eval_call_log10() {
+    let expr = Expr::Call("log10".to_string(), vec![Expr::Number(1000.0)]);
+    assert!((eval_s(&expr, &empty_env()) - 3.0).abs() < 1e-10);
 }
 
 #[test]
@@ -2061,4 +2062,52 @@ fn test_genpath_nonexistent_returns_empty() {
     );
     let result = eval(&expr, &env).unwrap();
     assert_eq!(result, Value::Str(String::new()));
+}
+
+#[test]
+fn test_log_is_natural_log() {
+    let env = empty_env();
+    // log(e) must be 1.0 (natural log, MATLAB-compatible)
+    let result = eval(
+        &Expr::Call("log".to_string(), vec![Expr::Number(std::f64::consts::E)]),
+        &env,
+    )
+    .unwrap();
+    assert_eq!(result, Value::Scalar(1.0));
+}
+
+#[test]
+fn test_log10() {
+    let env = empty_env();
+    let result = eval(
+        &Expr::Call("log10".to_string(), vec![Expr::Number(100.0)]),
+        &env,
+    )
+    .unwrap();
+    assert_eq!(result, Value::Scalar(2.0));
+}
+
+#[test]
+fn test_log2() {
+    let env = empty_env();
+    let result = eval(
+        &Expr::Call("log2".to_string(), vec![Expr::Number(8.0)]),
+        &env,
+    )
+    .unwrap();
+    assert_eq!(result, Value::Scalar(3.0));
+}
+
+#[test]
+fn test_inf_capital() {
+    let env = empty_env();
+    let result = eval_parse("Inf", &env).unwrap();
+    assert!(matches!(result, Value::Scalar(v) if v.is_infinite() && v > 0.0));
+}
+
+#[test]
+fn test_nan_capital() {
+    let env = empty_env();
+    let result = eval_parse("NaN", &env).unwrap();
+    assert!(matches!(result, Value::Scalar(v) if v.is_nan()));
 }

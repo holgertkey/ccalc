@@ -10,6 +10,18 @@ mod repl;
 use std::io::IsTerminal;
 
 fn main() {
+    // Spawn on a 64 MB stack to support deep recursion in user functions.
+    let result = std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(run)
+        .expect("failed to spawn main thread")
+        .join();
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+fn run() {
     // Register exec-level hooks in eval.rs so user function calls are dispatched correctly.
     ccalc_engine::exec::init();
 
