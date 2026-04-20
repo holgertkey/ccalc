@@ -929,6 +929,19 @@ pub fn exec_stmts(
                 env.insert(base_name.clone(), arr_val);
             }
 
+            // ── indexed assignment ────────────────────────────────────────────
+            Stmt::IndexSet {
+                name,
+                indices,
+                value,
+            } => {
+                let rhs = eval_with_io(value, env, io)?;
+                exec_index_set(name, indices, rhs, env, io)?;
+                if !silent && let Some(val) = env.get(name) {
+                    print_value(Some(name), val, fmt, base, compact);
+                }
+            }
+
             // ── multi-assign ─────────────────────────────────────────────────
             Stmt::MultiAssign { targets, expr } => {
                 let val = eval_with_io(expr, env, io)?;
@@ -950,4 +963,261 @@ pub fn exec_stmts(
         }
     }
     Ok(None)
+}
+
+// ── indexed assignment helper ──────────────────────────────────────────────
+
+/// Resolved index positions (0-based) along one matrix dimension.
+enum WriteIdx {
+    /// `:` — all positions in the current dimension.
+    All,
+    /// Explicit 0-based positions (may exceed current size → grow).
+    Positions(Vec<usize>),
+}
+
+/// Resolves one index expression to a `WriteIdx`.
+///
+/// Unlike the read-path `resolve_dim`, bounds checking is skipped so that
+/// out-of-range indices can trigger array growth.  Logical-mask detection
+/// (all-0/1 vector whose length equals `dim_size`) is supported.
+fn resolve_write_dim(
+    expr: &crate::eval::Expr,
+    dim_size: usize,
+    env: &Env,
+    io: &mut IoContext,
+) -> Result<WriteIdx, String> {
+    if matches!(expr, crate::eval::Expr::Colon) {
+        return Ok(WriteIdx::All);
+    }
+    let val = eval_with_io(expr, env, io)?;
+    let floats: Vec<f64> = match val {
+        Value::Scalar(n) => vec![n],
+        Value::Complex(re, im) => {
+            if im != 0.0 {
+                return Err("Index must be real, not complex".to_string());
+            }
+            vec![re]
+        }
+        Value::Matrix(m) => {
+            if m.nrows() > 1 && m.ncols() > 1 {
+                return Err("Index must be a scalar or vector, not a 2-D matrix".to_string());
+            }
+            m.iter().copied().collect()
+        }
+        _ => return Err("Index must be numeric".to_string()),
+    };
+    // Logical mask: a 0/1 vector whose length matches dim_size.
+    if dim_size > 0 && floats.len() == dim_size && floats.iter().all(|&f| f == 0.0 || f == 1.0) {
+        let positions: Vec<usize> = floats
+            .iter()
+            .enumerate()
+            .filter(|&(_, &f)| f == 1.0)
+            .map(|(i, _)| i)
+            .collect();
+        return Ok(WriteIdx::Positions(positions));
+    }
+    // Numeric 1-based indices → 0-based (no upper-bound check — growth is handled by caller).
+    let positions: Result<Vec<usize>, String> = floats
+        .iter()
+        .map(|&n| {
+            let i = n.round() as i64;
+            if i < 1 {
+                return Err(format!("Index {i} must be >= 1"));
+            }
+            Ok(i as usize - 1)
+        })
+        .collect();
+    Ok(WriteIdx::Positions(positions?))
+}
+
+/// Returns a clone of `env` with `end` set to `dim_size` as a `Value::Scalar`.
+fn write_env_with_end(env: &Env, dim_size: usize) -> Env {
+    let mut e = env.clone();
+    e.insert("end".to_string(), Value::Scalar(dim_size as f64));
+    e
+}
+
+/// Writes `rhs` into `name(indices...)` in `env`, growing the matrix if necessary.
+///
+/// Supports:
+/// - 1 index: linear (column-major) indexing; grows row vectors / creates new ones.
+/// - 2 indices: 2-D row/column indexing; grows the matrix in either dimension.
+/// - Scalar RHS is broadcast to all selected positions.
+/// - Logical mask indices (Phase 15d).
+fn exec_index_set(
+    name: &str,
+    indices: &[crate::eval::Expr],
+    rhs: Value,
+    env: &mut Env,
+    io: &mut IoContext,
+) -> Result<(), String> {
+    // Represent target variable as a matrix (scalar → 1×1, empty var → 0×0).
+    let (mut mat, was_scalar) = match env.get(name) {
+        Some(Value::Matrix(m)) => (m.clone(), false),
+        Some(Value::Scalar(n)) => (Array2::from_elem((1, 1), *n), true),
+        None | Some(Value::Void) => (Array2::zeros((0, 0)), false),
+        Some(_) => {
+            return Err(format!(
+                "'{name}' is not a matrix; cannot use () indexed assignment"
+            ));
+        }
+    };
+
+    match indices.len() {
+        1 => {
+            let total = mat.nrows() * mat.ncols();
+            let env_end = write_env_with_end(env, total);
+            let widx = resolve_write_dim(&indices[0], total, &env_end, io)?;
+
+            // Determine which 0-based positions to write.
+            let positions: Vec<usize> = match widx {
+                WriteIdx::All => (0..total).collect(),
+                WriteIdx::Positions(p) => p,
+            };
+
+            // Determine the RHS values to write (scalar broadcasts).
+            let rhs_vals: Vec<f64> = match &rhs {
+                Value::Scalar(n) => vec![*n; positions.len()],
+                Value::Matrix(m) => {
+                    let flat: Vec<f64> = m.iter().copied().collect();
+                    if flat.len() != positions.len() {
+                        return Err(format!(
+                            "Assignment dimension mismatch: {} positions but {} values",
+                            positions.len(),
+                            flat.len()
+                        ));
+                    }
+                    flat
+                }
+                _ => {
+                    return Err(
+                        "Indexed assignment: RHS must be a numeric scalar or matrix".to_string()
+                    );
+                }
+            };
+
+            // Find the required flat size after growth.
+            let required = positions.iter().copied().max().map(|m| m + 1).unwrap_or(0);
+            let required = required.max(total);
+
+            // Determine output shape: keep original orientation when growing a vector.
+            let (out_rows, out_cols) = if mat.nrows() == 0 || mat.ncols() == 0 {
+                // Empty → default to row vector.
+                (1, required)
+            } else if mat.nrows() == 1 {
+                (1, required)
+            } else if mat.ncols() == 1 {
+                (required, 1)
+            } else if required > total {
+                return Err("Cannot grow a 2-D matrix with linear indexing".to_string());
+            } else {
+                (mat.nrows(), mat.ncols())
+            };
+
+            // Build flat column-major representation, padding with zeros.
+            let mut flat: Vec<f64> = Vec::with_capacity(required);
+            for col in 0..mat.ncols() {
+                for row in 0..mat.nrows() {
+                    flat.push(mat[[row, col]]);
+                }
+            }
+            flat.resize(required, 0.0);
+
+            // Write values.
+            for (&pos, &val) in positions.iter().zip(rhs_vals.iter()) {
+                flat[pos] = val;
+            }
+
+            // Rebuild matrix.
+            mat = Array2::from_shape_vec((out_rows, out_cols), flat)
+                .map_err(|e| format!("Internal shape error: {e}"))?;
+        }
+        2 => {
+            let nrows = mat.nrows();
+            let ncols = mat.ncols();
+            let env_r = write_env_with_end(env, nrows);
+            let env_c = write_env_with_end(env, ncols);
+            let ridx = resolve_write_dim(&indices[0], nrows, &env_r, io)?;
+            let cidx = resolve_write_dim(&indices[1], ncols, &env_c, io)?;
+
+            let rows: Vec<usize> = match ridx {
+                WriteIdx::All => (0..nrows.max(1)).collect(),
+                WriteIdx::Positions(p) => p,
+            };
+            let cols: Vec<usize> = match cidx {
+                WriteIdx::All => (0..ncols.max(1)).collect(),
+                WriteIdx::Positions(p) => p,
+            };
+
+            let req_rows = rows
+                .iter()
+                .copied()
+                .max()
+                .map(|m| m + 1)
+                .unwrap_or(0)
+                .max(nrows);
+            let req_cols = cols
+                .iter()
+                .copied()
+                .max()
+                .map(|m| m + 1)
+                .unwrap_or(0)
+                .max(ncols);
+
+            // Grow matrix if needed (fill new cells with 0).
+            if req_rows != nrows || req_cols != ncols {
+                let mut new_mat = Array2::<f64>::zeros((req_rows, req_cols));
+                for r in 0..nrows {
+                    for c in 0..ncols {
+                        new_mat[[r, c]] = mat[[r, c]];
+                    }
+                }
+                mat = new_mat;
+            }
+
+            // Collect RHS values.
+            let n_sel = rows.len() * cols.len();
+            let rhs_vals: Vec<f64> = match &rhs {
+                Value::Scalar(n) => vec![*n; n_sel],
+                Value::Matrix(m) => {
+                    let flat: Vec<f64> = m.iter().copied().collect();
+                    if flat.len() != n_sel {
+                        return Err(format!(
+                            "Assignment dimension mismatch: {}×{} = {} positions but {} values",
+                            rows.len(),
+                            cols.len(),
+                            n_sel,
+                            flat.len()
+                        ));
+                    }
+                    flat
+                }
+                _ => {
+                    return Err(
+                        "Indexed assignment: RHS must be a numeric scalar or matrix".to_string()
+                    );
+                }
+            };
+
+            // Write values row-major over selected (row, col) pairs.
+            let mut k = 0;
+            for &r in &rows {
+                for &c in &cols {
+                    mat[[r, c]] = rhs_vals[k];
+                    k += 1;
+                }
+            }
+        }
+        _ => return Err("Indexed assignment supports at most 2 indices".to_string()),
+    }
+
+    // Collapse a 1×1 matrix to a scalar.
+    let result = if mat.nrows() == 1 && mat.ncols() == 1 {
+        Value::Scalar(mat[[0, 0]])
+    } else {
+        Value::Matrix(mat)
+    };
+    let _ = was_scalar;
+    env.insert(name.to_string(), result);
+    Ok(())
 }

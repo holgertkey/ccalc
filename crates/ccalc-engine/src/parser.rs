@@ -129,6 +129,20 @@ pub enum Stmt {
     /// At runtime the struct array is loaded (or created), grown if necessary,
     /// and the field of element `idx` is set.
     StructArrayFieldSet(String, Expr, Vec<String>, Expr),
+    /// `v(i) = x`, `A(i,j) = x`, `v(1:3) = [1 2 3]` — indexed assignment.
+    ///
+    /// Modifies one or more elements of an existing matrix (or creates/grows it).
+    /// Index expressions follow the same syntax as the read-path (Phase 6):
+    /// `:`, scalars, ranges, and logical masks (Phase 15d).
+    /// A scalar RHS is broadcast to all selected positions.
+    IndexSet {
+        /// The variable name being modified.
+        name: String,
+        /// Index expressions (1 = linear, 2 = row/col).
+        indices: Vec<Expr>,
+        /// The value to write.
+        value: Expr,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -833,6 +847,29 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
         return Ok(Stmt::StructArrayFieldSet(
             base_var, idx_expr, fields, rhs_expr,
         ));
+    }
+
+    // Indexed assignment: name(args) = rhs  (Phase 15)
+    if let Some((name, idx_str, rhs)) = try_split_index_assign(trimmed) {
+        let idx_tokens = tokenize(idx_str)?;
+        let indices = parse_index_args(&idx_tokens)?;
+        if indices.len() > 2 {
+            return Err("Indexed assignment supports at most 2 indices".to_string());
+        }
+        let rhs_tokens = tokenize(rhs)?;
+        if rhs_tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut rhs_pos = 0;
+        let value = parse_logical_or(&rhs_tokens, &mut rhs_pos)?;
+        if rhs_pos != rhs_tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::IndexSet {
+            name,
+            indices,
+            value,
+        });
     }
 
     // Struct field assignment: name.field[.field]* = rhs
@@ -1804,6 +1841,86 @@ fn try_split_cell_assign(input: &str) -> Option<(&str, &str, &str)> {
     }
     let rhs = after_close[1..].trim();
     Some((name, idx_str, rhs))
+}
+
+/// If `input` matches `"name(args) = rhs"` (not `==`), returns `Some((name, args_str, rhs))`.
+///
+/// The name must be a valid identifier and no `.field` may follow the closing `)` (those
+/// patterns are handled by `try_split_struct_array_field_assign`).
+fn try_split_index_assign(input: &str) -> Option<(String, &str, &str)> {
+    let trimmed = input.trim();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+
+    // Parse leading identifier
+    if i >= bytes.len() || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+        return None;
+    }
+    let name_start = i;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    let name = trimmed[name_start..i].to_string();
+
+    // Skip optional whitespace then expect '('
+    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'(' {
+        return None;
+    }
+    i += 1;
+
+    // Scan for the matching ')' (tracking nested parens/brackets/braces)
+    let idx_start = i;
+    let mut depth = 1usize;
+    while i < bytes.len() && depth > 0 {
+        match bytes[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    let idx_str = trimmed[idx_start..i - 1].trim();
+
+    // After ')' must not be '.' (that is struct-array-field-assign, handled earlier)
+    let rest = trimmed[i..].trim_start();
+    if rest.starts_with('.') {
+        return None;
+    }
+    // After ')' must be bare '=' (not '==')
+    if !rest.starts_with('=') || rest.starts_with("==") {
+        return None;
+    }
+    let rhs = rest[1..].trim();
+    if rhs.is_empty() {
+        return None;
+    }
+    Some((name, idx_str, rhs))
+}
+
+/// Parses a comma-separated list of index arguments (`:` allowed) from a token slice.
+fn parse_index_args(tokens: &[Token]) -> Result<Vec<Expr>, String> {
+    if tokens.is_empty() {
+        return Err("Expected index expression inside '()'".to_string());
+    }
+    let mut pos = 0;
+    let mut args = Vec::new();
+    loop {
+        args.push(parse_call_arg(tokens, &mut pos)?);
+        match tokens.get(pos) {
+            Some(Token::Comma) => {
+                pos += 1;
+            }
+            None => break,
+            Some(_) => return Err("Unexpected token in index expression".to_string()),
+        }
+    }
+    Ok(args)
 }
 
 /// If `input` matches `"name = rhs"` (not `==`), returns `Some((name, rhs))`.

@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-04-20
+
+### Added
+
+- **Phase 15 — Indexed assignment** (`A(i,j) = v`, `v(1:3) = 0`):
+  - **15a — Scalar and slice assignment**: `v(i) = x`, `v(1:3) = [1 2 3]`, `A(i,j) = x`, `A(:,j) = col`, `A(1:2,1:2) = eye(2)`. Scalar RHS is broadcast to all selected positions.
+  - **15b — Growing vectors**: `v(end+1) = x` extends a row vector by one element (filling gaps with zeros); `v(n) = x` where `n > length(v)` pads to length `n`. Empty variable `v(i) = x` auto-creates a row vector.
+  - **15c — Cell grow already supported** via Phase 12.5 `CellSet`.
+  - **15d — Logical indexing**: a 0/1 vector whose length equals the dimension is treated as a boolean mask in both read (`v(v > 0)`) and write (`v(v < 0) = 0`) contexts.
+  - New `Stmt::IndexSet { name, indices, value }` AST node; detected at parse time by `try_split_index_assign` (string-level lookahead, same strategy as `FieldSet`).
+  - `exec_index_set` in `exec.rs` handles growth, broadcasting, and 2-D submatrix writes.
+
+### Fixed
+
+- **`zeros(n)` and `ones(n)` with a single argument** now correctly create an `n×n` matrix (previously required `zeros(n,n)` form).
+
+## [0.20.0] - 2026-04-20
+
 ### Added
 
 - **Phase 14 — Error handling:**

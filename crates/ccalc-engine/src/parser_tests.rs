@@ -3838,6 +3838,162 @@ fn test_pcall_failure() {
     }
 }
 
+// ── Phase 15 — Indexed assignment ─────────────────────────────────────────
+
+#[test]
+fn test_index_set_scalar_element() {
+    use ndarray::array;
+    let env = run_block("v = zeros(1, 5); v(3) = 42;");
+    match env.get("v") {
+        Some(Value::Matrix(m)) => assert_eq!(
+            m.clone().into_raw_vec_and_offset().0,
+            vec![0.0, 0.0, 42.0, 0.0, 0.0]
+        ),
+        other => panic!("expected matrix, got {other:?}"),
+    }
+    let _ = array![[0.0]]; // suppress unused import warning
+}
+
+#[test]
+fn test_index_set_slice_assignment() {
+    let env = run_block("v = zeros(1, 5); v(1:2) = [10, 20];");
+    match env.get("v") {
+        Some(Value::Matrix(m)) => assert_eq!(
+            m.clone().into_raw_vec_and_offset().0,
+            vec![10.0, 20.0, 0.0, 0.0, 0.0]
+        ),
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_scalar_broadcast() {
+    let env = run_block("v = zeros(1, 4); v(2:4) = 7;");
+    match env.get("v") {
+        Some(Value::Matrix(m)) => assert_eq!(
+            m.clone().into_raw_vec_and_offset().0,
+            vec![0.0, 7.0, 7.0, 7.0]
+        ),
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_2d_element() {
+    let env = run_block("A = zeros(3); A(2,3) = 7;");
+    match env.get("A") {
+        Some(Value::Matrix(m)) => assert_eq!(m[[1, 2]], 7.0),
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_2d_column() {
+    let env = run_block("A = zeros(3); A(:,1) = [1;2;3];");
+    match env.get("A") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[1, 0]], 2.0);
+            assert_eq!(m[[2, 0]], 3.0);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_2d_submatrix() {
+    let env = run_block("A = zeros(3); A(1:2,1:2) = eye(2);");
+    match env.get("A") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[0, 1]], 0.0);
+            assert_eq!(m[[1, 0]], 0.0);
+            assert_eq!(m[[1, 1]], 1.0);
+            assert_eq!(m[[2, 2]], 0.0);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_grow_vector() {
+    let env = run_block("v = zeros(1,5); v(10) = 1;");
+    match env.get("v") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m.ncols(), 10);
+            assert_eq!(m[[0, 9]], 1.0);
+            assert_eq!(m[[0, 4]], 0.0);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_grow_with_end() {
+    let env = run_block("v = [];\nfor k = 1:5\n  v(end+1) = k*k;\nend");
+    match env.get("v") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(
+                m.clone().into_raw_vec_and_offset().0,
+                vec![1.0, 4.0, 9.0, 16.0, 25.0]
+            );
+        }
+        Some(Value::Scalar(n)) => assert_eq!(*n, 25.0),
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_logical_mask_write() {
+    let env = run_block("v = [1, -2, 3, -4, 5]; v(v < 0) = 0;");
+    match env.get("v") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(
+                m.clone().into_raw_vec_and_offset().0,
+                vec![1.0, 0.0, 3.0, 0.0, 5.0]
+            );
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_index_set_logical_mask_read() {
+    let env = run_block("v = [1, -2, 3, -4, 5]; w = v(v > 0);");
+    match env.get("w") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m.clone().into_raw_vec_and_offset().0, vec![1.0, 3.0, 5.0]);
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_zeros_single_arg() {
+    let env = run_block("A = zeros(3);");
+    match env.get("A") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m.nrows(), 3);
+            assert_eq!(m.ncols(), 3);
+            assert!(m.iter().all(|&x| x == 0.0));
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_ones_single_arg() {
+    let env = run_block("A = ones(3);");
+    match env.get("A") {
+        Some(Value::Matrix(m)) => {
+            assert_eq!(m.nrows(), 3);
+            assert_eq!(m.ncols(), 3);
+            assert!(m.iter().all(|&x| x == 1.0));
+        }
+        other => panic!("expected matrix, got {other:?}"),
+    }
+}
+
 // ── Bug regression: split_stmts must handle '' (escaped quote) correctly ──
 
 #[test]

@@ -1680,10 +1680,18 @@ fn call_builtin(
             scalar_arg(&args[0], name, 1)?.log(scalar_arg(&args[1], name, 2)?),
         )),
         // --- Matrix constructors ---
+        ("zeros", 1) => {
+            let n = scalar_arg(&args[0], name, 1)? as usize;
+            Ok(Value::Matrix(Array2::zeros((n, n))))
+        }
         ("zeros", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
             Ok(Value::Matrix(Array2::zeros((r, c))))
+        }
+        ("ones", 1) => {
+            let n = scalar_arg(&args[0], name, 1)? as usize;
+            Ok(Value::Matrix(Array2::ones((n, n))))
         }
         ("ones", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
@@ -3510,6 +3518,7 @@ enum DimIdx {
 /// `Expr::Colon` → `DimIdx::All`.
 /// Scalar → single 0-based index (validates 1-based bounds).
 /// Row/column vector → multiple 0-based indices.
+/// Logical mask: a 0/1 vector whose length equals `dim_size` selects positions where value is 1.
 fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String> {
     if matches!(expr, Expr::Colon) {
         return Ok(DimIdx::All);
@@ -3544,6 +3553,16 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
             return Err("Index must be numeric, not a function".to_string());
         }
     };
+    // Logical mask: a 0/1 vector whose length matches dim_size selects by boolean mask.
+    if dim_size > 0 && floats.len() == dim_size && floats.iter().all(|&f| f == 0.0 || f == 1.0) {
+        let idxs: Vec<usize> = floats
+            .iter()
+            .enumerate()
+            .filter(|&(_, &f)| f == 1.0)
+            .map(|(i, _)| i)
+            .collect();
+        return Ok(DimIdx::Indices(idxs));
+    }
     let mut idxs = Vec::with_capacity(floats.len());
     for n in floats {
         let i = n.round() as i64;
