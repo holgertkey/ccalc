@@ -73,6 +73,56 @@ thread_local! {
         std::cell::RefCell::new(HashMap::new());
 }
 
+/// Recursively marks every statement in `stmts` (and all nested block bodies) as silent.
+///
+/// Function bodies must suppress all output — assignments, expressions, everything.
+/// Because [`parse_stmts`] records the original semicolon flag per statement, a simple
+/// `map(|(s,_)| (s, true))` only silences the top level.  Nested bodies inside `if`,
+/// `for`, `while`, `switch`, `do..until`, and `try..catch` keep their original flags
+/// and would still print.  This function walks the full statement tree.
+fn silence_all(stmts: Vec<(Stmt, bool)>) -> Vec<(Stmt, bool)> {
+    stmts
+        .into_iter()
+        .map(|(stmt, _)| {
+            let stmt = match stmt {
+                Stmt::If {
+                    cond,
+                    body,
+                    elseif_branches,
+                    else_body,
+                } => Stmt::If {
+                    cond,
+                    body: silence_all(body),
+                    elseif_branches: elseif_branches
+                        .into_iter()
+                        .map(|(c, b)| (c, silence_all(b)))
+                        .collect(),
+                    else_body: else_body.map(silence_all),
+                },
+                Stmt::For { var, range_expr, body } => {
+                    Stmt::For { var, range_expr, body: silence_all(body) }
+                }
+                Stmt::While { cond, body } => Stmt::While { cond, body: silence_all(body) },
+                Stmt::DoUntil { body, cond } => {
+                    Stmt::DoUntil { body: silence_all(body), cond }
+                }
+                Stmt::Switch { expr, cases, otherwise_body } => Stmt::Switch {
+                    expr,
+                    cases: cases.into_iter().map(|(v, b)| (v, silence_all(b))).collect(),
+                    otherwise_body: otherwise_body.map(silence_all),
+                },
+                Stmt::TryCatch { try_body, catch_var, catch_body } => Stmt::TryCatch {
+                    try_body: silence_all(try_body),
+                    catch_var,
+                    catch_body: silence_all(catch_body),
+                },
+                other => other,
+            };
+            (stmt, true)
+        })
+        .collect()
+}
+
 /// Returns a parsed, all-silent body for `body_source`, using the cache when possible.
 ///
 /// "All-silent" means every `(Stmt, bool)` has `bool = true` — function bodies
@@ -86,7 +136,7 @@ fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool)>>, String>
         }
         let stmts =
             parse_stmts(body_source).map_err(|e| format!("function body parse error: {e}"))?;
-        let silent: Vec<(Stmt, bool)> = stmts.into_iter().map(|(s, _)| (s, true)).collect();
+        let silent = silence_all(stmts);
         let rc = Rc::new(silent);
         cache.insert(body_source.to_string(), Rc::clone(&rc));
         Ok(rc)

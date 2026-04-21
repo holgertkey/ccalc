@@ -1,0 +1,188 @@
+% scoping.calc — global and persistent variable scoping
+%
+% Topics:
+%   global    — shared storage accessible from any function that declares it
+%   persistent — function-local storage that survives between calls
+%   isempty   — test for an uninitialized persistent variable
+%
+% Usage: ccalc scoping.calc
+
+% ── 1. global — shared counter ───────────────────────────────────────────────
+%
+% Two independent functions read and write the same global variable.
+% Neither function receives the counter as a parameter; they communicate
+% through the shared store.
+
+function reset_counter()
+  global g_count
+  g_count = 0;
+end
+
+function increment(step)
+  global g_count
+  g_count = g_count + step;
+end
+
+function n = read_counter()
+  global g_count
+  n = g_count;
+end
+
+fprintf('=== 1. Global counter ===\n')
+reset_counter()
+increment(1)
+increment(1)
+increment(1)
+fprintf('  after 3 increments of 1: %d   (expected 3)\n', read_counter())
+
+increment(10)
+fprintf('  after 1 increment of 10: %d   (expected 13)\n', read_counter())
+
+reset_counter()
+fprintf('  after reset: %d   (expected 0)\n', read_counter())
+
+% ── 2. global — configuration shared across modules ──────────────────────────
+%
+% A common pattern: store program-wide settings in a global struct or scalar
+% so all functions can read them without passing them as arguments.
+
+function set_precision(p)
+  global g_precision
+  g_precision = p;
+end
+
+function y = rounded(x)
+  global g_precision
+  factor = 10 ^ g_precision;
+  y = round(x * factor) / factor;
+end
+
+fprintf('\n=== 2. Global configuration (precision) ===\n')
+set_precision(2)
+fprintf('  pi rounded to 2 dp: %.4f   (expected 3.14)\n', rounded(pi))
+set_precision(4)
+fprintf('  pi rounded to 4 dp: %.6f   (expected 3.1416)\n', rounded(pi))
+
+% ── 3. persistent — call counter ─────────────────────────────────────────────
+%
+% A function tracks how many times it has been called without any external
+% variable. On the first call `call_count` is [], so isempty returns 1 and
+% it is initialized to zero before incrementing.
+
+function n = how_many_calls()
+  persistent call_count
+  if isempty(call_count)
+    call_count = 0;
+  end
+  call_count = call_count + 1;
+  n = call_count;
+end
+
+fprintf('\n=== 3. Persistent call counter ===\n')
+fprintf('  call 1: %d   (expected 1)\n', how_many_calls())
+fprintf('  call 2: %d   (expected 2)\n', how_many_calls())
+fprintf('  call 3: %d   (expected 3)\n', how_many_calls())
+
+% ── 4. persistent — memoized Fibonacci ───────────────────────────────────────
+%
+% Cache previously computed values so each n is calculated only once.
+% The cache vector grows on demand: cache(n) holds fib(n).
+
+function f = fib_memo(n)
+  persistent cache
+  if isempty(cache)
+    cache = zeros(1, 100);
+    cache(1) = 1;
+    cache(2) = 1;
+  end
+  if cache(n) ~= 0
+    f = cache(n);
+    return
+  end
+  cache(n) = fib_memo(n - 1) + fib_memo(n - 2);
+  f = cache(n);
+end
+
+fprintf('\n=== 4. Persistent memoized Fibonacci ===\n')
+fprintf('  fib(10) = %d   (expected 55)\n',   fib_memo(10))
+fprintf('  fib(20) = %d   (expected 6765)\n',  fib_memo(20))
+fprintf('  fib(30) = %d   (expected 832040)\n', fib_memo(30))
+
+% ── 5. global — running statistics shared across functions ───────────────────
+%
+% Accumulate mean and variance incrementally using Welford's online algorithm.
+% Three separate functions (reset / update / query) share state through global
+% variables.  persistent would be per-function and cannot be shared this way.
+
+function stats_reset()
+  global g_n g_mu g_M2
+  g_n  = 0;
+  g_mu = 0;
+  g_M2 = 0;
+end
+
+function stats_update(x)
+  global g_n g_mu g_M2
+  g_n    = g_n + 1;
+  delta  = x - g_mu;
+  g_mu   = g_mu + delta / g_n;
+  delta2 = x - g_mu;
+  g_M2   = g_M2 + delta * delta2;
+end
+
+function [m, s] = stats_query()
+  global g_n g_mu g_M2
+  if g_n == 0
+    m = 0; s = 0; return
+  end
+  m = g_mu;
+  if g_n > 1
+    s = sqrt(g_M2 / (g_n - 1));
+  else
+    s = 0;
+  end
+end
+
+fprintf('\n=== 5. Global running statistics (Welford) ===\n')
+stats_reset()
+data = [2 4 4 4 5 5 7 9];
+for k = 1:numel(data)
+  stats_update(data(k))
+end
+[m, s] = stats_query();
+fprintf('  mean = %.4f   (expected 5.0000)\n', m)
+fprintf('  std  = %.4f   (expected 2.1381)\n', s)
+
+% ── 6. global + persistent together ──────────────────────────────────────────
+%
+% A logger: a global log-level controls verbosity; a persistent message list
+% accumulates entries without an external array.
+
+function log_set_level(lvl)
+  global g_log_level
+  g_log_level = lvl;
+end
+
+function log_msg(lvl, msg)
+  global g_log_level
+  persistent log_count
+  if isempty(log_count); log_count = 0; end
+  if lvl <= g_log_level
+    log_count = log_count + 1;
+    fprintf('  [%d] %s\n', log_count, msg)
+  end
+end
+
+fprintf('\n=== 6. Global log-level + persistent message counter ===\n')
+log_set_level(2)           % 1=ERROR, 2=WARN, 3=INFO
+log_msg(1, 'disk full')    % printed (lvl 1 <= 2)
+log_msg(2, 'retry #1')     % printed (lvl 2 <= 2)
+log_msg(3, 'opening file') % suppressed (lvl 3 > 2)
+log_msg(1, 'recovered')    % printed
+
+log_set_level(3)           % raise verbosity
+log_msg(3, 'opening file') % now printed
+
+fprintf('  (3 messages printed at level 2, then 1 more at level 3)\n')
+
+fprintf('\nDone.\n')

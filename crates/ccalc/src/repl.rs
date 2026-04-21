@@ -345,8 +345,10 @@ pub fn run() {
         };
         let trimmed = effective.as_str();
 
-        // Single-line complete block: `if cond; body; end` — bypass block buffering.
-        if is_single_line_block(trimmed) {
+        // Single-line complete block: `if cond; body; end` — bypass block buffering only at top level.
+        // Inside an open block (block_depth > 0) let the line fall through to the buffer so the
+        // parent block (e.g. a function body) collects it correctly.
+        if block_depth == 0 && is_single_line_block(trimmed) {
             match parse_stmts(trimmed) {
                 Ok(stmts) => match exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
                     Ok(None) => {}
@@ -367,7 +369,7 @@ pub fn run() {
         }
 
         // Block mode: accumulate lines until block closes
-        let delta = block_depth_delta(trimmed);
+        let delta = if is_single_line_block(trimmed) { 0 } else { block_depth_delta(trimmed) };
         if block_depth > 0 || delta > 0 {
             block_buf.push(trimmed.to_string());
             block_depth += delta;
@@ -1040,8 +1042,8 @@ pub fn run_pipe(reader: impl BufRead) {
             effective_owned.as_str()
         };
 
-        // Single-line complete block: `if cond; body; end` — bypass block buffering.
-        if is_single_line_block(trimmed) {
+        // Single-line complete block: `if cond; body; end` — bypass block buffering only at top level.
+        if block_depth == 0 && is_single_line_block(trimmed) {
             match parse_stmts(trimmed) {
                 Ok(stmts) => {
                     if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
@@ -1055,7 +1057,7 @@ pub fn run_pipe(reader: impl BufRead) {
         }
 
         // Block mode: accumulate lines until block closes
-        let delta = block_depth_delta(trimmed);
+        let delta = if is_single_line_block(trimmed) { 0 } else { block_depth_delta(trimmed) };
         if block_depth > 0 || delta > 0 {
             if matches!(trimmed, "exit" | "quit") {
                 break 'lines;
