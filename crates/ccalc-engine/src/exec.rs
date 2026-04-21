@@ -1320,7 +1320,9 @@ pub fn exec_stmts(
                 }
                 exec_index_set(name, indices, rhs, env, io)?;
                 // Write-through: persist immediately so recursive callers see the update.
-                if is_persistent(name) && let Some(val) = env.get(name) {
+                if is_persistent(name)
+                    && let Some(val) = env.get(name)
+                {
                     persistent_save(&current_func_name(), name, val.clone());
                 }
                 if !silent && let Some(val) = env.get(name) {

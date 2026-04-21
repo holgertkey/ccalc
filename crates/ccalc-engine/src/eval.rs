@@ -471,7 +471,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::Number(n) => Ok(Value::Scalar(*n)),
         Expr::Var(name) => env.get(name).cloned().ok_or(()).or_else(|_| {
             // Check the shared global store when the name is declared global in this scope.
-            if is_global(name) && let Some(val) = global_get(name) {
+            if is_global(name)
+                && let Some(val) = global_get(name)
+            {
                 return Ok(val);
             }
             // 'e' falls back to Euler's number if not defined in env
@@ -772,9 +774,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                             .get(field)
                             .cloned()
                             .ok_or_else(|| format!("No field '{field}' in struct"))?,
-                        _ => return Err(format!(
-                            "Cannot access field '{field}' on a non-struct value"
-                        )),
+                        _ => {
+                            return Err(format!(
+                                "Cannot access field '{field}' on a non-struct value"
+                            ));
+                        }
                     };
                 }
                 let mut evaled = Vec::with_capacity(args.len());
@@ -4044,7 +4048,11 @@ pub fn expr_to_string(e: &Expr) -> String {
         Expr::Colon => ":".to_string(),
         Expr::FieldGet(base, field) => format!("{}.{field}", expr_to_string(base)),
         Expr::DotCall(segs, args) => {
-            let args_str = args.iter().map(expr_to_string).collect::<Vec<_>>().join(", ");
+            let args_str = args
+                .iter()
+                .map(expr_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
             format!("{}({args_str})", segs.join("."))
         }
     }
