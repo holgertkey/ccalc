@@ -1,0 +1,4 @@
+function y = lerp(a, b, t)
+  % Linear interpolation: lerp(a, b, 0) == a, lerp(a, b, 1) == b.
+  y = a + t * (b - a);
+end

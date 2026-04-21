@@ -1,11 +1,12 @@
-% scoping.calc — global and persistent variable scoping
+% scoping.calc — variable and function scoping
 %
 % Topics:
-%   global    — shared storage accessible from any function that declares it
+%   global     — shared storage accessible from any function that declares it
 %   persistent — function-local storage that survives between calls
-%   isempty   — test for an uninitialized persistent variable
+%   isempty    — test for an uninitialized persistent variable
+%   private/   — directory-scoped helpers, invisible outside the parent folder
 %
-% Usage: ccalc scoping.calc
+% Usage: ccalc examples/scoping/scoping.calc
 
 % ── 1. global — shared counter ───────────────────────────────────────────────
 %
@@ -43,8 +44,8 @@ fprintf('  after reset: %d   (expected 0)\n', read_counter())
 
 % ── 2. global — configuration shared across modules ──────────────────────────
 %
-% A common pattern: store program-wide settings in a global struct or scalar
-% so all functions can read them without passing them as arguments.
+% A common pattern: store program-wide settings in a global scalar so all
+% functions can read them without threading them through every argument list.
 
 function set_precision(p)
   global g_precision
@@ -87,6 +88,10 @@ fprintf('  call 3: %d   (expected 3)\n', how_many_calls())
 %
 % Cache previously computed values so each n is calculated only once.
 % The cache vector grows on demand: cache(n) holds fib(n).
+%
+% Key detail: the IndexSet `cache(n) = ...` performs a read-modify-write on
+% the shared persistent store, so recursive calls see each other's updates
+% immediately and redundant recomputation is avoided.
 
 function f = fib_memo(n)
   persistent cache
@@ -155,8 +160,8 @@ fprintf('  std  = %.4f   (expected 2.1381)\n', s)
 
 % ── 6. global + persistent together ──────────────────────────────────────────
 %
-% A logger: a global log-level controls verbosity; a persistent message list
-% accumulates entries without an external array.
+% A logger: a global log-level controls verbosity; a persistent counter
+% numbers each message that actually gets printed.
 
 function log_set_level(lvl)
   global g_log_level
@@ -184,5 +189,47 @@ log_set_level(3)           % raise verbosity
 log_msg(3, 'opening file') % now printed
 
 fprintf('  (3 messages printed at level 2, then 1 more at level 3)\n')
+
+% ── 7. private/ — directory-scoped helper functions ──────────────────────────
+%
+% Functions placed in a private/ sub-directory are visible only to scripts and
+% functions in the parent directory.  Any other caller gets "Unknown function".
+%
+% This is the directory-level equivalent of function scoping: implementation
+% details are hidden behind a boundary that the file system enforces.
+%
+% This example calls clamp() and lerp() from private/ to build a normalize()
+% routine that maps a data vector into [0, 1].
+%   private/clamp.calc  — clamp(x, lo, hi)  →  x clamped to [lo, hi]
+%   private/lerp.calc   — lerp(a, b, t)     →  a + t*(b-a)
+
+function y = normalize(data, lo, hi)
+  % Map every element of data into [0, 1]:
+  %   values below lo become 0, above hi become 1, in between are scaled.
+  n = numel(data);
+  y = zeros(1, n);
+  span = hi - lo;
+  for k = 1:n
+    y(k) = lerp(0, 1, (clamp(data(k), lo, hi) - lo) / span);
+  end
+end
+
+fprintf('\n=== 7. private/ directory-scoped helpers ===\n')
+raw = [-5  0  3  7  10  15];
+out = normalize(raw, 0, 10);
+fprintf('  normalize([-5 0 3 7 10 15], 0, 10)\n')
+fprintf('    input : ')
+for k = 1:numel(raw); fprintf('%5.0f', raw(k)); end
+fprintf('\n')
+fprintf('    output: ')
+for k = 1:numel(out); fprintf('%5.2f', out(k)); end
+fprintf('\n')
+fprintf('  (expected: 0.00  0.00  0.30  0.70  1.00  1.00)\n')
+
+% Direct calls to private/ helpers:
+fprintf('  clamp(-3, 0, 10) = %g   (expected 0)\n',   clamp(-3, 0, 10))
+fprintf('  clamp( 5, 0, 10) = %g   (expected 5)\n',   clamp(5,  0, 10))
+fprintf('  clamp(15, 0, 10) = %g   (expected 10)\n',  clamp(15, 0, 10))
+fprintf('  lerp(0, 100, 0.25) = %g   (expected 25)\n', lerp(0, 100, 0.25))
 
 fprintf('\nDone.\n')

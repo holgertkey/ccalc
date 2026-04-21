@@ -101,7 +101,12 @@ fn collect_dirs_recursive(root: &std::path::Path, out: &mut Vec<std::path::PathB
         let mut children: Vec<std::path::PathBuf> = entries
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.is_dir())
+            .filter(|p| {
+                p.is_dir()
+                    // Never recurse into private/ — those helpers are only visible to
+                    // scripts in the parent directory, not to the global search path.
+                    && p.file_name().is_none_or(|n| n != "private")
+            })
             .collect();
         children.sort();
         for child in children {

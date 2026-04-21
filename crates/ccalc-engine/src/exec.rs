@@ -460,16 +460,16 @@ fn call_user_function(
 /// Otherwise, `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility).
 /// The search is relative to the current working directory.
 pub fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
-    // Build candidate base paths.  For every directory on the search stack, the
-    // `private/` sub-directory is checked first (MATLAB semantics: private
-    // helpers are visible to functions in the parent directory but not to
-    // callers from outside that directory).
+    // Build candidate base paths.
+    //
+    // MATLAB `private/` semantics: a `private/` sub-directory is visible only
+    // to scripts/functions in its parent directory.  Therefore:
+    //   • SCRIPT_DIR_STACK entries (the calling script's own directory) ARE
+    //     allowed to search their `private/` sub-folder — checked first.
+    //   • CWD and SESSION_PATH entries do NOT get a `private/` look-aside;
+    //     they can only see files directly in those directories.
     let p = std::path::Path::new(name);
     let mut bases: Vec<std::path::PathBuf> = Vec::new();
-
-    // CWD-relative: private/ first, then bare.
-    bases.push(std::path::Path::new("private").join(p));
-    bases.push(p.to_path_buf());
 
     // Stacked script directories (most-recent first): private/ before the dir.
     SCRIPT_DIR_STACK.with(|stack| {
@@ -479,10 +479,12 @@ pub fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
         }
     });
 
-    // Session search-path entries: private/ before the dir.
+    // CWD-relative (no private/ look-aside).
+    bases.push(p.to_path_buf());
+
+    // Session search-path entries (no private/ look-aside).
     SESSION_PATH.with(|sp| {
         for dir in sp.borrow().iter() {
-            bases.push(dir.join("private").join(p));
             bases.push(dir.join(p));
         }
     });

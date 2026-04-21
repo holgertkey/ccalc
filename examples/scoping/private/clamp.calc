@@ -1,0 +1,10 @@
+function y = clamp(x, lo, hi)
+  % Clamp scalar x to the closed interval [lo, hi].
+  if x < lo
+    y = lo;
+  elseif x > hi
+    y = hi;
+  else
+    y = x;
+  end
+end
