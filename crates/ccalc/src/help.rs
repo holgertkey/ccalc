@@ -39,10 +39,14 @@ pub fn print(topic: Option<&str>) {
         Some("structs" | "struct" | "fieldnames" | "isfield" | "rmfield" | "isstruct") => {
             print_structs()
         }
+        Some(
+            "scoping" | "scope" | "global" | "persistent" | "private" | "packages" | "package"
+            | "namespace" | "namespaces" | "pkg",
+        ) => print_scoping(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  scoping  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -162,6 +166,10 @@ Cells     c = {{1, 'hi', [1 2 3]}}        cell literal (heterogeneous)
           cellfun(@f, c)                   apply f to each cell element
           arrayfun(@f, v)                  apply f to each vector element
           case {{2, 3}}                    multi-value switch case
+Scoping global x              shared across all functions and the workspace
+        persistent x         per-function value that survives between calls
+        private/             directory-scoped helpers (visible only to parent dir)
+        utils.func(args)     package call — searches +utils/func.calc on path
 Vars    x = expr              shows: x = <val>  (ans unchanged)
         x = expr;             silent assignment
         who   clear   clear x
@@ -196,6 +204,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help cells       cell arrays, varargin/varargout, cellfun, arrayfun
   help structs     scalar structs + struct arrays, field access, fieldnames/isfield/rmfield
   help errors      error/warning, try/catch, try(expr,default), pcall
+  help scoping     global/persistent variables, private/ dirs, packages (pkg.func)
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
   help vars        variables and workspace
@@ -1838,9 +1847,21 @@ USER-DEFINED FUNCTIONS AND LAMBDAS  (help userfuncs)
 
     [a, b, c] = first_n([10 20 30 40], 3)   →  a=10  b=20  c=30
 
-See also: help control  help functions  help cells
+─── global and persistent — cross-call state ──────────────────────────────────
+
+  global x     Declares x as shared storage accessible from any function that
+               also declares  global x.
+
+  persistent x  Declares x as a per-function variable that retains its value
+               between calls.  On the first call x is []; use isempty(x) to
+               initialize it.
+
+  See  help scoping  for full documentation with examples.
+
+See also: help control  help functions  help cells  help scoping
 Example:  ccalc examples/user_functions.calc
-          ccalc examples/cell_arrays.calc"
+          ccalc examples/cell_arrays.calc
+          ccalc examples/scoping/scoping.calc"
     );
 }
 
@@ -2163,5 +2184,140 @@ ERROR HANDLING  (help errors)
 
 See also: help control  help userfuncs  help structs
 Example:  ccalc examples/error_handling.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help scoping
+// ---------------------------------------------------------------------------
+
+fn print_scoping() {
+    println!(
+        "\
+VARIABLE SCOPING  (help scoping)
+
+Four mechanisms control visibility and lifetime of variables across functions.
+
+─── global — shared workspace storage ─────────────────────────────────────────
+
+  Declare the SAME name in every function that needs to share the value.
+  Changes in one function are immediately visible in all others.
+
+    function reset_counter()
+      global g_count
+      g_count = 0;
+    end
+
+    function increment(step)
+      global g_count
+      g_count = g_count + step;
+    end
+
+    reset_counter()
+    increment(3)
+    increment(7)
+    % g_count is now 10 in the base workspace and in any function that
+    % also declares  global g_count
+
+  Use case: configuration, counters, shared state across a call graph.
+  Anti-pattern: overusing globals creates hidden coupling; prefer passing
+  values as arguments when the call chain is shallow.
+
+─── persistent — per-function long-lived storage ──────────────────────────────
+
+  A persistent variable keeps its value between calls to the SAME function.
+  On the first call the variable is [], so isempty() is the standard guard.
+
+    function n = how_many_calls()
+      persistent call_count
+      if isempty(call_count)
+        call_count = 0;
+      end
+      call_count += 1;
+      n = call_count;
+    end
+
+    how_many_calls()   % 1
+    how_many_calls()   % 2
+    how_many_calls()   % 3
+
+  Use cases: call counters, memoization caches, lazy initialization.
+
+  Memoized Fibonacci (persistent write-through ensures recursive calls see
+  each other's updates immediately):
+
+    function f = fib_memo(n)
+      persistent cache
+      if isempty(cache)
+        cache = zeros(1, 100);
+        cache(1) = 1;  cache(2) = 1;
+      end
+      if cache(n) ~= 0; f = cache(n); return; end
+      cache(n) = fib_memo(n-1) + fib_memo(n-2);
+      f = cache(n);
+    end
+
+─── private/ — directory-scoped helpers ───────────────────────────────────────
+
+  Functions in a private/ sub-directory are visible ONLY to scripts and
+  functions in the PARENT directory.  Any other caller sees 'Unknown function'.
+
+  Directory layout:
+    mylib/
+      main.calc        <- can call clamp() and lerp()
+      private/
+        clamp.calc     <- invisible outside mylib/
+        lerp.calc      <- invisible outside mylib/
+
+  This is the file-system equivalent of making helpers package-private.
+  private/ directories are skipped when ccalc builds the autoload path —
+  even if mylib/ is on the session path, its private/ folder stays hidden.
+
+    function y = normalize(data, lo, hi)
+      % clamp() and lerp() come from private/ — callers cannot use them directly
+      span = hi - lo;
+      for k = 1:numel(data)
+        y(k) = lerp(0, 1, (clamp(data(k), lo, hi) - lo) / span);
+      end
+    end
+
+─── Packages (+pkg/) — named namespaces ───────────────────────────────────────
+
+  A directory whose name starts with '+' is a PACKAGE.  Functions inside are
+  invisible at the top level; call them with the package prefix:
+
+    pkg.function(args)
+
+  Example layout:
+    +utils/
+      clamp.calc          <- utils.clamp(x, lo, hi)
+      lerp.calc           <- utils.lerp(a, b, t)
+    +geom/
+      circle_area.calc    <- geom.circle_area(r)
+
+  Usage:
+    utils.clamp(-3, 0, 10)         % 0
+    utils.lerp(0, 100, 0.25)       % 25
+    geom.circle_area(1)            % 3.14159...
+
+  Nested packages map subdirectories:
+    +geom/+solid/sphere_vol.calc   <- geom.solid.sphere_vol(r)
+
+  Package functions are autoloaded on first call from SCRIPT_DIR_STACK → CWD
+  → SESSION_PATH. No explicit source() required.
+
+  Package directories are transparent to addpath and genpath — the search
+  path does not include +pkg/ dirs directly; they are only found via the
+  qualified call syntax.
+
+─── Interaction summary ───────────────────────────────────────────────────────
+
+  global     — cross-function shared state; requires declaration in each function
+  persistent — per-function state; survives between calls; one slot per function
+  private/   — file-system visibility guard; MATLAB-compatible
+  +pkg/      — named namespace; avoids function-name collisions across libraries
+
+See also: help userfuncs  help control  help path
+Example:  ccalc examples/scoping/scoping.calc"
     );
 }

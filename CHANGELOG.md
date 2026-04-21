@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+011] - 2026-04-21
+
+### Added
+
+- **Phase 16 — Package namespaces (`+pkg/` directories):**
+  - Directories whose name starts with `+` (e.g., `+utils`, `+geom`) are
+    packages. Functions inside are invisible at the top level and must be
+    called with the package prefix: `utils.clamp(x, 0, 10)`.
+  - Nested packages are supported: `+geom/+solid/sphere_vol.calc` is called
+    as `geom.solid.sphere_vol(r)`.
+  - Package functions are autoloaded on the first call — no `source()` needed.
+    The search order is the calling script's directory, then CWD, then the
+    session path.
+  - New `Expr::DotCall(Vec<String>, Vec<Expr>)` AST node; parser detects
+    `ident{.ident}*(` in the postfix loop and produces `DotCall`.
+  - New `try_autoload_pkg()` in `exec.rs`: resolves qualified names to
+    `+pkg/func.calc` paths and caches under the qualified name.
+  - Example: `examples/scoping/scoping.calc` section 8 demonstrates packages
+    with `+utils/` and `+geom/` package directories.
+  - New `help scoping` / `help packages` topic.
+
+- **Phase 15.6 — Variable scoping:**
+  - **`global` variables**: `global x` declares a variable shared across all
+    functions and the base workspace that declare the same name.
+  - **`persistent` variables**: `persistent x` keeps a per-function value
+    between calls. IndexSet and Assign on persistent variables now write
+    through to the persistent store immediately so recursive callers see
+    updates (fixes memoization patterns like `fib_memo`).
+  - **`private/` directory scoping**: functions in a `private/` sub-directory
+    are visible only to scripts and functions in the parent directory.
+    `collect_dirs_recursive` skips `private/` directories; `resolve_script_path`
+    only adds the `private/` look-aside for the calling script's own directory.
+  - **`silence_all`**: recursive function in `exec.rs` walks the full statement
+    tree and marks every statement silent so function bodies never print output.
+  - **Single-line block fix**: the REPL's `if cond; body; end` bypass only
+    activates at `block_depth == 0`, preventing premature execution inside
+    buffered function definitions.
+  - Example: `examples/scoping/scoping.calc` (in its own directory) covers
+    global counters, global configuration, persistent call counters, persistent
+    memoization, Welford running statistics, combined global+persistent, and
+    `private/` directory helpers.
+
 ## [0.21.0+005] - 2026-04-20
 
 ### Added

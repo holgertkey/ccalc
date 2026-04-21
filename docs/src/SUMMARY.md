@@ -25,6 +25,7 @@
 - [Cell Arrays](./guide/cell-arrays.md)
 - [Structs and Struct Arrays](./guide/structs.md)
 - [Error Handling](./guide/error-handling.md)
+- [Variable Scoping](./guide/scoping.md)
 
 # Architecture
 
@@ -58,3 +59,5 @@
 - [Phase 13.6 — Backslash Operator and Path System](./ccalc/phase136-backslash-path.md)
 - [Phase 14 — Error Handling](./ccalc/phase14-error-handling.md)
 - [Phase 15 — Indexed Assignment](./ccalc/phase15-indexed-assignment.md)
+- [Phase 15.6 — Variable Scoping](./ccalc/phase156-scoping.md)
+- [Phase 16 — Package Namespaces](./ccalc/phase16-packages.md)

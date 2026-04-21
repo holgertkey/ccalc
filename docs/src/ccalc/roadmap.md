@@ -28,6 +28,13 @@ The work is divided into phases in order of architectural dependency.
 | 13.5 | Struct arrays (`s(i).field`, field collection, `numel`/`isstruct` extended) | ✅ Done |
 | — | Criterion benchmark suite (`benches/engine.rs`): scalar, fib, loop, matmul, inv, fn-calls | ✅ Done |
 | — | `inv`/`det` upgraded to partial pivoting (pure Rust, LAPACK-equivalent stability) | ✅ Done |
+| 13.6 | Backslash `\` operator + session search path (`addpath`/`rmpath`/`genpath`) | ✅ Done |
+| 14 | Error handling (`error`, `warning`, `try`/`catch`, `pcall`, `lasterr`) | ✅ Done |
+| 15 | Indexed assignment (`v(i) = x`, growing vectors, logical mask write) | ✅ Done |
+| 15.5 | Compatibility fixes: `log` natural log, `Inf`/`NaN` aliases, autoload, local function scoping | ✅ Done |
+| 15.6 | Variable scoping: `global`, `persistent`, `private/` directories | ✅ Done |
+| 16 | Package namespaces (`+pkg/` directories, `pkg.func(args)` call syntax) | ✅ Done |
+| 17 | Random numbers and statistics (`rand`, `randn`, `std`, `var`, `median`) | Planned |
 
 ## Key architectural decisions
 
