@@ -1,0 +1,3 @@
+function y = lerp(a, b, t)
+  y = a + t * (b - a);
+end

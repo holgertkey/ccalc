@@ -191,7 +191,11 @@ pub fn init() {
 /// Mirrors MATLAB/Octave autoload: when a function name is not found in the
 /// environment, ccalc looks for a matching file on the path, loads its primary
 /// function into the autoload cache, and returns `true` on success.
+/// For package-qualified names (containing `.`), delegates to [`try_autoload_pkg`].
 fn try_autoload(name: &str) -> bool {
+    if name.contains('.') {
+        return try_autoload_pkg(name);
+    }
     let candidates = [format!("{name}.calc"), format!("{name}.m")];
     for candidate in &candidates {
         let Some(path) = resolve_script_path(candidate) else {
@@ -248,6 +252,96 @@ fn try_autoload(name: &str) -> bool {
                 },
             );
             return true;
+        }
+    }
+    false
+}
+
+/// Searches for a package-qualified function and loads it into the autoload cache.
+///
+/// A qualified name like `"utils.my_func"` maps to `+utils/my_func.calc`.
+/// Nested packages like `"utils.math.lerp"` map to `+utils/+math/lerp.calc`.
+/// Searches SCRIPT_DIR_STACK → CWD → SESSION_PATH and caches under the qualified name.
+fn try_autoload_pkg(qualified: &str) -> bool {
+    let parts: Vec<&str> = qualified.split('.').collect();
+    if parts.len() < 2 {
+        return false;
+    }
+    let func_name = *parts.last().unwrap();
+    let pkg_parts = &parts[..parts.len() - 1];
+
+    // Build relative path prefix: +pkg1/+pkg2/...
+    let mut rel_prefix = std::path::PathBuf::new();
+    for pkg in pkg_parts {
+        rel_prefix.push(format!("+{pkg}"));
+    }
+
+    let candidates = [
+        rel_prefix.join(format!("{func_name}.calc")),
+        rel_prefix.join(format!("{func_name}.m")),
+    ];
+
+    // Collect search directories: script dirs + CWD + session path.
+    let mut search_dirs: Vec<std::path::PathBuf> = Vec::new();
+    SCRIPT_DIR_STACK.with(|s| search_dirs.extend(s.borrow().iter().cloned()));
+    search_dirs.push(std::path::PathBuf::from("."));
+    SESSION_PATH.with(|s| search_dirs.extend(s.borrow().iter().cloned()));
+
+    for dir in &search_dirs {
+        for candidate in &candidates {
+            let full = dir.join(candidate);
+            let Ok(content) = std::fs::read_to_string(&full) else {
+                continue;
+            };
+            let Ok(stmts) = parse_stmts(&content) else {
+                continue;
+            };
+            if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _))) {
+                continue;
+            }
+            let primary_name = match &stmts[0].0 {
+                Stmt::FunctionDef { name, .. } => name.clone(),
+                _ => continue,
+            };
+            let mut locals: IndexMap<String, Value> = IndexMap::new();
+            for (stmt, _) in &stmts {
+                if let Stmt::FunctionDef {
+                    name: n,
+                    outputs,
+                    params,
+                    body_source,
+                } = stmt
+                    && n != &primary_name
+                {
+                    locals.insert(
+                        n.clone(),
+                        Value::Function {
+                            outputs: outputs.clone(),
+                            params: params.clone(),
+                            body_source: body_source.clone(),
+                            locals: IndexMap::new(),
+                        },
+                    );
+                }
+            }
+            if let Stmt::FunctionDef {
+                outputs,
+                params,
+                body_source,
+                ..
+            } = &stmts[0].0
+            {
+                autoload_cache_insert(
+                    qualified.to_string(),
+                    Value::Function {
+                        outputs: outputs.clone(),
+                        params: params.clone(),
+                        body_source: body_source.clone(),
+                        locals,
+                    },
+                );
+                return true;
+            }
         }
     }
     false

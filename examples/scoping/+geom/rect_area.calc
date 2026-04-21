@@ -1,0 +1,3 @@
+function a = rect_area(w, h)
+  a = w * h;
+end

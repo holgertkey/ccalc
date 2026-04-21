@@ -330,6 +330,16 @@ pub enum Expr {
     ///
     /// At eval time the base expression must evaluate to `Value::Struct`.
     FieldGet(Box<Expr>, String),
+    /// Package-qualified function call: `pkg.func(args)` or `pkg.sub.func(args)`.
+    ///
+    /// `segments` holds the dot-separated name components, e.g. `["utils", "my_function"]`.
+    /// At eval time:
+    /// - If `segments[0]` is in the environment (a struct or callable), the chain is followed
+    ///   as field accesses and the final value is called with the given arguments.
+    /// - Otherwise, the segments are treated as a package call: the autoload hook searches
+    ///   for `+utils/my_function.calc` (or `+utils/+sub/func.calc` for nested packages)
+    ///   on the session path and loads the function on demand.
+    DotCall(Vec<String>, Vec<Expr>),
 }
 
 /// A binary operator used in [`Expr::BinOp`].
@@ -750,6 +760,82 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     "Cannot access field '{field}' on a non-struct value"
                 )),
             }
+        }
+        Expr::DotCall(segs, args) => {
+            let qualified = segs.join(".");
+            // If the head segment is a variable, follow the field chain and call the result.
+            if let Some(head_val) = env.get(&segs[0]).cloned() {
+                let mut val = head_val;
+                for field in &segs[1..] {
+                    val = match val {
+                        Value::Struct(ref map) => map
+                            .get(field)
+                            .cloned()
+                            .ok_or_else(|| format!("No field '{field}' in struct"))?,
+                        _ => return Err(format!(
+                            "Cannot access field '{field}' on a non-struct value"
+                        )),
+                    };
+                }
+                let mut evaled = Vec::with_capacity(args.len());
+                for a in args {
+                    evaled.push(eval_inner(a, env, io.as_deref_mut())?);
+                }
+                return match val {
+                    Value::Lambda(f) => {
+                        if evaled.is_empty() {
+                            evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
+                        }
+                        f.0(&evaled, io)
+                    }
+                    Value::Function { .. } => match io.as_deref_mut() {
+                        Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
+                            Some(hook) => hook(&qualified, &val, &evaled, env, io_ref),
+                            None => Err(format!("'{qualified}': exec::init() not called")),
+                        }),
+                        None => {
+                            let mut tmp_io = IoContext::new();
+                            FN_CALL_HOOK.with(|c| match c.get() {
+                                Some(hook) => hook(&qualified, &val, &evaled, env, &mut tmp_io),
+                                None => Err(format!("'{qualified}': exec::init() not called")),
+                            })
+                        }
+                    },
+                    _ => Err(format!("'{qualified}': not a callable")),
+                };
+            }
+            // Package call: autoload from +pkg/func.calc then invoke.
+            let cached = AUTOLOAD_CACHE.with(|c| c.borrow().get(&qualified).cloned());
+            let autoloaded_val = cached.or_else(|| {
+                let loaded = AUTOLOAD_HOOK
+                    .with(|c| c.get())
+                    .is_some_and(|hook| hook(&qualified));
+                if loaded {
+                    AUTOLOAD_CACHE.with(|c| c.borrow().get(&qualified).cloned())
+                } else {
+                    None
+                }
+            });
+            if let Some(val) = autoloaded_val {
+                let mut evaled = Vec::with_capacity(args.len());
+                for a in args {
+                    evaled.push(eval_inner(a, env, io.as_deref_mut())?);
+                }
+                return match io.as_deref_mut() {
+                    Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
+                        Some(hook) => hook(&qualified, &val, &evaled, env, io_ref),
+                        None => Err(format!("'{qualified}': exec::init() not called")),
+                    }),
+                    None => {
+                        let mut tmp_io = IoContext::new();
+                        FN_CALL_HOOK.with(|c| match c.get() {
+                            Some(hook) => hook(&qualified, &val, &evaled, env, &mut tmp_io),
+                            None => Err(format!("'{qualified}': exec::init() not called")),
+                        })
+                    }
+                };
+            }
+            Err(format!("Unknown package function: '{qualified}'"))
         }
         Expr::FuncHandle(name) => {
             let name = name.clone();
@@ -3957,6 +4043,10 @@ pub fn expr_to_string(e: &Expr) -> String {
         Expr::CellIndex(e, i) => format!("{}{{{}}}", expr_to_string(e), expr_to_string(i)),
         Expr::Colon => ":".to_string(),
         Expr::FieldGet(base, field) => format!("{}.{field}", expr_to_string(base)),
+        Expr::DotCall(segs, args) => {
+            let args_str = args.iter().map(expr_to_string).collect::<Vec<_>>().join(", ");
+            format!("{}({args_str})", segs.join("."))
+        }
     }
 }
 

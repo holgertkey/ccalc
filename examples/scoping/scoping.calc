@@ -5,6 +5,20 @@
 %   persistent — function-local storage that survives between calls
 %   isempty    — test for an uninitialized persistent variable
 %   private/   — directory-scoped helpers, invisible outside the parent folder
+%   packages   — +pkg/ namespaces, functions called as pkg.func(args)
+%
+% Directory layout:
+%   scoping/
+%     scoping.calc     <- this script
+%     private/
+%       clamp.calc     <- visible only from this directory
+%       lerp.calc      <- visible only from this directory
+%     +utils/
+%       clamp.calc     <- utils.clamp(x, lo, hi)
+%       lerp.calc      <- utils.lerp(a, b, t)
+%     +geom/
+%       circle_area.calc  <- geom.circle_area(r)
+%       rect_area.calc    <- geom.rect_area(w, h)
 %
 % Usage: ccalc examples/scoping/scoping.calc
 
@@ -231,5 +245,33 @@ fprintf('  clamp(-3, 0, 10) = %g   (expected 0)\n',   clamp(-3, 0, 10))
 fprintf('  clamp( 5, 0, 10) = %g   (expected 5)\n',   clamp(5,  0, 10))
 fprintf('  clamp(15, 0, 10) = %g   (expected 10)\n',  clamp(15, 0, 10))
 fprintf('  lerp(0, 100, 0.25) = %g   (expected 25)\n', lerp(0, 100, 0.25))
+
+% ── 8. packages — +pkg/ namespace directories ────────────────────────────────
+%
+% Packages are directories whose name begins with '+' (e.g., +utils, +geom).
+% Functions inside are invisible at the top level; you call them with the
+% package prefix:  pkg.function(args)
+%
+% This separates namespaces: utils.clamp and geom.circle_area live in
+% different packages and cannot conflict with each other or with private helpers.
+%
+%   +utils/clamp.calc    — utils.clamp(x, lo, hi)
+%   +utils/lerp.calc     — utils.lerp(a, b, t)
+%   +geom/circle_area.calc — geom.circle_area(r)
+%   +geom/rect_area.calc   — geom.rect_area(w, h)
+
+fprintf('\n=== 8. Packages (+pkg/ namespaces) ===\n')
+
+fprintf('  utils.clamp(-3, 0, 10) = %g   (expected 0)\n',  utils.clamp(-3, 0, 10))
+fprintf('  utils.clamp( 5, 0, 10) = %g   (expected 5)\n',  utils.clamp(5,  0, 10))
+fprintf('  utils.clamp(15, 0, 10) = %g   (expected 10)\n', utils.clamp(15, 0, 10))
+fprintf('  utils.lerp(0, 100, 0.25) = %g   (expected 25)\n', utils.lerp(0, 100, 0.25))
+
+fprintf('  geom.circle_area(1) = %.4f   (expected 3.1416)\n', geom.circle_area(1))
+fprintf('  geom.rect_area(4, 5) = %g   (expected 20)\n', geom.rect_area(4, 5))
+
+% Packages compose naturally with each other and with regular expressions.
+x = utils.clamp(utils.lerp(-10, 20, 0.5), 0, 10);
+fprintf('  clamp(lerp(-10,20,0.5), 0,10) = %g   (expected 5)\n', x)
 
 fprintf('\nDone.\n')

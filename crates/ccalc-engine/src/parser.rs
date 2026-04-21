@@ -2391,8 +2391,8 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
         }
     };
 
-    // Postfix operators: field access (`.field`), transpose (`'`), plain-transpose (`.'`)
-    // All bind tighter than any binary operator.
+    // Postfix operators: field access (`.field`), transpose (`'`), plain-transpose (`.'`),
+    // and package/struct call (`a.b(args)`). All bind tighter than any binary operator.
     loop {
         match tokens.get(*pos) {
             Some(Token::Dot) => {
@@ -2404,6 +2404,32 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                         expr = Expr::FieldGet(Box::new(expr), field);
                     }
                     _ => return Err("Expected field name after '.'".to_string()),
+                }
+            }
+            Some(Token::LParen) => {
+                // `a.b(args)` or `a.b.c(args)`: postfix call on a dot-chain.
+                // Only valid when expr is a pure Var/FieldGet chain (2+ segments).
+                if let Some(segs) = field_chain_segments(&expr)
+                    && segs.len() >= 2
+                {
+                    *pos += 1;
+                    let args = if matches!(tokens.get(*pos), Some(Token::RParen)) {
+                        vec![]
+                    } else {
+                        let mut list = vec![parse_call_arg(tokens, pos)?];
+                        while matches!(tokens.get(*pos), Some(Token::Comma)) {
+                            *pos += 1;
+                            list.push(parse_call_arg(tokens, pos)?);
+                        }
+                        list
+                    };
+                    if !matches!(tokens.get(*pos), Some(Token::RParen)) {
+                        return Err("Expected closing ')'".to_string());
+                    }
+                    *pos += 1;
+                    expr = Expr::DotCall(segs, args);
+                } else {
+                    break;
                 }
             }
             Some(Token::Apostrophe) => {
@@ -2419,6 +2445,22 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     }
 
     Ok(expr)
+}
+
+/// Extracts the dot-separated name segments from a pure `Var`/`FieldGet` chain.
+///
+/// Returns `Some(vec!["a", "b"])` for `FieldGet(Var("a"), "b")`, or `None` if
+/// the expression contains any non-Var/FieldGet node (e.g. a `Call`).
+fn field_chain_segments(e: &Expr) -> Option<Vec<String>> {
+    match e {
+        Expr::Var(name) => Some(vec![name.clone()]),
+        Expr::FieldGet(inner, field) => {
+            let mut segs = field_chain_segments(inner)?;
+            segs.push(field.clone());
+            Some(segs)
+        }
+        _ => None,
+    }
 }
 
 /// Parses the contents of a matrix literal after the opening `[` has been consumed.
