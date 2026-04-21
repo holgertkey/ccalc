@@ -460,17 +460,29 @@ fn call_user_function(
 /// Otherwise, `.calc` is tried first (native ccalc format), then `.m` (Octave/MATLAB compatibility).
 /// The search is relative to the current working directory.
 pub fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
-    // Build candidate base paths: CWD-relative first, then each stacked script dir (top-first),
-    // then the session search path entries in order.
+    // Build candidate base paths.  For every directory on the search stack, the
+    // `private/` sub-directory is checked first (MATLAB semantics: private
+    // helpers are visible to functions in the parent directory but not to
+    // callers from outside that directory).
     let p = std::path::Path::new(name);
-    let mut bases: Vec<std::path::PathBuf> = vec![p.to_path_buf()];
+    let mut bases: Vec<std::path::PathBuf> = Vec::new();
+
+    // CWD-relative: private/ first, then bare.
+    bases.push(std::path::Path::new("private").join(p));
+    bases.push(p.to_path_buf());
+
+    // Stacked script directories (most-recent first): private/ before the dir.
     SCRIPT_DIR_STACK.with(|stack| {
         for dir in stack.borrow().iter().rev() {
+            bases.push(dir.join("private").join(p));
             bases.push(dir.join(p));
         }
     });
+
+    // Session search-path entries: private/ before the dir.
     SESSION_PATH.with(|sp| {
         for dir in sp.borrow().iter() {
+            bases.push(dir.join("private").join(p));
             bases.push(dir.join(p));
         }
     });
