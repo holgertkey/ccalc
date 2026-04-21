@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
 use ndarray::Array2;
@@ -12,10 +13,16 @@ use crate::io::IoContext;
 ///
 /// Registered once by `exec::init()` before the REPL loop starts.
 /// Called by `eval_inner` when a `Value::Function` is invoked.
-/// The `caller_env` is passed so the function body can access other user-defined
-/// functions (enabling recursion and mutual recursion).
-pub type FnCallHook =
-    fn(func: &Value, args: &[Value], caller_env: &Env, io: &mut IoContext) -> Result<Value, String>;
+/// `name` is the function name (from the call site); `caller_env` is passed so
+/// the function body can access other user-defined functions (enabling recursion
+/// and mutual recursion).
+pub type FnCallHook = fn(
+    name: &str,
+    func: &Value,
+    args: &[Value],
+    caller_env: &Env,
+    io: &mut IoContext,
+) -> Result<Value, String>;
 
 thread_local! {
     static FN_CALL_HOOK: Cell<Option<FnCallHook>> = const { Cell::new(None) };
@@ -101,6 +108,150 @@ pub fn get_display_base() -> Base {
 /// Returns the current compact flag stored in the thread-local context.
 pub fn get_display_compact() -> bool {
     DISPLAY_COMPACT.with(|c| c.get())
+}
+
+// ── Global variable store ────────────────────────────────────────────────────
+
+thread_local! {
+    /// Shared global workspace — variables declared `global` in any scope live here.
+    ///
+    /// Persists for the lifetime of the process. Each call to `global x` in any scope
+    /// makes `x` refer to this store rather than the local environment.
+    static GLOBAL_ENV: RefCell<Env> = RefCell::new(Env::new());
+
+    /// Stack of per-scope global name sets.
+    ///
+    /// Frame 0 = top level / script scope; each `call_user_function` call pushes a new frame
+    /// and pops it on return. `global x` in a scope adds `x` to the current (top) frame.
+    static GLOBAL_NAMES_STACK: RefCell<Vec<HashSet<String>>> =
+        RefCell::new(vec![HashSet::new()]);
+}
+
+/// Pushes an empty global-names frame (called on function entry by `exec.rs`).
+pub fn global_frame_push() {
+    GLOBAL_NAMES_STACK.with(|s| s.borrow_mut().push(HashSet::new()));
+}
+
+/// Pops the top global-names frame (called on function exit by `exec.rs`).
+pub fn global_frame_pop() {
+    GLOBAL_NAMES_STACK.with(|s| { s.borrow_mut().pop(); });
+}
+
+/// Declares `name` as global in the current scope.
+pub fn global_declare(name: &str) {
+    GLOBAL_NAMES_STACK.with(|s| {
+        if let Some(frame) = s.borrow_mut().last_mut() {
+            frame.insert(name.to_string());
+        }
+    });
+}
+
+/// Returns `true` if `name` is declared global in the innermost active scope.
+pub fn is_global(name: &str) -> bool {
+    GLOBAL_NAMES_STACK.with(|s| {
+        s.borrow().last().map_or(false, |f| f.contains(name))
+    })
+}
+
+/// Gets a value from the shared global store.
+pub fn global_get(name: &str) -> Option<Value> {
+    GLOBAL_ENV.with(|e| e.borrow().get(name).cloned())
+}
+
+/// Sets a value in the shared global store.
+pub fn global_set(name: &str, val: Value) {
+    GLOBAL_ENV.with(|e| e.borrow_mut().insert(name.to_string(), val));
+}
+
+/// Initialises `name` in the global store to `Scalar(0.0)` if not already present.
+pub fn global_init_if_absent(name: &str) {
+    GLOBAL_ENV.with(|e| {
+        e.borrow_mut()
+            .entry(name.to_string())
+            .or_insert(Value::Scalar(0.0));
+    });
+}
+
+/// Refreshes all names declared global in the current scope from `GLOBAL_ENV` into `env`.
+///
+/// Called at the end of `exec_stmts` to ensure that modifications made to global variables
+/// inside called functions are visible to the current scope's environment.
+pub fn global_refresh_into_env(env: &mut crate::env::Env) {
+    GLOBAL_NAMES_STACK.with(|s| {
+        GLOBAL_ENV.with(|ge| {
+            if let Some(frame) = s.borrow().last() {
+                let store = ge.borrow();
+                for name in frame {
+                    if let Some(val) = store.get(name) {
+                        env.insert(name.clone(), val.clone());
+                    }
+                }
+            }
+        });
+    });
+}
+
+// ── Persistent variable store ────────────────────────────────────────────────
+
+thread_local! {
+    /// Persistent variable values — keyed by `"funcname\x00varname"`.
+    ///
+    /// Values survive individual function calls and are restored on the next call
+    /// to the same function.
+    static PERSISTENT_STORE: RefCell<HashMap<String, Value>> =
+        RefCell::new(HashMap::new());
+
+    /// Stack of function names for constructing persistent-store keys.
+    ///
+    /// Empty string = top-level scope. `call_user_function` pushes the function name
+    /// before executing the body and pops it on return.
+    static FUNC_NAME_STACK: RefCell<Vec<String>> =
+        RefCell::new(vec![String::new()]);
+
+    /// Stack of per-scope persistent name sets — mirrors `GLOBAL_NAMES_STACK`.
+    static PERSISTENT_NAMES_STACK: RefCell<Vec<HashSet<String>>> =
+        RefCell::new(vec![HashSet::new()]);
+}
+
+/// Pushes a function scope for persistent tracking (called on function entry).
+pub fn persistent_frame_push(func_name: &str) {
+    FUNC_NAME_STACK.with(|s| s.borrow_mut().push(func_name.to_string()));
+    PERSISTENT_NAMES_STACK.with(|s| s.borrow_mut().push(HashSet::new()));
+}
+
+/// Pops the persistent frame and returns `(func_name, declared_persistent_names)`.
+pub fn persistent_frame_pop() -> (String, HashSet<String>) {
+    let func_name = FUNC_NAME_STACK.with(|s| s.borrow_mut().pop().unwrap_or_default());
+    let names = PERSISTENT_NAMES_STACK.with(|s| s.borrow_mut().pop().unwrap_or_default());
+    (func_name, names)
+}
+
+/// Declares `name` as persistent in the current function scope.
+pub fn persistent_declare(name: &str) {
+    PERSISTENT_NAMES_STACK.with(|s| {
+        if let Some(frame) = s.borrow_mut().last_mut() {
+            frame.insert(name.to_string());
+        }
+    });
+}
+
+/// Gets a saved persistent value for `(func_name, var_name)`.
+pub fn persistent_load(func_name: &str, var_name: &str) -> Option<Value> {
+    let key = format!("{func_name}\x00{var_name}");
+    PERSISTENT_STORE.with(|s| s.borrow().get(&key).cloned())
+}
+
+/// Saves a persistent value for `(func_name, var_name)`.
+pub fn persistent_save(func_name: &str, var_name: &str, val: Value) {
+    let key = format!("{func_name}\x00{var_name}");
+    PERSISTENT_STORE.with(|s| s.borrow_mut().insert(key, val));
+}
+
+/// Returns the name of the currently executing function (top of `FUNC_NAME_STACK`).
+///
+/// Returns an empty string when executing at the top level (REPL / script scope).
+pub fn current_func_name() -> String {
+    FUNC_NAME_STACK.with(|s| s.borrow().last().cloned().unwrap_or_default())
 }
 
 // ── AST types ────────────────────────────────────────────────────────────────
@@ -304,6 +455,12 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
     match expr {
         Expr::Number(n) => Ok(Value::Scalar(*n)),
         Expr::Var(name) => env.get(name).cloned().ok_or(()).or_else(|_| {
+            // Check the shared global store when the name is declared global in this scope.
+            if is_global(name) {
+                if let Some(val) = global_get(name) {
+                    return Ok(val);
+                }
+            }
             // 'e' falls back to Euler's number if not defined in env
             if name == "e" {
                 Ok(Value::Scalar(std::f64::consts::E))
@@ -405,7 +562,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         }
                         return match io.as_deref_mut() {
                             Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
-                                Some(hook) => hook(&val, &evaled, env, io_ref),
+                                Some(hook) => hook(name, &val, &evaled, env, io_ref),
                                 None => Err(format!(
                                     "'{name}': user function execution not initialized \
                                          (call exec::init() first)"
@@ -416,7 +573,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                                 // file I/O in this path will silently fail to open files).
                                 let mut tmp_io = IoContext::new();
                                 FN_CALL_HOOK.with(|c| match c.get() {
-                                    Some(hook) => hook(&val, &evaled, env, &mut tmp_io),
+                                    Some(hook) => hook(name, &val, &evaled, env, &mut tmp_io),
                                     None => Err(format!(
                                         "'{name}': user function execution not initialized"
                                     )),
@@ -449,13 +606,13 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 }
                 return match io.as_deref_mut() {
                     Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
-                        Some(hook) => hook(&val, &evaled, env, io_ref),
+                        Some(hook) => hook(name, &val, &evaled, env, io_ref),
                         None => Err(format!("'{name}': exec::init() not called")),
                     }),
                     None => {
                         let mut tmp_io = IoContext::new();
                         FN_CALL_HOOK.with(|c| match c.get() {
-                            Some(hook) => hook(&val, &evaled, env, &mut tmp_io),
+                            Some(hook) => hook(name, &val, &evaled, env, &mut tmp_io),
                             None => Err(format!("'{name}': exec::init() not called")),
                         })
                     }
@@ -478,6 +635,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     | "isstruct"
                     | "cell"
                     | "iscell"
+                    | "isempty"
                     | "cellfun"
                     | "error"
                     | "warning"
@@ -1669,19 +1827,19 @@ fn call_function_value(
             lf.0(args, io)
         }
         Value::Function { .. } => {
-            // Named function — requires the exec hook.
+            // Named function called via cellfun/arrayfun — name is unknown at this point.
             // Use a minimal env that doesn't export any user variables to avoid
             // polluting the caller's scope. Functions see their own scope via exec.
             let empty_env = Env::new();
             match io {
                 Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
-                    Some(hook) => hook(f, args, &empty_env, io_ref),
+                    Some(hook) => hook("<anonymous>", f, args, &empty_env, io_ref),
                     None => Err("User function execution not initialized".to_string()),
                 }),
                 None => {
                     let mut tmp_io = IoContext::new();
                     FN_CALL_HOOK.with(|c| match c.get() {
-                        Some(hook) => hook(f, args, &empty_env, &mut tmp_io),
+                        Some(hook) => hook("<anonymous>", f, args, &empty_env, &mut tmp_io),
                         None => Err("User function execution not initialized".to_string()),
                     })
                 }
@@ -2537,6 +2695,18 @@ fn call_builtin(
             },
         )),
         // --- Cell array built-ins ---
+        // isempty(v) — 1.0 if v has no elements, 0.0 otherwise.
+        // Matches MATLAB: empty matrix, empty string, empty cell, or Void are empty.
+        ("isempty", 1) => {
+            let empty = match &args[0] {
+                Value::Matrix(m) => m.is_empty(),
+                Value::Str(s) | Value::StringObj(s) => s.is_empty(),
+                Value::Cell(v) => v.is_empty(),
+                Value::Void => true,
+                _ => false,
+            };
+            Ok(Value::Scalar(if empty { 1.0 } else { 0.0 }))
+        }
         // iscell(v) — 1.0 if v is a cell array, 0.0 otherwise
         ("iscell", 1) => Ok(Value::Scalar(if matches!(&args[0], Value::Cell(_)) {
             1.0
@@ -2970,13 +3140,13 @@ fn call_builtin(
                 }
                 Value::Function { .. } => match io {
                     Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
-                        Some(hook) => hook(&callable, call_args, env, io_ref),
+                        Some(hook) => hook("<pcall>", &callable, call_args, env, io_ref),
                         None => Err("pcall: function execution not initialized".to_string()),
                     }),
                     None => {
                         let mut tmp_io = IoContext::new();
                         FN_CALL_HOOK.with(|c| match c.get() {
-                            Some(hook) => hook(&callable, call_args, env, &mut tmp_io),
+                            Some(hook) => hook("<pcall>", &callable, call_args, env, &mut tmp_io),
                             None => Err("pcall: function execution not initialized".to_string()),
                         })
                     }

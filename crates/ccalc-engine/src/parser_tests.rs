@@ -4063,3 +4063,225 @@ fn test_split_stmts_escaped_quote_with_semicolon_split() {
     assert!(stmts[0].1, "first stmt (x=...) should be silent");
     assert!(!stmts[1].1, "second stmt (y=2) should be non-silent");
 }
+
+// ── global / persistent scoping ──────────────────────────────────────────────
+
+#[test]
+fn test_global_shared_between_functions() {
+    // Two functions that both declare `global counter` share the same value.
+    let src = "
+function inc()
+  global counter
+  counter = counter + 1;
+end
+function reset()
+  global counter
+  counter = 0;
+end
+";
+    let mut env = run_block(src);
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+
+    // Initialize counter in global store via reset()
+    exec_stmts(
+        &parse_stmts("reset()").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+
+    // Call inc() three times
+    for _ in 0..3 {
+        exec_stmts(
+            &parse_stmts("inc()").unwrap(),
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .unwrap();
+    }
+
+    // Read counter back: declare global in REPL scope and check
+    exec_stmts(
+        &parse_stmts("global counter").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+
+    assert_eq!(
+        env.get("counter").cloned(),
+        Some(Value::Scalar(3.0)),
+        "global counter should be 3 after three inc() calls"
+    );
+}
+
+#[test]
+fn test_global_init_to_zero() {
+    // `global x` on a fresh store initializes to 0.
+    let src = "function f()\nglobal g_init_test\nend";
+    let mut env = run_block(src);
+    let mut io = IoContext::new();
+    exec_stmts(
+        &parse_stmts("f()").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    // Now declare global at top level and read it
+    exec_stmts(
+        &parse_stmts("global g_init_test").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        env.get("g_init_test").cloned(),
+        Some(Value::Scalar(0.0)),
+        "undeclared global should be initialized to 0"
+    );
+}
+
+#[test]
+fn test_global_top_level_visible_in_function() {
+    // A variable declared global at REPL level is readable from a function.
+    let src = "function y = getg()\nglobal g_top\ny = g_top;\nend";
+    let mut env = run_block(src);
+    let mut io = IoContext::new();
+
+    // Declare and set global at top level
+    exec_stmts(
+        &parse_stmts("global g_top; g_top = 42").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+
+    // Function should see the value
+    exec_stmts(
+        &parse_stmts("ans = getg()").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        env.get("ans").cloned(),
+        Some(Value::Scalar(42.0)),
+        "function with global g_top should read value set at top level"
+    );
+}
+
+#[test]
+fn test_persistent_retains_value_across_calls() {
+    // A counter using persistent retains its value between function calls.
+    let src = "
+function n = counter()
+  persistent count
+  if isempty(count)
+    count = 0;
+  end
+  count = count + 1;
+  n = count;
+end
+";
+    let mut env = run_block(src);
+    let mut io = IoContext::new();
+
+    for expected in [1.0, 2.0, 3.0] {
+        exec_stmts(
+            &parse_stmts("ans = counter()").unwrap(),
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            env.get("ans").cloned(),
+            Some(Value::Scalar(expected)),
+            "counter() call should return {expected}"
+        );
+    }
+}
+
+#[test]
+fn test_persistent_independent_per_function() {
+    // Two different functions with a persistent variable named `count` don't share storage.
+    let src = "
+function n = ca()
+  persistent count
+  if isempty(count); count = 0; end
+  count = count + 10;
+  n = count;
+end
+function n = cb()
+  persistent count
+  if isempty(count); count = 0; end
+  count = count + 1;
+  n = count;
+end
+";
+    let mut env = run_block(src);
+    let mut io = IoContext::new();
+
+    exec_stmts(
+        &parse_stmts("ca(); ca(); cb(); ans = ca()").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    // ca() called 3 times → 30; cb() called 1 time → 1 (but ans is from ca() = 30)
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(30.0)));
+
+    exec_stmts(
+        &parse_stmts("ans = cb()").unwrap(),
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .unwrap();
+    assert_eq!(env.get("ans").cloned(), Some(Value::Scalar(2.0)));
+}
+
+#[test]
+fn test_parse_global_stmt() {
+    // 'global x y z' parses to Stmt::Global(["x", "y", "z"])
+    let stmts = parse_stmts("global x y z").unwrap();
+    assert_eq!(stmts.len(), 1);
+    assert!(matches!(&stmts[0].0, Stmt::Global(names) if names == &["x", "y", "z"]));
+}
+
+#[test]
+fn test_parse_persistent_stmt() {
+    // 'persistent a b' parses to Stmt::Persistent(["a", "b"])
+    let stmts = parse_stmts("persistent a b").unwrap();
+    assert_eq!(stmts.len(), 1);
+    assert!(matches!(&stmts[0].0, Stmt::Persistent(names) if names == &["a", "b"]));
+}

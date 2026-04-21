@@ -143,6 +143,18 @@ pub enum Stmt {
         /// The value to write.
         value: Expr,
     },
+    /// `global x y z` — declares names as globally shared across function scopes.
+    ///
+    /// Any function that declares the same names as `global` shares the same storage.
+    /// At the top level (REPL/script), global variables are initialized in the shared
+    /// store and behave like ordinary workspace variables.
+    Global(Vec<String>),
+    /// `persistent x y z` — declares names as persistent across calls to the enclosing function.
+    ///
+    /// The values are retained between calls. On the first call the variables are
+    /// initialized to an empty/zero state; on subsequent calls the saved state is restored.
+    /// Valid only inside a named function; at the top level it is accepted but has no effect.
+    Persistent(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -812,12 +824,50 @@ fn try_split_field_assign(input: &str) -> Option<(String, Vec<String>, &str)> {
     Some((base_var, fields, rhs))
 }
 
+/// Parses a whitespace- or comma-separated list of valid identifiers.
+///
+/// Used by `global` and `persistent` statement parsers.
+fn parse_name_list(rest: &str) -> Result<Vec<String>, String> {
+    let names: Vec<String> = rest
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect();
+    if names.is_empty() {
+        return Err("Expected at least one variable name".to_string());
+    }
+    for name in &names {
+        if !name.starts_with(|c: char| c.is_alphabetic() || c == '_')
+            || name.chars().any(|c| !c.is_alphanumeric() && c != '_')
+        {
+            return Err(format!("Invalid variable name: '{name}'"));
+        }
+    }
+    Ok(names)
+}
+
 /// Parses a full input string into a [`Stmt`].
 ///
 /// Assignment (`name = expr`) is detected first. Everything else is treated as
 /// an expression whose result will be stored in `ans`.
 pub fn parse(input: &str) -> Result<Stmt, String> {
     let trimmed = input.trim();
+
+    // 'global x y z' — shared global variable declaration
+    if let Some(rest) = trimmed
+        .strip_prefix("global")
+        .filter(|r| r.is_empty() || r.starts_with(|c: char| c.is_whitespace() || c == ','))
+    {
+        return Ok(Stmt::Global(parse_name_list(rest)?));
+    }
+
+    // 'persistent x y z' — function-local persistent variable declaration
+    if let Some(rest) = trimmed
+        .strip_prefix("persistent")
+        .filter(|r| r.is_empty() || r.starts_with(|c: char| c.is_whitespace() || c == ','))
+    {
+        return Ok(Stmt::Persistent(parse_name_list(rest)?));
+    }
 
     // 'return' statement
     if trimmed == "return" {
@@ -1548,11 +1598,13 @@ fn parse_stmts_from_lines(
                 let (name, outputs, params) = parse_function_header(header)?;
                 *pos += 1;
                 // Collect raw body lines until the matching 'end', tracking nested block depth.
+                // Single-line blocks (e.g. `if cond; body; end`) count as zero depth change.
                 let body_start = *pos;
                 let mut depth: i32 = 1;
                 while *pos < lines.len() && depth > 0 {
                     let l = strip_line_comment(lines[*pos]).trim();
-                    depth += block_depth_delta(l);
+                    let delta = if is_single_line_block(l) { 0 } else { block_depth_delta(l) };
+                    depth += delta;
                     if depth == 0 {
                         break;
                     }

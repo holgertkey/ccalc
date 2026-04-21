@@ -9,7 +9,7 @@ use ccalc_engine::env::{
 };
 use ccalc_engine::eval::{
     Base, Expr, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
-    format_value_full, set_last_err,
+    format_value_full, global_refresh_into_env, global_set, is_global, set_last_err,
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
@@ -42,12 +42,20 @@ fn evaluate(input: &str, env: &mut Env, io: &mut IoContext) -> Result<EvalResult
         Stmt::Assign(name, expr) => {
             let val = eval_with_io(&expr, env, io)?;
             env.insert(name.clone(), val.clone());
+            // Mirror to the global store when declared global in this scope.
+            if is_global(&name) {
+                global_set(&name, val.clone());
+            }
+            // Refresh any other globals that may have been updated by called functions.
+            global_refresh_into_env(env);
             // Assignments do not update ans (MATLAB semantics)
             Ok(EvalResult::Assigned(name, val))
         }
         Stmt::Expr(expr) => {
             let val = eval_with_io(&expr, env, io)?;
             env.insert("ans".to_string(), val.clone()); // always update ans
+            // Refresh globals that may have been updated by called functions.
+            global_refresh_into_env(env);
             Ok(EvalResult::Value(val))
         }
         _ => Err("Block statements must be entered in multi-line mode".to_string()),

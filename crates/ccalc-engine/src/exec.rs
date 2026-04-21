@@ -32,8 +32,11 @@ use ndarray::Array2;
 use crate::env::{Env, Value};
 use crate::eval::{
     Base, Expr, FormatMode, autoload_cache_insert, eval_with_io, format_complex, format_scalar,
-    format_value_full, get_display_base, get_display_compact, get_display_fmt, set_autoload_hook,
-    set_display_ctx, set_fn_call_hook, set_last_err,
+    format_value_full, get_display_base, get_display_compact, get_display_fmt,
+    current_func_name, global_declare, global_frame_pop, global_frame_push, global_get,
+    global_init_if_absent, global_refresh_into_env, global_set, is_global, persistent_declare,
+    persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
+    set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err,
 };
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
@@ -234,6 +237,7 @@ pub fn session_path_list() -> Vec<std::path::PathBuf> {
 /// recursion and mutual recursion.
 /// Multi-return: if the function has >1 output, returns `Value::Tuple`.
 fn call_user_function(
+    name: &str,
     func: &Value,
     args: &[Value],
     caller_env: &Env,
@@ -249,6 +253,10 @@ fn call_user_function(
         return Err("call_user_function: not a Function value".to_string());
     };
 
+    // Push global and persistent tracking frames for this function call.
+    global_frame_push();
+    persistent_frame_push(name); // `name` is the function name from the call site
+
     // Build isolated scope: seed imaginary unit and ans, then copy all callable
     // values (Function/Lambda) from the caller's environment so that recursion
     // and mutual recursion work correctly.
@@ -258,12 +266,12 @@ fn call_user_function(
     local_env.insert("ans".to_string(), Value::Scalar(0.0));
     // Local helper functions from the same function file (MATLAB-style scoping).
     // These take priority and are always available regardless of the caller's env.
-    for (name, val) in locals.iter() {
-        local_env.insert(name.clone(), val.clone());
+    for (fn_name, val) in locals.iter() {
+        local_env.insert(fn_name.clone(), val.clone());
     }
-    for (name, val) in caller_env.iter() {
+    for (var_name, val) in caller_env.iter() {
         if matches!(val, Value::Function { .. } | Value::Lambda(_)) {
-            local_env.insert(name.clone(), val.clone());
+            local_env.insert(var_name.clone(), val.clone());
         }
     }
 
@@ -324,7 +332,20 @@ fn call_user_function(
     let fmt = get_display_fmt();
     let base = get_display_base();
     let compact = get_display_compact();
-    match exec_stmts(&body, &mut local_env, io, &fmt, base, compact)? {
+    let exec_result = exec_stmts(&body, &mut local_env, io, &fmt, base, compact);
+
+    // Save persistent variables before unwinding the frame (even on error).
+    let (func_name_saved, persistent_names) = persistent_frame_pop();
+    for var_name in &persistent_names {
+        if let Some(val) = local_env.get(var_name) {
+            persistent_save(&func_name_saved, var_name, val.clone());
+        }
+    }
+    // Pop the global names frame.
+    global_frame_pop();
+
+    // Propagate any execution error after saving persistent state.
+    match exec_result? {
         None | Some(Signal::Return) => {}
         Some(Signal::Break) => return Err("'break' outside loop".to_string()),
         Some(Signal::Continue) => return Err("'continue' outside loop".to_string()),
@@ -561,8 +582,48 @@ pub fn exec_stmts(
             Stmt::Assign(name, expr) => {
                 let val = eval_with_io(expr, env, io)?;
                 env.insert(name.clone(), val.clone());
+                // Mirror to the shared global store when declared global in this scope.
+                if is_global(name) {
+                    global_set(name, val.clone());
+                }
                 if !silent && !matches!(val, Value::Void) {
                     print_value(Some(name), &val, fmt, base, compact);
+                }
+            }
+
+            Stmt::Global(names) => {
+                for name in names {
+                    global_declare(name);
+                    global_init_if_absent(name);
+                    // If the name was already assigned in local env, promote it to global.
+                    // Otherwise restore the current global value into local env.
+                    if let Some(local_val) = env.remove(name) {
+                        global_set(name, local_val.clone());
+                        env.insert(name.clone(), local_val);
+                    } else if let Some(global_val) = global_get(name) {
+                        env.insert(name.clone(), global_val);
+                    }
+                }
+            }
+
+            Stmt::Persistent(names) => {
+                // Persistent is only meaningful inside a named function.
+                // At the top level it is accepted and treated as a no-op.
+                let func = current_func_name();
+                for name in names {
+                    persistent_declare(name);
+                    if let Some(saved) = persistent_load(&func, name) {
+                        // Subsequent call: restore the saved value.
+                        env.insert(name.clone(), saved);
+                    } else {
+                        // First call: initialize to [] (empty matrix), matching MATLAB.
+                        // This makes isempty(x) true so guards like
+                        // `if isempty(x); x = 0; end` work correctly.
+                        env.insert(
+                            name.clone(),
+                            Value::Matrix(ndarray::Array2::zeros((0, 0))),
+                        );
+                    }
                 }
             }
 
@@ -1095,6 +1156,10 @@ pub fn exec_stmts(
             }
         }
     }
+    // After all statements, refresh global vars in env from the global store.
+    // This ensures that modifications made inside called functions (which write
+    // to the global store) are visible in the current scope's environment.
+    global_refresh_into_env(env);
     Ok(None)
 }
 
