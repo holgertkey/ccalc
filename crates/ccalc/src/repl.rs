@@ -369,7 +369,11 @@ pub fn run() {
         }
 
         // Block mode: accumulate lines until block closes
-        let delta = if is_single_line_block(trimmed) { 0 } else { block_depth_delta(trimmed) };
+        let delta = if is_single_line_block(trimmed) {
+            0
+        } else {
+            block_depth_delta(trimmed)
+        };
         if block_depth > 0 || delta > 0 {
             block_buf.push(trimmed.to_string());
             block_depth += delta;
@@ -1057,7 +1061,11 @@ pub fn run_pipe(reader: impl BufRead) {
         }
 
         // Block mode: accumulate lines until block closes
-        let delta = if is_single_line_block(trimmed) { 0 } else { block_depth_delta(trimmed) };
+        let delta = if is_single_line_block(trimmed) {
+            0
+        } else {
+            block_depth_delta(trimmed)
+        };
         if block_depth > 0 || delta > 0 {
             if matches!(trimmed, "exit" | "quit") {
                 break 'lines;

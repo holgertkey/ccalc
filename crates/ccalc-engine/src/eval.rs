@@ -134,7 +134,9 @@ pub fn global_frame_push() {
 
 /// Pops the top global-names frame (called on function exit by `exec.rs`).
 pub fn global_frame_pop() {
-    GLOBAL_NAMES_STACK.with(|s| { s.borrow_mut().pop(); });
+    GLOBAL_NAMES_STACK.with(|s| {
+        s.borrow_mut().pop();
+    });
 }
 
 /// Declares `name` as global in the current scope.
@@ -148,9 +150,7 @@ pub fn global_declare(name: &str) {
 
 /// Returns `true` if `name` is declared global in the innermost active scope.
 pub fn is_global(name: &str) -> bool {
-    GLOBAL_NAMES_STACK.with(|s| {
-        s.borrow().last().map_or(false, |f| f.contains(name))
-    })
+    GLOBAL_NAMES_STACK.with(|s| s.borrow().last().is_some_and(|f| f.contains(name)))
 }
 
 /// Gets a value from the shared global store.
@@ -256,11 +256,7 @@ pub fn current_func_name() -> String {
 
 /// Returns `true` if `name` is declared `persistent` in the current function frame.
 pub fn is_persistent(name: &str) -> bool {
-    PERSISTENT_NAMES_STACK.with(|s| {
-        s.borrow()
-            .last()
-            .is_some_and(|frame| frame.contains(name))
-    })
+    PERSISTENT_NAMES_STACK.with(|s| s.borrow().last().is_some_and(|frame| frame.contains(name)))
 }
 
 // ── AST types ────────────────────────────────────────────────────────────────
@@ -465,10 +461,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::Number(n) => Ok(Value::Scalar(*n)),
         Expr::Var(name) => env.get(name).cloned().ok_or(()).or_else(|_| {
             // Check the shared global store when the name is declared global in this scope.
-            if is_global(name) {
-                if let Some(val) = global_get(name) {
-                    return Ok(val);
-                }
+            if is_global(name) && let Some(val) = global_get(name) {
+                return Ok(val);
             }
             // 'e' falls back to Euler's number if not defined in env
             if name == "e" {

@@ -31,12 +31,11 @@ use ndarray::Array2;
 
 use crate::env::{Env, Value};
 use crate::eval::{
-    Base, Expr, FormatMode, autoload_cache_insert, eval_with_io, format_complex, format_scalar,
-    format_value_full, get_display_base, get_display_compact, get_display_fmt,
-    current_func_name, global_declare, global_frame_pop, global_frame_push, global_get,
-    global_init_if_absent, global_refresh_into_env, global_set, is_global, is_persistent,
-    persistent_declare, persistent_frame_pop, persistent_frame_push, persistent_load,
-    persistent_save,
+    Base, Expr, FormatMode, autoload_cache_insert, current_func_name, eval_with_io, format_complex,
+    format_scalar, format_value_full, get_display_base, get_display_compact, get_display_fmt,
+    global_declare, global_frame_pop, global_frame_push, global_get, global_init_if_absent,
+    global_refresh_into_env, global_set, is_global, is_persistent, persistent_declare,
+    persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
     set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err,
 };
 use crate::io::IoContext;
@@ -100,19 +99,40 @@ fn silence_all(stmts: Vec<(Stmt, bool)>) -> Vec<(Stmt, bool)> {
                         .collect(),
                     else_body: else_body.map(silence_all),
                 },
-                Stmt::For { var, range_expr, body } => {
-                    Stmt::For { var, range_expr, body: silence_all(body) }
-                }
-                Stmt::While { cond, body } => Stmt::While { cond, body: silence_all(body) },
-                Stmt::DoUntil { body, cond } => {
-                    Stmt::DoUntil { body: silence_all(body), cond }
-                }
-                Stmt::Switch { expr, cases, otherwise_body } => Stmt::Switch {
+                Stmt::For {
+                    var,
+                    range_expr,
+                    body,
+                } => Stmt::For {
+                    var,
+                    range_expr,
+                    body: silence_all(body),
+                },
+                Stmt::While { cond, body } => Stmt::While {
+                    cond,
+                    body: silence_all(body),
+                },
+                Stmt::DoUntil { body, cond } => Stmt::DoUntil {
+                    body: silence_all(body),
+                    cond,
+                },
+                Stmt::Switch {
                     expr,
-                    cases: cases.into_iter().map(|(v, b)| (v, silence_all(b))).collect(),
+                    cases,
+                    otherwise_body,
+                } => Stmt::Switch {
+                    expr,
+                    cases: cases
+                        .into_iter()
+                        .map(|(v, b)| (v, silence_all(b)))
+                        .collect(),
                     otherwise_body: otherwise_body.map(silence_all),
                 },
-                Stmt::TryCatch { try_body, catch_var, catch_body } => Stmt::TryCatch {
+                Stmt::TryCatch {
+                    try_body,
+                    catch_var,
+                    catch_body,
+                } => Stmt::TryCatch {
                     try_body: silence_all(try_body),
                     catch_var,
                     catch_body: silence_all(catch_body),
@@ -674,10 +694,7 @@ pub fn exec_stmts(
                         // First call: initialize to [] (empty matrix), matching MATLAB.
                         // This makes isempty(x) true so guards like
                         // `if isempty(x); x = 0; end` work correctly.
-                        env.insert(
-                            name.clone(),
-                            Value::Matrix(ndarray::Array2::zeros((0, 0))),
-                        );
+                        env.insert(name.clone(), Value::Matrix(ndarray::Array2::zeros((0, 0))));
                     }
                 }
             }
@@ -1195,10 +1212,8 @@ pub fn exec_stmts(
                 }
                 exec_index_set(name, indices, rhs, env, io)?;
                 // Write-through: persist immediately so recursive callers see the update.
-                if is_persistent(name) {
-                    if let Some(val) = env.get(name) {
-                        persistent_save(&current_func_name(), name, val.clone());
-                    }
+                if is_persistent(name) && let Some(val) = env.get(name) {
+                    persistent_save(&current_func_name(), name, val.clone());
                 }
                 if !silent && let Some(val) = env.get(name) {
                     print_value(Some(name), val, fmt, base, compact);

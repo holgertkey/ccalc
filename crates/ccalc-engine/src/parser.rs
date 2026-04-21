@@ -1603,7 +1603,11 @@ fn parse_stmts_from_lines(
                 let mut depth: i32 = 1;
                 while *pos < lines.len() && depth > 0 {
                     let l = strip_line_comment(lines[*pos]).trim();
-                    let delta = if is_single_line_block(l) { 0 } else { block_depth_delta(l) };
+                    let delta = if is_single_line_block(l) {
+                        0
+                    } else {
+                        block_depth_delta(l)
+                    };
                     depth += delta;
                     if depth == 0 {
                         break;
