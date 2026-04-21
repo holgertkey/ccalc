@@ -254,6 +254,15 @@ pub fn current_func_name() -> String {
     FUNC_NAME_STACK.with(|s| s.borrow().last().cloned().unwrap_or_default())
 }
 
+/// Returns `true` if `name` is declared `persistent` in the current function frame.
+pub fn is_persistent(name: &str) -> bool {
+    PERSISTENT_NAMES_STACK.with(|s| {
+        s.borrow()
+            .last()
+            .is_some_and(|frame| frame.contains(name))
+    })
+}
+
 // ── AST types ────────────────────────────────────────────────────────────────
 
 /// An expression node in the AST.

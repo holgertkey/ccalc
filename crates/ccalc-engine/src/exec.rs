@@ -34,8 +34,9 @@ use crate::eval::{
     Base, Expr, FormatMode, autoload_cache_insert, eval_with_io, format_complex, format_scalar,
     format_value_full, get_display_base, get_display_compact, get_display_fmt,
     current_func_name, global_declare, global_frame_pop, global_frame_push, global_get,
-    global_init_if_absent, global_refresh_into_env, global_set, is_global, persistent_declare,
-    persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
+    global_init_if_absent, global_refresh_into_env, global_set, is_global, is_persistent,
+    persistent_declare, persistent_frame_pop, persistent_frame_push, persistent_load,
+    persistent_save,
     set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err,
 };
 use crate::io::IoContext;
@@ -636,6 +637,10 @@ pub fn exec_stmts(
                 if is_global(name) {
                     global_set(name, val.clone());
                 }
+                // Write-through for persistent vars: recursive calls can see the update.
+                if is_persistent(name) {
+                    persistent_save(&current_func_name(), name, val.clone());
+                }
                 if !silent && !matches!(val, Value::Void) {
                     print_value(Some(name), &val, fmt, base, compact);
                 }
@@ -1180,7 +1185,21 @@ pub fn exec_stmts(
                 value,
             } => {
                 let rhs = eval_with_io(value, env, io)?;
+                // For persistent vars: refresh from the store before applying a partial
+                // update so that values written by recursive calls are not overwritten.
+                if is_persistent(name) {
+                    let func = current_func_name();
+                    if let Some(fresh) = persistent_load(&func, name) {
+                        env.insert(name.clone(), fresh);
+                    }
+                }
                 exec_index_set(name, indices, rhs, env, io)?;
+                // Write-through: persist immediately so recursive callers see the update.
+                if is_persistent(name) {
+                    if let Some(val) = env.get(name) {
+                        persistent_save(&current_func_name(), name, val.clone());
+                    }
+                }
                 if !silent && let Some(val) = env.get(name) {
                     print_value(Some(name), val, fmt, base, compact);
                 }
