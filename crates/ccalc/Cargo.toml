@@ -23,7 +23,7 @@ blas-static = ["ccalc-engine/blas-static"]
 
 [dependencies]
 rustyline = "14"
-ccalc-engine = { path = "../ccalc-engine" }
+ccalc-engine = { path = "../ccalc-engine", version = "0.21.0" }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 
