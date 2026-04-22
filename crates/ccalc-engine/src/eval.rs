@@ -893,9 +893,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         Value::Scalar(n) => elem_mats.push(Array2::from_elem((1, 1), n)),
                         Value::Matrix(m) => elem_mats.push(m),
                         Value::Void => {
-                            return Err(
-                                "Void value cannot be used in matrix literal".to_string()
-                            );
+                            return Err("Void value cannot be used in matrix literal".to_string());
                         }
                         Value::Complex(_, _) => {
                             return Err(
@@ -914,10 +912,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         | Value::Cell(_)
                         | Value::Struct(_)
                         | Value::StructArray(_) => {
-                            return Err(
-                                "Struct/function values cannot be used in matrix literals"
-                                    .to_string(),
-                            );
+                            return Err("Struct/function values cannot be used in matrix literals"
+                                .to_string());
                         }
                     }
                 }

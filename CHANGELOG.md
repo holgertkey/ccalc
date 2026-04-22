@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+013] - 2026-04-22
+
+### Fixed
+
+- Matrix literal `[A, b]` and `[A; B]` now work when elements are matrices
+  (previously only scalars and row vectors were accepted). The evaluator now
+  performs full horizontal concatenation across a row and vertical concatenation
+  across rows, matching MATLAB/Octave semantics. Five regression tests added.
+
+### Added
+
+- `gauss_elim.calc` reference script: Gaussian elimination with partial pivoting,
+  solves Ax=b. Published to `ccalc-scripts/math/`.
+
 ## [0.21.0+012] - 2026-04-22
 
 ### Added

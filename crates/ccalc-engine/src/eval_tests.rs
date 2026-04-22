@@ -2215,7 +2215,9 @@ fn test_matrix_horzcat_col_vector() {
     let b = eval_parse("[5; 6]", &env).unwrap();
     env2.insert("b".to_string(), b);
     let aug = eval_parse("[A, b]", &env2).unwrap();
-    let Value::Matrix(m) = aug else { panic!("expected matrix") };
+    let Value::Matrix(m) = aug else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 3));
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[0, 2]], 5.0);
@@ -2232,7 +2234,9 @@ fn test_matrix_horzcat_two_matrices() {
     env2.insert("A".to_string(), a);
     env2.insert("B".to_string(), b);
     let result = eval_parse("[A, B]", &env2).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 4));
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[0, 2]], 5.0);
@@ -2249,7 +2253,9 @@ fn test_matrix_vertcat_two_matrices() {
     env2.insert("A".to_string(), a);
     env2.insert("B".to_string(), b);
     let result = eval_parse("[A; B]", &env2).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (4, 2));
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[2, 0]], 5.0);
