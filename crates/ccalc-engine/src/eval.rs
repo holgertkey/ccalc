@@ -2510,9 +2510,7 @@ fn call_builtin(
                     // matrix → extract main diagonal as N×1 column vector
                     let n = rows.min(cols);
                     let d: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
-                    Ok(Value::Matrix(
-                        Array2::from_shape_vec((n, 1), d).unwrap(),
-                    ))
+                    Ok(Value::Matrix(Array2::from_shape_vec((n, 1), d).unwrap()))
                 }
             }
             Value::Void => Err("diag: not applicable to void".to_string()),
@@ -2524,7 +2522,9 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("diag: not applicable to non-numeric values".to_string()),
+            | Value::StructArray(_) => {
+                Err("diag: not applicable to non-numeric values".to_string())
+            }
         },
 
         // --- Complex built-ins ---

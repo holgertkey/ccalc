@@ -2118,7 +2118,9 @@ fn test_nan_capital() {
 fn test_diag_row_vector_to_matrix() {
     let env = empty_env();
     let result = eval_parse("diag([1 2 3])", &env).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 3));
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[1, 1]], 2.0);
@@ -2131,7 +2133,9 @@ fn test_diag_row_vector_to_matrix() {
 fn test_diag_col_vector_to_matrix() {
     let env = empty_env();
     let result = eval_parse("diag([4; 5; 6])", &env).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 3));
     assert_eq!(m[[0, 0]], 4.0);
     assert_eq!(m[[1, 1]], 5.0);
@@ -2142,7 +2146,9 @@ fn test_diag_col_vector_to_matrix() {
 fn test_diag_square_matrix_extract() {
     let env = empty_env();
     let result = eval_parse("diag([1 2 3; 4 5 6; 7 8 9])", &env).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 1));
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[1, 0]], 5.0);
@@ -2154,7 +2160,9 @@ fn test_diag_nonsquare_matrix_extract() {
     // 2×4 matrix: min(2,4) = 2 diagonal elements
     let env = empty_env();
     let result = eval_parse("diag([1 2 3 4; 5 6 7 8])", &env).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 1));
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[1, 0]], 6.0);
@@ -2164,7 +2172,9 @@ fn test_diag_nonsquare_matrix_extract() {
 fn test_diag_scalar() {
     let env = empty_env();
     let result = eval_parse("diag([7])", &env).unwrap();
-    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    let Value::Matrix(m) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 1));
     assert_eq!(m[[0, 0]], 7.0);
 }
@@ -2174,7 +2184,9 @@ fn test_diag_roundtrip() {
     // diag(diag(v)) should reconstruct the diagonal matrix
     let env = empty_env();
     let d = eval_parse("diag([1 2 3])", &env).unwrap();
-    let Value::Matrix(dm) = &d else { panic!("expected matrix") };
+    let Value::Matrix(dm) = &d else {
+        panic!("expected matrix")
+    };
     assert_eq!(dm[[0, 0]], 1.0);
     assert_eq!(dm[[1, 1]], 2.0);
     assert_eq!(dm[[2, 2]], 3.0);
@@ -2182,7 +2194,9 @@ fn test_diag_roundtrip() {
     let mut env2 = env.clone();
     env2.insert("D".to_string(), d);
     let result = eval_parse("diag(D)", &env2).unwrap();
-    let Value::Matrix(v) = result else { panic!("expected matrix") };
+    let Value::Matrix(v) = result else {
+        panic!("expected matrix")
+    };
     assert_eq!(v.dim(), (3, 1));
     assert_eq!(v[[0, 0]], 1.0);
     assert_eq!(v[[1, 0]], 2.0);
