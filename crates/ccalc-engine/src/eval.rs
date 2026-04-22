@@ -2492,6 +2492,41 @@ fn call_builtin(
                 Err("unique: not applicable to non-numeric values".to_string())
             }
         },
+        // diag(v) — vector → diagonal matrix; diag(A) → column vector of main diagonal.
+        ("diag", 1) => match &args[0] {
+            Value::Scalar(n) => Ok(Value::Matrix(Array2::from_elem((1, 1), *n))),
+            Value::Matrix(m) => {
+                let (rows, cols) = (m.nrows(), m.ncols());
+                if rows == 1 || cols == 1 {
+                    // vector → N×N diagonal matrix
+                    let v: Vec<f64> = m.iter().copied().collect();
+                    let n = v.len();
+                    let mut result = Array2::<f64>::zeros((n, n));
+                    for (i, &val) in v.iter().enumerate() {
+                        result[[i, i]] = val;
+                    }
+                    Ok(Value::Matrix(result))
+                } else {
+                    // matrix → extract main diagonal as N×1 column vector
+                    let n = rows.min(cols);
+                    let d: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((n, 1), d).unwrap(),
+                    ))
+                }
+            }
+            Value::Void => Err("diag: not applicable to void".to_string()),
+            Value::Complex(_, _) => Err("diag: not applicable to complex values".to_string()),
+            Value::Str(_)
+            | Value::StringObj(_)
+            | Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_)
+            | Value::Cell(_)
+            | Value::Struct(_)
+            | Value::StructArray(_) => Err("diag: not applicable to non-numeric values".to_string()),
+        },
+
         // --- Complex built-ins ---
         // real(z) — real part; works on scalars too (returns the value unchanged).
         ("real", 1) => match &args[0] {
