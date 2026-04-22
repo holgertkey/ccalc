@@ -1103,6 +1103,62 @@ fn test_scalar_arg_accepts_complex_with_zero_im() {
     assert_eq!(result, Value::Scalar(2.0));
 }
 
+// --- Element-wise math functions on vectors/matrices ---
+
+#[test]
+fn test_sin_vector() {
+    let env = empty_env();
+    let result = eval_parse("sin([0, pi/2, pi])", &env).unwrap();
+    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 3));
+    assert!((m[[0, 0]] - 0.0).abs() < 1e-15);
+    assert!((m[[0, 1]] - 1.0).abs() < 1e-15);
+    assert!((m[[0, 2]] - 0.0).abs() < 1e-14);
+}
+
+#[test]
+fn test_cos_vector() {
+    let env = empty_env();
+    let result = eval_parse("cos([0, pi/2, pi])", &env).unwrap();
+    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 3));
+    assert!((m[[0, 0]] - 1.0).abs() < 1e-15);
+    assert!((m[[0, 2]] - (-1.0)).abs() < 1e-15);
+}
+
+#[test]
+fn test_exp_vector() {
+    let env = empty_env();
+    let result = eval_parse("exp([0, 1, 2])", &env).unwrap();
+    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 3));
+    assert!((m[[0, 0]] - 1.0).abs() < 1e-15);
+    assert!((m[[0, 1]] - std::f64::consts::E).abs() < 1e-14);
+}
+
+#[test]
+fn test_sqrt_vector() {
+    let env = empty_env();
+    let result = eval_parse("sqrt([1, 4, 9, 16])", &env).unwrap();
+    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 4));
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[0, 1]], 2.0);
+    assert_eq!(m[[0, 2]], 3.0);
+    assert_eq!(m[[0, 3]], 4.0);
+}
+
+#[test]
+fn test_floor_ceil_matrix() {
+    let env = empty_env();
+    let r = eval_parse("floor([1.2, 2.7; -0.5, 3.9])", &env).unwrap();
+    let Value::Matrix(m) = r else { panic!("expected matrix") };
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[0, 1]], 2.0);
+    assert_eq!(m[[1, 0]], -1.0);
+    assert_eq!(m[[1, 1]], 3.0);
+}
+
 #[test]
 fn test_complex_pow_zero_base() {
     let mut env = empty_env();

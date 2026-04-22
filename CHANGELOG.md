@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+014] - 2026-04-22
+
+### Fixed
+
+- `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `sqrt`, `log`, `log2`,
+  `log10`, `floor`, `ceil`, `round`, `sign` are now element-wise on vectors and
+  matrices (previously scalar-only). `Complex(re, 0)` is also accepted and
+  treated as a real scalar. Five regression tests added.
+
+### Added
+
+- `lagrange_interp.calc` reference script: Lagrange polynomial interpolation.
+  Published to `ccalc-scripts/math/`.
+
 ## [0.21.0+013] - 2026-04-22
 
 ### Fixed

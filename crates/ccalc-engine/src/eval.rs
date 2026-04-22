@@ -1413,6 +1413,7 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
         Value::Void => Err("Element-wise function not applicable to void".to_string()),
         Value::Scalar(n) => Ok(Value::Scalar(f(*n))),
         Value::Matrix(m) => Ok(Value::Matrix(m.mapv(f))),
+        Value::Complex(re, im) if *im == 0.0 => Ok(Value::Scalar(f(*re))),
         Value::Complex(_, _) => {
             Err("Element-wise real function not applicable to complex values".to_string())
         }
@@ -1979,21 +1980,21 @@ fn call_builtin(
 ) -> Result<Value, String> {
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
-        ("sqrt", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sqrt())),
-        ("floor", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.floor())),
-        ("ceil", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ceil())),
-        ("round", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.round())),
-        ("sign", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.signum())),
-        ("log", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.ln())),
-        ("log2", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.log2())),
-        ("log10", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.log10())),
-        ("exp", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.exp())),
-        ("sin", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.sin())),
-        ("cos", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.cos())),
-        ("tan", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.tan())),
-        ("asin", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.asin())),
-        ("acos", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.acos())),
-        ("atan", 1) => Ok(Value::Scalar(scalar_arg(&args[0], name, 1)?.atan())),
+        ("sqrt", 1) => apply_elem(&args[0], |x| x.sqrt()),
+        ("floor", 1) => apply_elem(&args[0], |x| x.floor()),
+        ("ceil", 1) => apply_elem(&args[0], |x| x.ceil()),
+        ("round", 1) => apply_elem(&args[0], |x| x.round()),
+        ("sign", 1) => apply_elem(&args[0], |x| x.signum()),
+        ("log", 1) => apply_elem(&args[0], |x| x.ln()),
+        ("log2", 1) => apply_elem(&args[0], |x| x.log2()),
+        ("log10", 1) => apply_elem(&args[0], |x| x.log10()),
+        ("exp", 1) => apply_elem(&args[0], |x| x.exp()),
+        ("sin", 1) => apply_elem(&args[0], |x| x.sin()),
+        ("cos", 1) => apply_elem(&args[0], |x| x.cos()),
+        ("tan", 1) => apply_elem(&args[0], |x| x.tan()),
+        ("asin", 1) => apply_elem(&args[0], |x| x.asin()),
+        ("acos", 1) => apply_elem(&args[0], |x| x.acos()),
+        ("atan", 1) => apply_elem(&args[0], |x| x.atan()),
         // --- 2-argument scalar functions ---
         ("atan2", 2) => Ok(Value::Scalar(
             scalar_arg(&args[0], name, 1)?.atan2(scalar_arg(&args[1], name, 2)?),
