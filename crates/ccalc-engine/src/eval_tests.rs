@@ -2202,3 +2202,80 @@ fn test_diag_roundtrip() {
     assert_eq!(v[[1, 0]], 2.0);
     assert_eq!(v[[2, 0]], 3.0);
 }
+
+// --- Matrix literal concatenation (Phase 15 extension) ---
+
+#[test]
+fn test_matrix_horzcat_col_vector() {
+    // [A, b] where A is 2×2 and b is 2×1 → augmented matrix 2×3
+    let env = empty_env();
+    let result = eval_parse("[1 2; 3 4]", &env).unwrap();
+    let mut env2 = env.clone();
+    env2.insert("A".to_string(), result);
+    let b = eval_parse("[5; 6]", &env).unwrap();
+    env2.insert("b".to_string(), b);
+    let aug = eval_parse("[A, b]", &env2).unwrap();
+    let Value::Matrix(m) = aug else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 3));
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[0, 2]], 5.0);
+    assert_eq!(m[[1, 2]], 6.0);
+}
+
+#[test]
+fn test_matrix_horzcat_two_matrices() {
+    // [A, B] where both are 2×2 → 2×4
+    let env = empty_env();
+    let a = eval_parse("[1 2; 3 4]", &env).unwrap();
+    let b = eval_parse("[5 6; 7 8]", &env).unwrap();
+    let mut env2 = env.clone();
+    env2.insert("A".to_string(), a);
+    env2.insert("B".to_string(), b);
+    let result = eval_parse("[A, B]", &env2).unwrap();
+    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 4));
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[0, 2]], 5.0);
+    assert_eq!(m[[1, 3]], 8.0);
+}
+
+#[test]
+fn test_matrix_vertcat_two_matrices() {
+    // [A; B] where both are 2×2 → 4×2
+    let env = empty_env();
+    let a = eval_parse("[1 2; 3 4]", &env).unwrap();
+    let b = eval_parse("[5 6; 7 8]", &env).unwrap();
+    let mut env2 = env.clone();
+    env2.insert("A".to_string(), a);
+    env2.insert("B".to_string(), b);
+    let result = eval_parse("[A; B]", &env2).unwrap();
+    let Value::Matrix(m) = result else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (4, 2));
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[2, 0]], 5.0);
+    assert_eq!(m[[3, 1]], 8.0);
+}
+
+#[test]
+fn test_matrix_horzcat_height_mismatch_error() {
+    // [A, b] where A is 2×2 and b is 3×1 → error
+    let env = empty_env();
+    let a = eval_parse("[1 2; 3 4]", &env).unwrap();
+    let b = eval_parse("[5; 6; 7]", &env).unwrap();
+    let mut env2 = env.clone();
+    env2.insert("A".to_string(), a);
+    env2.insert("b".to_string(), b);
+    assert!(eval_parse("[A, b]", &env2).is_err());
+}
+
+#[test]
+fn test_matrix_vertcat_width_mismatch_error() {
+    // [A; B] where A is 2×2 and B is 2×3 → error
+    let env = empty_env();
+    let a = eval_parse("[1 2; 3 4]", &env).unwrap();
+    let b = eval_parse("[5 6 7; 8 9 10]", &env).unwrap();
+    let mut env2 = env.clone();
+    env2.insert("A".to_string(), a);
+    env2.insert("B".to_string(), b);
+    assert!(eval_parse("[A; B]", &env2).is_err());
+}

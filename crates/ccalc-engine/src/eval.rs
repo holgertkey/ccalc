@@ -877,27 +877,25 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::Matrix(rows) => {
             if rows.is_empty() {
-                let m = Array2::<f64>::zeros((0, 0));
-                return Ok(Value::Matrix(m));
+                return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
             }
-            let nrows = rows.len();
-            // Evaluate all rows; elements may be scalars or row vectors (e.g. from ranges).
-            let mut all_rows: Vec<Vec<f64>> = Vec::with_capacity(nrows);
+            // Each literal row is evaluated into a block (Array2).
+            // Elements within a row are horizontally concatenated;
+            // rows are then vertically concatenated.
+            let mut row_blocks: Vec<Array2<f64>> = Vec::with_capacity(rows.len());
             for row in rows {
-                let mut row_vals: Vec<f64> = Vec::new();
+                if row.is_empty() {
+                    continue;
+                }
+                let mut elem_mats: Vec<Array2<f64>> = Vec::with_capacity(row.len());
                 for elem_expr in row {
                     match eval_inner(elem_expr, env, io.as_deref_mut())? {
+                        Value::Scalar(n) => elem_mats.push(Array2::from_elem((1, 1), n)),
+                        Value::Matrix(m) => elem_mats.push(m),
                         Value::Void => {
-                            return Err("Void value cannot be used in matrix literal".to_string());
-                        }
-                        Value::Scalar(n) => row_vals.push(n),
-                        Value::Matrix(m) => {
-                            if m.nrows() > 1 {
-                                return Err(
-                                    "Matrix row element must be a scalar or row vector".to_string()
-                                );
-                            }
-                            row_vals.extend(m.iter().copied());
+                            return Err(
+                                "Void value cannot be used in matrix literal".to_string()
+                            );
                         }
                         Value::Complex(_, _) => {
                             return Err(
@@ -916,29 +914,64 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         | Value::Cell(_)
                         | Value::Struct(_)
                         | Value::StructArray(_) => {
-                            return Err("Struct/function values cannot be used in matrix literals"
-                                .to_string());
+                            return Err(
+                                "Struct/function values cannot be used in matrix literals"
+                                    .to_string(),
+                            );
                         }
                     }
                 }
-                all_rows.push(row_vals);
+                // All elements in this row must have the same number of rows.
+                let nrows = elem_mats[0].nrows();
+                for (i, m) in elem_mats.iter().enumerate().skip(1) {
+                    if m.nrows() != nrows {
+                        return Err(format!(
+                            "Matrix row height mismatch: expected {} rows, element {} has {} rows",
+                            nrows,
+                            i + 1,
+                            m.nrows()
+                        ));
+                    }
+                }
+                // Horizontal concatenation: collect each physical row across all blocks.
+                let ncols: usize = elem_mats.iter().map(|m| m.ncols()).sum();
+                let mut flat: Vec<f64> = Vec::with_capacity(nrows * ncols);
+                for r in 0..nrows {
+                    for m in &elem_mats {
+                        flat.extend(m.row(r).iter().copied());
+                    }
+                }
+                row_blocks.push(
+                    Array2::from_shape_vec((nrows, ncols), flat)
+                        .map_err(|e| format!("Matrix shape error: {e}"))?,
+                );
             }
-            let ncols = all_rows[0].len();
-            for (i, row) in all_rows.iter().enumerate() {
-                if row.len() != ncols {
+            if row_blocks.is_empty() {
+                return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+            }
+            let ncols = row_blocks[0].ncols();
+            if ncols == 0 {
+                let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
+                return Ok(Value::Matrix(Array2::zeros((total_rows, 0))));
+            }
+            // All row blocks must have the same number of columns.
+            for (i, blk) in row_blocks.iter().enumerate().skip(1) {
+                if blk.ncols() != ncols {
                     return Err(format!(
-                        "Matrix row {} has {} elements, expected {}",
-                        i,
-                        row.len(),
-                        ncols
+                        "Matrix column count mismatch: expected {} columns, row {} has {} columns",
+                        ncols,
+                        i + 1,
+                        blk.ncols()
                     ));
                 }
             }
-            if ncols == 0 {
-                return Ok(Value::Matrix(Array2::zeros((nrows, 0))));
+            // Vertical concatenation.
+            let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
+            let mut flat: Vec<f64> = Vec::with_capacity(total_rows * ncols);
+            for blk in &row_blocks {
+                flat.extend(blk.iter().copied());
             }
-            let flat: Vec<f64> = all_rows.into_iter().flatten().collect();
-            let m = Array2::from_shape_vec((nrows, ncols), flat)
+            let m = Array2::from_shape_vec((total_rows, ncols), flat)
                 .map_err(|e| format!("Matrix shape error: {e}"))?;
             Ok(Value::Matrix(m))
         }
