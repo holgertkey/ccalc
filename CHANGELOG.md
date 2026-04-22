@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+012] - 2026-04-22
+
+### Added
+
+- `diag(v)` built-in: vector → square diagonal matrix; `diag(A)` → column
+  vector of the main diagonal of a matrix. Handles row vectors, column vectors,
+  square matrices, and non-square matrices (`min(rows, cols)` elements extracted).
+  Scalar input returns a 1×1 matrix. Six regression tests added.
+
 ## [0.21.0+011] - 2026-04-21
 
 ### Added

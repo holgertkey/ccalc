@@ -211,7 +211,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help script      pipe/script mode, semicolons, disp, fprintf
   help matrices    matrix literals, arithmetic, ranges, indexing
   help index       indexed assignment, growing vectors, logical masks
-  help vectors     nan/inf, reductions, sort/find/unique, end, reshape
+  help vectors     nan/inf, reductions, sort/find/unique, end, reshape, diag
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
@@ -1048,14 +1048,18 @@ Sorting and searching
     find([1 0 2 0 3], 2)       →  [1  3]
     unique([3 1 4 1 5 9 2 6])  →  [1  2  3  4  5  6  9]
 
-Reshape and flip
+Reshape, flip, and diagonal
     reshape(A, m, n)    reshape to m×n  (column-major element order)
     fliplr(v)           reverse column order  (mirror left↔right)
     flipud(v)           reverse row order    (mirror up↔down)
+    diag(v)             vector → N×N diagonal matrix
+    diag(A)             extract main diagonal of A as a column vector
 
     reshape(1:6, 2, 3)  →  [1 3 5; 2 4 6]
     fliplr([1 2 3])     →  [3 2 1]
     flipud([1;2;3])     →  [3;2;1]
+    diag([1 2 3])       →  [1 0 0; 0 2 0; 0 0 3]
+    diag(eye(3))        →  [1; 1; 1]
 
 end in index expressions
     Inside index parentheses, end resolves to the size of that dimension.

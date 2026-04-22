@@ -216,6 +216,44 @@ flipud([1 2; 3 4])    % → [3 4; 1 2]
 
 ---
 
+## Diagonal
+
+| Function   | Description                                                                 |
+|------------|-----------------------------------------------------------------------------|
+| `diag(v)`  | Vector → N×N diagonal matrix with the elements of `v` on the main diagonal |
+| `diag(A)`  | Matrix → column vector of the main diagonal of `A`                         |
+
+### Notes
+
+**`diag(v)`** — When `v` is a row or column vector of length N, creates an N×N
+matrix with `v` on the main diagonal and zeros everywhere else. A scalar input
+returns a 1×1 matrix.
+
+**`diag(A)`** — When `A` is a matrix, extracts its main diagonal as an N×1 column
+vector, where N = `min(rows, cols)`. Works on both square and non-square matrices.
+
+These two forms are inverses of each other: `diag(diag(v))` reconstructs the diagonal
+matrix from its diagonal.
+
+```
+diag([1 2 3])       % row vector → 3×3 diagonal matrix:
+                    % [1 0 0]
+                    % [0 2 0]
+                    % [0 0 3]
+
+diag([4; 5; 6])     % column vector → same result
+
+A = [1 2 3; 4 5 6; 7 8 9]
+diag(A)             % → [1; 5; 9]  (main diagonal as column vector)
+
+B = [1 2 3 4; 5 6 7 8]
+diag(B)             % → [1; 6]  (min(2,4) = 2 elements)
+
+diag(diag([1 2 3])) % → [1; 2; 3]  round-trip
+```
+
+---
+
 ## Example file
 
 `examples/vector_utils.calc` demonstrates all of these features:
