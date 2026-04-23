@@ -2665,3 +2665,226 @@ fn test_hist_custom_bins_returns_void() {
     let v = eval_parse("hist([1 2 3 4 5], 5)", &env).unwrap();
     assert_eq!(v, Value::Void);
 }
+
+// ── Phase 17c — Percentiles and distributions ─────────────────────────────────
+
+// --- prctile ---
+
+#[test]
+fn test_prctile_median() {
+    // prctile([1 2 3 4 5], 50) = 3 (median)
+    let env = empty_env();
+    let v = eval_parse("prctile([1 2 3 4 5], 50)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_0th_percentile() {
+    let env = empty_env();
+    let v = eval_parse("prctile([1 2 3 4 5], 0)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_100th_percentile() {
+    let env = empty_env();
+    let v = eval_parse("prctile([1 2 3 4 5], 100)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_interpolation() {
+    // prctile([1 3], 50) = (1+3)/2 = 2.0
+    let env = empty_env();
+    let v = eval_parse("prctile([1 3], 50)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_vector_of_percentiles() {
+    // prctile([1 2 3 4 5], [0 50 100]) = [1 3 5]
+    let env = empty_env();
+    let v = eval_parse("prctile([1 2 3 4 5], [0 50 100])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 3));
+    assert!((m[[0, 0]] - 1.0).abs() < 1e-10);
+    assert!((m[[0, 1]] - 3.0).abs() < 1e-10);
+    assert!((m[[0, 2]] - 5.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_matrix_columnwise() {
+    // prctile([1 10; 2 20; 3 30], 50) → [2 20]
+    let env = empty_env();
+    let v = eval_parse("prctile([1 10; 2 20; 3 30], 50)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 2));
+    assert!((m[[0, 0]] - 2.0).abs() < 1e-10);
+    assert!((m[[0, 1]] - 20.0).abs() < 1e-10);
+}
+
+// --- iqr ---
+
+#[test]
+fn test_iqr_basic() {
+    // iqr([1 2 3 4 5]) = prctile(75) - prctile(25) = 4 - 2 = 2
+    let env = empty_env();
+    let v = eval_parse("iqr([1 2 3 4 5])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_iqr_scalar() {
+    // iqr of a single value is 0
+    let env = empty_env();
+    let v = eval_parse("iqr(5)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(0.0));
+}
+
+// --- zscore ---
+
+#[test]
+fn test_zscore_basic() {
+    // zscore([2 4 6]): mean=4, std=2; z = [-1 0 1]
+    let env = empty_env();
+    let v = eval_parse("zscore([2 4 6])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.len(), 3);
+    let vals: Vec<f64> = m.iter().copied().collect();
+    assert!((vals[0] - (-1.0)).abs() < 1e-10);
+    assert!((vals[1] - 0.0).abs() < 1e-10);
+    assert!((vals[2] - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_zscore_scalar_is_zero() {
+    let env = empty_env();
+    let v = eval_parse("zscore(42)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_zscore_constant_vector() {
+    // All same values → std=0 → zscore all zeros
+    let env = empty_env();
+    let v = eval_parse("zscore([3 3 3])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    for &x in m.iter() {
+        assert_eq!(x, 0.0);
+    }
+}
+
+#[test]
+fn test_zscore_preserves_shape() {
+    let env = empty_env();
+    let v = eval_parse("zscore([1; 2; 3])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (3, 1));
+}
+
+// ── Phase 17d — Special functions ────────────────────────────────────────────
+
+// --- erf / erfc ---
+
+#[test]
+fn test_erf_zero() {
+    let env = empty_env();
+    let v = eval_parse("erf(0)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_erf_large_positive() {
+    // erf(∞) → 1.0 (erf(10) is very close to 1)
+    let env = empty_env();
+    let v = eval_parse("erf(10)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_erfc_zero() {
+    // erfc(0) = 1 - erf(0) = 1
+    let env = empty_env();
+    let v = eval_parse("erfc(0)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(1.0));
+}
+
+#[test]
+fn test_erf_erfc_sum() {
+    // erf(x) + erfc(x) = 1 for any x
+    let env = empty_env();
+    let erf_v = eval_parse("erf(1.5)", &env).unwrap();
+    let erfc_v = eval_parse("erfc(1.5)", &env).unwrap();
+    let Value::Scalar(e) = erf_v else { panic!() };
+    let Value::Scalar(ec) = erfc_v else { panic!() };
+    assert!((e + ec - 1.0).abs() < 1e-14);
+}
+
+// --- normcdf ---
+
+#[test]
+fn test_normcdf_at_zero() {
+    // normcdf(0) = 0.5
+    let env = empty_env();
+    let v = eval_parse("normcdf(0)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 0.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_normcdf_symmetry() {
+    // normcdf(-x) = 1 - normcdf(x)
+    let env = empty_env();
+    let v1 = eval_parse("normcdf(1.5)", &env).unwrap();
+    let v2 = eval_parse("normcdf(-1.5)", &env).unwrap();
+    let Value::Scalar(x1) = v1 else { panic!() };
+    let Value::Scalar(x2) = v2 else { panic!() };
+    assert!((x1 + x2 - 1.0).abs() < 1e-14);
+}
+
+#[test]
+fn test_normcdf_general() {
+    // normcdf(2, 2, 1) = normcdf(0) = 0.5
+    let env = empty_env();
+    let v = eval_parse("normcdf(2, 2, 1)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 0.5).abs() < 1e-10);
+}
+
+// --- normpdf ---
+
+#[test]
+fn test_normpdf_at_zero() {
+    // normpdf(0) = 1/sqrt(2*pi) ≈ 0.39894
+    let env = empty_env();
+    let v = eval_parse("normpdf(0)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
+    assert!((x - expected).abs() < 1e-10);
+}
+
+#[test]
+fn test_normpdf_symmetry() {
+    // normpdf(x) = normpdf(-x)
+    let env = empty_env();
+    let v1 = eval_parse("normpdf(1.5)", &env).unwrap();
+    let v2 = eval_parse("normpdf(-1.5)", &env).unwrap();
+    assert_eq!(v1, v2);
+}
+
+#[test]
+fn test_normpdf_general() {
+    // normpdf(mu, mu, s) = normpdf(0) / s = peak of the distribution
+    let env = empty_env();
+    let v = eval_parse("normpdf(3, 3, 2)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    // normpdf(x, mu, s) at x=mu: exp(0) / (s * sqrt(2π)) = 1 / (s * sqrt(2π))
+    let expected = 1.0 / (2.0 * (2.0 * std::f64::consts::PI).sqrt());
+    assert!((x - expected).abs() < 1e-10);
+}

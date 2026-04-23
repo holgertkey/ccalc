@@ -1528,6 +1528,23 @@ where
     }
 }
 
+/// Computes the p-th percentile (0–100) of a pre-sorted slice via linear interpolation.
+fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
+    let n = sorted.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+    if n == 1 {
+        return sorted[0];
+    }
+    let p = p.clamp(0.0, 100.0);
+    let idx = p / 100.0 * (n - 1) as f64;
+    let lo = idx.floor() as usize;
+    let hi = idx.ceil() as usize;
+    let frac = idx - lo as f64;
+    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+}
+
 fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
     match v {
         Value::Void => Err("Element-wise function not applicable to void".to_string()),
@@ -2115,6 +2132,36 @@ fn call_builtin(
         ("asin", 1) => apply_elem(&args[0], |x| x.asin()),
         ("acos", 1) => apply_elem(&args[0], |x| x.acos()),
         ("atan", 1) => apply_elem(&args[0], |x| x.atan()),
+        // --- Special functions (erf, normal distribution) ---
+        ("erf", 1) => apply_elem(&args[0], libm::erf),
+        ("erfc", 1) => apply_elem(&args[0], libm::erfc),
+        ("normcdf", 1) => apply_elem(&args[0], |x| {
+            0.5 * (1.0 + libm::erf(x / std::f64::consts::SQRT_2))
+        }),
+        ("normcdf", 3) => {
+            let mu = scalar_arg(&args[1], name, 2)?;
+            let s = scalar_arg(&args[2], name, 3)?;
+            if s <= 0.0 {
+                return Err("normcdf: sigma must be positive".to_string());
+            }
+            apply_elem(&args[0], move |x| {
+                0.5 * (1.0 + libm::erf((x - mu) / (s * std::f64::consts::SQRT_2)))
+            })
+        }
+        ("normpdf", 1) => apply_elem(&args[0], |x| {
+            (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt()
+        }),
+        ("normpdf", 3) => {
+            let mu = scalar_arg(&args[1], name, 2)?;
+            let s = scalar_arg(&args[2], name, 3)?;
+            if s <= 0.0 {
+                return Err("normpdf: sigma must be positive".to_string());
+            }
+            apply_elem(&args[0], move |x| {
+                let z = (x - mu) / s;
+                (-0.5 * z * z).exp() / (s * (2.0 * std::f64::consts::PI).sqrt())
+            })
+        }
         // --- 2-argument scalar functions ---
         ("atan2", 2) => Ok(Value::Scalar(
             scalar_arg(&args[0], name, 1)?.atan2(scalar_arg(&args[1], name, 2)?),
@@ -2856,6 +2903,96 @@ fn call_builtin(
                 Array2::from_shape_vec((1, n_edges), counts).unwrap(),
             ))
         }
+        // --- Percentiles and distributions ---
+        ("prctile", 2) => {
+            let p_vals = numeric_vec(&args[1], name)?;
+            let n_p = p_vals.len();
+
+            // Sort one column of floats and compute all requested percentiles.
+            let compute_col = |vals: &[f64]| -> Vec<f64> {
+                let mut s = vals.to_vec();
+                s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                p_vals.iter().map(|&p| percentile_sorted(&s, p)).collect()
+            };
+
+            match &args[0] {
+                Value::Scalar(n) => {
+                    let pr = compute_col(&[*n]);
+                    if n_p == 1 {
+                        Ok(Value::Scalar(pr[0]))
+                    } else {
+                        Ok(Value::Matrix(Array2::from_shape_vec((1, n_p), pr).unwrap()))
+                    }
+                }
+                Value::Matrix(m) if m.nrows() == 1 || m.ncols() == 1 => {
+                    let vals: Vec<f64> = m.iter().copied().collect();
+                    let pr = compute_col(&vals);
+                    if n_p == 1 {
+                        Ok(Value::Scalar(pr[0]))
+                    } else {
+                        Ok(Value::Matrix(Array2::from_shape_vec((1, n_p), pr).unwrap()))
+                    }
+                }
+                Value::Matrix(m) => {
+                    // M×N matrix: column-wise → n_p × ncols result
+                    let ncols = m.ncols();
+                    let mut result = Array2::<f64>::zeros((n_p, ncols));
+                    for j in 0..ncols {
+                        let col: Vec<f64> = m.column(j).iter().copied().collect();
+                        let pr = compute_col(&col);
+                        for (i, &v) in pr.iter().enumerate() {
+                            result[[i, j]] = v;
+                        }
+                    }
+                    if n_p == 1 {
+                        let row: Vec<f64> = result.row(0).iter().copied().collect();
+                        Ok(Value::Matrix(Array2::from_shape_vec((1, ncols), row).unwrap()))
+                    } else {
+                        Ok(Value::Matrix(result))
+                    }
+                }
+                _ => Err("prctile: first argument must be numeric".to_string()),
+            }
+        }
+        ("iqr", 1) => apply_stat(
+            &args[0],
+            |s| {
+                let mut sorted = s.to_vec();
+                sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                percentile_sorted(&sorted, 75.0) - percentile_sorted(&sorted, 25.0)
+            },
+            "iqr",
+        ),
+        ("zscore", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Scalar(0.0)),
+            Value::Matrix(m) => {
+                if m.nrows() == 1 || m.ncols() == 1 {
+                    let vals: Vec<f64> = m.iter().copied().collect();
+                    let n = vals.len() as f64;
+                    let mean = vals.iter().sum::<f64>() / n;
+                    let s = stat_var_vec(&vals, false).sqrt();
+                    let result: Vec<f64> = vals
+                        .iter()
+                        .map(|&x| if s == 0.0 { 0.0 } else { (x - mean) / s })
+                        .collect();
+                    Ok(Value::Matrix(Array2::from_shape_vec(m.raw_dim(), result).unwrap()))
+                } else {
+                    let (nrows, ncols) = (m.nrows(), m.ncols());
+                    let mut result = m.clone();
+                    for j in 0..ncols {
+                        let col: Vec<f64> = m.column(j).iter().copied().collect();
+                        let mean = col.iter().sum::<f64>() / col.len() as f64;
+                        let s = stat_var_vec(&col, false).sqrt();
+                        for i in 0..nrows {
+                            result[[i, j]] =
+                                if s == 0.0 { 0.0 } else { (m[[i, j]] - mean) / s };
+                        }
+                    }
+                    Ok(Value::Matrix(result))
+                }
+            }
+            _ => Err("zscore: argument must be numeric".to_string()),
+        },
         // diag(v) — vector → diagonal matrix; diag(A) → column vector of main diagonal.
         ("diag", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Matrix(Array2::from_elem((1, 1), *n))),
