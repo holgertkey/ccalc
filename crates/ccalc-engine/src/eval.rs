@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 
 use indexmap::IndexMap;
 use ndarray::Array2;
@@ -1470,6 +1471,63 @@ fn randi_range(v: &Value) -> Result<(i64, i64), String> {
     }
 }
 
+// ── Descriptive statistics helpers ───────────────────────────────────────────
+
+/// Extracts a flat `Vec<f64>` from a `Scalar` or `Matrix` value.
+fn numeric_vec(v: &Value, fname: &str) -> Result<Vec<f64>, String> {
+    match v {
+        Value::Scalar(n) => Ok(vec![*n]),
+        Value::Matrix(m) => Ok(m.iter().copied().collect()),
+        _ => Err(format!("{fname}: argument must be numeric")),
+    }
+}
+
+/// Computes the variance of a slice.  Returns `NaN` for empty, `0.0` for singletons.
+/// `population = true` divides by N; `false` divides by N-1.
+fn stat_var_vec(vals: &[f64], population: bool) -> f64 {
+    let n = vals.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+    if n == 1 {
+        return 0.0;
+    }
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let ss: f64 = vals.iter().map(|&x| (x - mean).powi(2)).sum();
+    let denom = if population { n as f64 } else { (n - 1) as f64 };
+    ss / denom
+}
+
+/// Applies a column-wise statistical closure returning one scalar per column.
+///
+/// - Scalar → passes `[n]` to `f`.
+/// - Vector (1×N or N×1) → scalar.
+/// - M×N matrix (M>1, N>1) → 1×N row vector.
+fn apply_stat<F>(v: &Value, mut f: F, fname: &str) -> Result<Value, String>
+where
+    F: FnMut(&[f64]) -> f64,
+{
+    match v {
+        Value::Scalar(n) => Ok(Value::Scalar(f(&[*n]))),
+        Value::Matrix(m) => {
+            if m.nrows() == 1 || m.ncols() == 1 {
+                let vals: Vec<f64> = m.iter().copied().collect();
+                Ok(Value::Scalar(f(&vals)))
+            } else {
+                let ncols = m.ncols();
+                let result: Vec<f64> = (0..ncols)
+                    .map(|c| {
+                        let col: Vec<f64> = m.column(c).iter().copied().collect();
+                        f(&col)
+                    })
+                    .collect();
+                Ok(Value::Matrix(Array2::from_shape_vec((1, ncols), result).unwrap()))
+            }
+        }
+        _ => Err(format!("{fname}: argument must be numeric")),
+    }
+}
+
 fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
     match v {
         Value::Void => Err("Element-wise function not applicable to void".to_string()),
@@ -2640,6 +2698,164 @@ fn call_builtin(
                 Err("unique: not applicable to non-numeric values".to_string())
             }
         },
+        // --- Descriptive statistics ---
+        ("std", 1) => apply_stat(
+            &args[0],
+            |s| stat_var_vec(s, false).sqrt(),
+            "std",
+        ),
+        ("std", 2) => {
+            let w = scalar_arg(&args[1], name, 2)?;
+            let population = w != 0.0;
+            apply_stat(&args[0], |s| stat_var_vec(s, population).sqrt(), "std")
+        }
+        ("var", 1) => apply_stat(&args[0], |s| stat_var_vec(s, false), "var"),
+        ("var", 2) => {
+            let w = scalar_arg(&args[1], name, 2)?;
+            let population = w != 0.0;
+            apply_stat(&args[0], |s| stat_var_vec(s, population), "var")
+        }
+        ("cov", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Scalar(0.0)),
+            Value::Matrix(m) => {
+                if m.nrows() == 1 || m.ncols() == 1 {
+                    let vals: Vec<f64> = m.iter().copied().collect();
+                    Ok(Value::Scalar(stat_var_vec(&vals, false)))
+                } else {
+                    let (nobs, nvars) = (m.nrows(), m.ncols());
+                    if nobs < 2 {
+                        return Err("cov: need at least 2 observations".to_string());
+                    }
+                    let mut centered = m.clone();
+                    for c in 0..nvars {
+                        let col_mean: f64 = m.column(c).iter().sum::<f64>() / nobs as f64;
+                        for r in 0..nobs {
+                            centered[[r, c]] -= col_mean;
+                        }
+                    }
+                    let denom = (nobs - 1) as f64;
+                    let mut cov_mat = Array2::<f64>::zeros((nvars, nvars));
+                    for i in 0..nvars {
+                        for j in 0..nvars {
+                            let dot: f64 =
+                                (0..nobs).map(|r| centered[[r, i]] * centered[[r, j]]).sum();
+                            cov_mat[[i, j]] = dot / denom;
+                        }
+                    }
+                    Ok(Value::Matrix(cov_mat))
+                }
+            }
+            _ => Err("cov: argument must be numeric".to_string()),
+        },
+        ("median", 1) => apply_stat(
+            &args[0],
+            |s| {
+                if s.is_empty() {
+                    return f64::NAN;
+                }
+                let mut v = s.to_vec();
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let n = v.len();
+                if n % 2 == 0 { (v[n / 2 - 1] + v[n / 2]) / 2.0 } else { v[n / 2] }
+            },
+            "median",
+        ),
+        ("mode", 1) => apply_stat(
+            &args[0],
+            |s| {
+                if s.is_empty() {
+                    return f64::NAN;
+                }
+                let mut counts: std::collections::HashMap<u64, usize> =
+                    std::collections::HashMap::new();
+                for &x in s {
+                    *counts.entry(x.to_bits()).or_insert(0) += 1;
+                }
+                let max_count = counts.values().copied().max().unwrap_or(0);
+                let mut candidates: Vec<f64> = counts
+                    .iter()
+                    .filter(|&(_, &c)| c == max_count)
+                    .map(|(&bits, _)| f64::from_bits(bits))
+                    .collect();
+                candidates
+                    .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                candidates[0]
+            },
+            "mode",
+        ),
+        ("hist", n) if n == 1 || n == 2 => {
+            let n_bins = if args.len() == 2 {
+                scalar_arg(&args[1], name, 2)? as usize
+            } else {
+                10
+            };
+            if n_bins == 0 {
+                return Err("hist: number of bins must be positive".to_string());
+            }
+            let vals = numeric_vec(&args[0], name)?;
+            if vals.is_empty() {
+                return Ok(Value::Void);
+            }
+            let min_v = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max_v = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let range = if max_v > min_v { max_v - min_v } else { 1.0 };
+            let mut counts = vec![0usize; n_bins];
+            for &v in &vals {
+                let b = ((v - min_v) / range * n_bins as f64) as usize;
+                counts[b.min(n_bins - 1)] += 1;
+            }
+            let bar_cols: usize = std::env::var("COLUMNS")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(80)
+                .saturating_sub(26)
+                .max(10);
+            let max_count = *counts.iter().max().unwrap_or(&1).max(&1);
+            let mut output = String::new();
+            for (i, &c) in counts.iter().enumerate() {
+                let lo = min_v + range * (i as f64 / n_bins as f64);
+                let hi = min_v + range * ((i + 1) as f64 / n_bins as f64);
+                let bar_len = c * bar_cols / max_count;
+                output.push_str(&format!(
+                    "{lo:8.4} {hi:8.4} |{bar:<bar_cols$}| {c}\n",
+                    bar = "#".repeat(bar_len),
+                ));
+            }
+            match io.as_deref_mut() {
+                Some(ctx) => ctx.write_to_fd(1, &output)?,
+                None => {
+                    print!("{output}");
+                    std::io::stdout().flush().ok();
+                }
+            }
+            Ok(Value::Void)
+        }
+        ("histc", 2) => {
+            let vals = numeric_vec(&args[0], name)?;
+            let edges = numeric_vec(&args[1], name)?;
+            if edges.is_empty() {
+                return Err("histc: edges must not be empty".to_string());
+            }
+            let n_edges = edges.len();
+            let mut counts = vec![0.0f64; n_edges];
+            for &v in &vals {
+                // Linear scan — fine for typical edge counts
+                let last = n_edges - 1;
+                if v == edges[last] {
+                    counts[last] += 1.0;
+                } else {
+                    for i in 0..last {
+                        if v >= edges[i] && v < edges[i + 1] {
+                            counts[i] += 1.0;
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(Value::Matrix(
+                Array2::from_shape_vec((1, n_edges), counts).unwrap(),
+            ))
+        }
         // diag(v) — vector → diagonal matrix; diag(A) → column vector of main diagonal.
         ("diag", 1) => match &args[0] {
             Value::Scalar(n) => Ok(Value::Matrix(Array2::from_elem((1, 1), *n))),

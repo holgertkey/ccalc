@@ -2462,3 +2462,206 @@ fn test_rng_shuffle_returns_void() {
     let r = eval_parse("rng('shuffle')", &env).unwrap();
     assert_eq!(r, Value::Void);
 }
+
+// ── Phase 17b — Descriptive statistics ───────────────────────────────────────
+
+// --- std ---
+
+#[test]
+fn test_std_vector_sample() {
+    // [0 2 4]: mean=2, ss=8, var(n-1)=4, std=2.0
+    let env = empty_env();
+    let v = eval_parse("std([0 2 4])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_std_vector_population() {
+    // [2 4 4 4 5 5 7 9]: population std = sqrt(32/8) = 2.0
+    let env = empty_env();
+    let v = eval_parse("std([2 4 4 4 5 5 7 9], 1)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 2.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_std_scalar_is_zero() {
+    let env = empty_env();
+    let v = eval_parse("std(5)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_std_matrix_columnwise() {
+    // [1 10; 2 20; 3 30] — col1: std([1,2,3])=1; col2: std([10,20,30])=10
+    let env = empty_env();
+    let v = eval_parse("std([1 10; 2 20; 3 30])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 2));
+    assert!((m[[0, 0]] - 1.0).abs() < 1e-10);
+    assert!((m[[0, 1]] - 10.0).abs() < 1e-10);
+}
+
+// --- var ---
+
+#[test]
+fn test_var_vector_sample() {
+    // [0 2 4]: mean=2, ss=8, var(n-1)=8/2=4.0
+    let env = empty_env();
+    let v = eval_parse("var([0 2 4])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_var_vector_population() {
+    // [2 4 4 4 5 5 7 9]: population var = 32/8 = 4.0
+    let env = empty_env();
+    let v = eval_parse("var([2 4 4 4 5 5 7 9], 1)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_var_two_elements() {
+    // var([1 3]) = ((1-2)^2 + (3-2)^2) / 1 = 2
+    let env = empty_env();
+    let v = eval_parse("var([1 3])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 2.0).abs() < 1e-10);
+}
+
+// --- cov ---
+
+#[test]
+fn test_cov_vector_equals_var() {
+    // cov of a vector = var with n-1
+    let env = empty_env();
+    let v = eval_parse("cov([1 2 3 4 5])", &env).unwrap();
+    let var_v = eval_parse("var([1 2 3 4 5])", &env).unwrap();
+    assert_eq!(v, var_v);
+}
+
+#[test]
+fn test_cov_matrix_shape() {
+    // 4 observations × 3 variables → 3×3 covariance matrix
+    let env = empty_env();
+    let v = eval_parse("cov([1 2 3; 4 5 6; 7 8 9; 10 11 12])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (3, 3));
+}
+
+#[test]
+fn test_cov_matrix_symmetric() {
+    let env = empty_env();
+    let v = eval_parse("cov([1 4; 2 5; 3 6; 4 7])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert!((m[[0, 1]] - m[[1, 0]]).abs() < 1e-12);
+}
+
+// --- median ---
+
+#[test]
+fn test_median_odd_length() {
+    let env = empty_env();
+    let v = eval_parse("median([3 1 4 1 5 9 2 6 5])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 4.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_median_even_length() {
+    let env = empty_env();
+    let v = eval_parse("median([1 2 3 4])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 2.5).abs() < 1e-10);
+}
+
+#[test]
+fn test_median_scalar() {
+    let env = empty_env();
+    let v = eval_parse("median(7)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(7.0));
+}
+
+#[test]
+fn test_median_matrix_columnwise() {
+    // [1 10; 3 30; 2 20] → sorted col1 [1,2,3] median=2; col2 median=20
+    let env = empty_env();
+    let v = eval_parse("median([1 10; 3 30; 2 20])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 2));
+    assert!((m[[0, 0]] - 2.0).abs() < 1e-10);
+    assert!((m[[0, 1]] - 20.0).abs() < 1e-10);
+}
+
+// --- mode ---
+
+#[test]
+fn test_mode_single_mode() {
+    let env = empty_env();
+    let v = eval_parse("mode([1 2 2 3 3 3 4])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 3.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_mode_tie_smallest_wins() {
+    // Tie between 1 and 2 — smallest (1) should win
+    let env = empty_env();
+    let v = eval_parse("mode([1 1 2 2 3])", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((x - 1.0).abs() < 1e-10);
+}
+
+#[test]
+fn test_mode_scalar() {
+    let env = empty_env();
+    let v = eval_parse("mode(5)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(5.0));
+}
+
+// --- histc ---
+
+#[test]
+fn test_histc_basic() {
+    // Values [1 2 3 4 5], edges [1 3 5]
+    // bin 0: 1 <= x < 3 → 1, 2 → count 2
+    // bin 1: 3 <= x < 5 → 3, 4 → count 2
+    // bin 2: x == 5 exactly → 5 → count 1
+    let env = empty_env();
+    let v = eval_parse("histc([1 2 3 4 5], [1 3 5])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 3));
+    assert_eq!(m[[0, 0]], 2.0);
+    assert_eq!(m[[0, 1]], 2.0);
+    assert_eq!(m[[0, 2]], 1.0);
+}
+
+#[test]
+fn test_histc_out_of_range_not_counted() {
+    // Values [0 1 2 3 10], edges [1 2 3] — 0 and 10 out of range
+    let env = empty_env();
+    let v = eval_parse("histc([0 1 2 3 10], [1 2 3])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[0, 1]], 1.0);
+    assert_eq!(m[[0, 2]], 1.0);
+}
+
+// --- hist (returns Void) ---
+
+#[test]
+fn test_hist_returns_void() {
+    let env = empty_env();
+    let v = eval_parse("hist([1 2 3 4 5])", &env).unwrap();
+    assert_eq!(v, Value::Void);
+}
+
+#[test]
+fn test_hist_custom_bins_returns_void() {
+    let env = empty_env();
+    let v = eval_parse("hist([1 2 3 4 5], 5)", &env).unwrap();
+    assert_eq!(v, Value::Void);
+}
