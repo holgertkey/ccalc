@@ -2831,6 +2831,43 @@ fn call_builtin(
             },
             "mode",
         ),
+        ("skewness", 1) => apply_stat(
+            &args[0],
+            |s| {
+                let n = s.len();
+                if n == 0 {
+                    return f64::NAN;
+                }
+                if n == 1 {
+                    return 0.0;
+                }
+                let mean = s.iter().sum::<f64>() / n as f64;
+                let m2 = s.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+                if m2 == 0.0 {
+                    return 0.0;
+                }
+                let m3 = s.iter().map(|&x| (x - mean).powi(3)).sum::<f64>() / n as f64;
+                m3 / m2.powf(1.5)
+            },
+            "skewness",
+        ),
+        ("kurtosis", 1) => apply_stat(
+            &args[0],
+            |s| {
+                let n = s.len();
+                if n < 2 {
+                    return f64::NAN;
+                }
+                let mean = s.iter().sum::<f64>() / n as f64;
+                let m2 = s.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
+                if m2 == 0.0 {
+                    return f64::NAN;
+                }
+                let m4 = s.iter().map(|&x| (x - mean).powi(4)).sum::<f64>() / n as f64;
+                m4 / m2.powi(2)
+            },
+            "kurtosis",
+        ),
         ("hist", n) if n == 1 || n == 2 => {
             let n_bins = if args.len() == 2 {
                 scalar_arg(&args[1], name, 2)? as usize

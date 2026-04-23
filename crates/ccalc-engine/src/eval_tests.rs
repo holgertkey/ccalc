@@ -2966,3 +2966,76 @@ fn test_normpdf_general() {
     let expected = 1.0 / (2.0 * (2.0 * std::f64::consts::PI).sqrt());
     assert!((x - expected).abs() < 1e-10);
 }
+
+// ── Phase 17e — Skewness and kurtosis ────────────────────────────────────────
+
+// --- skewness ---
+
+#[test]
+fn test_skewness_symmetric_is_zero() {
+    // [1 2 3 4 5]: symmetric → skewness = 0 exactly
+    let env = empty_env();
+    let v = eval_parse("skewness([1 2 3 4 5])", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!(x.abs() < 1e-12);
+}
+
+#[test]
+fn test_skewness_right_skewed_positive() {
+    // [1 1 2 3 10]: outlier at 10 makes distribution right-skewed
+    let env = empty_env();
+    let v = eval_parse("skewness([1 1 2 3 10])", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!(x > 0.0);
+}
+
+#[test]
+fn test_skewness_scalar_is_zero() {
+    let env = empty_env();
+    let v = eval_parse("skewness(5)", &env).unwrap();
+    assert_eq!(v, Value::Scalar(0.0));
+}
+
+#[test]
+fn test_skewness_constant_vector_is_zero() {
+    let env = empty_env();
+    let v = eval_parse("skewness([3 3 3 3])", &env).unwrap();
+    assert_eq!(v, Value::Scalar(0.0));
+}
+
+// --- kurtosis ---
+
+#[test]
+fn test_kurtosis_uniform_vector() {
+    // [1 2 3 4 5]: mu=3, m2=2, m4=6.8 → kurtosis = 6.8/4 = 1.7
+    let env = empty_env();
+    let v = eval_parse("kurtosis([1 2 3 4 5])", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!((x - 1.7).abs() < 1e-10);
+}
+
+#[test]
+fn test_kurtosis_scalar_is_nan() {
+    let env = empty_env();
+    let v = eval_parse("kurtosis(5)", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!(x.is_nan());
+}
+
+#[test]
+fn test_kurtosis_constant_vector_is_nan() {
+    let env = empty_env();
+    let v = eval_parse("kurtosis([4 4 4 4])", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!(x.is_nan());
+}
