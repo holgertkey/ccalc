@@ -2351,3 +2351,114 @@ fn test_matrix_vertcat_width_mismatch_error() {
     env2.insert("B".to_string(), b);
     assert!(eval_parse("[A; B]", &env2).is_err());
 }
+
+// ── Phase 17a — Random number generation ─────────────────────────────────────
+
+#[test]
+fn test_rand_scalar_in_range() {
+    // rand() returns a scalar in [0, 1)
+    let env = empty_env();
+    let v = eval_parse("rand()", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!((0.0..1.0).contains(&x));
+}
+
+#[test]
+fn test_rand_square_matrix() {
+    let env = empty_env();
+    let v = eval_parse("rand(3)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (3, 3));
+    for &x in m.iter() {
+        assert!((0.0..1.0).contains(&x));
+    }
+}
+
+#[test]
+fn test_rand_rect_matrix() {
+    let env = empty_env();
+    let v = eval_parse("rand(2, 5)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 5));
+    for &x in m.iter() {
+        assert!((0.0..1.0).contains(&x));
+    }
+}
+
+#[test]
+fn test_randn_scalar() {
+    // randn() returns a scalar (no range guarantee — just check it's finite)
+    let env = empty_env();
+    let v = eval_parse("randn()", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!(x.is_finite());
+}
+
+#[test]
+fn test_randn_square_matrix() {
+    let env = empty_env();
+    let v = eval_parse("randn(4)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (4, 4));
+    for &x in m.iter() {
+        assert!(x.is_finite());
+    }
+}
+
+#[test]
+fn test_randn_rect_matrix() {
+    let env = empty_env();
+    let v = eval_parse("randn(2, 6)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 6));
+}
+
+#[test]
+fn test_randi_scalar_max() {
+    // randi(10) → integer in [1, 10]
+    let env = empty_env();
+    let v = eval_parse("randi(10)", &env).unwrap();
+    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    assert!(x >= 1.0 && x <= 10.0 && x.fract() == 0.0);
+}
+
+#[test]
+fn test_randi_square_matrix() {
+    let env = empty_env();
+    let v = eval_parse("randi(6, 3)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (3, 3));
+    for &x in m.iter() {
+        assert!(x >= 1.0 && x <= 6.0 && x.fract() == 0.0);
+    }
+}
+
+#[test]
+fn test_randi_rect_matrix() {
+    let env = empty_env();
+    let v = eval_parse("randi(100, 2, 4)", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 4));
+    for &x in m.iter() {
+        assert!(x >= 1.0 && x <= 100.0 && x.fract() == 0.0);
+    }
+}
+
+#[test]
+fn test_rng_seed_reproducible() {
+    // Two identically-seeded runs must produce the same sequence.
+    let env = empty_env();
+    eval_parse("rng(42)", &env).unwrap();
+    let v1 = eval_parse("rand()", &env).unwrap();
+
+    eval_parse("rng(42)", &env).unwrap();
+    let v2 = eval_parse("rand()", &env).unwrap();
+    assert_eq!(v1, v2);
+}
+
+#[test]
+fn test_rng_shuffle_returns_void() {
+    let env = empty_env();
+    let r = eval_parse("rng('shuffle')", &env).unwrap();
+    assert_eq!(r, Value::Void);
+}

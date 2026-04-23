@@ -32,6 +32,7 @@ blas-static = ["blas", "dep:openblas-src"]
 dirs = "5"
 indexmap = "2"
 ndarray = "0.16"
+rand = { version = "0.8", features = ["small_rng"] }
 blas-src = { version = "0.10", optional = true, default-features = false, features = ["openblas"] }
 openblas-src = { version = "0.10", optional = true, features = ["static"] }
 

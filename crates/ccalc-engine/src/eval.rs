@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 
 use indexmap::IndexMap;
 use ndarray::Array2;
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 
 use crate::env::{Env, LambdaFn, Value};
 use crate::io::IoContext;
@@ -257,6 +258,37 @@ pub fn current_func_name() -> String {
 /// Returns `true` if `name` is declared `persistent` in the current function frame.
 pub fn is_persistent(name: &str) -> bool {
     PERSISTENT_NAMES_STACK.with(|s| s.borrow().last().is_some_and(|frame| frame.contains(name)))
+}
+
+// ── Random-number state ──────────────────────────────────────────────────────
+
+thread_local! {
+    /// Per-thread PRNG used by `rand`, `randn`, and `randi`.
+    ///
+    /// Seeded from OS entropy on first use. Reseed with `rng(seed)` or `rng('shuffle')`.
+    static RNG: RefCell<SmallRng> = RefCell::new(SmallRng::from_entropy());
+}
+
+/// Reseeds the thread-local RNG with the given 64-bit seed.
+pub fn rng_seed(seed: u64) {
+    RNG.with(|r| *r.borrow_mut() = SmallRng::seed_from_u64(seed));
+}
+
+/// Reseeds the thread-local RNG from OS entropy.
+pub fn rng_shuffle() {
+    RNG.with(|r| *r.borrow_mut() = SmallRng::from_entropy());
+}
+
+/// Generates one uniform [0, 1) sample.
+fn rand_uniform() -> f64 {
+    RNG.with(|r| r.borrow_mut().gen_range(0.0_f64..1.0))
+}
+
+/// Generates one standard-normal sample via the Box-Muller transform.
+fn rand_normal() -> f64 {
+    let u1 = rand_uniform().max(f64::EPSILON);
+    let u2 = rand_uniform();
+    (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
 }
 
 // ── AST types ────────────────────────────────────────────────────────────────
@@ -656,6 +688,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     | "warning"
                     | "lasterr"
                     | "pcall"
+                    | "rand"
+                    | "randn"
+                    | "rng"
             );
             if evaled.is_empty() && !no_ans_inject {
                 evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
@@ -1408,6 +1443,33 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
 }
 
 /// Applies a scalar function element-wise to a scalar or matrix.
+/// Parses the first argument of `randi` into an inclusive `[lo, hi]` integer range.
+///
+/// Accepts either a scalar `max` (→ `[1, max]`) or a 1×2 / 2×1 vector `[min, max]`.
+fn randi_range(v: &Value) -> Result<(i64, i64), String> {
+    match v {
+        Value::Scalar(n) => {
+            let hi = *n as i64;
+            if hi < 1 {
+                return Err("randi: max must be a positive integer".to_string());
+            }
+            Ok((1, hi))
+        }
+        Value::Matrix(m) if m.len() == 2 => {
+            let vals: Vec<f64> = m.iter().copied().collect();
+            let lo = vals[0] as i64;
+            let hi = vals[1] as i64;
+            if lo > hi {
+                return Err("randi: [min, max] range is empty".to_string());
+            }
+            Ok((lo, hi))
+        }
+        _ => Err(
+            "randi: first argument must be a scalar max or a [min, max] vector".to_string(),
+        ),
+    }
+}
+
 fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
     match v {
         Value::Void => Err("Element-wise function not applicable to void".to_string()),
@@ -2277,6 +2339,62 @@ fn call_builtin(
             let c = scalar_arg(&args[1], name, 2)? as usize;
             Ok(Value::Matrix(Array2::from_elem((r, c), f64::NAN)))
         }
+        // --- Random number generation ---
+        ("rand", 0) => Ok(Value::Scalar(rand_uniform())),
+        ("rand", 1) => {
+            let n = scalar_arg(&args[0], name, 1)? as usize;
+            let data: Vec<f64> = (0..n * n).map(|_| rand_uniform()).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
+        }
+        ("rand", 2) => {
+            let r = scalar_arg(&args[0], name, 1)? as usize;
+            let c = scalar_arg(&args[1], name, 2)? as usize;
+            let data: Vec<f64> = (0..r * c).map(|_| rand_uniform()).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+        }
+        ("randn", 0) => Ok(Value::Scalar(rand_normal())),
+        ("randn", 1) => {
+            let n = scalar_arg(&args[0], name, 1)? as usize;
+            let data: Vec<f64> = (0..n * n).map(|_| rand_normal()).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
+        }
+        ("randn", 2) => {
+            let r = scalar_arg(&args[0], name, 1)? as usize;
+            let c = scalar_arg(&args[1], name, 2)? as usize;
+            let data: Vec<f64> = (0..r * c).map(|_| rand_normal()).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+        }
+        ("randi", 1) => {
+            let (lo, hi) = randi_range(&args[0])?;
+            let v = RNG.with(|r| r.borrow_mut().gen_range(lo..=hi)) as f64;
+            Ok(Value::Scalar(v))
+        }
+        ("randi", 2) => {
+            let (lo, hi) = randi_range(&args[0])?;
+            let n = scalar_arg(&args[1], name, 2)? as usize;
+            let data: Vec<f64> =
+                (0..n * n).map(|_| RNG.with(|r| r.borrow_mut().gen_range(lo..=hi)) as f64).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
+        }
+        ("randi", 3) => {
+            let (lo, hi) = randi_range(&args[0])?;
+            let r = scalar_arg(&args[1], name, 2)? as usize;
+            let c = scalar_arg(&args[2], name, 3)? as usize;
+            let data: Vec<f64> =
+                (0..r * c).map(|_| RNG.with(|rng| rng.borrow_mut().gen_range(lo..=hi)) as f64).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+        }
+        ("rng", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                rng_seed(*n as u64);
+                Ok(Value::Void)
+            }
+            Value::Str(s) | Value::StringObj(s) if s == "shuffle" => {
+                rng_shuffle();
+                Ok(Value::Void)
+            }
+            _ => Err("rng: argument must be a numeric seed or 'shuffle'".to_string()),
+        },
         // --- Vector reductions ---
         // For vectors (1×N or N×1): reduce all elements to scalar.
         // For M×N matrices (M>1, N>1): reduce column-wise, return 1×N row vector.
