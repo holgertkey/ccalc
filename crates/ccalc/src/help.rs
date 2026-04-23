@@ -43,10 +43,14 @@ pub fn print(topic: Option<&str>) {
             "scoping" | "scope" | "global" | "persistent" | "private" | "packages" | "package"
             | "namespace" | "namespaces" | "pkg",
         ) => print_scoping(),
+        Some(
+            "stats" | "stat" | "statistics" | "random" | "rand" | "randn" | "randi"
+            | "distribution" | "distributions" | "normal" | "prctile" | "zscore" | "erf",
+        ) => print_stats(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  scoping  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  scoping  stats  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -118,6 +122,8 @@ Vector  sum prod mean min max any all norm(v) norm(v,p)
         cumsum cumprod  sort  find  unique
         reshape(A,m,n)  fliplr  flipud
 NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
+Stats   rand randn randi rng(seed)  std var median mode cov
+        prctile iqr zscore  hist histc  normcdf normpdf erf erfc
 Complex 3+4i  3+4j  4i  complex(re,im)    (Ni syntax works directly)
         real(z) imag(z) abs(z) angle(z) conj(z) isreal(z)
         z' = conj(z)   z.' = plain transpose (no conjugation)
@@ -212,6 +218,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help matrices    matrix literals, arithmetic, ranges, indexing
   help index       indexed assignment, growing vectors, logical masks
   help vectors     nan/inf, reductions, sort/find/unique, end, reshape, diag
+  help stats       rand/randn/rng, std/var/median/mode, prctile/iqr/zscore, hist, normcdf
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
@@ -432,7 +439,22 @@ Higher-order  (see also: help cells)
     arrayfun(@(x) x^2, [1 2 3])    →  [1 4 9]
     f = @abs; f(-5)                 →  5
 
-See also: help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
+Special functions
+    erf(x)             Gauss error function: (2/√π) ∫₀ˣ e^(-t²) dt
+    erfc(x)            complementary: 1 - erf(x)
+    normcdf(x)         standard normal CDF: P(Z ≤ x)   Z~N(0,1)
+    normcdf(x, mu, s)  general normal CDF: P(X ≤ x)    X~N(mu,s²)
+    normpdf(x)         standard normal PDF
+    normpdf(x, mu, s)  general normal PDF
+
+    erf(0) = 0     erf(1) ≈ 0.8427     erfc(x) = 1 - erf(x)
+    normcdf(0) = 0.5
+    normcdf(1) - normcdf(-1) ≈ 0.6827  (68% of N(0,1) within ±1σ)
+
+    All accept scalars or matrices (element-wise).
+
+See also: help stats      (rand/randn/std/prctile/hist and full stats reference)
+          help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
           help complex    (full complex number reference)
           help strings    (char arrays, string objects, full reference)
           help script     (fprintf/sprintf reference with format specifiers)
@@ -1073,8 +1095,96 @@ end in index expressions
     A(:, end)           last column
     A(1:end-1, 2:end)   submatrix: all rows except last, col 2 to end
 
-See also: help matrices  help functions
+See also: help matrices  help functions  help stats
 Example:  ccalc examples/vector_utils.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help stats
+// ---------------------------------------------------------------------------
+
+fn print_stats() {
+    println!(
+        "\
+STATISTICS AND RANDOM NUMBERS  (help stats)
+
+Random number generation
+    rand()              scalar uniform in [0, 1)
+    rand(n)             n×n uniform matrix
+    rand(m, n)          m×n uniform matrix
+    randn()             scalar standard-normal sample  N(0, 1)
+    randn(n)            n×n standard-normal matrix
+    randn(m, n)         m×n standard-normal matrix
+    randi(max)          random integer in [1, max]
+    randi(max, n)       n×n matrix of integers in [1, max]
+    randi(max, m, n)    m×n matrix of integers in [1, max]
+    randi([lo hi], ...) integers drawn from [lo, hi]
+    rng(seed)           seed RNG — same seed → same sequence
+    rng('shuffle')      reseed from system entropy
+
+    rng(42); x = randn(1, 5)    →  reproducible 5-element sequence
+
+Descriptive statistics  (column-wise for M×N matrices, scalar for vectors)
+    std(v)              sample standard deviation  (n-1 denominator)
+    std(v, 1)           population standard deviation  (n denominator)
+    var(v)              sample variance
+    var(v, 1)           population variance
+    median(v)           median (linear interpolation when length is even)
+    mode(v)             most frequent value  (smallest wins on ties)
+    cov(v)              variance of a vector  (scalar, n-1 denominator)
+    cov(A)              N×N covariance matrix of m×N data matrix A
+
+    v = [2 4 6 8];
+    std(v)   →  2.582    var(v)    →  6.667    median(v)  →  5
+
+Percentiles and spread
+    prctile(v, p)       p-th percentile (0–100); p can be a vector
+    iqr(v)              interquartile range: prctile(75) - prctile(25)
+    zscore(v)           standardise: (v - mean(v)) / std(v)  (same shape)
+
+    prctile([1 2 3 4 5], 50)      →  3
+    prctile([1 2 3 4 5], [25 75]) →  [1.5  4.5]    (quartiles)
+    iqr([1 2 3 4 5])              →  2
+
+    zscore([2 4 6]) → [-1  0  1]   (mean=4, std=2)
+
+Histogram
+    hist(v)             10-bin ASCII bar chart → stdout; returns Void
+    hist(v, n)          n-bin ASCII bar chart
+    histc(v, edges)     bin counts (same length as edges)
+                        bin i: edges(i) <= x < edges(i+1)
+                        last bin: x == edges(end) exactly
+
+    histc([1 1 2 3], [1 2 3])  →  [2  1  1]
+
+Normal distribution  (see also: help functions for erf/erfc)
+    normcdf(x)          standard normal CDF: P(Z ≤ x)  Z ~ N(0,1)
+    normcdf(x, mu, s)   general normal CDF: P(X ≤ x)   X ~ N(mu, s²)
+    normpdf(x)          standard normal PDF: exp(-x²/2) / sqrt(2π)
+    normpdf(x, mu, s)   general normal PDF
+    erf(x)              Gauss error function: (2/√π) ∫₀ˣ e^(-t²) dt
+    erfc(x)             complementary: 1 - erf(x)
+
+    normcdf(0)                     →  0.5
+    normcdf(1) - normcdf(-1)       →  0.6827   (68% rule)
+    normcdf(2) - normcdf(-2)       →  0.9545   (95% rule)
+    normcdf(3) - normcdf(-3)       →  0.9973   (99.7% rule)
+    P(40 < X < 60) for X~N(50,10): normcdf(60,50,10) - normcdf(40,50,10)
+
+    Relationship: normcdf(x) = 0.5 * (1 + erf(x / sqrt(2)))
+
+Example
+    rng(7)
+    data = randn(1, 200) * 10 + 50;   % 200 samples from N(50, 10)
+    fprintf('mean   = %.2f\\n', mean(data))
+    fprintf('std    = %.2f\\n', std(data))
+    fprintf('median = %.2f\\n', median(data))
+    fprintf('IQR    = %.2f\\n', iqr(data))
+    hist(data, 12)
+
+See also: help vectors  help functions
+Full example: ccalc examples/statistics.calc"
     );
 }
 

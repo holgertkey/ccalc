@@ -6,6 +6,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+017] - 2026-04-23
+
+### Added
+
+- **Phase 17c — Percentiles and distributions:**
+  - `prctile(v, p)` — p-th percentile with linear interpolation; `p` may be a
+    scalar (→ scalar) or a vector (→ row vector of same length).  For M×N matrix
+    input `prctile` operates column-wise, returning an n\_p×N result.
+  - `iqr(v)` — interquartile range (`prctile(75) - prctile(25)`), column-wise
+    for matrices.
+  - `zscore(v)` — standardise: `(v - mean(v)) / std(v)`; returns the same shape
+    as the input.  Constant columns map to zero to avoid division by zero.
+
+- **Phase 17d — Mathematical special functions:**
+  - `erf(x)` — Gauss error function; delegates to the `libm` crate.
+  - `erfc(x)` — complementary error function: `1 - erf(x)`.
+  - `normcdf(x)` — standard normal CDF: `0.5 * (1 + erf(x / √2))`.
+  - `normcdf(x, mu, sigma)` — general normal CDF.
+  - `normpdf(x)` — standard normal PDF: `exp(-x²/2) / √(2π)`.
+  - `normpdf(x, mu, sigma)` — general normal PDF.
+  - All six functions work element-wise on scalars and matrices.
+  - `libm = "0.2"` added as a dependency to `ccalc-engine`.
+
+- `examples/statistics.calc` — 9-section demo covering all Phase 17 built-ins.
+- `help stats` / `help random` / `help distribution` — new in-app help topic.
+
+## [0.21.0+016] - 2026-04-23
+
+### Added
+
+- **Phase 17b — Descriptive statistics:**
+  - `std(v)` / `std(v, 1)` — sample (n-1) and population (n) standard deviation.
+  - `var(v)` / `var(v, 1)` — sample and population variance.
+  - `median(v)` — median with linear interpolation for even-length inputs.
+  - `mode(v)` — most frequent value; smallest wins on ties.
+  - `cov(v)` — scalar variance of a vector (n-1 denominator).
+  - `cov(A)` — N×N covariance matrix of an m×N data matrix.
+  - `hist(v)` / `hist(v, n)` — ASCII bar chart to stdout; returns `Void`.
+  - `histc(v, edges)` — bin counts matching MATLAB semantics.
+  - All functions operate column-wise on M×N matrices.
+  - Helper functions added to `eval.rs`: `numeric_vec`, `stat_var_vec`,
+    `apply_stat`, `percentile_sorted`.
+
+## [0.21.0+015] - 2026-04-23
+
+### Added
+
+- **Phase 17a — Random number generation:**
+  - `rand()` / `rand(n)` / `rand(m, n)` — uniform [0, 1) scalars and matrices.
+  - `randn()` / `randn(n)` / `randn(m, n)` — standard-normal samples via
+    Box-Muller transform (no extra dependencies).
+  - `randi(max)` / `randi(max, n)` / `randi(max, m, n)` — random integers in
+    [1, max].  `randi([lo, hi], ...)` — arbitrary integer range.
+  - `rng(seed)` — seed for reproducible output; returns `Void`.
+  - `rng('shuffle')` — reseed from OS entropy.
+  - Thread-local `SmallRng` (from `rand = "0.8"`, feature `small_rng`) seeded
+    at startup from OS entropy.
+
+### Fixed
+
+- `rand`, `randn`, and `rng` added to the `no_ans_inject` list so that
+  zero-argument calls do not silently receive `ans` as a phantom argument
+  (previously `rand()` returned a 0×0 matrix instead of a scalar).
+
 ## [0.21.0+014] - 2026-04-22
 
 ### Fixed

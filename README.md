@@ -572,6 +572,68 @@ ans =
 
 ---
 
+## Statistics & Random Numbers
+
+### Random number generation
+
+| Function | Description |
+|---|---|
+| `rand()` | Scalar uniform in \[0, 1) |
+| `rand(n)` | n×n uniform matrix |
+| `rand(m, n)` | m×n uniform matrix |
+| `randn()` / `randn(n)` / `randn(m, n)` | Standard-normal scalar or matrix |
+| `randi(max)` | Random integer in \[1, max\] |
+| `randi(max, n)` / `randi(max, m, n)` | Matrix of random integers |
+| `randi([lo hi], ...)` | Integers from \[lo, hi\] |
+| `rng(seed)` | Seed RNG — same seed → same sequence |
+| `rng('shuffle')` | Reseed from OS entropy |
+
+```matlab
+rng(42)
+x = randn(1, 5)         % reproducible 5-element sequence
+d = randi(6, 1, 10)     % ten dice rolls
+```
+
+### Descriptive statistics
+
+All functions operate **column-wise** on M×N matrices and collapse to a scalar for vectors.
+
+| Function | Description |
+|---|---|
+| `std(v)` | Sample standard deviation (n−1 denominator) |
+| `std(v, 1)` | Population standard deviation (n denominator) |
+| `var(v)` / `var(v, 1)` | Sample / population variance |
+| `median(v)` | Median (linear interpolation for even length) |
+| `mode(v)` | Most frequent value; smallest wins on ties |
+| `cov(v)` | Variance of a vector |
+| `cov(A)` | N×N covariance matrix of an m×N data matrix |
+| `prctile(v, p)` | p-th percentile; `p` can be a vector |
+| `iqr(v)` | Interquartile range: prctile(75) − prctile(25) |
+| `zscore(v)` | Standardise: `(v − mean) / std`, same shape |
+| `hist(data)` | ASCII bar chart to stdout (10 bins default) |
+| `hist(data, n)` | ASCII bar chart with n bins |
+| `histc(data, edges)` | Count vector for user-supplied bin edges |
+
+### Normal distribution
+
+| Function | Description |
+|---|---|
+| `normcdf(x)` | P(Z ≤ x), Z ~ N(0, 1) |
+| `normcdf(x, mu, s)` | P(X ≤ x), X ~ N(mu, s²) |
+| `normpdf(x)` | Standard normal PDF |
+| `normpdf(x, mu, s)` | General normal PDF |
+| `erf(x)` | Gauss error function |
+| `erfc(x)` | 1 − erf(x) |
+
+```matlab
+normcdf(1) - normcdf(-1)   % 0.6827  (68% rule)
+normcdf(2) - normcdf(-2)   % 0.9545  (95% rule)
+```
+
+See `examples/statistics.calc` for a full worked example.
+
+---
+
 ## Bitwise Functions
 
 All require **non-negative integer** arguments — combine naturally with `0xFF`, `0b1010`, `0o17` literals.
