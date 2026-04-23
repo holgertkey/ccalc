@@ -45,7 +45,8 @@ pub fn print(topic: Option<&str>) {
         ) => print_scoping(),
         Some(
             "stats" | "stat" | "statistics" | "random" | "rand" | "randn" | "randi"
-            | "distribution" | "distributions" | "normal" | "prctile" | "zscore" | "erf",
+            | "distribution" | "distributions" | "normal" | "prctile" | "zscore" | "erf"
+            | "skewness" | "kurtosis",
         ) => print_stats(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -123,7 +124,8 @@ Vector  sum prod mean min max any all norm(v) norm(v,p)
         reshape(A,m,n)  fliplr  flipud
 NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
 Stats   rand randn randi rng(seed)  std var median mode cov
-        prctile iqr zscore  hist histc  normcdf normpdf erf erfc
+        prctile iqr zscore  skewness kurtosis
+        hist histc  normcdf normpdf erf erfc
 Complex 3+4i  3+4j  4i  complex(re,im)    (Ni syntax works directly)
         real(z) imag(z) abs(z) angle(z) conj(z) isreal(z)
         z' = conj(z)   z.' = plain transpose (no conjugation)
@@ -218,7 +220,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help matrices    matrix literals, arithmetic, ranges, indexing
   help index       indexed assignment, growing vectors, logical masks
   help vectors     nan/inf, reductions, sort/find/unique, end, reshape, diag
-  help stats       rand/randn/rng, std/var/median/mode, prctile/iqr/zscore, hist, normcdf
+  help stats       rand/randn/rng, std/var/median/mode, skewness/kurtosis, prctile/iqr/zscore, hist, normcdf
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
@@ -1137,6 +1139,15 @@ Descriptive statistics  (column-wise for M×N matrices, scalar for vectors)
 
     v = [2 4 6 8];
     std(v)   →  2.582    var(v)    →  6.667    median(v)  →  5
+
+Shape statistics  (population / biased moment formulas)
+    skewness(v)         m3 / m2^(3/2)  — 0 = symmetric, >0 = right tail
+    kurtosis(v)         m4 / m2^2      — ≈1.8 uniform, ≈3 normal, >3 heavy tails
+                        scalar or constant input: skewness→0, kurtosis→NaN
+
+    skewness([2 4 4 4 5 5 7 9]) →  0.656
+    kurtosis([2 4 4 4 5 5 7 9]) →  2.781
+    skewness(1:10)              →  0        (symmetric)
 
 Percentiles and spread
     prctile(v, p)       p-th percentile (0–100); p can be a vector

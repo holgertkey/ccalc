@@ -607,6 +607,8 @@ All functions operate **column-wise** on M×N matrices and collapse to a scalar 
 | `mode(v)` | Most frequent value; smallest wins on ties |
 | `cov(v)` | Variance of a vector |
 | `cov(A)` | N×N covariance matrix of an m×N data matrix |
+| `skewness(v)` | Population skewness: `m3 / m2^(3/2)` — 0 = symmetric |
+| `kurtosis(v)` | Population kurtosis: `m4 / m2^2` — ≈ 3 for normal |
 | `prctile(v, p)` | p-th percentile; `p` can be a vector |
 | `iqr(v)` | Interquartile range: prctile(75) − prctile(25) |
 | `zscore(v)` | Standardise: `(v − mean) / std`, same shape |

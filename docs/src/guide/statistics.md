@@ -47,6 +47,29 @@ median(v)    % 4.5
 mode(v)      % 4
 ```
 
+## Shape statistics
+
+These functions measure the shape of a distribution (symmetry and peakedness).
+Both use the **population** (biased) central-moment formula.
+
+| Function | Description |
+|---|---|
+| `skewness(v)` | `m3 / m2^(3/2)` — zero for symmetric data, positive for long right tail |
+| `kurtosis(v)` | `m4 / m2^2` — ≈ 1.8 for uniform, ≈ 3 for normal, > 3 for heavy tails |
+
+Returns 0 for a scalar or constant vector; `kurtosis` returns `NaN` for constant data.
+Column-wise on M×N matrices, same as `std` / `var`.
+
+```
+v = [2 4 4 4 5 5 7 9];
+skewness(v)    % 0.656  (slight right skew)
+kurtosis(v)    % 2.781  (slightly platykurtic)
+
+% Symmetric data → skewness exactly 0:
+skewness(1:10)   % 0
+kurtosis(1:10)   % 1.776
+```
+
 ## Percentiles and spread
 
 | Function | Description |
@@ -127,10 +150,12 @@ rng(7)
 n    = 200;
 data = 50 + 10 * randn(1, n);
 
-fprintf('mean   = %.4f\n', mean(data))
-fprintf('std    = %.4f\n', std(data))
-fprintf('median = %.4f\n', median(data))
-fprintf('IQR    = %.4f\n', iqr(data))
+fprintf('mean     = %.4f\n', mean(data))
+fprintf('std      = %.4f\n', std(data))
+fprintf('median   = %.4f\n', median(data))
+fprintf('IQR      = %.4f\n', iqr(data))
+fprintf('skewness = %.4f\n', skewness(data))
+fprintf('kurtosis = %.4f\n', kurtosis(data))
 
 % Percentile table
 pct = prctile(data, [5 25 50 75 95]);

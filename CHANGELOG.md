@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.21.0+018] - 2026-04-23
+
+### Added
+
+- **Phase 17e — Shape statistics:**
+  - `skewness(v)` — population skewness coefficient: `m3 / m2^(3/2)`.
+    Returns `0.0` for a scalar, single-element, or constant vector; `NaN` for
+    empty input.  Column-wise on M×N matrices.
+  - `kurtosis(v)` — population kurtosis: `m4 / m2^2`.  A standard normal
+    distribution produces kurtosis ≈ 3; uniform data ≈ 1.8.  Returns `NaN`
+    for n < 2 or constant input.  Column-wise on M×N matrices.
+  - Both implemented as cases in `call_builtin` using the existing `apply_stat`
+    helper.  No new tokens or AST nodes required.
+  - 7 regression tests added to `eval_tests.rs` (symmetry, right-skew, scalar,
+    constant data, kurtosis value, NaN cases).
+
+- **ccalc-scripts:** `math/descriptive.calc` and `math/descriptive_demo.calc` —
+  prints n, min, max, range, mean, median, mode, std, var, Q1, Q3, IQR,
+  skewness, and kurtosis for any numeric vector.  Auto-loaded via the session
+  path; no explicit `source` needed when run from the scripts folder.
+
 ## [0.21.0+017] - 2026-04-23
 
 ### Added
