@@ -4,7 +4,7 @@ use std::io::Write;
 
 use indexmap::IndexMap;
 use ndarray::Array2;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 
 use crate::env::{Env, LambdaFn, Value};
 use crate::io::IoContext;
@@ -1465,9 +1465,7 @@ fn randi_range(v: &Value) -> Result<(i64, i64), String> {
             }
             Ok((lo, hi))
         }
-        _ => Err(
-            "randi: first argument must be a scalar max or a [min, max] vector".to_string(),
-        ),
+        _ => Err("randi: first argument must be a scalar max or a [min, max] vector".to_string()),
     }
 }
 
@@ -1521,7 +1519,9 @@ where
                         f(&col)
                     })
                     .collect();
-                Ok(Value::Matrix(Array2::from_shape_vec((1, ncols), result).unwrap()))
+                Ok(Value::Matrix(
+                    Array2::from_shape_vec((1, ncols), result).unwrap(),
+                ))
             }
         }
         _ => Err(format!("{fname}: argument must be numeric")),
@@ -2477,16 +2477,18 @@ fn call_builtin(
         ("randi", 2) => {
             let (lo, hi) = randi_range(&args[0])?;
             let n = scalar_arg(&args[1], name, 2)? as usize;
-            let data: Vec<f64> =
-                (0..n * n).map(|_| RNG.with(|r| r.borrow_mut().gen_range(lo..=hi)) as f64).collect();
+            let data: Vec<f64> = (0..n * n)
+                .map(|_| RNG.with(|r| r.borrow_mut().gen_range(lo..=hi)) as f64)
+                .collect();
             Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
         }
         ("randi", 3) => {
             let (lo, hi) = randi_range(&args[0])?;
             let r = scalar_arg(&args[1], name, 2)? as usize;
             let c = scalar_arg(&args[2], name, 3)? as usize;
-            let data: Vec<f64> =
-                (0..r * c).map(|_| RNG.with(|rng| rng.borrow_mut().gen_range(lo..=hi)) as f64).collect();
+            let data: Vec<f64> = (0..r * c)
+                .map(|_| RNG.with(|rng| rng.borrow_mut().gen_range(lo..=hi)) as f64)
+                .collect();
             Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
         }
         ("rng", 1) => match &args[0] {
@@ -2746,11 +2748,7 @@ fn call_builtin(
             }
         },
         // --- Descriptive statistics ---
-        ("std", 1) => apply_stat(
-            &args[0],
-            |s| stat_var_vec(s, false).sqrt(),
-            "std",
-        ),
+        ("std", 1) => apply_stat(&args[0], |s| stat_var_vec(s, false).sqrt(), "std"),
         ("std", 2) => {
             let w = scalar_arg(&args[1], name, 2)?;
             let population = w != 0.0;
@@ -2803,7 +2801,11 @@ fn call_builtin(
                 let mut v = s.to_vec();
                 v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let n = v.len();
-                if n % 2 == 0 { (v[n / 2 - 1] + v[n / 2]) / 2.0 } else { v[n / 2] }
+                if n % 2 == 0 {
+                    (v[n / 2 - 1] + v[n / 2]) / 2.0
+                } else {
+                    v[n / 2]
+                }
             },
             "median",
         ),
@@ -2824,8 +2826,7 @@ fn call_builtin(
                     .filter(|&(_, &c)| c == max_count)
                     .map(|(&bits, _)| f64::from_bits(bits))
                     .collect();
-                candidates
-                    .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                candidates.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 candidates[0]
             },
             "mode",
@@ -2946,7 +2947,9 @@ fn call_builtin(
                     }
                     if n_p == 1 {
                         let row: Vec<f64> = result.row(0).iter().copied().collect();
-                        Ok(Value::Matrix(Array2::from_shape_vec((1, ncols), row).unwrap()))
+                        Ok(Value::Matrix(
+                            Array2::from_shape_vec((1, ncols), row).unwrap(),
+                        ))
                     } else {
                         Ok(Value::Matrix(result))
                     }
@@ -2975,7 +2978,9 @@ fn call_builtin(
                         .iter()
                         .map(|&x| if s == 0.0 { 0.0 } else { (x - mean) / s })
                         .collect();
-                    Ok(Value::Matrix(Array2::from_shape_vec(m.raw_dim(), result).unwrap()))
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec(m.raw_dim(), result).unwrap(),
+                    ))
                 } else {
                     let (nrows, ncols) = (m.nrows(), m.ncols());
                     let mut result = m.clone();
@@ -2984,8 +2989,11 @@ fn call_builtin(
                         let mean = col.iter().sum::<f64>() / col.len() as f64;
                         let s = stat_var_vec(&col, false).sqrt();
                         for i in 0..nrows {
-                            result[[i, j]] =
-                                if s == 0.0 { 0.0 } else { (m[[i, j]] - mean) / s };
+                            result[[i, j]] = if s == 0.0 {
+                                0.0
+                            } else {
+                                (m[[i, j]] - mean) / s
+                            };
                         }
                     }
                     Ok(Value::Matrix(result))

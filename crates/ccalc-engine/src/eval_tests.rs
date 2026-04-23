@@ -2359,7 +2359,9 @@ fn test_rand_scalar_in_range() {
     // rand() returns a scalar in [0, 1)
     let env = empty_env();
     let v = eval_parse("rand()", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((0.0..1.0).contains(&x));
 }
 
@@ -2367,7 +2369,9 @@ fn test_rand_scalar_in_range() {
 fn test_rand_square_matrix() {
     let env = empty_env();
     let v = eval_parse("rand(3)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 3));
     for &x in m.iter() {
         assert!((0.0..1.0).contains(&x));
@@ -2378,7 +2382,9 @@ fn test_rand_square_matrix() {
 fn test_rand_rect_matrix() {
     let env = empty_env();
     let v = eval_parse("rand(2, 5)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 5));
     for &x in m.iter() {
         assert!((0.0..1.0).contains(&x));
@@ -2390,7 +2396,9 @@ fn test_randn_scalar() {
     // randn() returns a scalar (no range guarantee — just check it's finite)
     let env = empty_env();
     let v = eval_parse("randn()", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!(x.is_finite());
 }
 
@@ -2398,7 +2406,9 @@ fn test_randn_scalar() {
 fn test_randn_square_matrix() {
     let env = empty_env();
     let v = eval_parse("randn(4)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (4, 4));
     for &x in m.iter() {
         assert!(x.is_finite());
@@ -2409,7 +2419,9 @@ fn test_randn_square_matrix() {
 fn test_randn_rect_matrix() {
     let env = empty_env();
     let v = eval_parse("randn(2, 6)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 6));
 }
 
@@ -2418,18 +2430,22 @@ fn test_randi_scalar_max() {
     // randi(10) → integer in [1, 10]
     let env = empty_env();
     let v = eval_parse("randi(10)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
-    assert!(x >= 1.0 && x <= 10.0 && x.fract() == 0.0);
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!((1.0..=10.0).contains(&x) && x.fract() == 0.0);
 }
 
 #[test]
 fn test_randi_square_matrix() {
     let env = empty_env();
     let v = eval_parse("randi(6, 3)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 3));
     for &x in m.iter() {
-        assert!(x >= 1.0 && x <= 6.0 && x.fract() == 0.0);
+        assert!((1.0..=6.0).contains(&x) && x.fract() == 0.0);
     }
 }
 
@@ -2437,10 +2453,12 @@ fn test_randi_square_matrix() {
 fn test_randi_rect_matrix() {
     let env = empty_env();
     let v = eval_parse("randi(100, 2, 4)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 4));
     for &x in m.iter() {
-        assert!(x >= 1.0 && x <= 100.0 && x.fract() == 0.0);
+        assert!((1.0..=100.0).contains(&x) && x.fract() == 0.0);
     }
 }
 
@@ -2472,7 +2490,9 @@ fn test_std_vector_sample() {
     // [0 2 4]: mean=2, ss=8, var(n-1)=4, std=2.0
     let env = empty_env();
     let v = eval_parse("std([0 2 4])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 2.0).abs() < 1e-10);
 }
 
@@ -2481,7 +2501,9 @@ fn test_std_vector_population() {
     // [2 4 4 4 5 5 7 9]: population std = sqrt(32/8) = 2.0
     let env = empty_env();
     let v = eval_parse("std([2 4 4 4 5 5 7 9], 1)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 2.0).abs() < 1e-10);
 }
 
@@ -2497,7 +2519,9 @@ fn test_std_matrix_columnwise() {
     // [1 10; 2 20; 3 30] — col1: std([1,2,3])=1; col2: std([10,20,30])=10
     let env = empty_env();
     let v = eval_parse("std([1 10; 2 20; 3 30])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 2));
     assert!((m[[0, 0]] - 1.0).abs() < 1e-10);
     assert!((m[[0, 1]] - 10.0).abs() < 1e-10);
@@ -2510,7 +2534,9 @@ fn test_var_vector_sample() {
     // [0 2 4]: mean=2, ss=8, var(n-1)=8/2=4.0
     let env = empty_env();
     let v = eval_parse("var([0 2 4])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 4.0).abs() < 1e-10);
 }
 
@@ -2519,7 +2545,9 @@ fn test_var_vector_population() {
     // [2 4 4 4 5 5 7 9]: population var = 32/8 = 4.0
     let env = empty_env();
     let v = eval_parse("var([2 4 4 4 5 5 7 9], 1)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 4.0).abs() < 1e-10);
 }
 
@@ -2528,7 +2556,9 @@ fn test_var_two_elements() {
     // var([1 3]) = ((1-2)^2 + (3-2)^2) / 1 = 2
     let env = empty_env();
     let v = eval_parse("var([1 3])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 2.0).abs() < 1e-10);
 }
 
@@ -2548,7 +2578,9 @@ fn test_cov_matrix_shape() {
     // 4 observations × 3 variables → 3×3 covariance matrix
     let env = empty_env();
     let v = eval_parse("cov([1 2 3; 4 5 6; 7 8 9; 10 11 12])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 3));
 }
 
@@ -2556,7 +2588,9 @@ fn test_cov_matrix_shape() {
 fn test_cov_matrix_symmetric() {
     let env = empty_env();
     let v = eval_parse("cov([1 4; 2 5; 3 6; 4 7])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert!((m[[0, 1]] - m[[1, 0]]).abs() < 1e-12);
 }
 
@@ -2566,7 +2600,9 @@ fn test_cov_matrix_symmetric() {
 fn test_median_odd_length() {
     let env = empty_env();
     let v = eval_parse("median([3 1 4 1 5 9 2 6 5])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 4.0).abs() < 1e-10);
 }
 
@@ -2574,7 +2610,9 @@ fn test_median_odd_length() {
 fn test_median_even_length() {
     let env = empty_env();
     let v = eval_parse("median([1 2 3 4])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 2.5).abs() < 1e-10);
 }
 
@@ -2590,7 +2628,9 @@ fn test_median_matrix_columnwise() {
     // [1 10; 3 30; 2 20] → sorted col1 [1,2,3] median=2; col2 median=20
     let env = empty_env();
     let v = eval_parse("median([1 10; 3 30; 2 20])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 2));
     assert!((m[[0, 0]] - 2.0).abs() < 1e-10);
     assert!((m[[0, 1]] - 20.0).abs() < 1e-10);
@@ -2602,7 +2642,9 @@ fn test_median_matrix_columnwise() {
 fn test_mode_single_mode() {
     let env = empty_env();
     let v = eval_parse("mode([1 2 2 3 3 3 4])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 3.0).abs() < 1e-10);
 }
 
@@ -2611,7 +2653,9 @@ fn test_mode_tie_smallest_wins() {
     // Tie between 1 and 2 — smallest (1) should win
     let env = empty_env();
     let v = eval_parse("mode([1 1 2 2 3])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 1.0).abs() < 1e-10);
 }
 
@@ -2632,7 +2676,9 @@ fn test_histc_basic() {
     // bin 2: x == 5 exactly → 5 → count 1
     let env = empty_env();
     let v = eval_parse("histc([1 2 3 4 5], [1 3 5])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 3));
     assert_eq!(m[[0, 0]], 2.0);
     assert_eq!(m[[0, 1]], 2.0);
@@ -2644,7 +2690,9 @@ fn test_histc_out_of_range_not_counted() {
     // Values [0 1 2 3 10], edges [1 2 3] — 0 and 10 out of range
     let env = empty_env();
     let v = eval_parse("histc([0 1 2 3 10], [1 2 3])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m[[0, 0]], 1.0);
     assert_eq!(m[[0, 1]], 1.0);
     assert_eq!(m[[0, 2]], 1.0);
@@ -2675,7 +2723,9 @@ fn test_prctile_median() {
     // prctile([1 2 3 4 5], 50) = 3 (median)
     let env = empty_env();
     let v = eval_parse("prctile([1 2 3 4 5], 50)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 3.0).abs() < 1e-10);
 }
 
@@ -2683,7 +2733,9 @@ fn test_prctile_median() {
 fn test_prctile_0th_percentile() {
     let env = empty_env();
     let v = eval_parse("prctile([1 2 3 4 5], 0)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 1.0).abs() < 1e-10);
 }
 
@@ -2691,7 +2743,9 @@ fn test_prctile_0th_percentile() {
 fn test_prctile_100th_percentile() {
     let env = empty_env();
     let v = eval_parse("prctile([1 2 3 4 5], 100)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 5.0).abs() < 1e-10);
 }
 
@@ -2700,7 +2754,9 @@ fn test_prctile_interpolation() {
     // prctile([1 3], 50) = (1+3)/2 = 2.0
     let env = empty_env();
     let v = eval_parse("prctile([1 3], 50)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 2.0).abs() < 1e-10);
 }
 
@@ -2709,7 +2765,9 @@ fn test_prctile_vector_of_percentiles() {
     // prctile([1 2 3 4 5], [0 50 100]) = [1 3 5]
     let env = empty_env();
     let v = eval_parse("prctile([1 2 3 4 5], [0 50 100])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 3));
     assert!((m[[0, 0]] - 1.0).abs() < 1e-10);
     assert!((m[[0, 1]] - 3.0).abs() < 1e-10);
@@ -2721,7 +2779,9 @@ fn test_prctile_matrix_columnwise() {
     // prctile([1 10; 2 20; 3 30], 50) → [2 20]
     let env = empty_env();
     let v = eval_parse("prctile([1 10; 2 20; 3 30], 50)", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 2));
     assert!((m[[0, 0]] - 2.0).abs() < 1e-10);
     assert!((m[[0, 1]] - 20.0).abs() < 1e-10);
@@ -2734,7 +2794,9 @@ fn test_iqr_basic() {
     // iqr([1 2 3 4 5]) = prctile(75) - prctile(25) = 4 - 2 = 2
     let env = empty_env();
     let v = eval_parse("iqr([1 2 3 4 5])", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 2.0).abs() < 1e-10);
 }
 
@@ -2753,7 +2815,9 @@ fn test_zscore_basic() {
     // zscore([2 4 6]): mean=4, std=2; z = [-1 0 1]
     let env = empty_env();
     let v = eval_parse("zscore([2 4 6])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.len(), 3);
     let vals: Vec<f64> = m.iter().copied().collect();
     assert!((vals[0] - (-1.0)).abs() < 1e-10);
@@ -2773,7 +2837,9 @@ fn test_zscore_constant_vector() {
     // All same values → std=0 → zscore all zeros
     let env = empty_env();
     let v = eval_parse("zscore([3 3 3])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     for &x in m.iter() {
         assert_eq!(x, 0.0);
     }
@@ -2783,7 +2849,9 @@ fn test_zscore_constant_vector() {
 fn test_zscore_preserves_shape() {
     let env = empty_env();
     let v = eval_parse("zscore([1; 2; 3])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 1));
 }
 
@@ -2803,7 +2871,9 @@ fn test_erf_large_positive() {
     // erf(∞) → 1.0 (erf(10) is very close to 1)
     let env = empty_env();
     let v = eval_parse("erf(10)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 1.0).abs() < 1e-10);
 }
 
@@ -2833,7 +2903,9 @@ fn test_normcdf_at_zero() {
     // normcdf(0) = 0.5
     let env = empty_env();
     let v = eval_parse("normcdf(0)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 0.5).abs() < 1e-10);
 }
 
@@ -2853,7 +2925,9 @@ fn test_normcdf_general() {
     // normcdf(2, 2, 1) = normcdf(0) = 0.5
     let env = empty_env();
     let v = eval_parse("normcdf(2, 2, 1)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     assert!((x - 0.5).abs() < 1e-10);
 }
 
@@ -2864,7 +2938,9 @@ fn test_normpdf_at_zero() {
     // normpdf(0) = 1/sqrt(2*pi) ≈ 0.39894
     let env = empty_env();
     let v = eval_parse("normpdf(0)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
     assert!((x - expected).abs() < 1e-10);
 }
@@ -2883,7 +2959,9 @@ fn test_normpdf_general() {
     // normpdf(mu, mu, s) = normpdf(0) / s = peak of the distribution
     let env = empty_env();
     let v = eval_parse("normpdf(3, 3, 2)", &env).unwrap();
-    let Value::Scalar(x) = v else { panic!("expected scalar") };
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
     // normpdf(x, mu, s) at x=mu: exp(0) / (s * sqrt(2π)) = 1 / (s * sqrt(2π))
     let expected = 1.0 / (2.0 * (2.0 * std::f64::consts::PI).sqrt());
     assert!((x - expected).abs() < 1e-10);
