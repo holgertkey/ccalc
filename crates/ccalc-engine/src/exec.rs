@@ -30,6 +30,7 @@ use indexmap::IndexMap;
 use ndarray::Array2;
 
 use crate::env::{Env, Value};
+use crate::env::{load_workspace, save_workspace, save_workspace_vars};
 use crate::eval::{
     Base, Expr, FormatMode, autoload_cache_insert, current_func_name, eval_with_io, format_complex,
     format_scalar, format_value_full, get_display_base, get_display_compact, get_display_fmt,
@@ -38,7 +39,6 @@ use crate::eval::{
     persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
     set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err, set_nargout,
 };
-use crate::env::{load_workspace, save_workspace, save_workspace_vars};
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
 
@@ -1055,16 +1055,18 @@ pub fn exec_stmts(
                             let path_val = eval_with_io(&args[0], env, io)?;
                             let path_str = match path_val {
                                 Value::Str(s) | Value::StringObj(s) => s,
-                                _ => {
-                                    return Err("save: path argument must be a string".to_string())
-                                }
+                                _ => return Err("save: path argument must be a string".to_string()),
                             };
                             let mut vars: Vec<String> = Vec::new();
                             for a in &args[1..] {
                                 let v = eval_with_io(a, env, io)?;
                                 match v {
                                     Value::Str(s) | Value::StringObj(s) => vars.push(s),
-                                    _ => return Err("save: variable names must be strings".to_string()),
+                                    _ => {
+                                        return Err(
+                                            "save: variable names must be strings".to_string()
+                                        );
+                                    }
                                 }
                             }
                             (Some(path_str), vars)
@@ -1084,7 +1086,8 @@ pub fn exec_stmts(
                                 save_workspace(env, std::path::Path::new(p))
                             }
                             Some(p) => {
-                                let refs: Vec<&str> = var_names.iter().map(String::as_str).collect();
+                                let refs: Vec<&str> =
+                                    var_names.iter().map(String::as_str).collect();
                                 save_workspace_vars(env, std::path::Path::new(p), &refs)
                             }
                         };
@@ -1106,9 +1109,7 @@ pub fn exec_stmts(
                             let path_val = eval_with_io(&args[0], env, io)?;
                             let path_str = match path_val {
                                 Value::Str(s) | Value::StringObj(s) => s,
-                                _ => {
-                                    return Err("load: path argument must be a string".to_string())
-                                }
+                                _ => return Err("load: path argument must be a string".to_string()),
                             };
                             load_workspace(std::path::Path::new(&path_str))
                         };

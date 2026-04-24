@@ -1691,10 +1691,7 @@ fn parse_stmts_from_lines(
                 // expression parser cannot handle. Convert to a Call so exec_stmts
                 // can intercept it.
                 if line == "clear" {
-                    stmts.push((
-                        Stmt::Expr(Expr::Call("clear".to_string(), vec![])),
-                        false,
-                    ));
+                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), vec![])), false));
                     *pos += 1;
                     continue;
                 }
@@ -1706,10 +1703,7 @@ fn parse_stmts_from_lines(
                         .split_whitespace()
                         .map(|n| Expr::StrLiteral(n.to_string()))
                         .collect();
-                    stmts.push((
-                        Stmt::Expr(Expr::Call("clear".to_string(), names)),
-                        false,
-                    ));
+                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), names)), false));
                     *pos += 1;
                     continue;
                 }
