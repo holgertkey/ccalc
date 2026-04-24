@@ -3278,8 +3278,15 @@ fn run_script_src(src: &str) -> crate::env::Env {
     let mut env = crate::env::Env::new();
     env.insert("ans".to_string(), Value::Scalar(0.0));
     let mut io = IoContext::new();
-    crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
-        .expect("exec_stmts failed");
+    crate::exec::exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    )
+    .expect("exec_stmts failed");
     env
 }
 
@@ -3330,10 +3337,8 @@ fn test_mixed_function_script_file_runs_body() {
     let file_path = dir.join("ccalc_test_mixed_fn_script.calc");
     {
         let mut f = std::fs::File::create(&file_path).expect("create file");
-        f.write_all(
-            b"function y = double_it(x)\n  y = x * 2;\nend\n\nresult = double_it(21);\n",
-        )
-        .expect("write");
+        f.write_all(b"function y = double_it(x)\n  y = x * 2;\nend\n\nresult = double_it(21);\n")
+            .expect("write");
     }
     let path_str = file_path.to_str().unwrap().replace('\\', "/");
 
