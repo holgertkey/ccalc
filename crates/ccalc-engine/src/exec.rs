@@ -36,7 +36,7 @@ use crate::eval::{
     global_declare, global_frame_pop, global_frame_push, global_get, global_init_if_absent,
     global_refresh_into_env, global_set, is_global, is_persistent, persistent_declare,
     persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
-    set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err,
+    set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err, set_nargout,
 };
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
@@ -759,6 +759,7 @@ pub fn exec_stmts(
     for (stmt, silent) in stmts {
         match stmt {
             Stmt::Assign(name, expr) => {
+                set_nargout(1);
                 let val = eval_with_io(expr, env, io)?;
                 env.insert(name.clone(), val.clone());
                 // Mirror to the shared global store when declared global in this scope.
@@ -1332,6 +1333,7 @@ pub fn exec_stmts(
 
             // ── multi-assign ─────────────────────────────────────────────────
             Stmt::MultiAssign { targets, expr } => {
+                set_nargout(targets.len());
                 let val = eval_with_io(expr, env, io)?;
                 let vals: Vec<Value> = match val {
                     Value::Tuple(v) => v,

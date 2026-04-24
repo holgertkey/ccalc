@@ -9,7 +9,7 @@ use ccalc_engine::env::{
 };
 use ccalc_engine::eval::{
     Base, Expr, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
-    format_value_full, global_refresh_into_env, global_set, is_global, set_last_err,
+    format_value_full, global_refresh_into_env, global_set, is_global, set_last_err, set_nargout,
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
@@ -40,6 +40,7 @@ fn evaluate(input: &str, env: &mut Env, io: &mut IoContext) -> Result<EvalResult
 
     match parse(&expanded)? {
         Stmt::Assign(name, expr) => {
+            set_nargout(1);
             let val = eval_with_io(&expr, env, io)?;
             env.insert(name.clone(), val.clone());
             // Mirror to the global store when declared global in this scope.

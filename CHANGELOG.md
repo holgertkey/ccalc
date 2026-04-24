@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-04-24
+
+### Added
+
+- **Phase 18 — Advanced linear algebra (pure-Rust, no BLAS):**
+  - **Decompositions:**
+    - `[Q, R] = qr(A)` — QR decomposition via Householder reflectors; `R = qr(A)` returns R only.
+    - `[L, U, P] = lu(A)` — LU factorisation with partial pivoting (PA = LU); `U = lu(A)` single-output.
+    - `R = chol(A)` — Cholesky factor (upper triangular, A = R'*R); errors if not positive definite.
+    - `[U, S, V] = svd(A)` — full SVD (U m×m, S m×n, V n×n); `s = svd(A)` returns singular values column vector.
+    - `[U, S, V] = svd(A, 'econ')` — economy SVD (U m×k, S k×k, V n×k where k = min(m,n)).
+    - `[V, D] = eig(A)` — eigenvalue decomposition (QR iteration with Wilkinson shift); `d = eig(A)` returns eigenvalue column vector.
+  - **Matrix properties:**
+    - `rank(A)` — numerical rank via SVD threshold.
+    - `null(A)` — orthonormal basis for null space (right singular vectors for near-zero singular values).
+    - `orth(A)` — orthonormal basis for column space (left singular vectors for non-zero singular values).
+    - `cond(A)` — condition number (σ_max / σ_min); returns `Inf` for singular matrices.
+    - `pinv(A)` — Moore–Penrose pseudoinverse via SVD.
+  - **Updated `norm`:**
+    - `norm(A)` — matrix 2-norm (largest singular value) for non-vector matrices; vector behaviour unchanged.
+    - `norm(A, 'fro')` — Frobenius norm.
+    - `norm(A, 1)` / `norm(A, Inf)` — max column-sum / max row-sum for matrices.
+  - **`nargout` support:** new `set_nargout(n)` thread-local API lets multi-output built-ins
+    (`eig`, `svd`, `lu`, `qr`) return either a single value or a `Value::Tuple` depending on
+    the number of targets on the LHS.  Called by `exec_stmts` (for block/script contexts) and
+    `evaluate()` (for REPL/pipe single-line context).
+  - 25 regression tests added to `eval_tests.rs` covering all new functions.
+
 ## [0.21.0+018] - 2026-04-23
 
 ### Added

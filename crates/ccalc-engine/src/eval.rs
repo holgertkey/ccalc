@@ -79,6 +79,25 @@ pub fn get_last_err() -> String {
     LAST_ERR.with(|e| e.borrow().clone())
 }
 
+// ── Nargout (number of expected outputs, set by exec_stmts) ─────────────────
+
+thread_local! {
+    static NARGOUT: Cell<usize> = const { Cell::new(1) };
+}
+
+/// Sets the number of output values requested by the calling assignment statement.
+///
+/// Called by `exec_stmts` before evaluating the RHS expression, so that
+/// multi-output built-ins (`eig`, `svd`, `lu`, `qr`) can determine whether to
+/// return a full `Value::Tuple` or a single value.
+pub fn set_nargout(n: usize) {
+    NARGOUT.with(|c| c.set(n));
+}
+
+fn get_nargout() -> usize {
+    NARGOUT.with(|c| c.get())
+}
+
 // ── Display context (thread-local, set by exec_stmts) ────────────────────────
 
 thread_local! {
@@ -2541,7 +2560,16 @@ fn call_builtin(
             Value::Void => Err("norm: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
             Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
-            Value::Matrix(m) => Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt())),
+            Value::Matrix(m) => {
+                if m.nrows() <= 1 || m.ncols() <= 1 {
+                    // Vector: L2 norm.
+                    Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt()))
+                } else {
+                    // Matrix: 2-norm = largest singular value.
+                    let (_, s, _) = svd_compute(m)?;
+                    Ok(Value::Scalar(s.first().copied().unwrap_or(0.0)))
+                }
+            }
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
@@ -2553,32 +2581,66 @@ fn call_builtin(
                 Err("norm: not applicable to non-numeric values".to_string())
             }
         },
-        ("norm", 2) => {
-            let p = scalar_arg(&args[1], name, 2)?;
-            match &args[0] {
-                Value::Void => Err("norm: not applicable to void".to_string()),
-                Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
-                Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt().powf(p))),
-                Value::Matrix(m) => {
-                    if p == f64::INFINITY {
-                        Ok(Value::Scalar(
-                            m.iter().copied().fold(0.0_f64, |acc, x| acc.max(x.abs())),
-                        ))
-                    } else {
-                        Ok(Value::Scalar(
-                            m.iter().map(|x| x.abs().powf(p)).sum::<f64>().powf(1.0 / p),
-                        ))
+        ("norm", 2) => match &args[1] {
+            Value::Str(s) | Value::StringObj(s) => match s.as_str() {
+                "fro" => match &args[0] {
+                    Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+                    Value::Matrix(m) => {
+                        Ok(Value::Scalar(m.iter().map(|x| x * x).sum::<f64>().sqrt()))
                     }
-                }
-                Value::Str(_)
-                | Value::StringObj(_)
-                | Value::Lambda(_)
-                | Value::Function { .. }
-                | Value::Tuple(_)
-                | Value::Cell(_)
-                | Value::Struct(_)
-                | Value::StructArray(_) => {
-                    Err("norm: not applicable to non-numeric values".to_string())
+                    _ => Err("norm: first argument must be numeric".to_string()),
+                },
+                other => Err(format!("norm: unknown norm type '{other}'")),
+            },
+            _ => {
+                let p = scalar_arg(&args[1], name, 2)?;
+                match &args[0] {
+                    Value::Void => Err("norm: not applicable to void".to_string()),
+                    Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
+                    Value::Complex(re, im) => {
+                        Ok(Value::Scalar((re * re + im * im).sqrt().powf(p)))
+                    }
+                    Value::Matrix(m) => {
+                        if m.nrows() > 1 && m.ncols() > 1 {
+                            // Matrix norms.
+                            if (p - 2.0).abs() < 1e-15 {
+                                let (_, s, _) = svd_compute(m)?;
+                                return Ok(Value::Scalar(s.first().copied().unwrap_or(0.0)));
+                            } else if (p - 1.0).abs() < 1e-15 {
+                                // Maximum absolute column sum.
+                                let v = (0..m.ncols())
+                                    .map(|j| m.column(j).iter().map(|&x| x.abs()).sum::<f64>())
+                                    .fold(0.0_f64, f64::max);
+                                return Ok(Value::Scalar(v));
+                            } else if p == f64::INFINITY {
+                                // Maximum absolute row sum.
+                                let v = (0..m.nrows())
+                                    .map(|i| m.row(i).iter().map(|&x| x.abs()).sum::<f64>())
+                                    .fold(0.0_f64, f64::max);
+                                return Ok(Value::Scalar(v));
+                            }
+                        }
+                        // Vector (or general Lp).
+                        if p == f64::INFINITY {
+                            Ok(Value::Scalar(
+                                m.iter().copied().fold(0.0_f64, |acc, x| acc.max(x.abs())),
+                            ))
+                        } else {
+                            Ok(Value::Scalar(
+                                m.iter().map(|x| x.abs().powf(p)).sum::<f64>().powf(1.0 / p),
+                            ))
+                        }
+                    }
+                    Value::Str(_)
+                    | Value::StringObj(_)
+                    | Value::Lambda(_)
+                    | Value::Function { .. }
+                    | Value::Tuple(_)
+                    | Value::Cell(_)
+                    | Value::Struct(_)
+                    | Value::StructArray(_) => {
+                        Err("norm: not applicable to non-numeric values".to_string())
+                    }
                 }
             }
         }
@@ -3839,6 +3901,294 @@ fn call_builtin(
                 }
             }
         }
+        // ── Phase 18 — Advanced linear algebra ──────────────────────────────
+
+        // eig(A): d = eig(A) → eigenvalue column vector; [V,D] = eig(A) → tuple.
+        ("eig", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                if get_nargout() <= 1 {
+                    Ok(Value::Matrix(Array2::from_shape_vec((1, 1), vec![*n]).unwrap()))
+                } else {
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(Array2::eye(1)),
+                        Value::Matrix(Array2::from_elem((1, 1), *n)),
+                    ]))
+                }
+            }
+            Value::Matrix(m) => {
+                let (evals, evecs) = eig_compute(m)?;
+                let nn = evals.len();
+                if get_nargout() <= 1 {
+                    let col: Vec<f64> = evals;
+                    Ok(Value::Matrix(Array2::from_shape_vec((nn, 1), col).unwrap()))
+                } else {
+                    let mut d = Array2::<f64>::zeros((nn, nn));
+                    for (i, &e) in evals.iter().enumerate() {
+                        d[[i, i]] = e;
+                    }
+                    Ok(Value::Tuple(vec![Value::Matrix(evecs), Value::Matrix(d)]))
+                }
+            }
+            _ => Err("eig: argument must be a real numeric matrix".to_string()),
+        },
+
+        // svd(A): s = svd(A) → singular values; [U,S,V] = svd(A) → full tuple.
+        // svd(A, 'econ') → economy tuple.
+        ("svd", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                let sv = n.abs();
+                if get_nargout() <= 1 {
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, 1), vec![sv]).unwrap(),
+                    ))
+                } else {
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(Array2::eye(1)),
+                        Value::Matrix(Array2::from_elem((1, 1), sv)),
+                        Value::Matrix(Array2::eye(1)),
+                    ]))
+                }
+            }
+            Value::Matrix(m) => {
+                let mm = m.nrows();
+                let nn = m.ncols();
+                let (u_c, s_v, v_c) = svd_compute(m)?;
+                let k = s_v.len();
+                if get_nargout() <= 1 {
+                    let col: Vec<f64> = s_v;
+                    Ok(Value::Matrix(Array2::from_shape_vec((k, 1), col).unwrap()))
+                } else {
+                    // Full SVD: extend U to m×m, S to m×n.
+                    let u_full = complete_orthonormal_basis(&u_c);
+                    let mut s_mat = Array2::<f64>::zeros((mm, nn));
+                    for (i, &sv) in s_v.iter().enumerate() {
+                        s_mat[[i, i]] = sv;
+                    }
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(u_full),
+                        Value::Matrix(s_mat),
+                        Value::Matrix(v_c),
+                    ]))
+                }
+            }
+            _ => Err("svd: argument must be a real numeric matrix".to_string()),
+        },
+        ("svd", 2) => match (&args[0], &args[1]) {
+            (Value::Matrix(m), Value::Str(opt) | Value::StringObj(opt)) if opt == "econ" => {
+                let (u_c, s_v, v_c) = svd_compute(m)?;
+                let k = s_v.len();
+                let mut s_mat = Array2::<f64>::zeros((k, k));
+                for (i, &sv) in s_v.iter().enumerate() {
+                    s_mat[[i, i]] = sv;
+                }
+                Ok(Value::Tuple(vec![
+                    Value::Matrix(u_c),
+                    Value::Matrix(s_mat),
+                    Value::Matrix(v_c),
+                ]))
+            }
+            _ => Err("svd: expected svd(A, 'econ')".to_string()),
+        },
+
+        // lu(A): R = lu(A) → U factor; [L,U,P] = lu(A) → full tuple (PA=LU).
+        ("lu", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                if get_nargout() <= 1 {
+                    Ok(Value::Scalar(*n))
+                } else {
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(Array2::eye(1)),
+                        Value::Matrix(Array2::from_elem((1, 1), *n)),
+                        Value::Matrix(Array2::eye(1)),
+                    ]))
+                }
+            }
+            Value::Matrix(m) => {
+                let (l, u, p) = lu_decompose(m)?;
+                if get_nargout() <= 1 {
+                    Ok(Value::Matrix(u))
+                } else {
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(l),
+                        Value::Matrix(u),
+                        Value::Matrix(p),
+                    ]))
+                }
+            }
+            _ => Err("lu: argument must be a real numeric matrix".to_string()),
+        },
+
+        // qr(A): R = qr(A) → R factor; [Q,R] = qr(A) → full tuple.
+        ("qr", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                if get_nargout() <= 1 {
+                    Ok(Value::Scalar(*n))
+                } else {
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(Array2::from_elem((1, 1), if *n >= 0.0 { 1.0 } else { -1.0 })),
+                        Value::Matrix(Array2::from_elem((1, 1), n.abs())),
+                    ]))
+                }
+            }
+            Value::Matrix(m) => {
+                let (q, r) = qr_decompose(m)?;
+                if get_nargout() <= 1 {
+                    Ok(Value::Matrix(r))
+                } else {
+                    Ok(Value::Tuple(vec![Value::Matrix(q), Value::Matrix(r)]))
+                }
+            }
+            _ => Err("qr: argument must be a real numeric matrix".to_string()),
+        },
+
+        // chol(A): always returns upper triangular R such that A = R'*R.
+        ("chol", 1) => match &args[0] {
+            Value::Scalar(n) => {
+                if *n < 0.0 {
+                    Err("chol: value is not positive definite".to_string())
+                } else {
+                    Ok(Value::Scalar(n.sqrt()))
+                }
+            }
+            Value::Matrix(m) => Ok(Value::Matrix(chol_decompose(m)?)),
+            _ => Err("chol: argument must be a real numeric matrix".to_string()),
+        },
+
+        // rank(A): numerical rank via SVD threshold.
+        ("rank", 1) => match &args[0] {
+            Value::Scalar(x) => Ok(Value::Scalar(if x.abs() > 1e-15 { 1.0 } else { 0.0 })),
+            Value::Matrix(m) => {
+                let (_, s_v, _) = svd_compute(m)?;
+                let tol = (m.nrows().max(m.ncols())) as f64
+                    * s_v.first().copied().unwrap_or(0.0)
+                    * f64::EPSILON
+                    * 2.0;
+                let r = s_v.iter().filter(|&&s| s > tol).count();
+                Ok(Value::Scalar(r as f64))
+            }
+            _ => Err("rank: argument must be a real numeric matrix".to_string()),
+        },
+
+        // null(A): orthonormal basis for null space of A (columns of V for ~0 singular values).
+        ("null", 1) => match &args[0] {
+            Value::Scalar(_) => Ok(Value::Matrix(Array2::zeros((1, 0)))),
+            Value::Matrix(m) => {
+                let nn = m.ncols();
+                let (_, s_v, v_c) = svd_compute(m)?;
+                let tol = (m.nrows().max(nn)) as f64
+                    * s_v.first().copied().unwrap_or(0.0)
+                    * f64::EPSILON
+                    * 2.0;
+                let r = s_v.iter().filter(|&&s| s > tol).count();
+                let null_k = nn.saturating_sub(r);
+                if null_k == 0 {
+                    return Ok(Value::Matrix(Array2::zeros((nn, 0))));
+                }
+                let mut result = Array2::<f64>::zeros((nn, null_k));
+                for j in 0..null_k {
+                    let col_idx = r + j;
+                    if col_idx < v_c.ncols() {
+                        for i in 0..nn {
+                            result[[i, j]] = v_c[[i, col_idx]];
+                        }
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+            _ => Err("null: argument must be a real numeric matrix".to_string()),
+        },
+
+        // orth(A): orthonormal basis for column space of A (columns of U for nonzero singular values).
+        ("orth", 1) => match &args[0] {
+            Value::Scalar(x) => {
+                if x.abs() > 1e-15 {
+                    Ok(Value::Matrix(Array2::from_elem((1, 1), 1.0)))
+                } else {
+                    Ok(Value::Matrix(Array2::zeros((1, 0))))
+                }
+            }
+            Value::Matrix(m) => {
+                let mm = m.nrows();
+                let (u_c, s_v, _) = svd_compute(m)?;
+                let tol = (mm.max(m.ncols())) as f64
+                    * s_v.first().copied().unwrap_or(0.0)
+                    * f64::EPSILON
+                    * 2.0;
+                let r = s_v.iter().filter(|&&s| s > tol).count();
+                if r == 0 {
+                    return Ok(Value::Matrix(Array2::zeros((mm, 0))));
+                }
+                let mut result = Array2::<f64>::zeros((mm, r));
+                for j in 0..r {
+                    if j < u_c.ncols() {
+                        for i in 0..mm {
+                            result[[i, j]] = u_c[[i, j]];
+                        }
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+            _ => Err("orth: argument must be a real numeric matrix".to_string()),
+        },
+
+        // cond(A): condition number = σ_max / σ_min (2-norm by default).
+        ("cond", 1) => match &args[0] {
+            Value::Scalar(x) => {
+                if x.abs() < 1e-15 {
+                    Ok(Value::Scalar(f64::INFINITY))
+                } else {
+                    Ok(Value::Scalar(1.0))
+                }
+            }
+            Value::Matrix(m) => {
+                let (_, s_v, _) = svd_compute(m)?;
+                if s_v.is_empty() {
+                    return Ok(Value::Scalar(1.0));
+                }
+                let s_max = s_v[0];
+                let s_min = *s_v.last().unwrap();
+                Ok(Value::Scalar(if s_min < 1e-15 {
+                    f64::INFINITY
+                } else {
+                    s_max / s_min
+                }))
+            }
+            _ => Err("cond: argument must be a real numeric matrix".to_string()),
+        },
+
+        // pinv(A): Moore-Penrose pseudoinverse via SVD.
+        ("pinv", 1) => match &args[0] {
+            Value::Scalar(x) => Ok(Value::Scalar(if x.abs() < 1e-15 {
+                0.0
+            } else {
+                1.0 / x
+            })),
+            Value::Matrix(m) => {
+                let mm = m.nrows();
+                let nn = m.ncols();
+                let (u_c, s_v, v_c) = svd_compute(m)?;
+                let k = s_v.len();
+                let tol = (mm.max(nn)) as f64
+                    * s_v.first().copied().unwrap_or(0.0)
+                    * f64::EPSILON
+                    * 2.0;
+                // pinv = V * diag(1/σ) * U^T
+                let mut result = Array2::<f64>::zeros((nn, mm));
+                for j in 0..k {
+                    if s_v[j] > tol {
+                        let inv_s = 1.0 / s_v[j];
+                        for r in 0..nn {
+                            for c in 0..mm {
+                                result[[r, c]] += v_c[[r, j]] * inv_s * u_c[[c, j]];
+                            }
+                        }
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+            _ => Err("pinv: argument must be a real numeric matrix".to_string()),
+        },
+
         _ => Err(format!("Unknown function: '{name}'")),
     }
 }
@@ -4157,6 +4507,342 @@ fn solve_linear(a: &Array2<f64>, b: &Array2<f64>) -> Result<Array2<f64>, String>
         }
     }
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------
+// Advanced linear algebra helpers (Phase 18)
+// ---------------------------------------------------------------------------
+
+/// QR decomposition via Householder reflectors.
+///
+/// For an m×n matrix A returns (Q, R) where Q is m×m orthogonal and R is
+/// m×n upper triangular such that A = Q * R.
+fn qr_decompose(a: &Array2<f64>) -> Result<(Array2<f64>, Array2<f64>), String> {
+    let m = a.nrows();
+    let n = a.ncols();
+    let k = m.min(n);
+    let mut r = a.clone();
+    let mut q = Array2::<f64>::eye(m);
+
+    for j in 0..k {
+        let col_len = m - j;
+        let mut v: Vec<f64> = (j..m).map(|i| r[[i, j]]).collect();
+
+        let norm_x = v.iter().map(|&x| x * x).sum::<f64>().sqrt();
+        if norm_x < 1e-14 {
+            continue;
+        }
+        // Householder sign convention avoids cancellation.
+        v[0] += if v[0] >= 0.0 { norm_x } else { -norm_x };
+        let v_sq: f64 = v.iter().map(|&x| x * x).sum();
+        if v_sq < 1e-28 {
+            continue;
+        }
+
+        // Apply H from left to R: R[j:m, :] -= 2*v*(v^T*R[j:m,:])/v^Tv
+        for col in j..n {
+            let dot: f64 = (0..col_len).map(|i| v[i] * r[[j + i, col]]).sum();
+            let fac = 2.0 * dot / v_sq;
+            for i in 0..col_len {
+                r[[j + i, col]] -= fac * v[i];
+            }
+        }
+        // Accumulate Q from right: Q[:, j:m] -= (Q[:,j:m]*v) * 2*v^T/v^Tv
+        for row in 0..m {
+            let dot: f64 = (0..col_len).map(|i| q[[row, j + i]] * v[i]).sum();
+            let fac = 2.0 * dot / v_sq;
+            for i in 0..col_len {
+                q[[row, j + i]] -= fac * v[i];
+            }
+        }
+    }
+
+    Ok((q, r))
+}
+
+/// LU decomposition with partial pivoting.
+///
+/// For an n×n square matrix A returns (L, U, P) where P*A = L*U,
+/// L is unit lower triangular, U is upper triangular, and P is a
+/// permutation matrix.
+fn lu_decompose(a: &Array2<f64>) -> Result<(Array2<f64>, Array2<f64>, Array2<f64>), String> {
+    let n = a.nrows();
+    if a.ncols() != n {
+        return Err("lu: matrix must be square".to_string());
+    }
+    let mut u = a.clone();
+    let mut l = Array2::<f64>::eye(n);
+    let mut perm: Vec<usize> = (0..n).collect();
+
+    for j in 0..n {
+        let pivot = (j..n)
+            .max_by(|&r1, &r2| {
+                u[[r1, j]]
+                    .abs()
+                    .partial_cmp(&u[[r2, j]].abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap();
+
+        if pivot != j {
+            for col in 0..n {
+                let tmp = u[[j, col]];
+                u[[j, col]] = u[[pivot, col]];
+                u[[pivot, col]] = tmp;
+            }
+            for col in 0..j {
+                let tmp = l[[j, col]];
+                l[[j, col]] = l[[pivot, col]];
+                l[[pivot, col]] = tmp;
+            }
+            perm.swap(j, pivot);
+        }
+
+        if u[[j, j]].abs() < 1e-15 {
+            continue;
+        }
+        for i in (j + 1)..n {
+            l[[i, j]] = u[[i, j]] / u[[j, j]];
+            for k in j..n {
+                let val = l[[i, j]] * u[[j, k]];
+                u[[i, k]] -= val;
+            }
+        }
+    }
+
+    let mut p = Array2::<f64>::zeros((n, n));
+    for (i, &j) in perm.iter().enumerate() {
+        p[[i, j]] = 1.0;
+    }
+    Ok((l, u, p))
+}
+
+/// Cholesky decomposition.
+///
+/// For a symmetric positive-definite n×n matrix A returns the upper triangular
+/// factor R such that A = R^T * R (MATLAB convention).
+fn chol_decompose(a: &Array2<f64>) -> Result<Array2<f64>, String> {
+    let n = a.nrows();
+    if a.ncols() != n {
+        return Err("chol: matrix must be square".to_string());
+    }
+    let mut r = Array2::<f64>::zeros((n, n));
+    for j in 0..n {
+        let mut s = a[[j, j]];
+        for k in 0..j {
+            s -= r[[k, j]] * r[[k, j]];
+        }
+        if s <= 0.0 {
+            return Err("chol: matrix is not positive definite".to_string());
+        }
+        r[[j, j]] = s.sqrt();
+        for i in (j + 1)..n {
+            let mut t = a[[j, i]];
+            for k in 0..j {
+                t -= r[[k, j]] * r[[k, i]];
+            }
+            r[[j, i]] = t / r[[j, j]];
+        }
+    }
+    Ok(r)
+}
+
+/// One-sided Jacobi SVD (economy form).
+///
+/// For an m×n matrix A returns (U, s, V) where
+/// - U is m×k with orthonormal columns (k = min(m,n))
+/// - s is a `Vec<f64>` of singular values in descending order (length k)
+/// - V is n×k with orthonormal columns
+///
+/// For m < n the inputs are transparently transposed and outputs swapped.
+fn svd_compute(a: &Array2<f64>) -> Result<(Array2<f64>, Vec<f64>, Array2<f64>), String> {
+    let m = a.nrows();
+    let n = a.ncols();
+    if m < n {
+        let (v, s, u) = svd_compute(&a.t().to_owned())?;
+        return Ok((u, s, v));
+    }
+    // m >= n from here.
+    let k = n;
+    let mut b = a.clone();
+    let mut v = Array2::<f64>::eye(k);
+
+    const MAX_ITER: usize = 200;
+    const EPS: f64 = 1e-14;
+
+    'outer: for _ in 0..MAX_ITER {
+        let mut changed = false;
+        for p in 0..k {
+            for q in (p + 1)..k {
+                let alpha: f64 = (0..m).map(|i| b[[i, p]] * b[[i, p]]).sum();
+                let beta: f64 = (0..m).map(|i| b[[i, q]] * b[[i, q]]).sum();
+                let gamma: f64 = (0..m).map(|i| b[[i, p]] * b[[i, q]]).sum();
+
+                if gamma.abs() <= EPS * (alpha * beta).sqrt() {
+                    continue;
+                }
+                changed = true;
+
+                let zeta = (beta - alpha) / (2.0 * gamma);
+                let t = zeta.signum() / (zeta.abs() + (1.0 + zeta * zeta).sqrt());
+                let c = 1.0 / (1.0 + t * t).sqrt();
+                let s = c * t;
+
+                for i in 0..m {
+                    let bp = b[[i, p]];
+                    let bq = b[[i, q]];
+                    b[[i, p]] = c * bp - s * bq;
+                    b[[i, q]] = s * bp + c * bq;
+                }
+                for i in 0..k {
+                    let vp = v[[i, p]];
+                    let vq = v[[i, q]];
+                    v[[i, p]] = c * vp - s * vq;
+                    v[[i, q]] = s * vp + c * vq;
+                }
+            }
+        }
+        if !changed {
+            break 'outer;
+        }
+    }
+
+    let mut sigma: Vec<f64> = (0..k)
+        .map(|j| (0..m).map(|i| b[[i, j]] * b[[i, j]]).sum::<f64>().sqrt())
+        .collect();
+    let mut u_mat = Array2::<f64>::zeros((m, k));
+    for j in 0..k {
+        if sigma[j] > EPS {
+            for i in 0..m {
+                u_mat[[i, j]] = b[[i, j]] / sigma[j];
+            }
+        }
+    }
+
+    // Sort descending by singular value.
+    let mut order: Vec<usize> = (0..k).collect();
+    order.sort_by(|&a, &b| {
+        sigma[b]
+            .partial_cmp(&sigma[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let sigma_s: Vec<f64> = order.iter().map(|&i| sigma[i]).collect();
+    let mut u_s = Array2::<f64>::zeros((m, k));
+    let mut v_s = Array2::<f64>::zeros((n, k));
+    for (ni, &oi) in order.iter().enumerate() {
+        for r in 0..m {
+            u_s[[r, ni]] = u_mat[[r, oi]];
+        }
+        for r in 0..k {
+            v_s[[r, ni]] = v[[r, oi]];
+        }
+    }
+    sigma = sigma_s;
+
+    Ok((u_s, sigma, v_s))
+}
+
+/// Extends an m×k matrix with orthonormal columns to a full m×m orthogonal matrix.
+///
+/// Tries each standard basis vector e_0..e_{m-1} in order; keeps those that
+/// have non-negligible component orthogonal to the existing basis.
+fn complete_orthonormal_basis(u: &Array2<f64>) -> Array2<f64> {
+    let m = u.nrows();
+    let k = u.ncols();
+    let mut basis: Vec<Vec<f64>> = (0..k).map(|j| u.column(j).to_vec()).collect();
+
+    let mut ei = 0usize;
+    while basis.len() < m && ei < m {
+        let mut v: Vec<f64> = vec![0.0; m];
+        v[ei] = 1.0;
+        ei += 1;
+        for b in &basis {
+            let dot: f64 = v.iter().zip(b.iter()).map(|(&a, &b)| a * b).sum();
+            for (vi, &bi) in v.iter_mut().zip(b.iter()) {
+                *vi -= dot * bi;
+            }
+        }
+        let norm = v.iter().map(|&x| x * x).sum::<f64>().sqrt();
+        if norm > 1e-10 {
+            for vi in &mut v {
+                *vi /= norm;
+            }
+            basis.push(v);
+        }
+    }
+
+    let mut result = Array2::<f64>::zeros((m, m));
+    for (j, b) in basis.iter().enumerate() {
+        for (i, &val) in b.iter().enumerate() {
+            result[[i, j]] = val;
+        }
+    }
+    result
+}
+
+/// QR-iteration eigendecomposition for a real square matrix.
+///
+/// Returns `(eigenvalues, eigenvectors)` where eigenvalues is a `Vec<f64>` of
+/// length n and eigenvectors is an n×n matrix whose columns are the eigenvectors.
+/// Uses the basic QR iteration with a simple diagonal shift (Wilkinson-style).
+/// Convergence is reliable for symmetric matrices; general matrices converge for
+/// most well-conditioned inputs within `MAX_ITER` steps.
+fn eig_compute(a: &Array2<f64>) -> Result<(Vec<f64>, Array2<f64>), String> {
+    let n = a.nrows();
+    if a.ncols() != n {
+        return Err("eig: matrix must be square".to_string());
+    }
+    if n == 0 {
+        return Ok((vec![], Array2::zeros((0, 0))));
+    }
+    if n == 1 {
+        return Ok((vec![a[[0, 0]]], Array2::eye(1)));
+    }
+
+    let mut ak = a.clone();
+    let mut evecs = Array2::<f64>::eye(n);
+
+    const MAX_ITER: usize = 2000;
+    const EPS: f64 = 1e-12;
+
+    for _ in 0..MAX_ITER {
+        // Wilkinson shift: uses the trailing 2×2 submatrix for cubic convergence.
+        let mu = {
+            let d = ak[[n - 1, n - 1]];
+            if n >= 2 {
+                let a = ak[[n - 2, n - 2]];
+                let b = ak[[n - 2, n - 1]];
+                let delta = (a - d) / 2.0;
+                if delta.abs() < 1e-30 {
+                    d - b.abs()
+                } else {
+                    d - b * b / (delta + delta.signum() * (delta * delta + b * b).sqrt())
+                }
+            } else {
+                d
+            }
+        };
+
+        for i in 0..n {
+            ak[[i, i]] -= mu;
+        }
+        let (q, r) = qr_decompose(&ak)?;
+        ak = r.dot(&q);
+        for i in 0..n {
+            ak[[i, i]] += mu;
+        }
+        evecs = evecs.dot(&q);
+
+        let max_sub = (0..(n - 1))
+            .map(|i| ak[[i + 1, i]].abs())
+            .fold(0.0_f64, f64::max);
+        if max_sub < EPS {
+            break;
+        }
+    }
+
+    let evals: Vec<f64> = (0..n).map(|i| ak[[i, i]]).collect();
+    Ok((evals, evecs))
 }
 
 // ---------------------------------------------------------------------------

@@ -3039,3 +3039,244 @@ fn test_kurtosis_constant_vector_is_nan() {
     };
     assert!(x.is_nan());
 }
+
+// ── Phase 18 — Advanced linear algebra ──────────────────────────────────────
+
+fn run_linalg(src: &str) -> crate::env::Env {
+    use crate::eval::{Base, FormatMode};
+    use crate::io::IoContext;
+    use crate::parser::parse_stmts;
+    crate::exec::init();
+    let stmts = parse_stmts(src).expect("parse_stmts failed");
+    let mut env = crate::env::Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
+        .expect("exec_stmts failed");
+    env
+}
+
+fn mat_approx_zero(env: &crate::env::Env, name: &str, tol: f64) {
+    match env.get(name) {
+        Some(Value::Matrix(m)) => {
+            let max = m.iter().map(|x| x.abs()).fold(0.0_f64, f64::max);
+            assert!(max < tol, "{name}: max element {max} >= tol {tol}");
+        }
+        Some(Value::Scalar(x)) => assert!(x.abs() < tol, "{name} = {x} >= tol {tol}"),
+        v => panic!("expected numeric for '{name}', got {v:?}"),
+    }
+}
+
+fn scalar_near(env: &crate::env::Env, name: &str, expected: f64, tol: f64) {
+    match env.get(name) {
+        Some(Value::Scalar(x)) => {
+            assert!(
+                (x - expected).abs() < tol,
+                "{name}: got {x}, expected {expected}"
+            )
+        }
+        v => panic!("expected scalar for '{name}', got {v:?}"),
+    }
+}
+
+#[test]
+fn test_lu_pa_equals_lu() {
+    let env = run_linalg(
+        "A = [4 3; 6 3]; [L, U, P] = lu(A); err = norm(P*A - L*U);",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_lu_l_lower_triangular() {
+    let env = run_linalg(
+        "A = [4 3; 6 3]; [L, U, P] = lu(A); off = L(1,2);",
+    );
+    scalar_near(&env, "off", 0.0, 1e-14);
+}
+
+#[test]
+fn test_qr_a_equals_qr() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; [Q, R] = qr(A); err = norm(A - Q*R);",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_qr_q_orthogonal() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; [Q, R] = qr(A); err = norm(Q'*Q - eye(3));",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_chol_rtr_equals_a() {
+    let env = run_linalg(
+        "A = [4 2; 2 3]; R = chol(A); err = norm(R'*R - A);",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_chol_not_posdef_errors() {
+    use crate::eval::Base;
+    use crate::io::IoContext;
+    use crate::parser::parse_stmts;
+    use crate::eval::FormatMode;
+    crate::exec::init();
+    let stmts = parse_stmts("R = chol([-1 0; 0 1])").unwrap();
+    let mut env = crate::env::Env::new();
+    let mut io = IoContext::new();
+    let res = crate::exec::exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(res.is_err(), "expected error for non-positive-definite matrix");
+}
+
+#[test]
+fn test_svd_singular_values_sorted_descending() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; s = svd(A); ok = (s(1) >= s(2));",
+    );
+    scalar_near(&env, "ok", 1.0, 1e-14);
+}
+
+#[test]
+fn test_svd_full_reconstruction() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; [U, S, V] = svd(A); err = norm(A - U*S*V');",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_svd_u_orthogonal() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; [U, S, V] = svd(A); err = norm(U'*U - eye(3));",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_svd_v_orthogonal() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; [U, S, V] = svd(A); err = norm(V'*V - eye(2));",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_eig_symmetric_eigenvalues() {
+    let env = run_linalg("A = [2 1; 1 2]; d = eig(A);");
+    match env.get("d") {
+        Some(Value::Matrix(m)) => {
+            let mut vals: Vec<f64> = m.iter().copied().collect();
+            vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            assert!((vals[0] - 1.0).abs() < 1e-10, "smallest eig: {}", vals[0]);
+            assert!((vals[1] - 3.0).abs() < 1e-10, "largest eig: {}", vals[1]);
+        }
+        v => panic!("expected matrix, got {v:?}"),
+    }
+}
+
+#[test]
+fn test_eig_multi_output() {
+    let env = run_linalg("A = [2 1; 1 2]; [V, D] = eig(A); err = norm(A*V - V*D);");
+    scalar_near(&env, "err", 0.0, 1e-10);
+}
+
+#[test]
+fn test_rank_full_rank() {
+    let env = run_linalg("r = rank([1 2; 3 4]);");
+    scalar_near(&env, "r", 2.0, 1e-14);
+}
+
+#[test]
+fn test_rank_rank_deficient() {
+    let env = run_linalg("r = rank([1 2; 2 4]);");
+    scalar_near(&env, "r", 1.0, 1e-14);
+}
+
+#[test]
+fn test_rank_zero_matrix() {
+    let env = run_linalg("r = rank(zeros(3,3));");
+    scalar_near(&env, "r", 0.0, 1e-14);
+}
+
+#[test]
+fn test_null_space() {
+    let env = run_linalg(
+        "A = [1 2; 2 4]; N = null(A); err = norm(A*N);",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_orth_columns_in_column_space() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; Q = orth(A); err = norm(Q'*Q - eye(2));",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_cond_identity() {
+    let env = run_linalg("c = cond(eye(3));");
+    scalar_near(&env, "c", 1.0, 1e-12);
+}
+
+#[test]
+fn test_cond_singular_is_inf() {
+    let env = run_linalg("c = cond([1 2; 2 4]);");
+    match env.get("c") {
+        Some(Value::Scalar(x)) => assert!(x.is_infinite(), "expected Inf, got {x}"),
+        v => panic!("expected scalar, got {v:?}"),
+    }
+}
+
+#[test]
+fn test_pinv_pseudoinverse() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; B = pinv(A); err = norm(A*B*A - A);",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
+
+#[test]
+fn test_norm_matrix_2norm() {
+    let env = run_linalg("A = [3 0; 0 1]; n = norm(A);");
+    scalar_near(&env, "n", 3.0, 1e-12);
+}
+
+#[test]
+fn test_norm_matrix_frobenius() {
+    let env = run_linalg("A = [3 4; 0 0]; n = norm(A, 'fro');");
+    scalar_near(&env, "n", 5.0, 1e-12);
+}
+
+#[test]
+fn test_norm_matrix_1norm() {
+    let env = run_linalg("A = [1 2; 3 4]; n = norm(A, 1);");
+    scalar_near(&env, "n", 6.0, 1e-12);
+}
+
+#[test]
+fn test_norm_matrix_inf() {
+    let env = run_linalg("A = [1 2; 3 4]; n = norm(A, inf);");
+    scalar_near(&env, "n", 7.0, 1e-12);
+}
+
+#[test]
+fn test_svd_econ() {
+    let env = run_linalg(
+        "A = [1 2; 3 4; 5 6]; [U, S, V] = svd(A, 'econ'); err = norm(A - U*S*V');",
+    );
+    scalar_near(&env, "err", 0.0, 1e-12);
+}
