@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.21.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.22.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -383,6 +383,17 @@ ans =
 | `det(A)`        | Determinant                           |
 | `inv(A)`        | Inverse matrix                        |
 | `A \ b`         | Solve linear system `A*x = b`         |
+| `qr(A)`         | QR decomposition                      |
+| `lu(A)`         | LU decomposition with partial pivoting|
+| `chol(A)`       | Cholesky factor (SPD matrices)        |
+| `svd(A)`        | Singular value decomposition          |
+| `eig(A)`        | Eigenvalue decomposition              |
+| `rank(A)`       | Numerical rank                        |
+| `null(A)`       | Null-space basis                      |
+| `orth(A)`       | Column-space orthonormal basis        |
+| `cond(A)`       | Condition number                      |
+| `pinv(A)`       | Moore-Penrose pseudoinverse           |
+| `norm(A)`       | Matrix 2-norm (largest singular value)|
 
 The REPL prompt shows the matrix dimensions when `ans` is a matrix.
 `who` displays dimensions: `A = [2×2 double]`.

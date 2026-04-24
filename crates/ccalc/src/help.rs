@@ -48,10 +48,15 @@ pub fn print(topic: Option<&str>) {
             | "distribution" | "distributions" | "normal" | "prctile" | "zscore" | "erf"
             | "skewness" | "kurtosis",
         ) => print_stats(),
+        Some(
+            "linalg" | "linear" | "linear-algebra" | "linearalgebra" | "decomp"
+            | "decomposition" | "svd" | "qr" | "lu" | "eig" | "chol" | "cholesky"
+            | "rank" | "null" | "orth" | "cond" | "pinv",
+        ) => print_linalg(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  scoping  stats  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -126,6 +131,9 @@ NaN/Inf nan  inf  isnan  isinf  isfinite  nan(m,n)
 Stats   rand randn randi rng(seed)  std var median mode cov
         prctile iqr zscore  skewness kurtosis
         hist histc  normcdf normpdf erf erfc
+Linalg  qr lu chol svd eig         decompositions (see help linalg)
+        rank null orth cond pinv    matrix properties
+        norm(A)  norm(A,'fro')  norm(A,1)  norm(A,inf)
 Complex 3+4i  3+4j  4i  complex(re,im)    (Ni syntax works directly)
         real(z) imag(z) abs(z) angle(z) conj(z) isreal(z)
         z' = conj(z)   z.' = plain transpose (no conjugation)
@@ -221,6 +229,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help index       indexed assignment, growing vectors, logical masks
   help vectors     nan/inf, reductions, sort/find/unique, end, reshape, diag
   help stats       rand/randn/rng, std/var/median/mode, skewness/kurtosis, prctile/iqr/zscore, hist, normcdf
+  help linalg      qr/lu/chol/svd/eig decompositions; rank/null/orth/cond/pinv; matrix norms
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
@@ -762,6 +771,23 @@ Built-in functions
     det(A)            determinant  (square matrices only)
     inv(A)            inverse  (square, non-singular)
 
+Advanced linear algebra  (see: help linalg)
+    [Q,R] = qr(A)     QR decomposition (Householder)
+    [L,U,P] = lu(A)   LU with partial pivoting (PA = LU)
+    R = chol(A)       Cholesky factor (A = R'*R, SPD only)
+    [U,S,V] = svd(A)  full SVD; s = svd(A) — singular values only
+    [U,S,V] = svd(A,'econ')  economy SVD
+    [V,D] = eig(A)    eigendecomposition; d = eig(A) — eigenvalues only
+    rank(A)           numerical rank via SVD
+    null(A)           orthonormal null-space basis
+    orth(A)           orthonormal column-space basis
+    cond(A)           condition number (sigma_max / sigma_min)
+    pinv(A)           Moore-Penrose pseudoinverse
+    norm(A)           matrix 2-norm (largest singular value)
+    norm(A,'fro')     Frobenius norm
+    norm(A,1)         max column-sum norm
+    norm(A,inf)       max row-sum norm
+
 Range operator
     a:b               row vector from a to b with step 1
     a:step:b          row vector with explicit step (may be negative)
@@ -832,7 +858,8 @@ Workspace
     ws  saves only scalar variables — matrices are not persisted.
     who shows dimensions:  A = [2×2 double]
 
-See also: help index   (full indexed-assignment reference)"
+See also: help linalg  (advanced linear algebra reference)
+          help index   (full indexed-assignment reference)"
     );
 }
 
@@ -1497,6 +1524,7 @@ Script files  (see examples/ directory)
     ccalc examples/structs.calc
     ccalc examples/struct_arrays.calc
     ccalc examples/matrix_ops.calc
+    ccalc examples/linear_algebra.calc
     ccalc examples/path_system.calc"
     );
 }
@@ -2444,5 +2472,130 @@ Four mechanisms control visibility and lifetime of variables across functions.
 
 See also: help userfuncs  help control  help path
 Example:  ccalc examples/scoping/scoping.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help linalg
+// ---------------------------------------------------------------------------
+
+fn print_linalg() {
+    println!(
+        "\
+ADVANCED LINEAR ALGEBRA  (help linalg)
+
+All decompositions are pure-Rust with no BLAS/LAPACK dependency.
+Multi-output functions use  [a, b, ...] = f(x)  assignment syntax.
+
+─── QR decomposition ──────────────────────────────────────────────────────────
+
+  [Q, R] = qr(A)      A = Q * R
+                      Q: m×m orthogonal (full Q); R: m×n upper triangular
+  R = qr(A)           single-output: returns R only
+
+  Applications: orthogonalisation, least-squares systems.
+
+  Thin (economy) QR from the full factors:
+    [Q, R] = qr(A)         % A is m×n, m > n
+    Q1 = Q(:, 1:n);        % m×n — orthonormal columns
+    R1 = R(1:n, :);        % n×n — square upper triangular
+    c  = R1 \\ (Q1' * b)   % least-squares solution
+
+  Verify:  norm(Q' * Q - eye(m), 'fro')  ≈  0
+           norm(Q * R - A, 'fro')        ≈  0
+
+─── LU decomposition ──────────────────────────────────────────────────────────
+
+  [L, U, P] = lu(A)   PA = LU  (partial pivoting)
+                      L: unit lower triangular; U: upper triangular; P: permutation
+  U = lu(A)           single-output: returns U only
+
+  Used internally by backslash (\\). Solving A*x = b:
+    [L, U, P] = lu(A)
+    x = U \\ (L \\ (P * b))
+
+  Verify:  norm(P * A - L * U, 'fro')  ≈  0
+
+─── Cholesky decomposition ────────────────────────────────────────────────────
+
+  R = chol(A)         A = R' * R  (A must be symmetric positive definite)
+                      R: upper triangular
+
+  Faster than LU for SPD systems; also verifies that A is SPD.
+  Returns an error if A is not positive definite.
+
+  Example — solve A*x = b for SPD A:
+    R = chol(A)
+    x = R \\ (R' \\ b)   % back-substitution: cheaper than inv(A)*b
+
+─── SVD — singular value decomposition ────────────────────────────────────────
+
+  s = svd(A)             singular values as a column vector (descending)
+  [U, S, V] = svd(A)     full SVD: U (m×m), S (m×n diagonal), V (n×n)
+                         A = U * S * V'
+  [U, S, V] = svd(A, 'econ')  economy SVD: U (m×k), S (k×k), V (n×k)
+                              where k = min(m, n)
+
+  Applications: rank determination, norms, pseudoinverse, low-rank approx.
+
+  Rank-1 approximation (best rank-1 matrix in Frobenius sense):
+    [U, S, V] = svd(A)
+    A1 = S(1,1) * (U(:,1) * V(:,1)')
+
+  Verify:  norm(U * S * V' - A, 'fro')  ≈  0
+           norm(U' * U - eye(m), 'fro')  ≈  0
+
+─── Eigendecomposition ────────────────────────────────────────────────────────
+
+  d = eig(A)             eigenvalues as a column vector
+  [V, D] = eig(A)        V: eigenvectors (columns), D: diagonal eigenvalue matrix
+                         A * V = V * D  (so A * V(:,k) = D(k,k) * V(:,k))
+
+  Best results for symmetric matrices (guaranteed real eigenvalues).
+  Non-symmetric input: eigenvalues may be approximate.
+
+  Example:
+    [V, D] = eig([4 1; 1 3])
+    % D(1,1) = 2.382..., D(2,2) = 4.618...
+    % V columns are the corresponding eigenvectors
+
+─── Matrix properties ─────────────────────────────────────────────────────────
+
+  rank(A)       numerical rank (count of singular values > eps * s_max * max(m,n))
+  null(A)       orthonormal basis for null space  (columns are right null vectors)
+  orth(A)       orthonormal basis for column space  (via left singular vectors)
+  cond(A)       condition number:  sigma_max / sigma_min  (Inf for singular)
+  pinv(A)       Moore-Penrose pseudoinverse:  A * pinv(A) * A == A
+
+  rank([1 2 3; 4 5 6; 7 8 9])          →  2
+  norm(null([1 2; 2 4]) .* [1 2; 2 4]) →  0   (null vector satisfies A*x=0)
+  cond(eye(4))                          →  1   (identity: perfectly conditioned)
+  norm(A * pinv(A) * A - A, 'fro')     →  ~0   (pseudoinverse identity)
+
+─── Matrix norms ──────────────────────────────────────────────────────────────
+
+  norm(v)        vector: Euclidean (L2) norm  — unchanged
+  norm(v, p)     vector: Lp norm
+  norm(A)        matrix: spectral 2-norm (largest singular value)
+  norm(A, 'fro') Frobenius norm: sqrt(sum of squared elements)
+  norm(A, 1)     max column-sum norm
+  norm(A, inf)   max row-sum norm
+
+  norm([3 4])           →  5         (L2 vector norm)
+  norm([1 2; 3 4])      →  5.4772    (spectral = largest sv)
+  norm([1 2; 3 4],'fro')→  5.4772    (Frobenius ≈ spectral here)
+  norm([1 2; 3 4], 1)   →  6         (max column sum: max(1+3, 2+4))
+  norm([1 2; 3 4], inf) →  7         (max row sum: max(1+2, 3+4))
+
+─── Tip: unary-minus in matrix literals ───────────────────────────────────────
+
+  A space before a minus sign inside [...] can be parsed as subtraction.
+  Use commas to separate elements when any element starts with '-':
+
+    A = [2, 1, -1; -3, -1, 2]   % safe: commas disambiguate
+    A = [2 1 -1; ...]            % risky: '1 -1' = 1-1 = 0
+
+See also: help matrices  help vectors  help functions
+Example:  ccalc examples/linear_algebra.calc"
     );
 }

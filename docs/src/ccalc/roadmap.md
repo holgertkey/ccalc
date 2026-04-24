@@ -34,7 +34,8 @@ The work is divided into phases in order of architectural dependency.
 | 15.5 | Compatibility fixes: `log` natural log, `Inf`/`NaN` aliases, autoload, local function scoping | ✅ Done |
 | 15.6 | Variable scoping: `global`, `persistent`, `private/` directories | ✅ Done |
 | 16 | Package namespaces (`+pkg/` directories, `pkg.func(args)` call syntax) | ✅ Done |
-| 17 | Random numbers and statistics (`rand`, `randn`, `std`, `var`, `median`) | Planned |
+| 17 | Random numbers and statistics (`rand`, `randn`, `std`, `var`, `median`, `skewness`, `kurtosis`) | ✅ Done |
+| 18 | Advanced linear algebra (`qr`, `lu`, `chol`, `svd`, `eig`, `rank`, `null`, `orth`, `cond`, `pinv`, matrix `norm`) | ✅ Done |
 
 ## Key architectural decisions
 
@@ -210,6 +211,26 @@ struct array collects the field across all elements, returning `Value::Matrix`
 when all elements are scalar, or `Value::Cell` when types are mixed.
 Extended built-ins: `isstruct`, `fieldnames`, `isfield`, `rmfield`, `numel`,
 `size`, `length`. 8 regression tests added.
+
+**Phase 17** adds random number generation (`rand`, `randn`, `randi`, `rng`) using
+a thread-local `SmallRng` (from the `rand` crate). `rand_normal()` uses the
+Box-Muller transform to avoid an extra crate. Descriptive statistics (`std`, `var`,
+`median`, `mode`, `cov`, `hist`, `histc`), percentile functions (`prctile`, `iqr`,
+`zscore`), normal distribution functions (`normcdf`, `normpdf`, `erf`, `erfc` via
+the `libm` crate), and shape statistics (`skewness`, `kurtosis`) are added using
+the existing `apply_stat` column-wise helper. No new tokens or AST nodes are needed.
+
+**Phase 18** adds pure-Rust matrix decompositions and properties via six new
+private helper functions in `eval.rs`: `qr_decompose` (Householder reflectors),
+`lu_decompose` (Gaussian elimination with partial pivoting), `chol_decompose`
+(standard row-by-row Cholesky), `svd_compute` (one-sided Jacobi with Golub–Van
+Loan rotation convention), `eig_compute` (QR iteration with Wilkinson shift for
+cubic convergence on symmetric matrices), and `complete_orthonormal_basis`
+(Gram-Schmidt for extending an economy U to full m×m). The `nargout` thread-local
+(`set_nargout` / `get_nargout` in `eval.rs`, called at both `exec_stmts` and
+`evaluate()` sites) lets multi-output built-ins return a `Value::Tuple` or a single
+value depending on the number of LHS targets. Matrix `norm` is updated to use SVD
+for the 2-norm of non-vector matrices.
 
 ## Compatibility notes
 
