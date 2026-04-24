@@ -2597,9 +2597,7 @@ fn call_builtin(
                 match &args[0] {
                     Value::Void => Err("norm: not applicable to void".to_string()),
                     Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
-                    Value::Complex(re, im) => {
-                        Ok(Value::Scalar((re * re + im * im).sqrt().powf(p)))
-                    }
+                    Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt().powf(p))),
                     Value::Matrix(m) => {
                         if m.nrows() > 1 && m.ncols() > 1 {
                             // Matrix norms.
@@ -2643,7 +2641,7 @@ fn call_builtin(
                     }
                 }
             }
-        }
+        },
         // --- Cumulative reductions ---
         ("cumsum", 1) => apply_cumulative(&args[0], |acc, x| acc + x),
         ("cumprod", 1) => apply_cumulative(&args[0], |acc, x| acc * x),
@@ -3907,7 +3905,9 @@ fn call_builtin(
         ("eig", 1) => match &args[0] {
             Value::Scalar(n) => {
                 if get_nargout() <= 1 {
-                    Ok(Value::Matrix(Array2::from_shape_vec((1, 1), vec![*n]).unwrap()))
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, 1), vec![*n]).unwrap(),
+                    ))
                 } else {
                     Ok(Value::Tuple(vec![
                         Value::Matrix(Array2::eye(1)),
@@ -4025,7 +4025,10 @@ fn call_builtin(
                     Ok(Value::Scalar(*n))
                 } else {
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(Array2::from_elem((1, 1), if *n >= 0.0 { 1.0 } else { -1.0 })),
+                        Value::Matrix(Array2::from_elem(
+                            (1, 1),
+                            if *n >= 0.0 { 1.0 } else { -1.0 },
+                        )),
                         Value::Matrix(Array2::from_elem((1, 1), n.abs())),
                     ]))
                 }
@@ -4158,20 +4161,14 @@ fn call_builtin(
 
         // pinv(A): Moore-Penrose pseudoinverse via SVD.
         ("pinv", 1) => match &args[0] {
-            Value::Scalar(x) => Ok(Value::Scalar(if x.abs() < 1e-15 {
-                0.0
-            } else {
-                1.0 / x
-            })),
+            Value::Scalar(x) => Ok(Value::Scalar(if x.abs() < 1e-15 { 0.0 } else { 1.0 / x })),
             Value::Matrix(m) => {
                 let mm = m.nrows();
                 let nn = m.ncols();
                 let (u_c, s_v, v_c) = svd_compute(m)?;
                 let k = s_v.len();
-                let tol = (mm.max(nn)) as f64
-                    * s_v.first().copied().unwrap_or(0.0)
-                    * f64::EPSILON
-                    * 2.0;
+                let tol =
+                    (mm.max(nn)) as f64 * s_v.first().copied().unwrap_or(0.0) * f64::EPSILON * 2.0;
                 // pinv = V * diag(1/σ) * U^T
                 let mut result = Array2::<f64>::zeros((nn, mm));
                 for j in 0..k {
@@ -4565,7 +4562,8 @@ fn qr_decompose(a: &Array2<f64>) -> Result<(Array2<f64>, Array2<f64>), String> {
 /// For an n×n square matrix A returns (L, U, P) where P*A = L*U,
 /// L is unit lower triangular, U is upper triangular, and P is a
 /// permutation matrix.
-fn lu_decompose(a: &Array2<f64>) -> Result<(Array2<f64>, Array2<f64>, Array2<f64>), String> {
+type LuResult = Result<(Array2<f64>, Array2<f64>, Array2<f64>), String>;
+fn lu_decompose(a: &Array2<f64>) -> LuResult {
     let n = a.nrows();
     if a.ncols() != n {
         return Err("lu: matrix must be square".to_string());
@@ -4655,7 +4653,8 @@ fn chol_decompose(a: &Array2<f64>) -> Result<Array2<f64>, String> {
 /// - V is n×k with orthonormal columns
 ///
 /// For m < n the inputs are transparently transposed and outputs swapped.
-fn svd_compute(a: &Array2<f64>) -> Result<(Array2<f64>, Vec<f64>, Array2<f64>), String> {
+type SvdResult = Result<(Array2<f64>, Vec<f64>, Array2<f64>), String>;
+fn svd_compute(a: &Array2<f64>) -> SvdResult {
     let m = a.nrows();
     let n = a.ncols();
     if m < n {

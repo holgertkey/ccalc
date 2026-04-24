@@ -49,9 +49,9 @@ pub fn print(topic: Option<&str>) {
             | "skewness" | "kurtosis",
         ) => print_stats(),
         Some(
-            "linalg" | "linear" | "linear-algebra" | "linearalgebra" | "decomp"
-            | "decomposition" | "svd" | "qr" | "lu" | "eig" | "chol" | "cholesky"
-            | "rank" | "null" | "orth" | "cond" | "pinv",
+            "linalg" | "linear" | "linear-algebra" | "linearalgebra" | "decomp" | "decomposition"
+            | "svd" | "qr" | "lu" | "eig" | "chol" | "cholesky" | "rank" | "null" | "orth" | "cond"
+            | "pinv",
         ) => print_linalg(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
