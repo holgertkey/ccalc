@@ -3575,6 +3575,26 @@ fn call_builtin(
             let b = string_arg(&args[1], name, 2)?.to_lowercase();
             Ok(Value::Scalar(bool_to_f64(a == b)))
         }
+        // disp(x) — display value without variable name, like MATLAB disp()
+        ("disp", 1) => {
+            use std::io::Write;
+            let mode = get_display_fmt();
+            let output = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => format!("{s}\n"),
+                v => match format_value_full(v, &mode) {
+                    Some(block) => format!("{block}\n\n"),
+                    None => format!("{}\n", format_value(v, get_display_base(), &mode)),
+                },
+            };
+            match io {
+                Some(ctx) => ctx.write_to_fd(1, &output)?,
+                None => {
+                    print!("{output}");
+                    std::io::stdout().flush().ok();
+                }
+            }
+            Ok(Value::Void)
+        }
         // sprintf(fmt, ...) — format and return as char array
         ("sprintf", n) if n >= 1 => {
             let fmt = string_arg(&args[0], name, 1)?.to_string();
