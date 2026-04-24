@@ -1687,6 +1687,54 @@ fn parse_stmts_from_lines(
 
             // ── regular statement(s) — may contain ';' ──────────────────────
             _ => {
+                // Command-style `clear` / `clear x y z` — two-token form that the
+                // expression parser cannot handle. Convert to a Call so exec_stmts
+                // can intercept it.
+                if line == "clear" {
+                    stmts.push((
+                        Stmt::Expr(Expr::Call("clear".to_string(), vec![])),
+                        false,
+                    ));
+                    *pos += 1;
+                    continue;
+                }
+                if let Some(rest) = line
+                    .strip_prefix("clear")
+                    .filter(|r| r.starts_with(|c: char| c.is_whitespace()))
+                {
+                    let names: Vec<Expr> = rest
+                        .split_whitespace()
+                        .map(|n| Expr::StrLiteral(n.to_string()))
+                        .collect();
+                    stmts.push((
+                        Stmt::Expr(Expr::Call("clear".to_string(), names)),
+                        false,
+                    ));
+                    *pos += 1;
+                    continue;
+                }
+
+                // Command-style `format` / `format short` / `format compact` etc.
+                if line == "format"
+                    || line
+                        .strip_prefix("format")
+                        .is_some_and(|r| r.starts_with(|c: char| c.is_whitespace()))
+                {
+                    let arg = line
+                        .strip_prefix("format")
+                        .map(str::trim)
+                        .unwrap_or("")
+                        .to_string();
+                    let args = if arg.is_empty() {
+                        vec![]
+                    } else {
+                        vec![Expr::StrLiteral(arg)]
+                    };
+                    stmts.push((Stmt::Expr(Expr::Call("format".to_string(), args)), true));
+                    *pos += 1;
+                    continue;
+                }
+
                 for (stmt_str, silent) in split_stmts(raw) {
                     stmts.push((parse(stmt_str)?, silent));
                 }

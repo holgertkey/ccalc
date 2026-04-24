@@ -38,6 +38,7 @@ use crate::eval::{
     persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
     set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err, set_nargout,
 };
+use crate::env::{load_workspace, save_workspace, save_workspace_vars};
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
 
@@ -984,6 +985,139 @@ pub fn exec_stmts(
                     SCRIPT_DIR_STACK.with(|s| s.borrow_mut().pop());
                     RUN_DEPTH.with(|d| d.set(depth));
                     return result;
+                }
+
+                // Intercept clear() / clear('x','y') — workspace variable removal.
+                if let Expr::Call(fn_name, args) = expr
+                    && fn_name == "clear"
+                {
+                    if args.is_empty() {
+                        env.clear();
+                    } else {
+                        for arg in args {
+                            let key = match arg {
+                                Expr::StrLiteral(s) | Expr::StringObjLiteral(s) => s.clone(),
+                                other => match eval_with_io(other, env, io)? {
+                                    Value::Str(s) | Value::StringObj(s) => s,
+                                    _ => continue,
+                                },
+                            };
+                            env.remove(&key);
+                        }
+                    }
+                    continue;
+                }
+
+                // Intercept format — update thread-local display context.
+                if let Expr::Call(fn_name, args) = expr
+                    && fn_name == "format"
+                {
+                    let arg = match args.first() {
+                        Some(Expr::StrLiteral(s)) => s.as_str(),
+                        None => "",
+                        _ => "",
+                    };
+                    let new_fmt = match arg {
+                        "" | "short" => FormatMode::Short,
+                        "long" => FormatMode::Long,
+                        "shorte" | "shortE" => FormatMode::ShortE,
+                        "longe" | "longE" => FormatMode::LongE,
+                        "shortg" | "shortG" => FormatMode::ShortG,
+                        "longg" | "longG" => FormatMode::LongG,
+                        "bank" => FormatMode::Bank,
+                        "rat" => FormatMode::Rat,
+                        "hex" => FormatMode::Hex,
+                        "+" => FormatMode::Plus,
+                        "compact" | "loose" => get_display_fmt(),
+                        s => s
+                            .parse::<usize>()
+                            .map(FormatMode::Custom)
+                            .unwrap_or_else(|_| get_display_fmt()),
+                    };
+                    let new_compact = match arg {
+                        "compact" => true,
+                        "loose" => false,
+                        _ => get_display_compact(),
+                    };
+                    set_display_ctx(&new_fmt, base, new_compact);
+                    continue;
+                }
+
+                // Intercept save()/load() — workspace persistence (same semantics as REPL).
+                if let Expr::Call(fn_name, args) = expr
+                    && matches!(fn_name.as_str(), "save" | "load" | "ws" | "wl")
+                {
+                    let is_save = matches!(fn_name.as_str(), "save" | "ws");
+                    if is_save {
+                        let (path_opt, var_names) = if args.is_empty() {
+                            (None, vec![])
+                        } else {
+                            let path_val = eval_with_io(&args[0], env, io)?;
+                            let path_str = match path_val {
+                                Value::Str(s) | Value::StringObj(s) => s,
+                                _ => {
+                                    return Err("save: path argument must be a string".to_string())
+                                }
+                            };
+                            let mut vars: Vec<String> = Vec::new();
+                            for a in &args[1..] {
+                                let v = eval_with_io(a, env, io)?;
+                                match v {
+                                    Value::Str(s) | Value::StringObj(s) => vars.push(s),
+                                    _ => return Err("save: variable names must be strings".to_string()),
+                                }
+                            }
+                            (Some(path_str), vars)
+                        };
+                        let result = match &path_opt {
+                            None => {
+                                let home = std::env::var("HOME")
+                                    .or_else(|_| std::env::var("USERPROFILE"))
+                                    .unwrap_or_default();
+                                let p = std::path::Path::new(&home)
+                                    .join(".config")
+                                    .join("ccalc")
+                                    .join("workspace.toml");
+                                save_workspace(env, &p)
+                            }
+                            Some(p) if var_names.is_empty() => {
+                                save_workspace(env, std::path::Path::new(p))
+                            }
+                            Some(p) => {
+                                let refs: Vec<&str> = var_names.iter().map(String::as_str).collect();
+                                save_workspace_vars(env, std::path::Path::new(p), &refs)
+                            }
+                        };
+                        if let Err(e) = result {
+                            return Err(format!("save: {e}"));
+                        }
+                    } else {
+                        // load
+                        let loaded = if args.is_empty() {
+                            let home = std::env::var("HOME")
+                                .or_else(|_| std::env::var("USERPROFILE"))
+                                .unwrap_or_default();
+                            let p = std::path::Path::new(&home)
+                                .join(".config")
+                                .join("ccalc")
+                                .join("workspace.toml");
+                            load_workspace(&p)
+                        } else {
+                            let path_val = eval_with_io(&args[0], env, io)?;
+                            let path_str = match path_val {
+                                Value::Str(s) | Value::StringObj(s) => s,
+                                _ => {
+                                    return Err("load: path argument must be a string".to_string())
+                                }
+                            };
+                            load_workspace(std::path::Path::new(&path_str))
+                        };
+                        match loaded {
+                            Ok(ws) => env.extend(ws),
+                            Err(e) => return Err(format!("load: {e}")),
+                        }
+                    }
+                    continue;
                 }
 
                 let val = eval_with_io(expr, env, io)?;
