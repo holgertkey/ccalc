@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.22.0+003] - 2026-04-24
+
+### Fixed
+
+- `run()`/`source()` inside a script no longer aborts the outer script after the first call — all statements after the `run()` now execute correctly.
+- Mixed script+function files (functions defined at the top, script body below) are now executed correctly; only files where *every* statement is a function definition are treated as pure function libraries.
+
+### Changed
+
+- `examples/file_io.calc` moved to `examples/file_io/file_io.calc` (self-contained example with its own `tmp/` scratch directory; `.gitignore` updated accordingly).
+
 ## [0.22.0] - 2026-04-24
 
 ### Added

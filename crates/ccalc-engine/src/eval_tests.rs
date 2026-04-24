@@ -3266,3 +3266,85 @@ fn test_svd_econ() {
         run_linalg("A = [1 2; 3 4; 5 6]; [U, S, V] = svd(A, 'econ'); err = norm(A - U*S*V');");
     scalar_near(&env, "err", 0.0, 1e-12);
 }
+
+// ── Bug regression tests ─────────────────────────────────────────────────────
+
+fn run_script_src(src: &str) -> crate::env::Env {
+    use crate::eval::{Base, FormatMode};
+    use crate::io::IoContext;
+    use crate::parser::parse_stmts;
+    crate::exec::init();
+    let stmts = parse_stmts(src).expect("parse_stmts failed");
+    let mut env = crate::env::Env::new();
+    env.insert("ans".to_string(), Value::Scalar(0.0));
+    let mut io = IoContext::new();
+    crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
+        .expect("exec_stmts failed");
+    env
+}
+
+// Bug 1: run() inside a script used to return from exec_stmts immediately,
+// so all statements after the first run() call were silently skipped.
+#[test]
+fn test_run_does_not_abort_outer_script() {
+    use std::io::Write;
+
+    let dir = std::env::temp_dir();
+    let helper_path = dir.join("ccalc_test_run_helper.calc");
+    {
+        let mut f = std::fs::File::create(&helper_path).expect("create helper");
+        f.write_all(b"helper_ran = 1;\n").expect("write");
+    }
+    let path_str = helper_path.to_str().unwrap().replace('\\', "/");
+
+    let script = format!("before = 10;\nrun('{path_str}');\nafter = 20;\n");
+    let env = run_script_src(&script);
+
+    let _ = std::fs::remove_file(&helper_path);
+
+    assert_eq!(
+        env.get("before"),
+        Some(&Value::Scalar(10.0)),
+        "before should be set"
+    );
+    assert_eq!(
+        env.get("helper_ran"),
+        Some(&Value::Scalar(1.0)),
+        "helper script should have executed"
+    );
+    assert_eq!(
+        env.get("after"),
+        Some(&Value::Scalar(20.0)),
+        "statements after run() must not be skipped"
+    );
+}
+
+// Bug 2: a mixed script+function file (functions defined at the top, script
+// body below) was wrongly detected as a pure function file, so the script body
+// never executed and produced no output / set no variables.
+#[test]
+fn test_mixed_function_script_file_runs_body() {
+    use std::io::Write;
+
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("ccalc_test_mixed_fn_script.calc");
+    {
+        let mut f = std::fs::File::create(&file_path).expect("create file");
+        f.write_all(
+            b"function y = double_it(x)\n  y = x * 2;\nend\n\nresult = double_it(21);\n",
+        )
+        .expect("write");
+    }
+    let path_str = file_path.to_str().unwrap().replace('\\', "/");
+
+    let script = format!("run('{path_str}');\n");
+    let env = run_script_src(&script);
+
+    let _ = std::fs::remove_file(&file_path);
+
+    assert_eq!(
+        env.get("result"),
+        Some(&Value::Scalar(42.0)),
+        "script body must execute even when the file starts with function defs"
+    );
+}

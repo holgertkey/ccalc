@@ -2,3 +2,7 @@
 /.debug
 CLAUDE.md
 docs/book/
+
+# Example scratch directories
+examples/file_io/tmp/*
+!examples/file_io/tmp/.gitkeep

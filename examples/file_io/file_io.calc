@@ -6,9 +6,9 @@
 %   10.5c  isfile / isfolder / exist / pwd
 %   10.5d  save / load with explicit path
 %
-% Files are written to .debug/.TESTS/ (git-ignored scratch area).
+% Temporary files are written to examples/file_io/tmp/ (git-ignored).
 %
-% Usage: ccalc examples/file_io.calc
+% Usage: ccalc examples/file_io/file_io.calc
 
 % ---------------------------------------------------------------
 % 1. Filesystem queries
@@ -19,15 +19,15 @@ fprintf('=== 1. Filesystem queries ===\n')
 fprintf('Working directory: %s\n', pwd())
 
 % isfile / isfolder
-fprintf('isfile Cargo.toml:   %d\n', isfile('Cargo.toml'))
-fprintf('isfolder examples/:  %d\n', isfolder('examples'))
-fprintf('isfile no_such.txt:  %d\n', isfile('no_such_file.txt'))
+fprintf('isfile examples/file_io/file_io.calc:  %d\n', isfile('examples/file_io/file_io.calc'))
+fprintf('isfolder examples/file_io/:             %d\n', isfolder('examples/file_io'))
+fprintf('isfile no_such.txt:                     %d\n', isfile('no_such_file.txt'))
 
 % exist — variable vs file
 pi_copy = 3.14159;
 fprintf('\nexist pi_copy (var): %d\n', exist('pi_copy', 'var'))
 fprintf('exist no_var  (var): %d\n', exist('no_var',   'var'))
-fprintf('exist Cargo.toml (file): %d\n', exist('Cargo.toml', 'file'))
+fprintf('exist examples/file_io/file_io.calc (file): %d\n', exist('examples/file_io/file_io.calc', 'file'))
 
 % ---------------------------------------------------------------
 % 2. Writing to a file with fprintf
@@ -35,7 +35,7 @@ fprintf('exist Cargo.toml (file): %d\n', exist('Cargo.toml', 'file'))
 
 fprintf('\n=== 2. fprintf to file ===\n')
 
-log_path = '.debug/.TESTS/demo_log.txt';
+log_path = 'examples/file_io/tmp/demo_log.txt';
 
 fd = fopen(log_path, 'w');
 fprintf(fd, 'ccalc file I/O demo log\n')
@@ -89,7 +89,7 @@ fprintf('fgets first line (with newline): [%s]\n', raw)
 
 fprintf('\n=== 5. dlmwrite / dlmread (CSV) ===\n')
 
-csv_path = '.debug/.TESTS/measurements.csv';
+csv_path = 'examples/file_io/tmp/measurements.csv';
 
 % Simulate three sensor readings: [time, voltage, current]
 t1 = 0;   v1 = 3.30;  i1 = 0.012;
@@ -114,7 +114,7 @@ fprintf('  %.1f    %.2f   %.3f   %.4f\n', meas(3,1), meas(3,2), meas(3,3), meas(
 
 fprintf('\n=== 6. dlmwrite / dlmread (TSV) ===\n')
 
-tsv_path = '.debug/.TESTS/results.tsv';
+tsv_path = 'examples/file_io/tmp/results.tsv';
 
 % 2x4 result matrix
 results = [1, 100, 9.81, 0.5; 2, 200, 19.62, 1.0];
@@ -131,7 +131,7 @@ fprintf('Row 2, col 3 = %.2f\n', loaded(2, 3))
 
 fprintf('\n=== 7. Append mode ===\n')
 
-append_path = '.debug/.TESTS/appended.txt';
+append_path = 'examples/file_io/tmp/appended.txt';
 
 fd = fopen(append_path, 'w');
 fprintf(fd, 'Session 1: x = 10\n')
@@ -158,7 +158,7 @@ fprintf('%s\n', a3)
 
 fprintf('\n=== 8. save / load with explicit path ===\n')
 
-mat_path = '.debug/.TESTS/session.mat';
+mat_path = 'examples/file_io/tmp/session.mat';
 
 % Define analysis parameters
 R = 4700;
@@ -188,7 +188,7 @@ fprintf('Label: %s\n', label)
 
 fprintf('\n=== 9. save with variable selection ===\n')
 
-sel_path = '.debug/.TESTS/selected.mat';
+sel_path = 'examples/file_io/tmp/selected.mat';
 
 x_val = 42;
 y_val = 99;

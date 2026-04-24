@@ -930,11 +930,15 @@ pub fn exec_stmts(
                         format!("{fn_name}: parse error in '{}': {e}", script_path.display())
                     })?;
 
-                    // MATLAB scoping: if the file starts with a function definition,
+                    // MATLAB scoping: if EVERY statement is a function definition,
                     // treat it as a function file — expose only the primary function and
                     // bundle all helpers into its `locals` (invisible to the caller).
-                    let is_fn_file =
-                        matches!(run_stmts.first(), Some((Stmt::FunctionDef { .. }, _)));
+                    // A mixed script+function file (functions-at-top style) is NOT a
+                    // function file; its script body must also execute.
+                    let is_fn_file = !run_stmts.is_empty()
+                        && run_stmts
+                            .iter()
+                            .all(|(s, _)| matches!(s, Stmt::FunctionDef { .. }));
                     let result = if is_fn_file {
                         let primary_name = match &run_stmts[0].0 {
                             Stmt::FunctionDef { name, .. } => name.clone(),
@@ -980,11 +984,38 @@ pub fn exec_stmts(
                         }
                         Ok(None)
                     } else {
+                        // Pre-load all local function defs so that forward references
+                        // within the script work (MATLAB local-function semantics).
+                        for (stmt, _) in run_stmts.iter() {
+                            if let Stmt::FunctionDef {
+                                name,
+                                outputs,
+                                params,
+                                body_source,
+                            } = stmt
+                            {
+                                env.insert(
+                                    name.clone(),
+                                    Value::Function {
+                                        outputs: outputs.clone(),
+                                        params: params.clone(),
+                                        body_source: body_source.clone(),
+                                        locals: IndexMap::new(),
+                                    },
+                                );
+                            }
+                        }
                         exec_stmts(&run_stmts, env, io, fmt, base, compact)
                     };
                     SCRIPT_DIR_STACK.with(|s| s.borrow_mut().pop());
                     RUN_DEPTH.with(|d| d.set(depth));
-                    return result;
+                    // Propagate signals (return/break/continue) but do NOT early-return
+                    // from exec_stmts — remaining statements in the outer script must run.
+                    match result? {
+                        None => {}
+                        Some(sig) => return Ok(Some(sig)),
+                    }
+                    continue;
                 }
 
                 // Intercept clear() / clear('x','y') — workspace variable removal.
