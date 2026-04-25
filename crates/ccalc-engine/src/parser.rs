@@ -1614,7 +1614,11 @@ fn parse_stmts_from_lines(
                         }
                     }
                     doc_lines.reverse();
-                    if doc_lines.is_empty() { None } else { Some(doc_lines.join("\n")) }
+                    if doc_lines.is_empty() {
+                        None
+                    } else {
+                        Some(doc_lines.join("\n"))
+                    }
                 };
 
                 *pos += 1;

@@ -3416,9 +3416,11 @@ fn test_assert_exact_tol_zero() {
 fn test_suggest_similar_undefined_var() {
     let mut env = empty_env();
     env.insert("length".to_string(), Value::Scalar(1.0));
-    let err = eval(&Expr::Var("lnegth".to_string()), &env)
-        .unwrap_err();
-    assert!(err.contains("did you mean"), "expected suggestion in: {err}");
+    let err = eval(&Expr::Var("lnegth".to_string()), &env).unwrap_err();
+    assert!(
+        err.contains("did you mean"),
+        "expected suggestion in: {err}"
+    );
     assert!(err.contains("length"), "expected 'length' in: {err}");
 }
 
@@ -3426,7 +3428,10 @@ fn test_suggest_similar_undefined_var() {
 fn test_suggest_similar_unknown_fn() {
     let env = empty_env();
     let err = eval_parse("sqrtt(4)", &env).unwrap_err();
-    assert!(err.contains("did you mean"), "expected suggestion in: {err}");
+    assert!(
+        err.contains("did you mean"),
+        "expected suggestion in: {err}"
+    );
     assert!(err.contains("sqrt"), "expected 'sqrt' in: {err}");
 }
 
@@ -3434,7 +3439,10 @@ fn test_suggest_similar_unknown_fn() {
 fn test_no_suggestion_for_totally_different_name() {
     let env = empty_env();
     let err = eval_parse("zzzzzzz(4)", &env).unwrap_err();
-    assert!(!err.contains("did you mean"), "unexpected suggestion in: {err}");
+    assert!(
+        !err.contains("did you mean"),
+        "unexpected suggestion in: {err}"
+    );
 }
 
 // ── Phase 19a: builtin_names list ────────────────────────────────────────────
@@ -3443,9 +3451,15 @@ fn test_no_suggestion_for_totally_different_name() {
 fn test_builtin_names_contains_expected() {
     let names = builtin_names();
     assert!(names.contains(&"sqrt"), "sqrt missing from builtin_names");
-    assert!(names.contains(&"assert"), "assert missing from builtin_names");
+    assert!(
+        names.contains(&"assert"),
+        "assert missing from builtin_names"
+    );
     assert!(names.contains(&"zeros"), "zeros missing from builtin_names");
-    assert!(names.contains(&"fprintf"), "fprintf missing from builtin_names");
+    assert!(
+        names.contains(&"fprintf"),
+        "fprintf missing from builtin_names"
+    );
 }
 
 #[test]
