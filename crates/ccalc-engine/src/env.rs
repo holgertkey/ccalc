@@ -67,6 +67,9 @@ pub enum Value {
         /// Local helper functions defined in the same function file (MATLAB-style scoping).
         /// Populated when a function file is sourced; empty for inline definitions.
         locals: IndexMap<String, Value>,
+        /// Documentation string extracted from `%`-prefixed lines immediately before the
+        /// `function` keyword. `None` when no leading comment block is present.
+        doc: Option<String>,
     },
     /// Multiple return values from a multi-output function call (internal use).
     ///

@@ -222,6 +222,7 @@ fn try_autoload(name: &str) -> bool {
                 outputs,
                 params,
                 body_source,
+                doc,
             } = stmt
                 && n != &primary_name
             {
@@ -232,6 +233,7 @@ fn try_autoload(name: &str) -> bool {
                         params: params.clone(),
                         body_source: body_source.clone(),
                         locals: IndexMap::new(),
+                        doc: doc.clone(),
                     },
                 );
             }
@@ -240,6 +242,7 @@ fn try_autoload(name: &str) -> bool {
             outputs,
             params,
             body_source,
+            doc,
             ..
         } = &stmts[0].0
         {
@@ -250,6 +253,7 @@ fn try_autoload(name: &str) -> bool {
                     params: params.clone(),
                     body_source: body_source.clone(),
                     locals,
+                    doc: doc.clone(),
                 },
             );
             return true;
@@ -311,6 +315,7 @@ fn try_autoload_pkg(qualified: &str) -> bool {
                     outputs,
                     params,
                     body_source,
+                    doc,
                 } = stmt
                     && n != &primary_name
                 {
@@ -321,6 +326,7 @@ fn try_autoload_pkg(qualified: &str) -> bool {
                             params: params.clone(),
                             body_source: body_source.clone(),
                             locals: IndexMap::new(),
+                            doc: doc.clone(),
                         },
                     );
                 }
@@ -329,6 +335,7 @@ fn try_autoload_pkg(qualified: &str) -> bool {
                 outputs,
                 params,
                 body_source,
+                doc,
                 ..
             } = &stmts[0].0
             {
@@ -339,6 +346,7 @@ fn try_autoload_pkg(qualified: &str) -> bool {
                         params: params.clone(),
                         body_source: body_source.clone(),
                         locals,
+                        doc: doc.clone(),
                     },
                 );
                 return true;
@@ -414,6 +422,7 @@ fn call_user_function(
         params,
         body_source,
         locals,
+        ..
     } = func
     else {
         return Err("call_user_function: not a Function value".to_string());
@@ -951,6 +960,7 @@ pub fn exec_stmts(
                                 outputs,
                                 params,
                                 body_source,
+                                doc,
                             } = stmt
                                 && name != &primary_name
                             {
@@ -961,6 +971,7 @@ pub fn exec_stmts(
                                         params: params.clone(),
                                         body_source: body_source.clone(),
                                         locals: IndexMap::new(),
+                                        doc: doc.clone(),
                                     },
                                 );
                             }
@@ -969,6 +980,7 @@ pub fn exec_stmts(
                             outputs,
                             params,
                             body_source,
+                            doc,
                             ..
                         } = &run_stmts[0].0
                         {
@@ -979,6 +991,7 @@ pub fn exec_stmts(
                                     params: params.clone(),
                                     body_source: body_source.clone(),
                                     locals,
+                                    doc: doc.clone(),
                                 },
                             );
                         }
@@ -992,6 +1005,7 @@ pub fn exec_stmts(
                                 outputs,
                                 params,
                                 body_source,
+                                doc,
                             } = stmt
                             {
                                 env.insert(
@@ -1001,6 +1015,7 @@ pub fn exec_stmts(
                                         params: params.clone(),
                                         body_source: body_source.clone(),
                                         locals: IndexMap::new(),
+                                        doc: doc.clone(),
                                     },
                                 );
                             }
@@ -1344,6 +1359,7 @@ pub fn exec_stmts(
                 outputs,
                 params,
                 body_source,
+                doc,
             } => {
                 env.insert(
                     name.clone(),
@@ -1352,6 +1368,7 @@ pub fn exec_stmts(
                         params: params.clone(),
                         body_source: body_source.clone(),
                         locals: IndexMap::new(),
+                        doc: doc.clone(),
                     },
                 );
             }

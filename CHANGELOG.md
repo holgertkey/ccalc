@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-04-25
+
+### Added
+
+- **Phase 19 — REPL tooling:**
+  - **19a — Tab completion**: `Tab` key completes variable names and built-in function names in the REPL. Candidates are updated after each statement from the current environment plus the full built-in list. Implemented via a custom `rustyline` helper (`CcalcHelper`).
+  - **19b — Inline help for user functions**: Leading `%`-comment lines immediately before a `function` keyword are extracted as a documentation string and stored in `Value::Function { doc }`. `help <name>` now prints the doc string when the name is a user-defined function with a doc comment, before falling back to the built-in help system.
+  - **19c — "Did you mean?" suggestions**: Undefined-variable and unknown-function errors now suggest the closest known name (Levenshtein distance ≤ 2) from the current environment and the built-in function list.
+  - **19d — Assertion built-ins**:
+    - `assert(cond)` — throws `"assert: condition is false"` when the condition is falsy.
+    - `assert(expected, actual)` — checks equality (scalars exact, matrices element-wise).
+    - `assert(expected, actual, tol)` — checks `|expected - actual| ≤ tol` element-wise.
+  - `builtin_names()` — new public function in `ccalc-engine::eval` returning the complete list of built-in function names (used for completion and suggestions).
+
 ## [0.22.0+003] - 2026-04-24
 
 ### Fixed

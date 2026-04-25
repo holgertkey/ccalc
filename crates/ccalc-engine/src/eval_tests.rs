@@ -3353,3 +3353,106 @@ fn test_mixed_function_script_file_runs_body() {
         "script body must execute even when the file starts with function defs"
     );
 }
+
+// ── Phase 19d: assert built-ins ──────────────────────────────────────────────
+
+#[test]
+fn test_assert_true_condition() {
+    let env = empty_env();
+    assert_eq!(eval_parse("assert(1)", &env).unwrap(), Value::Void);
+}
+
+#[test]
+fn test_assert_false_condition() {
+    let env = empty_env();
+    assert!(eval_parse("assert(0)", &env).is_err());
+}
+
+#[test]
+fn test_assert_nonzero_is_true() {
+    let env = empty_env();
+    assert_eq!(eval_parse("assert(42)", &env).unwrap(), Value::Void);
+}
+
+#[test]
+fn test_assert_nan_is_false() {
+    let env = empty_env();
+    assert!(eval_parse("assert(nan)", &env).is_err());
+}
+
+#[test]
+fn test_assert_equal_scalars_pass() {
+    let env = empty_env();
+    assert_eq!(eval_parse("assert(3, 3)", &env).unwrap(), Value::Void);
+}
+
+#[test]
+fn test_assert_equal_scalars_fail() {
+    let env = empty_env();
+    assert!(eval_parse("assert(3, 4)", &env).is_err());
+}
+
+#[test]
+fn test_assert_tol_pass() {
+    let env = empty_env();
+    assert_eq!(eval_parse("assert(1, 2, 1.5)", &env).unwrap(), Value::Void);
+}
+
+#[test]
+fn test_assert_tol_fail() {
+    let env = empty_env();
+    assert!(eval_parse("assert(1, 2, 0.5)", &env).is_err());
+}
+
+#[test]
+fn test_assert_exact_tol_zero() {
+    let env = empty_env();
+    assert_eq!(eval_parse("assert(5, 5, 0)", &env).unwrap(), Value::Void);
+}
+
+// ── Phase 19c: "did you mean?" suggestions ───────────────────────────────────
+
+#[test]
+fn test_suggest_similar_undefined_var() {
+    let mut env = empty_env();
+    env.insert("length".to_string(), Value::Scalar(1.0));
+    let err = eval(&Expr::Var("lnegth".to_string()), &env)
+        .unwrap_err();
+    assert!(err.contains("did you mean"), "expected suggestion in: {err}");
+    assert!(err.contains("length"), "expected 'length' in: {err}");
+}
+
+#[test]
+fn test_suggest_similar_unknown_fn() {
+    let env = empty_env();
+    let err = eval_parse("sqrtt(4)", &env).unwrap_err();
+    assert!(err.contains("did you mean"), "expected suggestion in: {err}");
+    assert!(err.contains("sqrt"), "expected 'sqrt' in: {err}");
+}
+
+#[test]
+fn test_no_suggestion_for_totally_different_name() {
+    let env = empty_env();
+    let err = eval_parse("zzzzzzz(4)", &env).unwrap_err();
+    assert!(!err.contains("did you mean"), "unexpected suggestion in: {err}");
+}
+
+// ── Phase 19a: builtin_names list ────────────────────────────────────────────
+
+#[test]
+fn test_builtin_names_contains_expected() {
+    let names = builtin_names();
+    assert!(names.contains(&"sqrt"), "sqrt missing from builtin_names");
+    assert!(names.contains(&"assert"), "assert missing from builtin_names");
+    assert!(names.contains(&"zeros"), "zeros missing from builtin_names");
+    assert!(names.contains(&"fprintf"), "fprintf missing from builtin_names");
+}
+
+#[test]
+fn test_builtin_names_no_duplicates() {
+    let names = builtin_names();
+    let mut seen = std::collections::HashSet::new();
+    for n in names {
+        assert!(seen.insert(n), "duplicate builtin name: {n}");
+    }
+}

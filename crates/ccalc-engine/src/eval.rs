@@ -532,7 +532,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             if name == "e" {
                 Ok(Value::Scalar(std::f64::consts::E))
             } else {
-                Err(format!("Undefined variable: '{name}'"))
+                let hint = suggest_similar(name, env);
+                match hint {
+                    Some(s) => Err(format!("Undefined variable '{name}'; did you mean '{s}'?")),
+                    None => Err(format!("Undefined variable: '{name}'")),
+                }
             }
         }),
         Expr::UnaryMinus(e) => match eval_inner(e, env, io)? {
@@ -2125,6 +2129,145 @@ fn call_function_value(
             }
         }
         _ => Err("cellfun/arrayfun: first argument must be a function or lambda (@fn)".to_string()),
+    }
+}
+
+/// Names of all built-in functions recognized by [`call_builtin`].
+///
+/// Used for REPL tab completion and "did you mean?" suggestions.
+pub fn builtin_names() -> &'static [&'static str] {
+    &[
+        "abs", "acos", "all", "angle", "any", "arrayfun",
+        "asin", "assert", "atan", "atan2",
+        "bitand", "bitnot", "bitor", "bitshift", "bitxor",
+        "ceil", "cell", "cellfun", "chol", "complex", "cond", "conj", "cos", "cov",
+        "cumprod", "cumsum",
+        "det", "diag", "disp", "dlmread", "dlmwrite",
+        "eig", "erf", "erfc", "exist", "exp", "eye",
+        "fclose", "fgetl", "fgets", "fieldnames", "find", "fliplr", "flipud",
+        "floor", "fopen", "fprintf",
+        "genpath",
+        "histc", "hypot",
+        "imag", "int2str", "inv", "iqr", "iscell", "ischar", "isempty", "isfield",
+        "isfile", "isfinite", "isfolder", "isinf", "isnan", "isreal", "isstring", "isstruct",
+        "kurtosis",
+        "lasterr", "length", "linspace", "log", "log10", "log2", "lower", "lu",
+        "mat2str", "max", "mean", "median", "min", "mod", "mode",
+        "nan", "norm", "normcdf", "normpdf", "not", "null", "num2str", "numel",
+        "ones", "orth",
+        "pinv", "prctile", "prod",
+        "qr",
+        "rand", "randi", "randn", "rank", "real", "rem", "reshape", "rmfield", "rng", "round",
+        "sign", "sin", "size", "skewness", "sort", "sprintf", "sqrt", "std",
+        "str2double", "str2num", "strcmp", "strcmpi", "strrep", "strsplit", "strtrim", "sum", "svd",
+        "tan", "trace",
+        "unique", "upper",
+        "var",
+        "xor",
+        "zeros", "zscore",
+    ]
+}
+
+/// Computes the Levenshtein edit distance between two strings.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (m, n) = (a.len(), b.len());
+    let mut row: Vec<usize> = (0..=n).collect();
+    for i in 1..=m {
+        let mut prev = row[0];
+        row[0] = i;
+        for j in 1..=n {
+            let next = if a[i - 1] == b[j - 1] {
+                prev
+            } else {
+                1 + prev.min(row[j]).min(row[j - 1])
+            };
+            prev = row[j];
+            row[j] = next;
+        }
+    }
+    row[n]
+}
+
+/// Finds the closest name in `env` keys and built-in names within Levenshtein distance 2.
+fn suggest_similar(name: &str, env: &Env) -> Option<String> {
+    const MAX_DIST: usize = 2;
+    let mut best: Option<(String, usize)> = None;
+    let mut update = |candidate: &str| {
+        let d = levenshtein(name, candidate);
+        if d <= MAX_DIST {
+            if best.as_ref().map_or(true, |(_, bd)| d < *bd) {
+                best = Some((candidate.to_string(), d));
+            }
+        }
+    };
+    for key in env.keys() {
+        update(key);
+    }
+    for &bname in builtin_names() {
+        update(bname);
+    }
+    best.map(|(s, _)| s)
+}
+
+/// Checks equality of two values for `assert(a, b[, tol])`.
+fn assert_values_equal(a: &Value, b: &Value, tol: Option<f64>) -> Result<Value, String> {
+    match (a, b) {
+        (Value::Scalar(x), Value::Scalar(y)) => {
+            let ok = match tol {
+                None => x == y,
+                Some(t) => (x - y).abs() <= t,
+            };
+            if ok {
+                Ok(Value::Void)
+            } else if let Some(t) = tol {
+                Err(format!(
+                    "assert: |{x} - {y}| = {} exceeds tolerance {t}",
+                    (x - y).abs()
+                ))
+            } else {
+                Err(format!("assert: {x} ~= {y}"))
+            }
+        }
+        (Value::Matrix(ma), Value::Matrix(mb)) => {
+            if ma.shape() != mb.shape() {
+                return Err(format!(
+                    "assert: size mismatch [{}×{}] vs [{}×{}]",
+                    ma.nrows(),
+                    ma.ncols(),
+                    mb.nrows(),
+                    mb.ncols()
+                ));
+            }
+            for (x, y) in ma.iter().zip(mb.iter()) {
+                let ok = match tol {
+                    None => x == y,
+                    Some(t) => (x - y).abs() <= t,
+                };
+                if !ok {
+                    if let Some(t) = tol {
+                        return Err(format!(
+                            "assert: difference {} exceeds tolerance {t}",
+                            (x - y).abs()
+                        ));
+                    } else {
+                        return Err(format!("assert: {x} ~= {y}"));
+                    }
+                }
+            }
+            Ok(Value::Void)
+        }
+        _ => {
+            if tol.is_some() {
+                return Err("assert: tolerance requires numeric arguments".to_string());
+            }
+            if a == b {
+                Ok(Value::Void)
+            } else {
+                Err("assert: values not equal".to_string())
+            }
+        }
     }
 }
 
@@ -4206,7 +4349,41 @@ fn call_builtin(
             _ => Err("pinv: argument must be a real numeric matrix".to_string()),
         },
 
-        _ => Err(format!("Unknown function: '{name}'")),
+        // assert(cond)
+        ("assert", 1) => {
+            let truthy = match &args[0] {
+                Value::Scalar(n) => *n != 0.0 && !n.is_nan(),
+                Value::Matrix(m) => m.iter().all(|&x| x != 0.0 && !x.is_nan()),
+                Value::Complex(re, im) => *re != 0.0 || *im != 0.0,
+                Value::Str(s) | Value::StringObj(s) => !s.is_empty(),
+                _ => false,
+            };
+            if truthy {
+                Ok(Value::Void)
+            } else {
+                Err("assert: condition is false".to_string())
+            }
+        }
+
+        // assert(expected, actual)
+        ("assert", 2) => assert_values_equal(&args[0], &args[1], None),
+
+        // assert(expected, actual, tol)
+        ("assert", 3) => {
+            let tol = match &args[2] {
+                Value::Scalar(t) => *t,
+                _ => return Err("assert: tolerance must be a scalar".to_string()),
+            };
+            assert_values_equal(&args[0], &args[1], Some(tol))
+        }
+
+        _ => {
+            let hint = suggest_similar(name, env);
+            match hint {
+                Some(s) => Err(format!("Unknown function '{name}'; did you mean '{s}'?")),
+                None => Err(format!("Unknown function: '{name}'")),
+            }
+        }
     }
 }
 

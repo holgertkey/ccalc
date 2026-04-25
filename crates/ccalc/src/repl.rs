@@ -1,21 +1,87 @@
 use std::io::{BufRead, Write};
 
-use rustyline::DefaultEditor;
+use rustyline::Editor;
+use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::history::DefaultHistory;
+use rustyline::validate::Validator;
+use rustyline::{Context, Helper};
 
 use ccalc_engine::env::{
     Env, Value, config_dir, load_workspace, load_workspace_default, save_workspace,
     save_workspace_default, save_workspace_vars,
 };
 use ccalc_engine::eval::{
-    Base, Expr, FormatMode, eval, eval_with_io, format_complex, format_number, format_scalar,
-    format_value_full, global_refresh_into_env, global_set, is_global, set_last_err, set_nargout,
+    Base, Expr, FormatMode, builtin_names, eval, eval_with_io, format_complex, format_number,
+    format_scalar, format_value_full, global_refresh_into_env, global_set, is_global, set_last_err,
+    set_nargout,
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
 use ccalc_engine::parser::{
     Stmt, block_depth_delta, is_partial, is_single_line_block, parse, parse_stmts, split_stmts,
 };
+
+/// rustyline helper providing tab completion for variable names and built-in functions.
+struct CcalcHelper {
+    candidates: Vec<String>,
+}
+
+impl CcalcHelper {
+    fn new() -> Self {
+        let candidates = builtin_names().iter().map(|s| s.to_string()).collect();
+        Self { candidates }
+    }
+
+    fn update_env(&mut self, env: &Env) {
+        self.candidates.truncate(builtin_names().len());
+        for key in env.keys() {
+            if key != "ans" && key != "i" && key != "j" {
+                self.candidates.push(key.clone());
+            }
+        }
+    }
+}
+
+impl Completer for CcalcHelper {
+    type Candidate = String;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<String>)> {
+        let to_cursor = &line[..pos];
+        let word_start = to_cursor
+            .rfind(|c: char| !c.is_alphanumeric() && c != '_')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let prefix = &to_cursor[word_start..];
+        if prefix.is_empty() {
+            return Ok((pos, vec![]));
+        }
+        let matches: Vec<String> = self
+            .candidates
+            .iter()
+            .filter(|c| c.starts_with(prefix))
+            .cloned()
+            .collect();
+        Ok((word_start, matches))
+    }
+}
+
+impl Hinter for CcalcHelper {
+    type Hint = String;
+}
+
+impl Highlighter for CcalcHelper {}
+
+impl Validator for CcalcHelper {}
+
+impl Helper for CcalcHelper {}
 
 /// Result of evaluating one input line.
 enum EvalResult {
@@ -253,7 +319,12 @@ pub fn run() {
     let mut compact = false;
     let mut base = cfg.base();
     ccalc_engine::exec::session_path_init(cfg.search_path());
-    let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
+    let rl_config = rustyline::Config::builder()
+        .completion_type(rustyline::CompletionType::List)
+        .build();
+    let mut rl: Editor<CcalcHelper, DefaultHistory> =
+        Editor::with_config(rl_config).expect("Failed to initialize line editor");
+    rl.set_helper(Some(CcalcHelper::new()));
 
     let history_path = config_dir().join("history");
     append_session_marker(&history_path);
@@ -277,6 +348,10 @@ pub fn run() {
         } else {
             format!("[ {} ]: ", format_prompt_ans(&env, base, &fmt))
         };
+
+        if let Some(h) = rl.helper_mut() {
+            h.update_env(&env);
+        }
 
         let input = match rl.readline(&prompt) {
             Ok(line) => line,
@@ -557,7 +632,11 @@ pub fn run() {
 
             // help <topic>
             if let Some(topic) = stmt.strip_prefix("help ").map(str::trim) {
-                crate::help::print(Some(topic));
+                if let Some(Value::Function { doc: Some(d), .. }) = env.get(topic) {
+                    println!("{d}");
+                } else {
+                    crate::help::print(Some(topic));
+                }
                 continue;
             }
 

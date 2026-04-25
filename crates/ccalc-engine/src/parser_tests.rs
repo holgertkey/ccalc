@@ -4285,3 +4285,67 @@ fn test_parse_persistent_stmt() {
     assert_eq!(stmts.len(), 1);
     assert!(matches!(&stmts[0].0, Stmt::Persistent(names) if names == &["a", "b"]));
 }
+
+// ── Phase 19b: function doc extraction ───────────────────────────────────────
+
+#[test]
+fn test_function_doc_single_line() {
+    let src = "% Compute square root.\nfunction y = f(x)\n  y = sqrt(x);\nend";
+    let stmts = parse_stmts(src).unwrap();
+    assert_eq!(stmts.len(), 1);
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(doc.as_deref(), Some("Compute square root."));
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_multi_line() {
+    let src = "% Line one.\n% Line two.\nfunction y = f(x)\n  y = x;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(doc.as_deref(), Some("Line one.\nLine two."));
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_none_when_no_comment() {
+    let src = "function y = f(x)\n  y = x;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(*doc, None);
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_stops_at_blank_line() {
+    // Blank line between comment and function: comment does NOT become doc
+    let src = "% Unrelated comment.\n\nfunction y = f(x)\n  y = x;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(*doc, None);
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_hash_comment() {
+    let src = "# Compute pi.\nfunction y = f()\n  y = 3.14;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(doc.as_deref(), Some("Compute pi."));
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}

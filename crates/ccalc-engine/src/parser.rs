@@ -74,6 +74,8 @@ pub enum Stmt {
         params: Vec<String>,
         /// Raw source text of the function body, stored verbatim for re-parsing on each call.
         body_source: String,
+        /// Documentation extracted from `%`-prefixed lines immediately before the `function` keyword.
+        doc: Option<String>,
     },
     /// `return` — exits the current function immediately.
     ///
@@ -1596,6 +1598,25 @@ fn parse_stmts_from_lines(
                     return Err("Expected function header after 'function'".to_string());
                 }
                 let (name, outputs, params) = parse_function_header(header)?;
+
+                // Extract leading doc comments from the raw lines immediately before this function.
+                let doc = {
+                    let mut doc_lines: Vec<String> = Vec::new();
+                    let mut look = *pos;
+                    while look > 0 {
+                        look -= 1;
+                        let raw = lines[look].trim();
+                        if raw.starts_with('%') || raw.starts_with('#') {
+                            let text = raw.trim_start_matches(['%', '#']).trim().to_string();
+                            doc_lines.push(text);
+                        } else {
+                            break;
+                        }
+                    }
+                    doc_lines.reverse();
+                    if doc_lines.is_empty() { None } else { Some(doc_lines.join("\n")) }
+                };
+
                 *pos += 1;
                 // Collect raw body lines until the matching 'end', tracking nested block depth.
                 // Single-line blocks (e.g. `if cond; body; end`) count as zero depth change.
@@ -1627,6 +1648,7 @@ fn parse_stmts_from_lines(
                         outputs,
                         params,
                         body_source,
+                        doc,
                     },
                     false,
                 ));
