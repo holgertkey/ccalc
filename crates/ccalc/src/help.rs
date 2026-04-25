@@ -302,6 +302,14 @@ Comments
     10 * 5  % inline comment — expression still evaluates
     10 * 5  # hash-style inline comment
 
+    Block comments (multi-line):
+    %{{
+      Everything between %{{ and %}} is ignored.
+      %{{ and %}} must be the leading non-whitespace content on their line.
+    %}}
+    #{{ ... #}}  is the hash-style equivalent.
+    A self-contained form %{{ ... %}} on a single line is also valid.
+
 Semicolons and commas
     Trailing ; suppresses output.
     Expressions — ans is still updated:    0.06 / 12;

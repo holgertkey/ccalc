@@ -634,8 +634,7 @@ pub fn run() {
             if let Some(topic) = stmt.strip_prefix("help ").map(str::trim) {
                 let doc = if let Some(Value::Function { doc: Some(d), .. }) = env.get(topic) {
                     Some(d.clone())
-                } else if let Some(Value::Function { doc: Some(d), .. }) =
-                    resolve_autoloaded(topic)
+                } else if let Some(Value::Function { doc: Some(d), .. }) = resolve_autoloaded(topic)
                 {
                     Some(d)
                 } else {

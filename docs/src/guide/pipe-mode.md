@@ -28,11 +28,25 @@ ccalc < formula.txt
 
 ### Comments
 
-`%` starts a comment (Octave/MATLAB convention):
+`%` starts a line comment (Octave/MATLAB convention):
 
 ```
 % full-line comment — line is skipped entirely
 10 * 5  % inline comment — expression still evaluates
+# hash-style comment — same behaviour
+```
+
+Multi-line **block comments** use `%{` … `%}` (or `#{` … `#}`). The opening
+and closing markers must be the leading non-whitespace content on their line:
+
+```matlab
+%{
+  This entire block is ignored by the parser.
+  Useful for commenting out sections of code.
+%}
+x = 42;   % this line executes normally
+
+%{ also works on a single line %}
 ```
 
 ### Semicolon — suppress output

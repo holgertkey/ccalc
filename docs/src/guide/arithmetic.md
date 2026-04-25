@@ -10,7 +10,28 @@
 | `/` | Division | `10 / 4` → `2.5` |
 | `^` | Exponentiation (right-associative) | `2 ^ 10` → `1024` |
 
-For modulo use the `mod(a, b)` function. `%` is a comment character.
+For modulo use the `mod(a, b)` function. `%` is a **comment character**, not a modulo operator.
+
+## Comments
+
+`%` and `#` start line comments. Everything to the right is ignored:
+
+```
+% full-line comment
+x = 5;   % inline comment — x is still assigned
+```
+
+Multi-line **block comments** span from `%{` to `%}` (each on its own line):
+
+```matlab
+%{
+  Everything inside this block is ignored.
+  The %{ and %} must be the only non-whitespace content on their line.
+%}
+y = 10;
+```
+
+A same-line form `%{ text %}` is also valid. Hash-style `#{` … `#}` works identically.
 
 ## Comparison operators
 

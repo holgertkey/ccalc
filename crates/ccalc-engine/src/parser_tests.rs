@@ -4389,8 +4389,7 @@ fn test_block_depth_delta_self_contained() {
 #[test]
 fn test_block_comment_does_not_break_function_doc() {
     // Doc comment before %{ block: only the leading % lines are collected.
-    let src =
-        "function y = foo(x)\n% Doc line\n%{\nsome block comment\n%}\n  y = x;\nend";
+    let src = "function y = foo(x)\n% Doc line\n%{\nsome block comment\n%}\n  y = x;\nend";
     let stmts = parse_stmts(src).unwrap();
     match &stmts[0].0 {
         Stmt::FunctionDef { doc, .. } => {
@@ -4399,4 +4398,3 @@ fn test_block_comment_does_not_break_function_doc() {
         other => panic!("expected FunctionDef, got {other:?}"),
     }
 }
-

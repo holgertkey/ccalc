@@ -1230,7 +1230,11 @@ pub fn block_depth_delta(line: &str) -> i32 {
     if trimmed.starts_with("%{") || trimmed.starts_with("#{") {
         let rest = &trimmed[2..];
         // Self-contained %{ … %} on one line → net delta 0
-        return if rest.contains("%}") || rest.contains("#}") { 0 } else { 1 };
+        return if rest.contains("%}") || rest.contains("#}") {
+            0
+        } else {
+            1
+        };
     }
     if trimmed.starts_with("%}") || trimmed.starts_with("#}") {
         return -1;
