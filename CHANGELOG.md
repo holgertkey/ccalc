@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Phase 19 — REPL tooling:**
   - **19a — Tab completion**: `Tab` key completes variable names and built-in function names in the REPL. Candidates are updated after each statement from the current environment plus the full built-in list. Implemented via a custom `rustyline` helper (`CcalcHelper`).
-  - **19b — Inline help for user functions**: Leading `%`-comment lines immediately before a `function` keyword are extracted as a documentation string and stored in `Value::Function { doc }`. `help <name>` now prints the doc string when the name is a user-defined function with a doc comment, before falling back to the built-in help system.
+  - **19b — Inline help for user functions**: `%`-comment lines immediately **after** the `function` header (MATLAB H1-line style) are extracted as a doc string and stored in `Value::Function { doc }`. One leading space after `%` is stripped; remaining indentation is preserved. `help <name>` searches the workspace first, then triggers the autoload hook on demand so that `help bisect` works before `bisect()` is ever called. `resolve_autoloaded()` added to `ccalc-engine::eval` as a public API for this lookup.
   - **19c — "Did you mean?" suggestions**: Undefined-variable and unknown-function errors now suggest the closest known name (Levenshtein distance ≤ 2) from the current environment and the built-in function list.
   - **19d — Assertion built-ins**:
     - `assert(cond)` — throws `"assert: condition is false"` when the condition is falsy.

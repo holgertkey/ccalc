@@ -174,16 +174,17 @@ add5(add10(1))  % 16
 
 ## Documentation comments
 
-Place `%`-prefixed lines **immediately before** the `function` keyword to
-document a function. The REPL command `help <name>` displays them:
+Place `%`-prefixed lines **immediately after** the `function` header to
+document a function (MATLAB H1-line convention). The REPL command `help <name>`
+displays them:
 
 ```matlab
+function t = tri(n)
 % Return the nth triangular number T(n) = n*(n+1)/2.
 % Usage: t = tri(n)
 %
 % Example:
 %   tri(4)  →  10
-function t = tri(n)
   t = n * (n + 1) / 2;
 end
 ```
@@ -198,9 +199,13 @@ Example:
 ```
 
 - Any number of consecutive `%` lines form the doc block.
-- A **blank line** between the comment and `function` breaks the association —
-  only lines that touch the `function` keyword (no gap) are collected.
+- A **blank line** between the `function` header and the first `%` breaks the
+  association — only lines that immediately follow the header are collected.
+- One leading space after `%` is stripped; remaining indentation is preserved,
+  so `%     example` displays as `    example`.
 - `#`-style comments work the same way.
+- `help <name>` works for autoloaded functions on the path **before** the first
+  call — ccalc loads the file on demand to extract the doc.
 
 ---
 

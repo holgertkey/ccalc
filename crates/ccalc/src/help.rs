@@ -2016,6 +2016,34 @@ USER-DEFINED FUNCTIONS AND LAMBDAS  (help userfuncs)
 
   See  help scoping  for full documentation with examples.
 
+─── Documentation comments ────────────────────────────────────────────────────
+
+  Place % lines immediately AFTER the function header (MATLAB H1-line style).
+  help <name> prints them.
+
+    function y = tri(n)
+    % Return the nth triangular number T(n) = n*(n+1)/2.
+    % Usage: t = tri(n)
+    %
+    % Example:
+    %   tri(4)  →  10
+      y = n * (n + 1) / 2;
+    end
+
+    >> help tri
+    Return the nth triangular number T(n) = n*(n+1)/2.
+    Usage: t = tri(n)
+
+    Example:
+      tri(4)  →  10
+
+  Rules:
+    - Consecutive % (or #) lines right after the function header form the block.
+    - A blank line between the header and the first % breaks the association.
+    - One leading space after % is stripped; further indentation is kept.
+    - help <name> also works for functions on the path not yet called —
+      the file is loaded on demand to extract the doc.
+
 See also: help control  help functions  help cells  help scoping
 Example:  ccalc examples/user_functions.calc
           ccalc examples/cell_arrays.calc

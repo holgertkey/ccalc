@@ -68,22 +68,26 @@ is inserted. Press `Tab` again to cycle or type more characters to narrow down.
 
 ## Inline help for user functions
 
-Any function prefixed with a `%`-comment block gets that block as its doc string.
-`help <name>` prints it:
+Place `%`-comment lines **immediately after** the `function` header (MATLAB
+H1-line style) to attach a doc string. `help <name>` prints it:
 
 ```matlab
-% Compute the nth triangular number T(n) = n*(n+1)/2.
-% Usage: t = tri(n)
 function t = tri(n)
+% Return the nth triangular number T(n) = n*(n+1)/2.
+% Usage: t = tri(n)
   t = n * (n + 1) / 2;
 end
 ```
 
 ```
 >> help tri
-Compute the nth triangular number T(n) = n*(n+1)/2.
+Return the nth triangular number T(n) = n*(n+1)/2.
 Usage: t = tri(n)
 ```
+
+`help <name>` searches the current workspace first, then — for functions on the
+session path — loads the file on demand, so `help bisect` works even before
+`bisect()` has been called.
 
 ## "Did you mean?" error hints
 
