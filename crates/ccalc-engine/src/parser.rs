@@ -1607,7 +1607,12 @@ fn parse_stmts_from_lines(
                         look -= 1;
                         let raw = lines[look].trim();
                         if raw.starts_with('%') || raw.starts_with('#') {
-                            let text = raw.trim_start_matches(['%', '#']).trim().to_string();
+                            let stripped = raw.trim_start_matches(['%', '#']);
+                            let text = stripped
+                                .strip_prefix(' ')
+                                .unwrap_or(stripped)
+                                .trim_end()
+                                .to_string();
                             doc_lines.push(text);
                         } else {
                             break;
@@ -1625,6 +1630,39 @@ fn parse_stmts_from_lines(
                 // Collect raw body lines until the matching 'end', tracking nested block depth.
                 // Single-line blocks (e.g. `if cond; body; end`) count as zero depth change.
                 let body_start = *pos;
+
+                // Extract post-header doc comments (MATLAB H1-line style):
+                // consecutive % / # lines immediately after the function header.
+                let post_doc = {
+                    let mut doc_lines: Vec<String> = Vec::new();
+                    let mut scan = body_start;
+                    while scan < lines.len() {
+                        let raw = lines[scan].trim();
+                        if raw.starts_with('%') || raw.starts_with('#') {
+                            let stripped = raw.trim_start_matches(['%', '#']);
+                            let text = stripped
+                                .strip_prefix(' ')
+                                .unwrap_or(stripped)
+                                .trim_end()
+                                .to_string();
+                            doc_lines.push(text);
+                            scan += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if doc_lines.is_empty() {
+                        None
+                    } else {
+                        Some(doc_lines.join("\n"))
+                    }
+                };
+                // Post-header comments take priority (MATLAB convention); pre-header is fallback.
+                let doc = match (doc, post_doc) {
+                    (_, Some(post)) => Some(post),
+                    (pre, None) => pre,
+                };
+
                 let mut depth: i32 = 1;
                 while *pos < lines.len() && depth > 0 {
                     let l = strip_line_comment(lines[*pos]).trim();

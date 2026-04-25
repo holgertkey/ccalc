@@ -4349,3 +4349,60 @@ fn test_function_doc_hash_comment() {
         other => panic!("expected FunctionDef, got {other:?}"),
     }
 }
+
+// ── Phase 19b: H1-line style — doc after function header ─────────────────────
+
+#[test]
+fn test_function_doc_post_header_single_line() {
+    let src = "function y = f(x)\n% Compute square root.\n  y = sqrt(x);\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(doc.as_deref(), Some("Compute square root."));
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_post_header_multi_line() {
+    let src = "function [c] = add_numbers(a, b)\n% ADD_NUMBERS Add two numbers.\n% C = ADD_NUMBERS(A, B) returns A+B.\n%\n% Example:\n%     c = add_numbers(5, 10);\n  c = a + b;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(
+                doc.as_deref(),
+                Some(
+                    "ADD_NUMBERS Add two numbers.\nC = ADD_NUMBERS(A, B) returns A+B.\n\nExample:\n    c = add_numbers(5, 10);"
+                )
+            );
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_post_header_stops_at_blank_line() {
+    // Blank line between header and first comment: no post-header doc.
+    let src = "function y = f(x)\n\n% Not a doc comment.\n  y = x;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(*doc, None);
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_function_doc_post_header_overrides_pre() {
+    // Post-header doc takes priority over pre-header comment.
+    let src = "% Pre-header comment.\nfunction y = f(x)\n% Post-header H1 line.\n  y = x;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(doc.as_deref(), Some("Post-header H1 line."));
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
