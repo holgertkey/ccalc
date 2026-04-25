@@ -1599,41 +1599,14 @@ fn parse_stmts_from_lines(
                 }
                 let (name, outputs, params) = parse_function_header(header)?;
 
-                // Extract leading doc comments from the raw lines immediately before this function.
-                let doc = {
-                    let mut doc_lines: Vec<String> = Vec::new();
-                    let mut look = *pos;
-                    while look > 0 {
-                        look -= 1;
-                        let raw = lines[look].trim();
-                        if raw.starts_with('%') || raw.starts_with('#') {
-                            let stripped = raw.trim_start_matches(['%', '#']);
-                            let text = stripped
-                                .strip_prefix(' ')
-                                .unwrap_or(stripped)
-                                .trim_end()
-                                .to_string();
-                            doc_lines.push(text);
-                        } else {
-                            break;
-                        }
-                    }
-                    doc_lines.reverse();
-                    if doc_lines.is_empty() {
-                        None
-                    } else {
-                        Some(doc_lines.join("\n"))
-                    }
-                };
-
                 *pos += 1;
                 // Collect raw body lines until the matching 'end', tracking nested block depth.
                 // Single-line blocks (e.g. `if cond; body; end`) count as zero depth change.
                 let body_start = *pos;
 
-                // Extract post-header doc comments (MATLAB H1-line style):
-                // consecutive % / # lines immediately after the function header.
-                let post_doc = {
+                // Extract doc comments (MATLAB H1-line style): consecutive % / # lines
+                // immediately after the function header.
+                let doc = {
                     let mut doc_lines: Vec<String> = Vec::new();
                     let mut scan = body_start;
                     while scan < lines.len() {
@@ -1656,11 +1629,6 @@ fn parse_stmts_from_lines(
                     } else {
                         Some(doc_lines.join("\n"))
                     }
-                };
-                // Post-header comments take priority (MATLAB convention); pre-header is fallback.
-                let doc = match (doc, post_doc) {
-                    (_, Some(post)) => Some(post),
-                    (pre, None) => pre,
                 };
 
                 let mut depth: i32 = 1;

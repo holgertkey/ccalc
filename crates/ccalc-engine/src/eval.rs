@@ -63,6 +63,23 @@ pub fn autoload_cache_insert(name: String, val: Value) {
     AUTOLOAD_CACHE.with(|c| c.borrow_mut().insert(name, val));
 }
 
+/// Returns an autoloaded function by name, triggering the autoload hook if needed.
+///
+/// Checks the cache first; if not present, fires the registered hook (which searches
+/// the session path for `<name>.calc` / `<name>.m`). Returns `None` when neither the
+/// cache nor the hook can resolve the name.
+pub fn resolve_autoloaded(name: &str) -> Option<Value> {
+    let cached = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned());
+    if cached.is_some() {
+        return cached;
+    }
+    let hook = AUTOLOAD_HOOK.with(|c| c.get());
+    if let Some(f) = hook {
+        f(name);
+    }
+    AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
+}
+
 // ── Last error (thread-local) ────────────────────────────────────────────────
 
 thread_local! {

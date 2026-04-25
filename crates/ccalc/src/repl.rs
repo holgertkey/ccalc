@@ -15,8 +15,8 @@ use ccalc_engine::env::{
 };
 use ccalc_engine::eval::{
     Base, Expr, FormatMode, builtin_names, eval, eval_with_io, format_complex, format_number,
-    format_scalar, format_value_full, global_refresh_into_env, global_set, is_global, set_last_err,
-    set_nargout,
+    format_scalar, format_value_full, global_refresh_into_env, global_set, is_global,
+    resolve_autoloaded, set_last_err, set_nargout,
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
@@ -632,7 +632,16 @@ pub fn run() {
 
             // help <topic>
             if let Some(topic) = stmt.strip_prefix("help ").map(str::trim) {
-                if let Some(Value::Function { doc: Some(d), .. }) = env.get(topic) {
+                let doc = if let Some(Value::Function { doc: Some(d), .. }) = env.get(topic) {
+                    Some(d.clone())
+                } else if let Some(Value::Function { doc: Some(d), .. }) =
+                    resolve_autoloaded(topic)
+                {
+                    Some(d)
+                } else {
+                    None
+                };
+                if let Some(d) = doc {
                     println!("{d}");
                 } else {
                     crate::help::print(Some(topic));
