@@ -4330,3 +4330,73 @@ fn test_function_doc_post_header_stops_at_blank_line() {
     }
 }
 
+// ── Block comment tests ──────────────────────────────────────────────────────
+
+#[test]
+fn test_block_comment_single_line() {
+    // %{ ... %} on one line is stripped; adjacent statements survive.
+    let stmts = parse_stmts("x = 1\n%{ this is a block comment %}\ny = 2").unwrap();
+    assert_eq!(stmts.len(), 2);
+}
+
+#[test]
+fn test_block_comment_multi_line() {
+    let input = "x = 1\n%{\nThis is a\nmulti-line comment\n%}\ny = 2";
+    let stmts = parse_stmts(input).unwrap();
+    assert_eq!(stmts.len(), 2);
+}
+
+#[test]
+fn test_block_comment_hash_syntax() {
+    let input = "x = 1\n#{\ncomment\n#}\ny = 2";
+    let stmts = parse_stmts(input).unwrap();
+    assert_eq!(stmts.len(), 2);
+}
+
+#[test]
+fn test_block_comment_at_start() {
+    let input = "%{\nThis is a\nblock comment\n%}\nx = 42";
+    let stmts = parse_stmts(input).unwrap();
+    assert_eq!(stmts.len(), 1);
+}
+
+#[test]
+fn test_block_comment_unterminated() {
+    let input = "x = 1\n%{\nno closing marker\n";
+    assert!(parse_stmts(input).is_err());
+}
+
+#[test]
+fn test_block_depth_delta_open() {
+    assert_eq!(block_depth_delta("%{"), 1);
+    assert_eq!(block_depth_delta("  %{  "), 1);
+    assert_eq!(block_depth_delta("#{"), 1);
+}
+
+#[test]
+fn test_block_depth_delta_close() {
+    assert_eq!(block_depth_delta("%}"), -1);
+    assert_eq!(block_depth_delta("  %}  "), -1);
+    assert_eq!(block_depth_delta("#}"), -1);
+}
+
+#[test]
+fn test_block_depth_delta_self_contained() {
+    assert_eq!(block_depth_delta("%{ comment %}"), 0);
+    assert_eq!(block_depth_delta("%{%}"), 0);
+}
+
+#[test]
+fn test_block_comment_does_not_break_function_doc() {
+    // Doc comment before %{ block: only the leading % lines are collected.
+    let src =
+        "function y = foo(x)\n% Doc line\n%{\nsome block comment\n%}\n  y = x;\nend";
+    let stmts = parse_stmts(src).unwrap();
+    match &stmts[0].0 {
+        Stmt::FunctionDef { doc, .. } => {
+            assert_eq!(doc.as_deref(), Some("Doc line"));
+        }
+        other => panic!("expected FunctionDef, got {other:?}"),
+    }
+}
+

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     - `assert(expected, actual)` — checks equality (scalars exact, matrices element-wise).
     - `assert(expected, actual, tol)` — checks `|expected - actual| ≤ tol` element-wise.
   - `builtin_names()` — new public function in `ccalc-engine::eval` returning the complete list of built-in function names (used for completion and suggestions).
+  - **Block comments** (`%{ … %}` / `#{ … #}`): multi-line block comments are now stripped before parsing. The opening marker and all content up to the closing marker are replaced with blank lines (line numbers preserved for error reporting). Same-line `%{ … %}` is also supported. Unterminated block comments produce a parse error. `block_depth_delta` updated so the REPL correctly buffers lines inside `%{…%}` blocks.
 
 ## [0.22.0+003] - 2026-04-24
 

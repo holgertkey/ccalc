@@ -1224,6 +1224,17 @@ pub fn split_stmts(input: &str) -> Vec<(&str, bool)> {
 /// Used by the REPL to decide whether to buffer more lines before executing.
 /// `if`/`for`/`while` → +1; `end` → -1; all other lines → 0.
 pub fn block_depth_delta(line: &str) -> i32 {
+    let trimmed = line.trim();
+    // Block comment delimiters must be checked before strip_line_comment, which
+    // would otherwise consume everything starting at the leading '%'.
+    if trimmed.starts_with("%{") || trimmed.starts_with("#{") {
+        let rest = &trimmed[2..];
+        // Self-contained %{ … %} on one line → net delta 0
+        return if rest.contains("%}") || rest.contains("#}") { 0 } else { 1 };
+    }
+    if trimmed.starts_with("%}") || trimmed.starts_with("#}") {
+        return -1;
+    }
     let stripped = strip_line_comment(line).trim();
     match leading_keyword(stripped) {
         Some("if") | Some("for") | Some("while") | Some("switch") | Some("do")
@@ -1250,6 +1261,50 @@ pub fn is_single_line_block(line: &str) -> bool {
         parts.last().map(|s| leading_keyword(s.trim())),
         Some(Some("end" | "until"))
     )
+}
+
+/// Strips block comments (`%{ … %}` or `#{ … #}`) from a slice of lines.
+///
+/// The opening `%{` and closing `%}` lines (and all content between them) are
+/// replaced with empty strings, preserving the total line count so that any
+/// subsequent error messages still refer to the correct original line numbers.
+///
+/// A same-line form `%{ … %}` is also recognised and blanked.
+///
+/// Returns an error if the input ends inside an unterminated block comment.
+fn strip_block_comments(lines: &[&str]) -> Result<Vec<String>, String> {
+    let mut result = Vec::with_capacity(lines.len());
+    let mut in_block = false;
+
+    for &line in lines {
+        let trimmed = line.trim();
+
+        if !in_block {
+            if trimmed.starts_with("%{") || trimmed.starts_with("#{") {
+                let rest = &trimmed[2..];
+                if rest.contains("%}") || rest.contains("#}") {
+                    // Self-contained block comment on one line — blank it
+                    result.push(String::new());
+                } else {
+                    in_block = true;
+                    result.push(String::new());
+                }
+            } else {
+                result.push(line.to_string());
+            }
+        } else {
+            if trimmed.starts_with("%}") || trimmed.starts_with("#}") {
+                in_block = false;
+            }
+            result.push(String::new());
+        }
+    }
+
+    if in_block {
+        Err("Unterminated block comment: missing closing '%}'".to_string())
+    } else {
+        Ok(result)
+    }
 }
 
 /// Joins lines ending with `...` (line continuation) into a single logical line.
@@ -1360,7 +1415,10 @@ fn split_block_line(line: &str) -> Vec<String> {
 /// Block keywords (`if`/`for`/`while`/`end`/…) are handled recursively.
 /// Each statement carries a `silent` flag (`true` when terminated by `;`).
 pub fn parse_stmts(input: &str) -> Result<Vec<(Stmt, bool)>, String> {
-    let joined = join_line_continuations(input);
+    let raw_lines: Vec<&str> = input.lines().collect();
+    let stripped = strip_block_comments(&raw_lines)?;
+    let stripped_str = stripped.join("\n");
+    let joined = join_line_continuations(&stripped_str);
     let lines: Vec<&str> = joined.lines().collect();
     let mut pos = 0;
     parse_stmts_from_lines(&lines, &mut pos, &[])
