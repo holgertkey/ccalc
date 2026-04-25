@@ -172,6 +172,38 @@ add5(add10(1))  % 16
 
 ---
 
+## Documentation comments
+
+Place `%`-prefixed lines **immediately before** the `function` keyword to
+document a function. The REPL command `help <name>` displays them:
+
+```matlab
+% Return the nth triangular number T(n) = n*(n+1)/2.
+% Usage: t = tri(n)
+%
+% Example:
+%   tri(4)  →  10
+function t = tri(n)
+  t = n * (n + 1) / 2;
+end
+```
+
+```
+>> help tri
+Return the nth triangular number T(n) = n*(n+1)/2.
+Usage: t = tri(n)
+
+Example:
+  tri(4)  →  10
+```
+
+- Any number of consecutive `%` lines form the doc block.
+- A **blank line** between the comment and `function` breaks the association —
+  only lines that touch the `function` keyword (no gap) are collected.
+- `#`-style comments work the same way.
+
+---
+
 ## Function files and autoload
 
 A `.calc` (or `.m`) file that begins with a `function` definition is a

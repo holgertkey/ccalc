@@ -55,4 +55,20 @@ lasterr()      % message from most recent error
 lasterr('')    % clear
 ```
 
+## "Did you mean?" hints
+
+When a name is not found, ccalc compares it against all known variable names and
+built-in function names using edit distance. If a close match exists (at most 2
+edits away), it is shown as a suggestion:
+
+```
+>> sqrtt(4)
+Error: Unknown function 'sqrtt'; did you mean 'sqrt'?
+
+>> my_valu + 1
+Error: Undefined variable 'my_valu'; did you mean 'my_value'?
+```
+
+No suggestion is shown when no close match exists.
+
 See [`help errors`](../ccalc/phase14-error-handling.md) for the full reference.

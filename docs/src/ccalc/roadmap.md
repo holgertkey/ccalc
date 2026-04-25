@@ -36,6 +36,7 @@ The work is divided into phases in order of architectural dependency.
 | 16 | Package namespaces (`+pkg/` directories, `pkg.func(args)` call syntax) | ✅ Done |
 | 17 | Random numbers and statistics (`rand`, `randn`, `std`, `var`, `median`, `skewness`, `kurtosis`) | ✅ Done |
 | 18 | Advanced linear algebra (`qr`, `lu`, `chol`, `svd`, `eig`, `rank`, `null`, `orth`, `cond`, `pinv`, matrix `norm`) | ✅ Done |
+| 19 | REPL tooling: tab completion, inline `help <fn>`, "did you mean?" hints, `assert` built-ins | ✅ Done |
 
 ## Key architectural decisions
 
@@ -231,6 +232,27 @@ cubic convergence on symmetric matrices), and `complete_orthonormal_basis`
 `evaluate()` sites) lets multi-output built-ins return a `Value::Tuple` or a single
 value depending on the number of LHS targets. Matrix `norm` is updated to use SVD
 for the 2-norm of non-vector matrices.
+
+**Phase 19** adds four developer-experience improvements:
+- **19a — Tab completion**: `rustyline` is upgraded from `DefaultEditor` to a typed
+  `Editor<CcalcHelper, DefaultHistory>` with a custom `CcalcHelper` that implements
+  the `Completer` trait. Completion matches any prefix against all variable names in
+  the current `Env` plus the ~90 built-in names returned by `builtin_names()`.
+  Hinter, Highlighter, and Validator are no-op stubs (rustyline requires all four
+  traits to be implemented).
+- **19b — Inline help for user functions**: `Stmt::FunctionDef` and `Value::Function`
+  gain an `Option<String>` `doc` field. `parse_stmts_from_lines` scans backward from
+  the `function` keyword through consecutive `%`/`#`-prefixed lines and assembles the
+  doc string (empty lines break the scan). `help <name>` in the REPL checks this field
+  before falling through to the built-in topic list.
+- **19c — "Did you mean?" hints**: `suggest_similar(name, env)` in `eval.rs` computes
+  the Levenshtein edit distance from the misspelled name to each env key and built-in
+  name. The closest match within distance 2 is appended to "Undefined variable" and
+  "Unknown function" error messages.
+- **19d — `assert` built-ins**: Three overloads are added to `call_builtin`:
+  `assert(cond)` — truthy check; `assert(expected, actual)` — exact equality;
+  `assert(expected, actual, tol)` — tolerance check. All three work on scalars and
+  matrices. The implementation lives in `assert_values_equal()`.
 
 ## Compatibility notes
 

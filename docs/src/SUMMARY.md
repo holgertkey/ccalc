@@ -65,3 +65,4 @@
 - [Phase 16 — Package Namespaces](./ccalc/phase16-packages.md)
 - [Phase 17 — Statistics & Random Numbers](./ccalc/phase17-statistics.md)
 - [Phase 18 — Advanced Linear Algebra](./ccalc/phase18-linear-algebra.md)
+- [Phase 19 — REPL Tooling](./ccalc/phase19-repl-tooling.md)

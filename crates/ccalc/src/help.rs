@@ -53,10 +53,11 @@ pub fn print(topic: Option<&str>) {
             | "svd" | "qr" | "lu" | "eig" | "chol" | "cholesky" | "rank" | "null" | "orth" | "cond"
             | "pinv",
         ) => print_linalg(),
+        Some("testing" | "assert" | "test" | "tests") => print_testing(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
             );
         }
     }
@@ -159,6 +160,9 @@ Errors    error('msg')  error('fmt', v...)  raise a runtime error
           try / catch e / end              named: e.message = error string
           try(expr, default)               inline fallback (lazy default)
           pcall(@f, args...)               [ok, val] = pcall(...)
+Testing   assert(cond)                     pass if cond is truthy
+          assert(expected, actual)         exact equality check
+          assert(expected, actual, tol)    tolerance check  |a-b| <= tol
 Scripts   run('file.calc')  run('file')     .calc first, then .m
           source('file')                    Octave alias for run()
 Path      addpath('/dir')                   prepend to session search path
@@ -220,6 +224,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help cells       cell arrays, varargin/varargout, cellfun, arrayfun
   help structs     scalar structs + struct arrays, field access, fieldnames/isfield/rmfield
   help errors      error/warning, try/catch, try(expr,default), pcall
+  help testing     assert(cond), assert(a,b), assert(a,b,tol) — unit testing
   help scoping     global/persistent variables, private/ dirs, packages (pkg.func)
   help bases       number bases, display switching
   help format      number display format modes (short/long/bank/rat/hex/+)
@@ -2597,5 +2602,55 @@ Multi-output functions use  [a, b, ...] = f(x)  assignment syntax.
 
 See also: help matrices  help vectors  help functions
 Example:  ccalc examples/linear_algebra.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help testing
+// ---------------------------------------------------------------------------
+
+fn print_testing() {
+    println!(
+        "\
+TESTING — assert built-ins
+
+assert(cond)
+    Pass if cond is truthy (nonzero scalar, nonempty string, …).
+    Throw an error if cond is falsy (0, NaN, empty).
+
+    assert(1)             % passes
+    assert(pi > 3)        % passes
+    assert(0)             % error: assertion failed
+    assert(nan)           % error: assertion failed (NaN is always falsy)
+
+assert(expected, actual)
+    Pass if expected == actual (exact element-wise equality).
+    Works on scalars, vectors, and matrices of the same shape.
+
+    assert(4, 2 + 2)                % passes
+    assert([1 4 9], [1 2 3].^2)    % passes
+    assert(5, 6)                    % error: expected 5, got 6
+
+assert(expected, actual, tol)
+    Pass if |expected - actual| <= tol for every element.
+    Useful for floating-point results.
+
+    assert(0.3333, 1/3, 1e-4)      % passes
+    assert(2, exp(1), 0.5)         % passes  (|2 - 2.718...| = 0.718 > 0.5? no)
+    assert(1, 2, 0.1)              % error: |1 - 2| = 1 > 0.1
+
+Practical pattern — doc comment + assert as a test harness
+    % Returns the nth triangular number T(n) = n*(n+1)/2.
+    function t = tri(n)
+      t = n * (n + 1) / 2;
+    end
+
+    assert(0,  tri(0))
+    assert(1,  tri(1))
+    assert(10, tri(4))
+    assert(55, tri(10))
+
+See also: help errors  help userfuncs
+Example:  ccalc examples/repl_tooling.calc"
     );
 }

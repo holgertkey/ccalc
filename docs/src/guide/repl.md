@@ -33,6 +33,7 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | `cls` | Clear the screen (also `Ctrl+L`) |
 | `help`, `?` | Show cheatsheet |
 | `help <topic>` | Detailed help (see topic list below) |
+| `help <name>` | Show doc comment of a user-defined function |
 | `who` | Show all defined variables |
 | `clear` | Clear all variables |
 | `clear <name>` | Clear a single variable |
@@ -48,7 +49,55 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | `config reload` | Re-read `config.toml` and apply changes |
 
 Help topics for `help <topic>`:
-`syntax` `functions` `bases` `vars` `script` `matrices` `examples`
+`syntax` `functions` `userfuncs` `testing` `bases` `vars` `script` `matrices` `examples`
+
+## Tab completion
+
+Press `Tab` in the REPL to complete the current word:
+
+- **Variable names** defined in the current session.
+- **Built-in function names** (`sqrt`, `mean`, `assert`, …).
+
+When multiple candidates match, they are listed and the longest common prefix
+is inserted. Press `Tab` again to cycle or type more characters to narrow down.
+
+```
+>> inv<Tab>       → inv(
+>> my_fun<Tab>    → my_function   (if defined)
+```
+
+## Inline help for user functions
+
+Any function prefixed with a `%`-comment block gets that block as its doc string.
+`help <name>` prints it:
+
+```matlab
+% Compute the nth triangular number T(n) = n*(n+1)/2.
+% Usage: t = tri(n)
+function t = tri(n)
+  t = n * (n + 1) / 2;
+end
+```
+
+```
+>> help tri
+Compute the nth triangular number T(n) = n*(n+1)/2.
+Usage: t = tri(n)
+```
+
+## "Did you mean?" error hints
+
+When a name is not found, ccalc compares it against known variables and
+built-in names using edit distance. If a close match exists (at most 2 edits),
+it is shown as a suggestion:
+
+```
+>> sqrtt(4)
+Error: Unknown function 'sqrtt'; did you mean 'sqrt'?
+
+>> my_valu + 1
+Error: Undefined variable 'my_valu'; did you mean 'my_value'?
+```
 
 ## Keyboard shortcuts
 
