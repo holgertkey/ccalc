@@ -2220,6 +2220,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "isreal",
         "isstring",
         "isstruct",
+        "jsonencode",
+        "jsondecode",
         "kurtosis",
         "lasterr",
         "length",
@@ -4467,6 +4469,10 @@ fn call_builtin(
             _ => Err("pinv: argument must be a real numeric matrix".to_string()),
         },
 
+        // jsondecode(str) / jsonencode(val)
+        ("jsondecode", 1) => jsondecode_impl(&args[0]),
+        ("jsonencode", 1) => jsonencode_impl(&args[0]),
+
         // assert(cond)
         ("assert", 1) => {
             let truthy = match &args[0] {
@@ -5988,6 +5994,37 @@ fn trim_sci(s: &str) -> String {
     } else {
         s.to_string()
     }
+}
+
+// --- JSON built-in helpers ---
+
+#[cfg(feature = "json")]
+fn jsondecode_impl(arg: &Value) -> Result<Value, String> {
+    let s = match arg {
+        Value::Str(s) | Value::StringObj(s) => s.as_str(),
+        _ => return Err("jsondecode: argument must be a string".to_string()),
+    };
+    let jval: serde_json::Value =
+        serde_json::from_str(s).map_err(|e| format!("jsondecode: invalid JSON: {e}"))?;
+    Ok(crate::json::json_to_value(&jval))
+}
+
+#[cfg(not(feature = "json"))]
+fn jsondecode_impl(_arg: &Value) -> Result<Value, String> {
+    Err("jsondecode: not available — rebuild with --features json".to_string())
+}
+
+#[cfg(feature = "json")]
+fn jsonencode_impl(arg: &Value) -> Result<Value, String> {
+    let jval = crate::json::value_to_json(arg)?;
+    let s = serde_json::to_string(&jval)
+        .map_err(|e| format!("jsonencode: serialization error: {e}"))?;
+    Ok(Value::Str(s))
+}
+
+#[cfg(not(feature = "json"))]
+fn jsonencode_impl(_arg: &Value) -> Result<Value, String> {
+    Err("jsonencode: not available — rebuild with --features json".to_string())
 }
 
 #[cfg(test)]

@@ -28,6 +28,11 @@ blas = ["dep:blas-src", "ndarray/blas"]
 # Build: cargo build --release --features blas-static
 blas-static = ["blas", "dep:openblas-src"]
 
+# JSON encode/decode: jsondecode() and jsonencode() built-ins.
+# Adds the serde_json crate; omitted from the default build to keep the binary lean.
+# Build: cargo build --release --features json
+json = ["dep:serde_json"]
+
 [dependencies]
 dirs = "5"
 indexmap = "2"
@@ -36,6 +41,7 @@ rand = { version = "0.8", features = ["small_rng"] }
 libm = "0.2"
 blas-src = { version = "0.10", optional = true, default-features = false, features = ["openblas"] }
 openblas-src = { version = "0.10", optional = true, features = ["static"] }
+serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

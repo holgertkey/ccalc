@@ -673,7 +673,7 @@ fn test_range_negative_step() {
 
 #[test]
 fn test_range_empty_wrong_direction() {
-    assert_eq!(calc_vec("5:1"), vec![]);
+    assert_eq!(calc_vec("5:1"), Vec::<f64>::new());
 }
 
 #[test]
@@ -750,7 +750,7 @@ fn test_linspace_single() {
 
 #[test]
 fn test_linspace_empty() {
-    assert_eq!(calc_vec("linspace(0, 1, 0)"), vec![]);
+    assert_eq!(calc_vec("linspace(0, 1, 0)"), Vec::<f64>::new());
 }
 
 // --- Phase 6: Indexing ---

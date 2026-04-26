@@ -35,3 +35,6 @@ pub mod io;
 
 /// Tokenizer, recursive-descent parser, and [`Stmt`](parser::Stmt) AST.
 pub mod parser;
+
+#[cfg(feature = "json")]
+pub(crate) mod json;

@@ -107,7 +107,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc"
-version = "0.23.0+005"
+version = "0.24.0+000"
 dependencies = [
  "ccalc-engine",
  "rustyline",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc-engine"
-version = "0.23.0+005"
+version = "0.24.0+000"
 dependencies = [
  "blas-src",
  "criterion",
@@ -128,6 +128,7 @@ dependencies = [
  "ndarray",
  "openblas-src",
  "rand",
+ "serde_json",
 ]
 
 [[package]]

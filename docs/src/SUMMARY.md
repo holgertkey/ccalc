@@ -28,6 +28,7 @@
 - [Variable Scoping](./guide/scoping.md)
 - [Statistics & Random Numbers](./guide/statistics.md)
 - [Linear Algebra](./guide/linear-algebra.md)
+- [JSON](./guide/json.md)
 
 # Architecture
 
@@ -66,3 +67,4 @@
 - [Phase 17 — Statistics & Random Numbers](./ccalc/phase17-statistics.md)
 - [Phase 18 — Advanced Linear Algebra](./ccalc/phase18-linear-algebra.md)
 - [Phase 19 — REPL Tooling](./ccalc/phase19-repl-tooling.md)
+- [Phase 20a — JSON](./ccalc/phase20a-json.md)

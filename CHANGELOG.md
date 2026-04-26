@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-04-26
+
+### Added
+
+- **Phase 20a — JSON encode/decode:**
+  - `jsondecode(str)` — parses a JSON string and returns a ccalc value. Mapping: JSON object → `Struct`, all-numeric array → `Matrix` row vector, mixed array → `Cell`, string → `Str`, number → `Scalar`, boolean → `Scalar` (1/0), null → `Scalar(NaN)`.
+  - `jsonencode(val)` — encodes a ccalc value to a compact JSON string (`Str`). Mapping: `Struct` → object, `Matrix` row vector → flat array, `Matrix` M×N → array of row arrays, `Cell` → array, `Scalar(NaN)` → `null`. `Complex`, `Lambda`, `Function`, and `Inf` values produce an error.
+  - Both built-ins are gated behind the `json` feature flag (keeps the default binary lean): `cargo build --features json`. When the feature is disabled, calling either built-in returns an informative error message.
+  - Both names appear in tab completion (`builtin_names`) regardless of the feature flag.
+  - Backed by `serde_json = "1"` (optional dependency in `ccalc-engine`).
+
 ## [0.23.0] - 2026-04-25
 
 ### Added

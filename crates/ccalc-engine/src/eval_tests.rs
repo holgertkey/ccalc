@@ -3470,3 +3470,221 @@ fn test_builtin_names_no_duplicates() {
         assert!(seen.insert(n), "duplicate builtin name: {n}");
     }
 }
+
+// --- Phase 20a: JSON ---
+
+#[test]
+fn test_json_builtins_in_names() {
+    let names = builtin_names();
+    assert!(names.contains(&"jsondecode"), "jsondecode missing from builtin_names");
+    assert!(names.contains(&"jsonencode"), "jsonencode missing from builtin_names");
+}
+
+#[cfg(feature = "json")]
+mod json_tests {
+    use super::*;
+
+    fn decode(s: &str) -> Value {
+        let expr = Expr::Call(
+            "jsondecode".to_string(),
+            vec![Expr::StrLiteral(s.to_string())],
+        );
+        eval(&expr, &empty_env()).expect("jsondecode failed")
+    }
+
+    fn encode(v: Value) -> String {
+        let mut env = empty_env();
+        env.insert("_x".to_string(), v);
+        let expr = Expr::Call(
+            "jsonencode".to_string(),
+            vec![Expr::Var("_x".to_string())],
+        );
+        match eval(&expr, &env).expect("jsonencode failed") {
+            Value::Str(s) => s,
+            other => panic!("expected Str, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_scalar_number() {
+        assert_eq!(decode("42"), Value::Scalar(42.0));
+    }
+
+    #[test]
+    fn decode_null_is_nan() {
+        match decode("null") {
+            Value::Scalar(x) => assert!(x.is_nan()),
+            other => panic!("expected Scalar(NaN), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_bool_true() {
+        assert_eq!(decode("true"), Value::Scalar(1.0));
+    }
+
+    #[test]
+    fn decode_bool_false() {
+        assert_eq!(decode("false"), Value::Scalar(0.0));
+    }
+
+    #[test]
+    fn decode_string() {
+        assert_eq!(decode(r#""hello""#), Value::Str("hello".to_string()));
+    }
+
+    #[test]
+    fn decode_numeric_array() {
+        use ndarray::array;
+        match decode("[1, 2, 3]") {
+            Value::Matrix(m) => assert_eq!(m, array![[1.0, 2.0, 3.0]]),
+            other => panic!("expected Matrix, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_empty_array() {
+        use ndarray::Array2;
+        match decode("[]") {
+            Value::Matrix(m) => assert_eq!(m, Array2::<f64>::zeros((1, 0))),
+            other => panic!("expected empty Matrix, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_mixed_array_is_cell() {
+        match decode(r#"[1, "two", 3]"#) {
+            Value::Cell(cells) => {
+                assert_eq!(cells.len(), 3);
+                assert_eq!(cells[0], Value::Scalar(1.0));
+                assert_eq!(cells[1], Value::Str("two".to_string()));
+                assert_eq!(cells[2], Value::Scalar(3.0));
+            }
+            other => panic!("expected Cell, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_object_is_struct() {
+        match decode(r#"{"x": 1, "y": 2}"#) {
+            Value::Struct(fields) => {
+                assert_eq!(fields.get("x"), Some(&Value::Scalar(1.0)));
+                assert_eq!(fields.get("y"), Some(&Value::Scalar(2.0)));
+            }
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_nested_struct() {
+        match decode(r#"{"a": {"b": 42}}"#) {
+            Value::Struct(outer) => match outer.get("a") {
+                Some(Value::Struct(inner)) => {
+                    assert_eq!(inner.get("b"), Some(&Value::Scalar(42.0)));
+                }
+                other => panic!("expected inner Struct, got {other:?}"),
+            },
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_invalid_json_errors() {
+        let expr = Expr::Call(
+            "jsondecode".to_string(),
+            vec![Expr::StrLiteral("{bad json".to_string())],
+        );
+        assert!(eval(&expr, &empty_env()).is_err());
+    }
+
+    #[test]
+    fn decode_non_string_arg_errors() {
+        let expr = Expr::Call("jsondecode".to_string(), vec![Expr::Number(42.0)]);
+        assert!(eval(&expr, &empty_env()).is_err());
+    }
+
+    #[test]
+    fn encode_scalar() {
+        assert_eq!(encode(Value::Scalar(3.14)), "3.14");
+    }
+
+    #[test]
+    fn encode_scalar_integer() {
+        assert_eq!(encode(Value::Scalar(5.0)), "5.0");
+    }
+
+    #[test]
+    fn encode_nan_is_null() {
+        assert_eq!(encode(Value::Scalar(f64::NAN)), "null");
+    }
+
+    #[test]
+    fn encode_inf_errors() {
+        let mut env = empty_env();
+        env.insert("_x".to_string(), Value::Scalar(f64::INFINITY));
+        let expr = Expr::Call("jsonencode".to_string(), vec![Expr::Var("_x".to_string())]);
+        assert!(eval(&expr, &env).is_err());
+    }
+
+    #[test]
+    fn encode_string() {
+        assert_eq!(encode(Value::Str("hello".to_string())), r#""hello""#);
+    }
+
+    #[test]
+    fn encode_row_vector() {
+        use ndarray::array;
+        let m = Value::Matrix(array![[1.0, 2.0, 3.0]]);
+        assert_eq!(encode(m), "[1.0,2.0,3.0]");
+    }
+
+    #[test]
+    fn encode_matrix_2d() {
+        use ndarray::array;
+        let m = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+        assert_eq!(encode(m), "[[1.0,2.0],[3.0,4.0]]");
+    }
+
+    #[test]
+    fn encode_struct() {
+        use indexmap::IndexMap;
+        let mut fields = IndexMap::new();
+        fields.insert("x".to_string(), Value::Scalar(1.0));
+        let result = encode(Value::Struct(fields));
+        assert_eq!(result, r#"{"x":1.0}"#);
+    }
+
+    #[test]
+    fn encode_cell() {
+        let cells = vec![Value::Scalar(1.0), Value::Str("a".to_string())];
+        let result = encode(Value::Cell(cells));
+        assert_eq!(result, r#"[1.0,"a"]"#);
+    }
+
+    #[test]
+    fn roundtrip_object() {
+        let json = r#"{"name":"Alice","score":99}"#;
+        let decoded = decode(json);
+        let reencoded = {
+            let mut env = empty_env();
+            env.insert("_x".to_string(), decoded);
+            let expr = Expr::Call(
+                "jsonencode".to_string(),
+                vec![Expr::Var("_x".to_string())],
+            );
+            match eval(&expr, &env).unwrap() {
+                Value::Str(s) => s,
+                other => panic!("{other:?}"),
+            }
+        };
+        // Re-decode and compare field by field
+        let redecoded = decode(&reencoded);
+        match redecoded {
+            Value::Struct(fields) => {
+                assert_eq!(fields.get("name"), Some(&Value::Str("Alice".to_string())));
+                assert_eq!(fields.get("score"), Some(&Value::Scalar(99.0)));
+            }
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+}
