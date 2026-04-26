@@ -54,10 +54,12 @@ pub fn print(topic: Option<&str>) {
             | "pinv",
         ) => print_linalg(),
         Some("testing" | "assert" | "test" | "tests") => print_testing(),
+        Some("csv" | "readmatrix" | "readtable" | "writetable" | "table") => print_csv(),
+        Some("json" | "jsondecode" | "jsonencode") => print_json(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  io  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  csv  json  control  path  examples"
             );
         }
     }
@@ -204,6 +206,8 @@ Files   fd = fopen('f.txt','w')   fclose(fd)   fclose('all')
         fprintf(fd,'fmt',v1,...)  fgetl(fd)  fgets(fd)
         dlmwrite('f.csv',A)  dlmwrite('f.tsv',A,'\t')
         data = dlmread('f.csv')  data = dlmread('f.tsv','\t')
+        A = readmatrix('f.csv')          readmatrix(f,'Delimiter','\t')
+        T = readtable('f.csv')           writetable(T,'out.csv')
         isfile(p)  isfolder(p)  pwd()  exist('x','var')  exist('f','file')
 Format  format short   5 sig digits (default)   format long    15 sig digits
         format shortE  always scientific         format longE
@@ -239,6 +243,8 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
   help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
+  help csv         readmatrix, readtable, writetable — CSV with headers and type inference
+  help json        jsondecode / jsonencode (requires --features json build)
   help control     if/for/while, break/continue, compound assignment, run/source
   help path        addpath/rmpath/path()/genpath() — session search path
   help examples    practical usage examples",
@@ -1584,6 +1590,8 @@ Delimiter-separated data
     dlmwrite('meas.csv', data);
     loaded = dlmread('meas.csv');
 
+  See also: help csv  (readmatrix / readtable / writetable with header support)
+
 Filesystem queries
     isfile(path)            1 if path is an existing file, else 0
     isfolder(path)          1 if path is an existing directory, else 0
@@ -2688,5 +2696,149 @@ Practical pattern — doc comment + assert as a test harness
 
 See also: help errors  help userfuncs
 Example:  ccalc examples/repl_tooling.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help csv
+// ---------------------------------------------------------------------------
+
+fn print_csv() {
+    println!(
+        "\
+CSV — Tables and Matrices
+
+readmatrix — read a numeric CSV file, return Matrix
+    A = readmatrix(path)
+    A = readmatrix(path, 'Delimiter', d)
+
+  - Auto-detects delimiter: comma (RFC 4180-aware) → tab → whitespace.
+  - If the first row contains non-numeric text it is skipped as a header.
+    A purely numeric first row is treated as data (never auto-skipped).
+  - Empty cells become NaN (unlike dlmread which uses 0.0).
+
+  Example:
+    % sensor.csv:  time_s,voltage_V,current_A
+    %              0.0,3.300,0.012
+    %              0.5,3.281,0.015
+    A = readmatrix('sensor.csv')   % header skipped; returns 2×3 Matrix
+    A = readmatrix('data.tsv', 'Delimiter', '\\t')
+
+readtable — read a CSV with header row, return Struct of columns
+    T = readtable(path)
+    T = readtable(path, 'Delimiter', d)
+
+  - First row is always the header (required).
+  - Column type inference:
+      all cells parseable as numbers → Matrix N×1 column vector
+      any non-numeric cell          → Cell of Str
+  - Header names are sanitised (non-alphanumeric → _, leading digit → x prefix,
+    empty → x{{N}}). Duplicate names get _1 _2 … suffixes.
+  - RFC 4180 quoted fields: commas and double-quotes inside \"...\" fields
+    are preserved; \"\" inside a quoted field encodes a literal \".
+
+  Example:
+    T = readtable('grades.csv')
+    scores = T.score          % Matrix N×1
+    names  = T.name           % Cell of Str
+    nm = names{{1}}             % individual string
+
+writetable — write a Struct to a CSV file with a header row
+    writetable(T, path)
+    writetable(T, path, 'Delimiter', d)
+
+  - Accepted column types: Matrix (N×1), Cell, Scalar, Str/StringObj.
+  - All columns must have the same number of rows.
+  - Cells containing the delimiter, \", or newline are automatically
+    quoted per RFC 4180; embedded \" is doubled.
+
+  Example:
+    T.name  = {{'Alice', 'Bob', 'Carol'}};
+    T.score = [91; 85; 78];
+    writetable(T, 'out.csv')
+    % → out.csv:  name,score
+    %             Alice,91
+    %             Bob,85
+    %             Carol,78
+
+Roundtrip example:
+    T  = readtable('in.csv');
+    %   ... analyse T ...
+    writetable(T, 'out.csv');
+
+Differences from dlmread / dlmwrite
+    dlmread    numeric only; empty cells → 0.0; no header handling
+    readmatrix numeric only; empty cells → NaN; auto-skips non-numeric header
+    readtable  mixed types;  first row always = headers; returns Struct
+
+See also: help files  help structs  help cells
+Example:  cargo run --  examples/csv/csv.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help json
+// ---------------------------------------------------------------------------
+
+fn print_json() {
+    println!(
+        "\
+JSON  (requires: cargo build --features json)
+
+Without the feature flag, calling either built-in returns an informative
+error message. Both names always appear in tab completion.
+
+jsondecode — parse a JSON string and return a ccalc Value
+    val = jsondecode(str)
+
+  Type mapping:
+    JSON object  {{…}}          → Struct  (fields in insertion order)
+    all-numeric array [n,…]     → Matrix 1×N row vector
+    array with nulls only       → Matrix (null → NaN)
+    mixed array  [n,\"s\",…]   → Cell
+    string                      → Str
+    number                      → Scalar
+    true / false                → Scalar (1.0 / 0.0)
+    null                        → Scalar(NaN)
+
+  Example:
+    s = jsondecode('{{\"x\":1,\"y\":[1,2,3]}}')
+    s.x          % → 1
+    s.y          % → [1  2  3]  (1×3 Matrix)
+
+    nums = jsondecode('[10, 20, 30]')    % → [10  20  30]  (Matrix)
+    mix  = jsondecode('[1, \"two\"]')    % → {{1, 'two'}}  (Cell)
+
+jsonencode — encode a ccalc Value to a compact JSON string (Str)
+    str = jsonencode(val)
+
+  Type mapping:
+    Struct            → object {{…}}         (insertion order preserved)
+    Matrix 1×N        → flat array […]
+    Matrix M×N        → array of row arrays [[…],[…],…]
+    Cell              → array […]
+    StructArray       → array of objects [{{…}},…]
+    Scalar(NaN)       → null
+    Scalar(finite)    → number
+    Str / StringObj   → string
+
+  Errors for: Complex, Lambda, Function, Void, Scalar(±Inf).
+
+  Example:
+    s.name   = 'Alice';
+    s.scores = [88, 92, 75];
+    jsonencode(s)     % → '{{\"name\":\"Alice\",\"scores\":[88.0,92.0,75.0]}}'
+
+Reading JSON from a file (fgetl reads one line at a time):
+    fid = fopen('data.json', 'r');
+    raw = fgetl(fid);
+    fclose(fid);
+    data = jsondecode(raw);
+
+Build with JSON support:
+    cargo build --release --features json
+
+See also: help files  help structs  help cells
+Example:  cargo run --features json -- examples/json/json.calc"
     );
 }

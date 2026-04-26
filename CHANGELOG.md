@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `writetable(T, path)` / `writetable(T, path, 'Delimiter', d)` — writes a struct table to a CSV file with a header row. Accepts `Matrix` (N×1), `Cell`, `Scalar`, and `Str`/`StringObj` columns. Cell values are quoted per RFC 4180 when they contain the delimiter, a double-quote, or a newline.
   - Auto-detection uses the CSV-aware split for comma (respects quoted fields), then tab, then whitespace fallback.
   - 15 new tests in `eval_tests.rs` under `mod csv_tests`.
+  - Example script: `examples/csv/csv.calc` (6 sections: writetable, readtable analysis, summary table, readmatrix with header skip, RFC 4180 quoting, tab-separated).
+  - In-REPL help: `help csv`.
+  - Docs: `docs/src/guide/csv.md`, `docs/src/ccalc/phase20c-csv.md`.
 
 - **Phase 20a — JSON encode/decode:**
   - `jsondecode(str)` — parses a JSON string and returns a ccalc value. Mapping: JSON object → `Struct`, all-numeric array → `Matrix` row vector, mixed array → `Cell`, string → `Str`, number → `Scalar`, boolean → `Scalar` (1/0), null → `Scalar(NaN)`.
@@ -23,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Both built-ins are gated behind the `json` feature flag (keeps the default binary lean): `cargo build --features json`. When the feature is disabled, calling either built-in returns an informative error message.
   - Both names appear in tab completion (`builtin_names`) regardless of the feature flag.
   - Backed by `serde_json = "1"` (optional dependency in `ccalc-engine`).
+  - Example script: `examples/json/json.calc` (8 sections: primitives, arrays, objects, nesting, encoding, roundtrip, file I/O, dataset statistics).
+  - In-REPL help: `help json`.
+  - Docs: `docs/src/guide/json.md`, `docs/src/ccalc/phase20a-json.md`.
 
 ## [0.23.0] - 2026-04-25
 

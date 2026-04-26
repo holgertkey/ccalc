@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.23.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.24.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -902,6 +902,32 @@ data = dlmread('results.csv');      % read; auto-detect ',' / '\t' / whitespace
 data = dlmread('results.tsv', '\t');
 ```
 
+### CSV tables — readmatrix / readtable / writetable
+
+Higher-level CSV functions with header row support and type inference.
+
+```matlab
+% readmatrix — numeric data, auto-skip non-numeric header
+A = readmatrix('sensor.csv')                   % header skipped automatically
+A = readmatrix('data.tsv', 'Delimiter', '\t')  % explicit delimiter
+
+% readtable — first row always the header; returns Struct of columns
+T = readtable('grades.csv')
+scores = T.score      % Matrix N×1  (numeric column)
+names  = T.name       % Cell         (string column)
+
+% writetable — write Struct to CSV with header row
+T.name  = {'Alice', 'Bob', 'Carol'};
+T.score = [91; 85; 78];
+writetable(T, 'out.csv')
+writetable(T, 'out.tsv', 'Delimiter', '\t')
+```
+
+**Column type inference in `readtable`:** if every cell in a column is parseable
+as a number (empty cells → `NaN`), the column becomes a `Matrix` N×1; otherwise
+a `Cell` of `Str`. `writetable` accepts the same column types and applies RFC 4180
+quoting automatically for values containing the delimiter or quotes.
+
 ### Filesystem queries
 
 ```matlab
@@ -927,6 +953,56 @@ save(path)                      % variable reference also accepted
 ```
 
 Scalars, char arrays, and string objects are persisted. Matrices, complex values, and functions are always skipped.
+
+---
+
+## JSON
+
+> **Requires the `json` feature flag:**
+> ```bash
+> cargo build --release --features json
+> ```
+> Without this flag, calling either built-in returns an informative error. Both names always appear in tab completion.
+
+```matlab
+% Decode — JSON string → ccalc Value
+s = jsondecode('{"name":"Alice","scores":[88,92,75]}')
+s.name       % → 'Alice'  (Str)
+s.scores     % → [88  92  75]  (Matrix 1×3)
+
+jsondecode('[1, 2, 3]')          % → [1  2  3]  (all-numeric → Matrix)
+jsondecode('[1, "two", true]')   % → {1, 'two', 1}  (mixed → Cell)
+jsondecode('null')               % → NaN
+jsondecode('true')               % → 1
+
+% Encode — ccalc Value → compact JSON string
+jsonencode(42)                   % → '42.0'
+jsonencode('hello')              % → '"hello"'
+jsonencode([1 2 3])              % → '[1.0,2.0,3.0]'
+jsonencode(s)                    % → '{"name":"Alice","scores":[88.0,92.0,75.0]}'
+jsonencode(nan)                  % → 'null'
+```
+
+**Type mapping:**
+
+| JSON → ccalc (`jsondecode`) | ccalc → JSON (`jsonencode`) |
+|-----------------------------|------------------------------|
+| object `{…}` → `Struct` | `Struct` → object |
+| all-numeric array → `Matrix` 1×N | `Matrix` 1×N → flat array |
+| mixed array → `Cell` | `Matrix` M×N → array of row arrays |
+| string → `Str` | `Cell` → array |
+| number → `Scalar` | `Scalar(NaN)` → `null` |
+| `true`/`false` → `Scalar` (1/0) | `Str`/`StringObj` → string |
+| `null` → `Scalar(NaN)` | `Inf`/`Complex`/`Function` → error |
+
+Reading a JSON file (combine with `fgetl` for single-line JSON):
+
+```matlab
+fid = fopen('data.json', 'r');
+raw = fgetl(fid);
+fclose(fid);
+data = jsondecode(raw);
+```
 
 ---
 
@@ -1602,6 +1678,8 @@ The `examples/` directory contains annotated formula files ready to run:
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
+| `csv/csv.calc`          | CSV tables: readmatrix (header auto-skip, NaN for empty), readtable (Struct of columns), writetable (RFC 4180 quoting), tab-separated variant |
+| `json/json.calc`        | JSON encode/decode: primitives, arrays, objects, nested structs, roundtrip, file I/O, dataset analysis — requires `--features json` |
 | `control_flow.calc`          | Core control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |
 | `extended_control_flow.calc` | Extended control flow: switch/case, do...until, run()/source(); exit-code classifier, unit converter, digit sum, Euclidean GCD |
 | `user_functions.calc`        | User-defined functions and lambdas: recursion, multiple return values, nargin, anonymous functions, lexical capture, midpoint integration, higher-order functions |
@@ -1627,10 +1705,12 @@ cargo bench            # run Criterion benchmarks (release)
 cargo bench --bench engine -- loop_10k   # run one benchmark
 ```
 
-Optional feature — accelerates matrix multiply via system OpenBLAS:
+Optional features:
 
 ```bash
-cargo build --release --features blas
+cargo build --release --features json   # enable jsondecode / jsonencode (serde_json)
+cargo build --release --features blas   # accelerate matrix multiply via system OpenBLAS
+cargo build --release --features json,blas  # both
 ```
 
 ---
