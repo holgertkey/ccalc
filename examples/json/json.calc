@@ -1,0 +1,237 @@
+% json.calc — Phase 20a JSON demo
+%
+% Covers: jsondecode, jsonencode
+%   - decoding primitives (number, string, boolean, null)
+%   - decoding arrays  → Matrix (all-numeric) or Cell (mixed)
+%   - decoding objects → Struct; nested objects → nested Struct
+%   - encoding scalars, strings, matrices, structs, cells
+%   - roundtrip encode → decode
+%   - reading and writing JSON files
+%   - practical: compute statistics on a JSON dataset
+%
+% Temporary files are written to examples/json/tmp/ (git-ignored).
+%
+% NOTE: Requires the json feature flag.
+%   Build:  cargo build --features json
+%   Usage:  target/debug/ccalc examples/json/json.calc
+%        or: cargo run --features json -- examples/json/json.calc
+
+% ── 1. Decoding primitive values ──────────────────────────────────────────────
+
+fprintf('=== 1. Decoding primitive values ===\n')
+
+n = jsondecode('42');
+fprintf('number  42       → %g\n', n)
+
+s = jsondecode('"hello"');
+fprintf('string  "hello"  → %s\n', s)
+
+t = jsondecode('true');
+f = jsondecode('false');
+fprintf('bool    true     → %g  (1)\n', t)
+fprintf('bool    false    → %g  (0)\n', f)
+
+z = jsondecode('null');
+fprintf('null             → %g  (isnan: %d)\n', z, isnan(z))
+
+% ── 2. Decoding arrays ────────────────────────────────────────────────────────
+
+fprintf('\n=== 2. Decoding arrays ===\n')
+
+% All-numeric array → Matrix row vector
+nums = jsondecode('[10, 20, 30, 40, 50]');
+fprintf('numeric array → Matrix %dx%d\n', size(nums, 1), size(nums, 2))
+fprintf('  values: ')
+disp(nums)
+fprintf('  sum = %g,  mean = %g\n', sum(nums), mean(nums))
+
+% Null inside a numeric array → NaN in Matrix
+with_null = jsondecode('[1, null, 3, null, 5]');
+fprintf('array with null → NaN in Matrix:\n')
+fprintf('  values: ')
+disp(with_null)
+fprintf('  isnan mask: ')
+disp(isnan(with_null))
+
+% Mixed array (numbers + strings) → Cell
+mix = jsondecode('[1, "two", true, null]');
+fprintf('mixed array → Cell of %d elements:\n', numel(mix))
+fprintf('  {1} = %g   (number)\n',  mix{1})
+fprintf('  {2} = %s   (string)\n',  mix{2})
+fprintf('  {3} = %g   (bool→1)\n',  mix{3})
+fprintf('  {4} = %g   (null→NaN, isnan: %d)\n', mix{4}, isnan(mix{4}))
+
+% ── 3. Decoding objects ───────────────────────────────────────────────────────
+
+fprintf('\n=== 3. Decoding objects → Struct ===\n')
+
+person = jsondecode('{"name":"Alice","age":30,"active":true}');
+fprintf('name:   %s\n',  person.name)
+fprintf('age:    %g\n',  person.age)
+fprintf('active: %g\n',  person.active)
+
+% Array field → Matrix
+result = jsondecode('{"label":"sample","values":[3,1,4,1,5,9,2,6]}');
+vals = result.values;
+fprintf('\nlabel: %s\n', result.label)
+fprintf('values (%dx%d): ', size(vals,1), size(vals,2))
+disp(vals)
+fprintf('  min=%g  max=%g  mean=%.2f\n', min(vals), max(vals), mean(vals))
+
+% ── 4. Nested objects ─────────────────────────────────────────────────────────
+
+fprintf('\n=== 4. Nested objects → nested Struct ===\n')
+
+raw = '{"server":{"host":"localhost","port":8080},"timeout":30,"retries":3}';
+cfg = jsondecode(raw);
+
+srv = cfg.server;
+fprintf('host:     %s\n',   srv.host)
+fprintf('port:     %g\n',   srv.port)
+fprintf('timeout:  %g s\n', cfg.timeout)
+fprintf('retries:  %g\n',   cfg.retries)
+
+% ── 5. Encoding values ────────────────────────────────────────────────────────
+
+fprintf('\n=== 5. Encoding values ===\n')
+
+fprintf('scalar 3.14:      %s\n', jsonencode(3.14))
+fprintf('integer 42:       %s\n', jsonencode(42))
+fprintf('string hello:     %s\n', jsonencode('hello'))
+fprintf('NaN → null:       %s\n', jsonencode(nan))
+
+% Row vector → flat JSON array
+v = [1 2 3 4 5];
+fprintf('row vector:       %s\n', jsonencode(v))
+
+% 2-D matrix → array of row arrays
+A = [1 2; 3 4];
+fprintf('2x2 matrix:       %s\n', jsonencode(A))
+
+% Struct → JSON object (field order preserved via IndexMap)
+pt.x     = 3.0;
+pt.y     = -1.5;
+pt.label = 'P1';
+fprintf('struct:           %s\n', jsonencode(pt))
+
+% Cell → JSON array (can mix types)
+c = {1, 'hello', nan};
+fprintf('cell:             %s\n', jsonencode(c))
+
+% ── 6. Roundtrip ──────────────────────────────────────────────────────────────
+
+fprintf('\n=== 6. Roundtrip (encode → decode) ===\n')
+
+% Build a report struct
+report.title    = 'Q1 Results';
+report.scores   = [88, 92, 75, 95, 67];
+report.approved = 1;
+
+encoded = jsonencode(report);
+fprintf('Encoded:\n  %s\n', encoded)
+
+decoded = jsondecode(encoded);
+sc = decoded.scores;
+fprintf('\nDecoded:\n')
+fprintf('  title:    %s\n', decoded.title)
+fprintf('  scores:   ')
+disp(sc)
+fprintf('  mean:     %.1f\n', mean(sc))
+fprintf('  approved: %g\n', decoded.approved)
+
+% ── 7. JSON files ─────────────────────────────────────────────────────────────
+
+fprintf('\n=== 7. Reading and writing JSON files ===\n')
+
+cfg_path = 'examples/json/tmp/config.json';
+
+% Write a config JSON file (single line — fgetl reads one line at a time)
+fid = fopen(cfg_path, 'w');
+fprintf(fid, '{"version":2,"debug":false,"threshold":0.05,"tags":["alpha","beta","gamma"]}\n')
+fclose(fid);
+fprintf('Wrote %s\n', cfg_path)
+
+% Read back with fgetl
+fid = fopen(cfg_path, 'r');
+raw_line = fgetl(fid);
+fclose(fid);
+
+app = jsondecode(raw_line);
+tags = app.tags;
+fprintf('version:   %g\n', app.version)
+fprintf('debug:     %g\n', app.debug)
+fprintf('threshold: %g\n', app.threshold)
+fprintf('tags:      %s, %s, %s\n', tags{1}, tags{2}, tags{3})
+
+% Write a processed result back to a file
+out_path = 'examples/json/tmp/result.json';
+res.processed = 1;
+res.input     = cfg_path;
+res.tag_count = numel(tags);
+
+fid = fopen(out_path, 'w');
+fprintf(fid, '%s\n', jsonencode(res))
+fclose(fid);
+fprintf('Wrote result to %s\n', out_path)
+
+% ── 8. Practical: compute statistics on a JSON dataset ────────────────────────
+
+fprintf('\n=== 8. Practical: statistics on a JSON dataset ===\n')
+
+% Write a JSON array of student records (compact, single line)
+data_path = 'examples/json/tmp/students.json';
+fid = fopen(data_path, 'w');
+fprintf(fid, '[')
+fprintf(fid, '{"name":"Alice","score":91,"grade":"A"},')
+fprintf(fid, '{"name":"Bob","score":85,"grade":"B"},')
+fprintf(fid, '{"name":"Carol","score":78,"grade":"C"},')
+fprintf(fid, '{"name":"Dave","score":93,"grade":"A"},')
+fprintf(fid, '{"name":"Eve","score":62,"grade":"D"}')
+fprintf(fid, ']\n')
+fclose(fid);
+
+fid = fopen(data_path, 'r');
+raw_line = fgetl(fid);
+fclose(fid);
+
+% Decode → Cell of Struct (array of objects)
+students = jsondecode(raw_line);
+n = numel(students);
+fprintf('Students loaded: %d\n', n)
+
+% Collect scores into a vector for analysis
+scores = zeros(1, n);
+for k = 1:n
+  st = students{k};
+  scores(k) = st.score;
+end
+
+fprintf('Scores:  ')
+disp(scores)
+fprintf('Mean:    %.1f\n', mean(scores))
+fprintf('Std:     %.2f\n', std(scores))
+fprintf('Min/Max: %g / %g\n', min(scores), max(scores))
+
+% Find top student
+top_score = max(scores);
+for k = 1:n
+  if scores(k) == top_score
+    top_st = students{k};
+  end
+end
+fprintf('Top student: %s (%g, %s)\n', top_st.name, top_st.score, top_st.grade)
+
+% Save summary as JSON
+summary.n     = n;
+summary.mean  = mean(scores);
+summary.std   = std(scores);
+summary.top   = top_st.name;
+
+sum_path = 'examples/json/tmp/summary.json';
+fid = fopen(sum_path, 'w');
+fprintf(fid, '%s\n', jsonencode(summary))
+fclose(fid);
+fprintf('Summary written to %s\n', sum_path)
+fid = fopen(sum_path, 'r');
+fprintf('  %s\n', fgetl(fid))
+fclose(fid);

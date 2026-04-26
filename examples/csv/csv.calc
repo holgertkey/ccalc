@@ -1,0 +1,173 @@
+% csv.calc — Phase 20c CSV demo
+%
+% Covers: readmatrix, readtable, writetable
+%   - automatic delimiter detection
+%   - header-row handling (readmatrix auto-skips; readtable always uses first row)
+%   - mixed numeric + string columns
+%   - RFC 4180 quoting (commas inside cell values)
+%   - explicit 'Delimiter' option
+%
+% Temporary files are written to examples/csv/tmp/ (git-ignored).
+%
+% Usage: ccalc examples/csv/csv.calc
+
+% ── 1. Write a student grade table ────────────────────────────────────────────
+
+fprintf('=== 1. writetable — student grades ===\n')
+
+T.name  = {'Alice', 'Bob', 'Carol', 'Dave', 'Eve'};
+T.score = [91; 85; 78; 93; 62];
+T.pass  = [1; 1; 1; 1; 0];
+
+csv_path = 'examples/csv/tmp/grades.csv';
+writetable(T, csv_path);
+fprintf('Wrote %s\n', csv_path)
+
+% Peek at the raw file line by line
+fid = fopen(csv_path, 'r');
+for k = 1:6
+  fprintf('  %s\n', fgetl(fid))
+end
+fclose(fid);
+
+% ── 2. Read back with readtable and compute statistics ────────────────────────
+
+fprintf('\n=== 2. readtable — read grades ===\n')
+
+G = readtable(csv_path);
+
+% Extract columns into local variables before indexing
+g_score = G.score;
+g_pass  = G.pass;
+g_name  = G.name;
+n = numel(g_score);
+
+fprintf('Rows read:     %d\n', n)
+fprintf('Average score: %.1f\n', mean(g_score))
+fprintf('Top score:     %d\n', max(g_score))
+fprintf('Pass rate:     %.0f%%\n', 100 * mean(g_pass))
+
+fprintf('\nPassing students:\n')
+for k = 1:n
+  if g_pass(k) == 1
+    nm = g_name{k};
+    fprintf('  %s — %d\n', nm, g_score(k))
+  end
+end
+
+% ── 3. Write a summary table ──────────────────────────────────────────────────
+
+fprintf('\n=== 3. writetable — summary table ===\n')
+
+n_pass = sum(g_pass);
+n_fail = n - n_pass;
+
+S.result = {'Pass', 'Fail'};
+S.count  = [n_pass; n_fail];
+S.pct    = [100 * n_pass / n; 100 * n_fail / n];
+
+sum_path = 'examples/csv/tmp/summary.csv';
+writetable(S, sum_path);
+
+fid = fopen(sum_path, 'r');
+for k = 1:3
+  fprintf('  %s\n', fgetl(fid))
+end
+fclose(fid);
+
+% ── 4. readmatrix — numeric sensor data with header ───────────────────────────
+
+fprintf('\n=== 4. readmatrix — sensor data (header auto-skipped) ===\n')
+
+% Write a CSV with a non-numeric header row + numeric data
+sens_path = 'examples/csv/tmp/sensor.csv';
+fid = fopen(sens_path, 'w');
+fprintf(fid, 'time_s,voltage_V,current_A\n')
+fprintf(fid, '0.0,3.300,0.012\n')
+fprintf(fid, '0.5,3.281,0.015\n')
+fprintf(fid, '1.0,3.255,0.019\n')
+fprintf(fid, '1.5,3.212,0.024\n')
+fprintf(fid, '2.0,3.150,0.031\n')
+fclose(fid);
+
+% readmatrix detects the non-numeric first row and skips it
+M = readmatrix(sens_path);
+fprintf('Matrix size: %d x %d  (header skipped)\n', size(M, 1), size(M, 2))
+
+% Compute power P = V * I
+fprintf('\n  t(s)   V(V)    I(A)    P(mW)\n')
+for k = 1:size(M, 1)
+  t = M(k, 1);
+  v = M(k, 2);
+  i = M(k, 3);
+  fprintf('  %.1f    %.3f   %.3f   %.1f\n', t, v, i, v * i * 1000)
+end
+
+% A purely numeric first row is treated as data (not a header)
+num_path = 'examples/csv/tmp/pure_numeric.csv';
+fid = fopen(num_path, 'w');
+fprintf(fid, '0.0,1.0\n')
+fprintf(fid, '1.0,2.0\n')
+fprintf(fid, '2.0,3.0\n')
+fclose(fid);
+N = readmatrix(num_path);
+fprintf('\nPure-numeric CSV (no header): %d rows\n', size(N, 1))
+
+% ── 5. Quoted fields — city names containing commas ──────────────────────────
+
+fprintf('\n=== 5. RFC 4180 quoting — commas inside cell values ===\n')
+
+C.city       = {'Paris', 'New York, NY', 'Sao Paulo', 'London'};
+C.population = [2161000; 8336817; 12325232; 8982000];
+
+city_path = 'examples/csv/tmp/cities.csv';
+writetable(C, city_path);
+
+% Show raw CSV — "New York, NY" must be double-quoted
+fid = fopen(city_path, 'r');
+fprintf('Raw CSV:\n')
+for k = 1:5
+  fprintf('  %s\n', fgetl(fid))
+end
+fclose(fid);
+
+% Read back: comma inside the quoted field is preserved
+C2 = readtable(city_path);
+c2_city = C2.city;
+c2_pop  = C2.population;
+fprintf('\nRead back:\n')
+for k = 1:numel(c2_pop)
+  nm = c2_city{k};
+  fprintf('  %-20s  pop = %d\n', nm, c2_pop(k))
+end
+
+% ── 6. Tab-separated files ────────────────────────────────────────────────────
+
+fprintf('\n=== 6. Tab-separated files (explicit Delimiter) ===\n')
+
+% Write grades as TSV
+tsv_path = 'examples/csv/tmp/grades.tsv';
+writetable(T, tsv_path, 'Delimiter', '\t');
+fprintf('Wrote TSV: %s\n', tsv_path)
+
+% Read back with matching delimiter
+T2 = readtable(tsv_path, 'Delimiter', '\t');
+t2_name  = T2.name;
+t2_score = T2.score;
+fprintf('Students: %d  |  first: %s (%d)  |  last: %s (%d)\n', ...
+  numel(t2_score), t2_name{1}, t2_score(1), t2_name{5}, t2_score(5))
+
+% readmatrix on a numeric TSV with a header row
+temps_path = 'examples/csv/tmp/temps.tsv';
+fid = fopen(temps_path, 'w');
+fprintf(fid, 'hour\ttemp_C\thumidity_pct\n')
+fprintf(fid, '0\t18.5\t62\n')
+fprintf(fid, '6\t15.2\t71\n')
+fprintf(fid, '12\t22.8\t55\n')
+fprintf(fid, '18\t20.1\t59\n')
+fclose(fid);
+
+Tm = readmatrix(temps_path, 'Delimiter', '\t');
+fprintf('\nTemperature readings (%d rows, header skipped):\n', size(Tm, 1))
+fprintf('  Noon: %.1f°C, humidity %d%%\n', Tm(3, 2), Tm(3, 3))
+fprintf('  Mean temp: %.2f°C\n', mean(Tm(:, 2)))
