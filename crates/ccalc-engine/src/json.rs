@@ -113,9 +113,9 @@ pub(crate) fn value_to_json(v: &Value) -> Result<serde_json::Value, String> {
                 .collect();
             Ok(serde_json::Value::Array(items?))
         }
-        Value::Complex(re, im) => {
-            Err(format!("jsonencode: cannot represent complex {re}+{im}i in JSON"))
-        }
+        Value::Complex(re, im) => Err(format!(
+            "jsonencode: cannot represent complex {re}+{im}i in JSON"
+        )),
         Value::Lambda(_) | Value::Function { .. } => {
             Err("jsonencode: cannot encode function values".to_string())
         }

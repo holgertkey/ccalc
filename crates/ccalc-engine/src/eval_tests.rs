@@ -3476,8 +3476,14 @@ fn test_builtin_names_no_duplicates() {
 #[test]
 fn test_json_builtins_in_names() {
     let names = builtin_names();
-    assert!(names.contains(&"jsondecode"), "jsondecode missing from builtin_names");
-    assert!(names.contains(&"jsonencode"), "jsonencode missing from builtin_names");
+    assert!(
+        names.contains(&"jsondecode"),
+        "jsondecode missing from builtin_names"
+    );
+    assert!(
+        names.contains(&"jsonencode"),
+        "jsonencode missing from builtin_names"
+    );
 }
 
 #[cfg(feature = "json")]
@@ -3495,10 +3501,7 @@ mod json_tests {
     fn encode(v: Value) -> String {
         let mut env = empty_env();
         env.insert("_x".to_string(), v);
-        let expr = Expr::Call(
-            "jsonencode".to_string(),
-            vec![Expr::Var("_x".to_string())],
-        );
+        let expr = Expr::Call("jsonencode".to_string(), vec![Expr::Var("_x".to_string())]);
         match eval(&expr, &env).expect("jsonencode failed") {
             Value::Str(s) => s,
             other => panic!("expected Str, got {other:?}"),
@@ -3668,10 +3671,7 @@ mod json_tests {
         let reencoded = {
             let mut env = empty_env();
             env.insert("_x".to_string(), decoded);
-            let expr = Expr::Call(
-                "jsonencode".to_string(),
-                vec![Expr::Var("_x".to_string())],
-            );
+            let expr = Expr::Call("jsonencode".to_string(), vec![Expr::Var("_x".to_string())]);
             match eval(&expr, &env).unwrap() {
                 Value::Str(s) => s,
                 other => panic!("{other:?}"),
@@ -3686,5 +3686,298 @@ mod json_tests {
             }
             other => panic!("expected Struct, got {other:?}"),
         }
+    }
+}
+
+mod csv_tests {
+    use super::*;
+    use indexmap::IndexMap;
+    use ndarray::Array2;
+
+    fn tmp_csv(tag: &str, content: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("ccalc_csv_{}_{}.csv", std::process::id(), tag));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    fn tmp_path(tag: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("ccalc_csv_{}_{}.csv", std::process::id(), tag));
+        path
+    }
+
+    fn call_rm(path: &str) -> Value {
+        let expr = Expr::Call(
+            "readmatrix".to_string(),
+            vec![Expr::StrLiteral(path.to_string())],
+        );
+        eval(&expr, &empty_env()).expect("readmatrix failed")
+    }
+
+    fn call_rt(path: &str) -> Value {
+        let expr = Expr::Call(
+            "readtable".to_string(),
+            vec![Expr::StrLiteral(path.to_string())],
+        );
+        eval(&expr, &empty_env()).expect("readtable failed")
+    }
+
+    fn call_wt(tbl: Value, path: &str) {
+        let mut env = empty_env();
+        env.insert("_t".to_string(), tbl);
+        let expr = Expr::Call(
+            "writetable".to_string(),
+            vec![
+                Expr::Var("_t".to_string()),
+                Expr::StrLiteral(path.to_string()),
+            ],
+        );
+        eval(&expr, &env).expect("writetable failed");
+    }
+
+    // ----- readmatrix -----
+
+    #[test]
+    fn readmatrix_basic_numeric() {
+        let p = tmp_csv("rm_basic", "1,2,3\n4,5,6\n");
+        let ps = p.to_str().unwrap();
+        match call_rm(ps) {
+            Value::Matrix(m) => {
+                assert_eq!((m.nrows(), m.ncols()), (2, 3));
+                assert_eq!(m[[0, 0]], 1.0);
+                assert_eq!(m[[1, 2]], 6.0);
+            }
+            v => panic!("expected Matrix, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readmatrix_header_skipped() {
+        let p = tmp_csv("rm_hdr", "x,y,z\n1,2,3\n4,5,6\n");
+        let ps = p.to_str().unwrap();
+        match call_rm(ps) {
+            Value::Matrix(m) => {
+                assert_eq!(m.nrows(), 2);
+                assert_eq!(m[[0, 0]], 1.0);
+            }
+            v => panic!("expected Matrix, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readmatrix_numeric_first_row_not_header() {
+        let p = tmp_csv("rm_numfirst", "1,2,3\n4,5,6\n");
+        let ps = p.to_str().unwrap();
+        match call_rm(ps) {
+            Value::Matrix(m) => assert_eq!(m.nrows(), 2),
+            v => panic!("expected Matrix, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readmatrix_explicit_tab_delim() {
+        let p = tmp_csv("rm_tab", "1\t2\t3\n4\t5\t6\n");
+        let ps = p.to_str().unwrap();
+        let expr = Expr::Call(
+            "readmatrix".to_string(),
+            vec![
+                Expr::StrLiteral(ps.to_string()),
+                Expr::StrLiteral("Delimiter".to_string()),
+                Expr::StrLiteral(r"\t".to_string()),
+            ],
+        );
+        match eval(&expr, &empty_env()).unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!((m.nrows(), m.ncols()), (2, 3));
+                assert_eq!(m[[1, 1]], 5.0);
+            }
+            v => panic!("expected Matrix, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readmatrix_empty_cell_becomes_nan() {
+        let p = tmp_csv("rm_nan", "1,,3\n");
+        let ps = p.to_str().unwrap();
+        match call_rm(ps) {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 1.0);
+                assert!(m[[0, 1]].is_nan());
+                assert_eq!(m[[0, 2]], 3.0);
+            }
+            v => panic!("expected Matrix, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readmatrix_empty_file() {
+        let p = tmp_csv("rm_empty", "");
+        let ps = p.to_str().unwrap();
+        match call_rm(ps) {
+            Value::Matrix(m) => assert_eq!((m.nrows(), m.ncols()), (0, 0)),
+            v => panic!("expected Matrix, got {v:?}"),
+        }
+    }
+
+    // ----- readtable -----
+
+    #[test]
+    fn readtable_numeric_columns() {
+        let p = tmp_csv("rt_num", "x,y\n1,2\n3,4\n");
+        let ps = p.to_str().unwrap();
+        match call_rt(ps) {
+            Value::Struct(fields) => {
+                assert!(fields.contains_key("x") && fields.contains_key("y"));
+                match &fields["x"] {
+                    Value::Matrix(m) => {
+                        assert_eq!((m.nrows(), m.ncols()), (2, 1));
+                        assert_eq!(m[[0, 0]], 1.0);
+                        assert_eq!(m[[1, 0]], 3.0);
+                    }
+                    v => panic!("expected Matrix column, got {v:?}"),
+                }
+            }
+            v => panic!("expected Struct, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readtable_mixed_columns() {
+        let p = tmp_csv("rt_mixed", "name,score\nAlice,95\nBob,87\n");
+        let ps = p.to_str().unwrap();
+        match call_rt(ps) {
+            Value::Struct(fields) => {
+                match &fields["name"] {
+                    Value::Cell(c) => {
+                        assert_eq!(c[0], Value::Str("Alice".to_string()));
+                        assert_eq!(c[1], Value::Str("Bob".to_string()));
+                    }
+                    v => panic!("expected Cell column, got {v:?}"),
+                }
+                match &fields["score"] {
+                    Value::Matrix(m) => {
+                        assert_eq!(m[[0, 0]], 95.0);
+                        assert_eq!(m[[1, 0]], 87.0);
+                    }
+                    v => panic!("expected Matrix column, got {v:?}"),
+                }
+            }
+            v => panic!("expected Struct, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readtable_header_only() {
+        let p = tmp_csv("rt_hdronly", "x,y\n");
+        let ps = p.to_str().unwrap();
+        match call_rt(ps) {
+            Value::Struct(fields) => {
+                assert!(fields.contains_key("x") && fields.contains_key("y"));
+                match &fields["x"] {
+                    Value::Matrix(m) => assert_eq!(m.nrows(), 0),
+                    v => panic!("expected empty Matrix column, got {v:?}"),
+                }
+            }
+            v => panic!("expected Struct, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readtable_quoted_field_with_comma() {
+        let p = tmp_csv("rt_quoted", "name,value\n\"Smith, John\",100\n");
+        let ps = p.to_str().unwrap();
+        match call_rt(ps) {
+            Value::Struct(fields) => match &fields["name"] {
+                Value::Cell(c) => {
+                    assert_eq!(c[0], Value::Str("Smith, John".to_string()));
+                }
+                v => panic!("expected Cell, got {v:?}"),
+            },
+            v => panic!("expected Struct, got {v:?}"),
+        }
+    }
+
+    #[test]
+    fn readtable_empty_file() {
+        let p = tmp_csv("rt_empty", "");
+        let ps = p.to_str().unwrap();
+        match call_rt(ps) {
+            Value::Struct(fields) => assert!(fields.is_empty()),
+            v => panic!("expected empty Struct, got {v:?}"),
+        }
+    }
+
+    // ----- writetable -----
+
+    #[test]
+    fn writetable_basic() {
+        let mut fields = IndexMap::new();
+        fields.insert(
+            "x".to_string(),
+            Value::Matrix(Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap()),
+        );
+        fields.insert(
+            "y".to_string(),
+            Value::Matrix(Array2::from_shape_vec((2, 1), vec![3.0, 4.0]).unwrap()),
+        );
+        let path = tmp_path("wt_basic");
+        let ps = path.to_str().unwrap();
+        call_wt(Value::Struct(fields), ps);
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines[0], "x,y");
+        assert_eq!(lines[1], "1,3");
+        assert_eq!(lines[2], "2,4");
+    }
+
+    #[test]
+    fn writetable_quoting() {
+        let mut fields = IndexMap::new();
+        fields.insert(
+            "text".to_string(),
+            Value::Cell(vec![
+                Value::Str("hello, world".to_string()),
+                Value::Str("plain".to_string()),
+            ]),
+        );
+        let path = tmp_path("wt_quote");
+        let ps = path.to_str().unwrap();
+        call_wt(Value::Struct(fields), ps);
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("\"hello, world\""));
+        assert!(content.contains("plain"));
+    }
+
+    #[test]
+    fn writetable_readtable_roundtrip() {
+        let p_in = tmp_csv("rt_rtrip_in", "name,score\nAlice,95\nBob,87\n");
+        let tbl = call_rt(p_in.to_str().unwrap());
+        let p_out = tmp_path("rt_rtrip_out");
+        call_wt(tbl, p_out.to_str().unwrap());
+        let content = std::fs::read_to_string(&p_out).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines[0], "name,score");
+        assert!(lines[1..].contains(&"Alice,95") || lines[1..].contains(&"Alice,95.0"));
+        assert!(lines[1..].contains(&"Bob,87") || lines[1..].contains(&"Bob,87.0"));
+    }
+
+    #[test]
+    fn writetable_wrong_type_errors() {
+        let mut fields = IndexMap::new();
+        fields.insert("a".to_string(), Value::Scalar(1.0));
+        fields.insert("b".to_string(), Value::Matrix(Array2::<f64>::zeros((2, 2))));
+        let path = tmp_path("wt_err");
+        let ps = path.to_str().unwrap();
+        let mut env = empty_env();
+        env.insert("_t".to_string(), Value::Struct(fields));
+        let expr = Expr::Call(
+            "writetable".to_string(),
+            vec![
+                Expr::Var("_t".to_string()),
+                Expr::StrLiteral(ps.to_string()),
+            ],
+        );
+        assert!(eval(&expr, &env).is_err());
     }
 }

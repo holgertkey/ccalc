@@ -29,6 +29,7 @@
 - [Statistics & Random Numbers](./guide/statistics.md)
 - [Linear Algebra](./guide/linear-algebra.md)
 - [JSON](./guide/json.md)
+- [CSV — Tables and Matrices](./guide/csv.md)
 
 # Architecture
 
@@ -68,3 +69,4 @@
 - [Phase 18 — Advanced Linear Algebra](./ccalc/phase18-linear-algebra.md)
 - [Phase 19 — REPL Tooling](./ccalc/phase19-repl-tooling.md)
 - [Phase 20a — JSON](./ccalc/phase20a-json.md)
+- [Phase 20c — CSV Improvements](./ccalc/phase20c-csv.md)

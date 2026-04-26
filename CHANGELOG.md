@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 20c — CSV improvements:**
+  - `readmatrix(path)` / `readmatrix(path, 'Delimiter', d)` — reads a delimiter-separated file and returns a `Matrix`. Auto-detects comma or tab delimiter; falls back to whitespace splitting. If the first row contains non-numeric text it is automatically skipped as a header. Empty cells become `NaN` (unlike `dlmread`, which uses `0.0`).
+  - `readtable(path)` / `readtable(path, 'Delimiter', d)` — reads a CSV file with a mandatory header row and returns a `Struct` of columns. Numeric columns become `Matrix` (N×1); columns with any non-numeric cell become `Cell` of `Str`. Handles RFC 4180 quoted fields (commas and embedded `"` inside quoted cells).
+  - `writetable(T, path)` / `writetable(T, path, 'Delimiter', d)` — writes a struct table to a CSV file with a header row. Accepts `Matrix` (N×1), `Cell`, `Scalar`, and `Str`/`StringObj` columns. Cell values are quoted per RFC 4180 when they contain the delimiter, a double-quote, or a newline.
+  - Auto-detection uses the CSV-aware split for comma (respects quoted fields), then tab, then whitespace fallback.
+  - 15 new tests in `eval_tests.rs` under `mod csv_tests`.
+
 - **Phase 20a — JSON encode/decode:**
   - `jsondecode(str)` — parses a JSON string and returns a ccalc value. Mapping: JSON object → `Struct`, all-numeric array → `Matrix` row vector, mixed array → `Cell`, string → `Str`, number → `Scalar`, boolean → `Scalar` (1/0), null → `Scalar(NaN)`.
   - `jsonencode(val)` — encodes a ccalc value to a compact JSON string (`Str`). Mapping: `Struct` → object, `Matrix` row vector → flat array, `Matrix` M×N → array of row arrays, `Cell` → array, `Scalar(NaN)` → `null`. `Complex`, `Lambda`, `Function`, and `Inf` values produce an error.

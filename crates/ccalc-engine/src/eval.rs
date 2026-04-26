@@ -2256,6 +2256,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "randi",
         "randn",
         "rank",
+        "readmatrix",
+        "readtable",
         "real",
         "rem",
         "reshape",
@@ -2284,6 +2286,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "unique",
         "upper",
         "var",
+        "writetable",
         "xor",
         "zeros",
         "zscore",
@@ -4034,6 +4037,24 @@ fn call_builtin(
             let delim = interpret_delim(string_arg(&args[2], name, 3)?);
             dlmwrite_impl(&path, &args[1], Some(delim))
         }
+        // readmatrix(path) / readmatrix(path, 'Delimiter', d)
+        ("readmatrix", n) if n == 1 || n == 3 => {
+            let path = string_arg(&args[0], name, 1)?.to_string();
+            let delim = parse_delimiter_opt(name, args, 1)?;
+            readmatrix_impl(&path, delim)
+        }
+        // readtable(path) / readtable(path, 'Delimiter', d)
+        ("readtable", n) if n == 1 || n == 3 => {
+            let path = string_arg(&args[0], name, 1)?.to_string();
+            let delim = parse_delimiter_opt(name, args, 1)?;
+            readtable_impl(&path, delim)
+        }
+        // writetable(T, path) / writetable(T, path, 'Delimiter', d)
+        ("writetable", n) if n == 2 || n == 4 => {
+            let path = string_arg(&args[1], name, 2)?.to_string();
+            let delim = parse_delimiter_opt(name, args, 2)?;
+            writetable_impl(&args[0], &path, delim)
+        }
         // xor(a, b) — element-wise XOR: (a != 0) XOR (b != 0)
         ("xor", 2) => {
             let a = &args[0];
@@ -4630,6 +4651,403 @@ fn dlmwrite_impl(path: &str, val: &Value, explicit_delim: Option<String>) -> Res
     };
 
     std::fs::write(path, content).map_err(|e| format!("dlmwrite: cannot write '{path}': {e}"))?;
+    Ok(Value::Void)
+}
+
+// --- CSV read/write helpers (readmatrix / readtable / writetable) ---
+
+/// Selects the delimiter shared across all lines; falls back to `None` (whitespace splitting).
+///
+/// Uses CSV-aware splitting (quoting) when checking for comma consistency.
+fn auto_detect_delim(lines: &[&str]) -> Option<String> {
+    // Comma: use CSV-aware split so quoted fields with commas don't confuse the count.
+    let comma_counts: Vec<usize> = lines.iter().map(|l| split_csv_row(l, ",").len()).collect();
+    if comma_counts.iter().all(|&c| c > 1) && comma_counts.windows(2).all(|w| w[0] == w[1]) {
+        return Some(",".to_string());
+    }
+    if delim_consistent(lines, '\t') {
+        Some("\t".to_string())
+    } else {
+        None
+    }
+}
+
+/// Splits one CSV line by `delim`, respecting RFC 4180 double-quoted fields.
+/// `""` inside a quoted field encodes a literal `"`.
+/// Falls back to a plain `str::split` for multi-character delimiters.
+fn split_csv_row(line: &str, delim: &str) -> Vec<String> {
+    if delim.chars().count() != 1 {
+        return line.split(delim).map(str::to_string).collect();
+    }
+    let delim_char = delim.chars().next().unwrap();
+    let chars: Vec<char> = line.chars().collect();
+    let mut fields: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut i = 0;
+    let mut in_quotes = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_quotes {
+            if c == '"' && i + 1 < chars.len() && chars[i + 1] == '"' {
+                field.push('"');
+                i += 2;
+                continue;
+            } else if c == '"' {
+                in_quotes = false;
+            } else {
+                field.push(c);
+            }
+        } else if c == '"' {
+            in_quotes = true;
+        } else if c == delim_char {
+            fields.push(std::mem::take(&mut field));
+        } else {
+            field.push(c);
+        }
+        i += 1;
+    }
+    fields.push(field);
+    fields
+}
+
+/// Splits a CSV row with an optional delimiter; `None` splits by whitespace.
+fn split_csv_row_opt(line: &str, delim: &Option<String>) -> Vec<String> {
+    match delim {
+        None => line.split_whitespace().map(str::to_string).collect(),
+        Some(d) => split_csv_row(line, d),
+    }
+}
+
+/// Returns `true` if any non-empty field in `fields` cannot be parsed as `f64`.
+fn row_is_header(fields: &[String]) -> bool {
+    fields
+        .iter()
+        .any(|f| !f.trim().is_empty() && f.trim().parse::<f64>().is_err())
+}
+
+/// Converts a raw header string to a valid identifier-like name.
+/// Runs of non-alphanumeric characters collapse to `_`; a leading digit gets an `x` prefix.
+/// Empty results fall back to `x{col}`.
+fn sanitize_header(s: &str, col_1based: usize) -> String {
+    let s = s.trim();
+    if s.is_empty() {
+        return format!("x{col_1based}");
+    }
+    let mut out = String::new();
+    for c in s.chars() {
+        if c.is_alphanumeric() || c == '_' {
+            out.push(c);
+        } else if !out.ends_with('_') {
+            out.push('_');
+        }
+    }
+    let out = out.trim_end_matches('_').to_string();
+    if out.is_empty() {
+        return format!("x{col_1based}");
+    }
+    if out.chars().next().unwrap().is_ascii_digit() {
+        format!("x{out}")
+    } else {
+        out
+    }
+}
+
+/// Appends `_N` (1-based) suffixes to duplicate entries in a header list.
+/// Note: collisions between deduplicated names and pre-existing `_N` names are not resolved.
+fn deduplicate_headers(headers: Vec<String>) -> Vec<String> {
+    let mut count: HashMap<String, usize> = HashMap::new();
+    for h in &headers {
+        *count.entry(h.clone()).or_insert(0) += 1;
+    }
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    headers
+        .into_iter()
+        .map(|h| {
+            if *count.get(&h).unwrap() == 1 {
+                h
+            } else {
+                let idx = seen.entry(h.clone()).or_insert(0);
+                *idx += 1;
+                format!("{h}_{idx}")
+            }
+        })
+        .collect()
+}
+
+/// Parses an optional `('Delimiter', d)` argument pair starting at `args[start]`.
+/// Returns `Ok(None)` when no extra arguments are present.
+fn parse_delimiter_opt(
+    fn_name: &str,
+    args: &[Value],
+    start: usize,
+) -> Result<Option<String>, String> {
+    if args.len() <= start {
+        return Ok(None);
+    }
+    let key = string_arg(&args[start], fn_name, start + 1)?;
+    if !key.eq_ignore_ascii_case("delimiter") {
+        return Err(format!(
+            "{fn_name}: expected 'Delimiter' option at argument {}, got '{key}'",
+            start + 1
+        ));
+    }
+    if args.len() <= start + 1 {
+        return Err(format!("{fn_name}: 'Delimiter' option requires a value"));
+    }
+    let val = interpret_delim(string_arg(&args[start + 1], fn_name, start + 2)?);
+    Ok(Some(val))
+}
+
+/// Reads a delimiter-separated file and returns a [`Value::Matrix`].
+///
+/// Auto-detects the delimiter (comma → tab → whitespace). When the first row contains
+/// non-numeric text it is treated as a header and skipped. Empty cells become `NaN`
+/// (unlike [`dlmread_impl`], which uses `0.0`).
+fn readmatrix_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("readmatrix: cannot read '{path}': {e}"))?;
+
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+    }
+
+    let delim = match explicit_delim {
+        Some(d) => Some(d),
+        None => auto_detect_delim(&lines),
+    };
+
+    let first_fields = split_csv_row_opt(lines[0], &delim);
+    let skip_header = row_is_header(&first_fields);
+    let data_lines = if skip_header { &lines[1..] } else { &lines[..] };
+
+    if data_lines.is_empty() {
+        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+    }
+
+    let mut rows: Vec<Vec<f64>> = Vec::new();
+    for (i, line) in data_lines.iter().enumerate() {
+        let fields = split_csv_row_opt(line, &delim);
+        let mut row: Vec<f64> = Vec::with_capacity(fields.len());
+        for f in &fields {
+            let t = f.trim();
+            if t.is_empty() {
+                row.push(f64::NAN);
+            } else {
+                row.push(t.parse::<f64>().map_err(|_| {
+                    format!(
+                        "readmatrix: non-numeric value '{t}' on line {}",
+                        i + 1 + usize::from(skip_header)
+                    )
+                })?);
+            }
+        }
+        rows.push(row);
+    }
+
+    if rows.is_empty() {
+        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+    }
+
+    let ncols = rows[0].len();
+    for (i, row) in rows.iter().enumerate() {
+        if row.len() != ncols {
+            return Err(format!(
+                "readmatrix: row {} has {} fields, expected {ncols}",
+                i + 1,
+                row.len()
+            ));
+        }
+    }
+
+    let nrows = rows.len();
+    let flat: Vec<f64> = rows.into_iter().flatten().collect();
+    Array2::from_shape_vec((nrows, ncols), flat)
+        .map_err(|e| format!("readmatrix: shape error: {e}"))
+        .map(Value::Matrix)
+}
+
+/// Reads a delimiter-separated file with a header row and returns a [`Value::Struct`] of columns.
+///
+/// The first row is always treated as column headers. Numeric columns become `Matrix` (N×1);
+/// columns with any non-numeric cell become `Cell` of [`Value::Str`].
+/// Whitespace is trimmed from all cell values after CSV unquoting.
+fn readtable_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("readtable: cannot read '{path}': {e}"))?;
+
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return Ok(Value::Struct(IndexMap::new()));
+    }
+
+    let delim = match explicit_delim {
+        Some(d) => Some(d),
+        None => auto_detect_delim(&lines),
+    };
+
+    let raw_headers = split_csv_row_opt(lines[0], &delim);
+    let ncols = raw_headers.len();
+    let headers: Vec<String> = deduplicate_headers(
+        raw_headers
+            .iter()
+            .enumerate()
+            .map(|(i, h)| sanitize_header(h.trim(), i + 1))
+            .collect(),
+    );
+
+    let data_lines = &lines[1..];
+    if data_lines.is_empty() {
+        let mut s: IndexMap<String, Value> = IndexMap::new();
+        for h in &headers {
+            s.insert(h.clone(), Value::Matrix(Array2::<f64>::zeros((0, 1))));
+        }
+        return Ok(Value::Struct(s));
+    }
+
+    let mut all_rows: Vec<Vec<String>> = Vec::new();
+    for (i, line) in data_lines.iter().enumerate() {
+        let fields = split_csv_row_opt(line, &delim);
+        if fields.len() != ncols {
+            return Err(format!(
+                "readtable: row {} has {} fields, expected {ncols}",
+                i + 2,
+                fields.len()
+            ));
+        }
+        all_rows.push(fields.into_iter().map(|f| f.trim().to_string()).collect());
+    }
+
+    let nrows = all_rows.len();
+    let mut s: IndexMap<String, Value> = IndexMap::new();
+    for col in 0..ncols {
+        let all_numeric = all_rows.iter().all(|row| {
+            let t = row[col].as_str();
+            t.is_empty() || t.parse::<f64>().is_ok()
+        });
+        if all_numeric {
+            let vals: Vec<f64> = all_rows
+                .iter()
+                .map(|row| {
+                    let t = row[col].as_str();
+                    if t.is_empty() {
+                        f64::NAN
+                    } else {
+                        t.parse::<f64>().unwrap()
+                    }
+                })
+                .collect();
+            let col_mat = Array2::from_shape_vec((nrows, 1), vals)
+                .map_err(|e| format!("readtable: shape error: {e}"))?;
+            s.insert(headers[col].clone(), Value::Matrix(col_mat));
+        } else {
+            let vals: Vec<Value> = all_rows
+                .iter()
+                .map(|row| Value::Str(row[col].clone()))
+                .collect();
+            s.insert(headers[col].clone(), Value::Cell(vals));
+        }
+    }
+    Ok(Value::Struct(s))
+}
+
+/// Quotes a CSV cell if it contains the delimiter, a double-quote, or a newline (RFC 4180).
+fn csv_quote_cell(s: &str, delim: &str) -> String {
+    if s.contains('"') || s.contains('\n') || s.contains(delim) {
+        let escaped = s.replace('"', "\"\"");
+        format!("\"{escaped}\"")
+    } else {
+        s.to_string()
+    }
+}
+
+/// Returns the number of rows in a struct column value.
+///
+/// Accepts `Matrix` (N×1), `Cell`, `Scalar`, and `Str`/`StringObj` (1 row each).
+/// Returns `None` for unsupported types or non-column matrices.
+fn col_nrows(v: &Value) -> Option<usize> {
+    match v {
+        Value::Matrix(m) if m.ncols() == 1 || m.nrows() == 0 => Some(m.nrows()),
+        Value::Cell(c) => Some(c.len()),
+        Value::Scalar(_) => Some(1),
+        Value::Str(_) | Value::StringObj(_) => Some(1),
+        _ => None,
+    }
+}
+
+/// Returns the formatted CSV cell string for row `row` of a struct column value.
+fn col_cell_str(v: &Value, row: usize, delim: &str) -> Result<String, String> {
+    match v {
+        Value::Matrix(m) => Ok(csv_quote_cell(&fmt_dlm_number(m[[row, 0]]), delim)),
+        Value::Cell(c) => match &c[row] {
+            Value::Str(s) | Value::StringObj(s) => Ok(csv_quote_cell(s, delim)),
+            Value::Scalar(n) => Ok(csv_quote_cell(&fmt_dlm_number(*n), delim)),
+            _ => Err(format!(
+                "writetable: cell element at row {} has unsupported type",
+                row + 1
+            )),
+        },
+        Value::Scalar(n) => Ok(csv_quote_cell(&fmt_dlm_number(*n), delim)),
+        Value::Str(s) | Value::StringObj(s) => Ok(csv_quote_cell(s, delim)),
+        _ => Err(format!(
+            "writetable: unsupported column type at row {}",
+            row + 1
+        )),
+    }
+}
+
+/// Writes a struct table to a delimiter-separated file with a header row.
+///
+/// Each struct field is one column. All fields must have the same number of rows.
+/// Accepts `Matrix` (N×1), `Cell`, `Scalar`, and `Str`/`StringObj` columns.
+/// Cell values that contain the delimiter, `"`, or newlines are quoted per RFC 4180.
+fn writetable_impl(
+    tbl: &Value,
+    path: &str,
+    explicit_delim: Option<String>,
+) -> Result<Value, String> {
+    let delim = explicit_delim.unwrap_or_else(|| ",".to_string());
+    let fields = match tbl {
+        Value::Struct(m) => m,
+        _ => return Err("writetable: first argument must be a struct".to_string()),
+    };
+    if fields.is_empty() {
+        std::fs::write(path, "").map_err(|e| format!("writetable: cannot write '{path}': {e}"))?;
+        return Ok(Value::Void);
+    }
+
+    let nrows = {
+        let (first_name, first_val) = fields.iter().next().unwrap();
+        col_nrows(first_val).ok_or_else(|| {
+            format!("writetable: column '{first_name}' must be a Matrix (N×1), Cell, or scalar")
+        })?
+    };
+    for (cname, cval) in fields.iter() {
+        let n = col_nrows(cval).ok_or_else(|| {
+            format!("writetable: column '{cname}' must be a Matrix (N×1), Cell, or scalar")
+        })?;
+        if n != nrows {
+            return Err(format!(
+                "writetable: column '{cname}' has {n} rows, expected {nrows}"
+            ));
+        }
+    }
+
+    let mut out = String::new();
+    let header_parts: Vec<String> = fields.keys().map(|k| csv_quote_cell(k, &delim)).collect();
+    out.push_str(&header_parts.join(&delim));
+    out.push('\n');
+
+    for row in 0..nrows {
+        let mut parts: Vec<String> = Vec::with_capacity(fields.len());
+        for cval in fields.values() {
+            parts.push(col_cell_str(cval, row, &delim)?);
+        }
+        out.push_str(&parts.join(&delim));
+        out.push('\n');
+    }
+
+    std::fs::write(path, out).map_err(|e| format!("writetable: cannot write '{path}': {e}"))?;
     Ok(Value::Void)
 }
 
