@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc"
-version = "0.25.0+000"
+version = "0.25.0"
 dependencies = [
  "ccalc-engine",
  "rustyline",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc-engine"
-version = "0.25.0+000"
+version = "0.25.0"
 dependencies = [
  "blas-src",
  "criterion",
