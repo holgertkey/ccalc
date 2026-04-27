@@ -1006,6 +1006,43 @@ data = jsondecode(raw);
 
 ---
 
+## MAT Files
+
+> **Requires the `mat` feature flag:**
+> ```bash
+> cargo build --release --features mat
+> ```
+> Without this flag, calling `load('*.mat')` returns an informative error. `load` always appears in tab completion.
+
+```matlab
+% Assignment form — returns a Struct of all variables in the file
+data = load('results.mat');
+data.score        % Scalar
+data.readings     % Matrix
+data.label        % Str (char array)
+data.sensor.gain  % nested Struct field
+
+% Bare form — injects all variables directly into the workspace
+load('results.mat')
+score             % now a workspace variable
+```
+
+**Type mapping:**
+
+| MAT type | ccalc value |
+|----------|-------------|
+| `double` (1×1) | `Scalar` |
+| `double` (M×N) | `Matrix` |
+| `char` array | `Str` |
+| `struct` | `Struct` |
+| struct array | `StructArray` |
+| `cell` array | `Cell` |
+| null / empty | `Scalar(NaN)` |
+
+Backed by `matrw = "=0.1.4"`. Complex and sparse matrices are not yet supported.
+
+---
+
 ## Control Flow
 
 Multi-line control flow blocks are supported in both REPL and script mode.

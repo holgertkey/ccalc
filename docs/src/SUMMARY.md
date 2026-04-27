@@ -30,6 +30,7 @@
 - [Linear Algebra](./guide/linear-algebra.md)
 - [JSON](./guide/json.md)
 - [CSV — Tables and Matrices](./guide/csv.md)
+- [MAT Files](./guide/mat.md)
 
 # Architecture
 
@@ -70,3 +71,4 @@
 - [Phase 19 — REPL Tooling](./ccalc/phase19-repl-tooling.md)
 - [Phase 20a — JSON](./ccalc/phase20a-json.md)
 - [Phase 20c — CSV Improvements](./ccalc/phase20c-csv.md)
+- [Phase 20.5 — MAT File Read](./ccalc/phase205-mat.md)

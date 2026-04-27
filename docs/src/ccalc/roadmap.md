@@ -37,6 +37,9 @@ The work is divided into phases in order of architectural dependency.
 | 17 | Random numbers and statistics (`rand`, `randn`, `std`, `var`, `median`, `skewness`, `kurtosis`) | ✅ Done |
 | 18 | Advanced linear algebra (`qr`, `lu`, `chol`, `svd`, `eig`, `rank`, `null`, `orth`, `cond`, `pinv`, matrix `norm`) | ✅ Done |
 | 19 | REPL tooling: tab completion, inline `help <fn>`, "did you mean?" hints, `assert` built-ins | ✅ Done |
+| 20a | JSON: `jsondecode` / `jsonencode` behind `--features json` | ✅ Done |
+| 20c | CSV: `readmatrix`, `readtable`, `writetable` with headers and RFC 4180 quoting | ✅ Done |
+| 20.5 | MAT file read: `load('file.mat')` behind `--features mat` | ✅ Done |
 
 ## Key architectural decisions
 
@@ -253,6 +256,31 @@ for the 2-norm of non-vector matrices.
   `assert(cond)` — truthy check; `assert(expected, actual)` — exact equality;
   `assert(expected, actual, tol)` — tolerance check. All three work on scalars and
   matrices. The implementation lives in `assert_values_equal()`.
+
+**Phase 20a** adds `jsondecode` and `jsonencode` behind an optional `json`
+feature flag (`serde_json = "1"`). A new `crates/ccalc-engine/src/json.rs`
+module provides `json_to_value` and `value_to_json` converters. Both built-in
+names are unconditionally registered in `builtin_names()` for tab completion;
+without the feature they return a helpful "rebuild with --features json" error.
+22 tests in `json_tests`. Example: `examples/json/json.calc`.
+
+**Phase 20c** extends the CSV infrastructure from Phase 10.5b with three new
+built-ins: `readmatrix` (header auto-skip, empty → `NaN`), `readtable` (returns
+a `Struct` of typed columns — `Matrix` N×1 for numeric, `Cell` of `Str` for
+mixed), and `writetable` (RFC 4180 quoting). 15 tests in `csv_tests`. Example:
+`examples/csv/csv.calc`.
+
+**Phase 20.5** adds `load('file.mat')` behind an optional `mat` feature flag
+(`matrw = "=0.1.4"` pinned to prevent silent breakage). A new
+`crates/ccalc-engine/src/mat.rs` module provides `mat_load(path)` using
+`matrw::load_matfile()` with a recursive `mat_var_to_value()` converter that
+maps each `MatVariable` variant to the appropriate `Value`. Column-major matrix
+data is converted to ndarray row-major via `Array2::from_shape_vec((cols, rows),
+data).t().to_owned()`. The assignment form (`data = load('f.mat')`) returns a
+`Struct`; the bare form (`load('f.mat')`) injects all fields directly into the
+current workspace. `save('*.mat', ...)` returns a clear "not yet supported"
+error. 5 roundtrip tests using `matvar!`/`matfile!` macros. Example:
+`examples/mat/mat.calc`.
 
 ## Compatibility notes
 

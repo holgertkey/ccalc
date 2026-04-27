@@ -56,10 +56,11 @@ pub fn print(topic: Option<&str>) {
         Some("testing" | "assert" | "test" | "tests") => print_testing(),
         Some("csv" | "readmatrix" | "readtable" | "writetable" | "table") => print_csv(),
         Some("json" | "jsondecode" | "jsonencode") => print_json(),
+        Some("matfile" | "mat-file" | "loadmat" | "load-mat") => print_matfile(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  csv  json  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  csv  json  matfile  control  path  examples"
             );
         }
     }
@@ -245,6 +246,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
   help csv         readmatrix, readtable, writetable — CSV with headers and type inference
   help json        jsondecode / jsonencode (requires --features json build)
+  help matfile     load('file.mat') — MAT file read (requires --features mat build)
   help control     if/for/while, break/continue, compound assignment, run/source
   help path        addpath/rmpath/path()/genpath() — session search path
   help examples    practical usage examples",
@@ -2840,5 +2842,58 @@ Build with JSON support:
 
 See also: help files  help structs  help cells
 Example:  cargo run --features json -- examples/json/json.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help matfile
+// ---------------------------------------------------------------------------
+
+fn print_matfile() {
+    println!(
+        "\
+MAT FILES  (requires: cargo build --features mat)
+
+Without the feature flag, calling load('*.mat') returns an informative
+error message. The 'load' name always appears in tab completion.
+
+load — read a MATLAB Level 5/7 .mat file
+
+  Assignment form — returns a Struct of all variables:
+    data = load('results.mat')
+    data.score        % scalar variable
+    data.readings     % matrix variable
+    data.label        % char-array variable
+    data.sensor.gain  % nested struct field
+
+  Bare form — merges all variables into the current workspace:
+    load('results.mat')
+    score             % now a direct variable
+    readings          % now a direct variable
+
+Type mapping:
+    double (1×1)        → Scalar
+    double (M×N)        → Matrix  (column-major converted to row-major)
+    char array          → Str
+    struct              → Struct
+    struct array (1)    → Struct  (unwrapped)
+    struct array (N)    → StructArray
+    cell array          → Cell
+    [] / null           → Scalar(NaN)
+
+  Complex and sparse matrices produce an error (not yet supported).
+
+save — writing .mat files is not yet supported:
+    save('out.mat')              % error: not yet supported
+    save('out.mat', 'x', 'y')   % error: not yet supported
+
+  Use 'save' without a .mat extension (or 'ws') to persist the workspace
+  in ccalc's native TOML format.
+
+Build with MAT support:
+    cargo build --release --features mat
+
+See also: help files  help structs  help cells
+Example:  cargo run --features mat -- examples/mat/mat.calc"
     );
 }
