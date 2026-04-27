@@ -38,3 +38,6 @@ pub mod parser;
 
 #[cfg(feature = "json")]
 pub(crate) mod json;
+
+#[cfg(feature = "mat")]
+pub(crate) mod mat;

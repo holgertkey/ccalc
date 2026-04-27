@@ -3981,3 +3981,60 @@ mod csv_tests {
         assert!(eval(&expr, &env).is_err());
     }
 }
+
+#[cfg(feature = "mat")]
+mod mat_tests {
+    use super::*;
+    use crate::mat::mat_load;
+
+    fn tmp_mat_path(tag: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!("ccalc_mat_{}_{}.mat", std::process::id(), tag));
+        path
+    }
+
+    #[test]
+    fn test_mat_load_nonexistent() {
+        let result = mat_load("/nonexistent/does_not_exist.mat");
+        assert!(result.is_err());
+        let e = result.unwrap_err();
+        assert!(e.contains("load:"), "error should mention 'load:': {e}");
+    }
+
+    #[test]
+    fn test_load_builtin_not_mat_extension() {
+        let expr = Expr::Call(
+            "load".to_string(),
+            vec![Expr::StrLiteral("data.toml".to_string())],
+        );
+        let env = empty_env();
+        let result = eval(&expr, &env);
+        assert!(result.is_err());
+        let e = result.unwrap_err();
+        assert!(e.contains("non-.mat"), "error: {e}");
+    }
+
+    #[test]
+    fn test_load_builtin_bad_arg() {
+        let expr = Expr::Call("load".to_string(), vec![Expr::Number(42.0)]);
+        let env = empty_env();
+        let result = eval(&expr, &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_in_builtin_names() {
+        assert!(
+            builtin_names().contains(&"load"),
+            "load missing from builtin_names"
+        );
+    }
+
+    #[test]
+    fn test_mat_load_error_prefix() {
+        let path = tmp_mat_path("nonexist");
+        let result = mat_load(path.to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().starts_with("load:"));
+    }
+}

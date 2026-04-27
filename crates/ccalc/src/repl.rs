@@ -16,7 +16,7 @@ use ccalc_engine::env::{
 use ccalc_engine::eval::{
     Base, Expr, FormatMode, builtin_names, eval, eval_with_io, format_complex, format_number,
     format_scalar, format_value_full, global_refresh_into_env, global_set, is_global,
-    resolve_autoloaded, set_last_err, set_nargout,
+    load_mat_file, resolve_autoloaded, set_last_err, set_nargout,
 };
 use ccalc_engine::exec::{Signal, exec_stmts};
 use ccalc_engine::io::IoContext;
@@ -660,6 +660,12 @@ pub fn run() {
             if let Some(cmd) = try_parse_save_load(stmt, &env) {
                 match cmd {
                     SaveLoadCmd::Save { path, vars } => {
+                        if let Some(ref p) = path
+                            && p.ends_with(".mat")
+                        {
+                            eprintln!("Error: save: writing .mat files is not yet supported");
+                            continue;
+                        }
                         let result = match (&path, vars.is_empty()) {
                             (None, _) => save_workspace_default(&env),
                             (Some(p), true) => save_workspace(&env, std::path::Path::new(p)),
@@ -674,6 +680,21 @@ pub fn run() {
                         }
                     }
                     SaveLoadCmd::Load { path } => {
+                        if let Some(ref p) = path
+                            && p.ends_with(".mat")
+                        {
+                            match load_mat_file(p) {
+                                Ok(Value::Struct(fields)) => {
+                                    for (k, v) in fields {
+                                        env.insert(k, v);
+                                    }
+                                    println!("Workspace loaded.");
+                                }
+                                Ok(_) => eprintln!("Error: load: unexpected type from mat file"),
+                                Err(e) => eprintln!("Error: {e}"),
+                            }
+                            continue;
+                        }
                         let result = match path {
                             None => load_workspace_default(),
                             Some(p) => load_workspace(std::path::Path::new(&p)),
@@ -1288,6 +1309,12 @@ pub fn run_pipe(reader: impl BufRead) {
             if let Some(cmd) = try_parse_save_load(stmt, &env) {
                 match cmd {
                     SaveLoadCmd::Save { path, vars } => {
+                        if let Some(ref p) = path
+                            && p.ends_with(".mat")
+                        {
+                            eprintln!("Error: save: writing .mat files is not yet supported");
+                            continue;
+                        }
                         let _ = match (&path, vars.is_empty()) {
                             (None, _) => save_workspace_default(&env),
                             (Some(p), true) => save_workspace(&env, std::path::Path::new(p)),
@@ -1298,6 +1325,20 @@ pub fn run_pipe(reader: impl BufRead) {
                         };
                     }
                     SaveLoadCmd::Load { path } => {
+                        if let Some(ref p) = path
+                            && p.ends_with(".mat")
+                        {
+                            match load_mat_file(p) {
+                                Ok(Value::Struct(fields)) => {
+                                    for (k, v) in fields {
+                                        env.insert(k, v);
+                                    }
+                                }
+                                Ok(_) => eprintln!("Error: load: unexpected type from mat file"),
+                                Err(e) => eprintln!("Error: {e}"),
+                            }
+                            continue;
+                        }
                         let result = match path {
                             None => load_workspace_default(),
                             Some(p) => load_workspace(std::path::Path::new(&p)),

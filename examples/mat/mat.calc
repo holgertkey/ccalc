@@ -1,0 +1,21 @@
+% Phase 20.5 — MAT file read
+% Requires: cargo run --features mat -- examples/mat/mat.calc
+%
+% load('file.mat') returns a struct whose fields are the variable names
+% stored in the file.  Use it in assignment form to capture the whole
+% workspace, or use the bare load command to merge variables into scope.
+%
+% Assignment form — returns a struct:
+%   data = load('results.mat')
+%   x = data.x
+%   y = data.y
+%
+% Bare form — merges all variables into the current workspace:
+%   load('results.mat')
+%
+% Saving .mat files is not yet supported.  Use save('file.toml') for
+% portable workspace persistence.
+
+fprintf('MAT file example: requires a .mat file to be present.\n')
+fprintf('Create one in MATLAB/Octave with: save results.mat x y\n')
+fprintf('Then run: data = load(''results.mat'')\n')

@@ -33,6 +33,11 @@ blas-static = ["blas", "dep:openblas-src"]
 # Build: cargo build --release --features json
 json = ["dep:serde_json"]
 
+# MAT file read: load('file.mat') built-in.
+# Adds the matrw crate; omitted from the default build to keep the binary lean.
+# Build: cargo build --release --features mat
+mat = ["dep:matrw"]
+
 [dependencies]
 dirs = "5"
 indexmap = "2"
@@ -42,9 +47,11 @@ libm = "0.2"
 blas-src = { version = "0.10", optional = true, default-features = false, features = ["openblas"] }
 openblas-src = { version = "0.10", optional = true, features = ["static"] }
 serde_json = { version = "1", optional = true }
+matrw = { version = "=0.1.4", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"
 
 [[bench]]
 name = "engine"

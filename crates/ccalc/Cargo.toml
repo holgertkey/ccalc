@@ -21,10 +21,11 @@ default = []
 blas = ["ccalc-engine/blas"]
 blas-static = ["ccalc-engine/blas-static"]
 json = ["ccalc-engine/json"]
+mat = ["ccalc-engine/mat"]
 
 [dependencies]
 rustyline = "14"
-ccalc-engine = { path = "../ccalc-engine", version = "0.24.0" }
+ccalc-engine = { path = "../ccalc-engine", version = "0.25.0" }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-04-27
+
+### Added
+
+- **Phase 20.5 — MAT file read:**
+  - `load('file.mat')` — reads a MATLAB Level 5/7 MAT file and returns a `Struct` whose fields are the variable names stored in the file. Assignment form: `data = load('results.mat')`. Bare form: `load('results.mat')` merges all variables directly into the current workspace.
+  - Type mapping: scalar (1×1) → `Scalar`, M×N matrix → `Matrix` (column-major layout converted correctly), char array → `Str`, struct → `Struct`, struct array → `StructArray`, cell array → `Cell`, null → `Scalar(NaN)`.
+  - Gated behind the `mat` Cargo feature (keeps the default binary lean): `cargo build --features mat`. When the feature is disabled, calling `load('*.mat')` returns an informative error message.
+  - `save('file.mat', ...)` gracefully errors with "writing .mat files is not yet supported".
+  - `load` appears in tab completion (`builtin_names`) regardless of the feature flag.
+  - Backed by `matrw = "=0.1.4"` (optional dependency in `ccalc-engine`).
+  - 5 new tests in `eval_tests.rs` under `mod mat_tests` (gated `#[cfg(feature = "mat")]`).
+  - Example script: `examples/mat/mat.calc`.
+
 ## [0.24.0] - 2026-04-26
 
 ### Added

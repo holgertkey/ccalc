@@ -2226,6 +2226,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "lasterr",
         "length",
         "linspace",
+        "load",
         "log",
         "log10",
         "log2",
@@ -4494,6 +4495,18 @@ fn call_builtin(
         ("jsondecode", 1) => jsondecode_impl(&args[0]),
         ("jsonencode", 1) => jsonencode_impl(&args[0]),
 
+        // load('file.mat') — assignment form: data = load('file.mat')
+        ("load", 1) => {
+            let path = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("load: argument must be a string path".to_string()),
+            };
+            if !path.ends_with(".mat") {
+                return Err("load: use bare 'load path' syntax for non-.mat files".to_string());
+            }
+            load_mat_file(&path)
+        }
+
         // assert(cond)
         ("assert", 1) => {
             let truthy = match &args[0] {
@@ -6412,6 +6425,25 @@ fn trim_sci(s: &str) -> String {
     } else {
         s.to_string()
     }
+}
+
+// --- MAT built-in helpers ---
+
+/// Loads a MATLAB Level 5/7 MAT file and returns a [`Value::Struct`].
+///
+/// Requires the `mat` Cargo feature; without it, always returns an error.
+pub fn load_mat_file(path: &str) -> Result<Value, String> {
+    load_mat_file_impl(path)
+}
+
+#[cfg(feature = "mat")]
+fn load_mat_file_impl(path: &str) -> Result<Value, String> {
+    crate::mat::mat_load(path)
+}
+
+#[cfg(not(feature = "mat"))]
+fn load_mat_file_impl(_path: &str) -> Result<Value, String> {
+    Err("load: .mat support not available — rebuild with --features mat".to_string())
 }
 
 // --- JSON built-in helpers ---
