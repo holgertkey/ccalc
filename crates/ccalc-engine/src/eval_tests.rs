@@ -4037,4 +4037,134 @@ mod mat_tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().starts_with("load:"));
     }
+
+    #[test]
+    fn test_mat_roundtrip_scalar() {
+        use matrw::{matfile, matvar, save_matfile_v7};
+        let path = tmp_mat_path("scalar");
+        let ps = path.to_str().unwrap();
+        let mat = matfile!(x: matvar!(3.14),);
+        save_matfile_v7(ps, mat, false).expect("write .mat");
+        let result = mat_load(ps).unwrap();
+        std::fs::remove_file(&path).ok();
+        match result {
+            Value::Struct(fields) => {
+                assert_eq!(fields.get("x"), Some(&Value::Scalar(3.14)));
+            }
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_mat_roundtrip_vector() {
+        use matrw::{matfile, matvar, save_matfile_v7};
+        let path = tmp_mat_path("vector");
+        let ps = path.to_str().unwrap();
+        let mat = matfile!(v: matvar!([1.0, 2.0, 3.0]),);
+        save_matfile_v7(ps, mat, false).expect("write .mat");
+        let result = mat_load(ps).unwrap();
+        std::fs::remove_file(&path).ok();
+        match result {
+            Value::Struct(fields) => match fields.get("v").unwrap() {
+                Value::Matrix(m) => {
+                    assert_eq!(m.nrows(), 1);
+                    assert_eq!(m.ncols(), 3);
+                    assert_eq!(m[[0, 0]], 1.0);
+                    assert_eq!(m[[0, 2]], 3.0);
+                }
+                other => panic!("expected Matrix, got {other:?}"),
+            },
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_mat_roundtrip_matrix() {
+        use matrw::{matfile, matvar, save_matfile_v7};
+        let path = tmp_mat_path("matrix");
+        let ps = path.to_str().unwrap();
+        // 2×3: rows [[1,2,3],[4,5,6]]
+        let mat = matfile!(A: matvar!([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),);
+        save_matfile_v7(ps, mat, false).expect("write .mat");
+        let result = mat_load(ps).unwrap();
+        std::fs::remove_file(&path).ok();
+        match result {
+            Value::Struct(fields) => match fields.get("A").unwrap() {
+                Value::Matrix(m) => {
+                    assert_eq!((m.nrows(), m.ncols()), (2, 3));
+                    assert_eq!(m[[0, 0]], 1.0);
+                    assert_eq!(m[[0, 2]], 3.0);
+                    assert_eq!(m[[1, 0]], 4.0);
+                    assert_eq!(m[[1, 2]], 6.0);
+                }
+                other => panic!("expected Matrix, got {other:?}"),
+            },
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_mat_roundtrip_string() {
+        use matrw::{matfile, matvar, save_matfile_v7};
+        let path = tmp_mat_path("string");
+        let ps = path.to_str().unwrap();
+        let mat = matfile!(label: matvar!("hello"),);
+        save_matfile_v7(ps, mat, false).expect("write .mat");
+        let result = mat_load(ps).unwrap();
+        std::fs::remove_file(&path).ok();
+        match result {
+            Value::Struct(fields) => match fields.get("label").unwrap() {
+                Value::Str(s) => assert_eq!(s, "hello"),
+                other => panic!("expected Str, got {other:?}"),
+            },
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_mat_roundtrip_struct() {
+        use matrw::{matfile, matvar, save_matfile_v7};
+        let path = tmp_mat_path("struct");
+        let ps = path.to_str().unwrap();
+        let mat = matfile!(s: matvar!({ x: 1.0, y: 2.0 }),);
+        save_matfile_v7(ps, mat, false).expect("write .mat");
+        let result = mat_load(ps).unwrap();
+        std::fs::remove_file(&path).ok();
+        match result {
+            Value::Struct(outer) => match outer.get("s").unwrap() {
+                Value::Struct(inner) => {
+                    assert_eq!(inner.get("x"), Some(&Value::Scalar(1.0)));
+                    assert_eq!(inner.get("y"), Some(&Value::Scalar(2.0)));
+                }
+                other => panic!("expected inner Struct, got {other:?}"),
+            },
+            other => panic!("expected Struct, got {other:?}"),
+        }
+    }
+
+    /// Run once to regenerate examples/mat/fixtures/sample.mat.
+    /// Invoke with: cargo test --features mat create_example_fixture -- --ignored
+    #[test]
+    #[ignore]
+    fn create_example_fixture() {
+        use matrw::{matfile, matvar, save_matfile_v7};
+        // Resolve path relative to workspace root (two levels up from this crate).
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        let dir = workspace.join("examples/mat/fixtures");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mat = matfile!(
+            score:    matvar!(92.5),
+            readings: matvar!([23.1, 21.8, 24.3, 22.7, 25.0, 23.6]),
+            A:        matvar!([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+            label:    matvar!("experiment-1"),
+            sensor:   matvar!({ id: 1.0, gain: 0.5 }),
+        );
+        let out = dir.join("sample.mat");
+        save_matfile_v7(out.to_str().unwrap(), mat, false).expect("write sample.mat");
+        println!("Created {}", out.display());
+    }
 }
