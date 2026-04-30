@@ -185,7 +185,22 @@ the dog sat
 Hello ccalc
 ```
 
-### Splitting strings
+### Predicates — containment, prefix, suffix
+
+```
+[ 0 ]: contains('hello world', 'world')
+[ 1 ]:
+[ 0 ]: contains('hello', 'xyz')
+[ 0 ]:
+[ 0 ]: contains('Hello', 'hello', 'IgnoreCase', true)
+[ 1 ]:
+[ 0 ]: startsWith('hello', 'he')
+[ 1 ]:
+[ 0 ]: endsWith('hello', 'lo')
+[ 1 ]:
+```
+
+### Splitting and joining strings
 
 `strsplit` splits a string on a delimiter and returns a **cell array** of char arrays:
 
@@ -205,6 +220,15 @@ Without a delimiter, `strsplit` splits on whitespace:
 [ 0 ]: words = strsplit('hello world')
 [ 0 ]: words{1}
 hello
+```
+
+`strjoin` is the inverse — it joins a cell array of strings into one string:
+
+```
+[ 0 ]: strjoin({'a', 'b', 'c'}, ',')
+a,b,c
+[ 0 ]: strjoin({'x', 'y'})
+x y
 ```
 
 ### Integer and matrix string conversion
@@ -234,6 +258,37 @@ line 2
 
 [ 0 ]: disp(sprintf('A\tB\tC'))
 A	B	C
+```
+
+---
+
+## Regular expressions
+
+Regular expression support is available when ccalc is built with
+`--features regex`. Without the feature, calling these functions returns
+an informative error message. Both names are always available for tab
+completion.
+
+```
+% Find start index of first match (1-based); [] if no match:
+regexp('abc 123 def', '\d+')          % → 5
+
+% Extract all matched substrings as a cell array:
+regexp('abc 123 def 456', '\d+', 'match')   % → {'123', '456'}
+
+% Case-insensitive search:
+regexpi('Hello World', 'hello')       % → 1
+
+% Replace all matches (replacement is always a literal string):
+regexprep('foo  bar', '\s+', '_')     % → 'foo_bar'
+regexprep('2024-01-15', '-', '/')     % → '2024/01/15'
+regexprep('a', 'a', '$1')            % → '$1'  (not expanded)
+```
+
+Build with regex support:
+
+```
+cargo build --features regex
 ```
 
 ---

@@ -38,6 +38,11 @@ json = ["dep:serde_json"]
 # Build: cargo build --release --features mat
 mat = ["dep:matrw"]
 
+# Regular expressions: regexp(), regexpi(), regexprep() built-ins.
+# Adds the regex crate; omitted from the default build to keep the binary lean.
+# Build: cargo build --features regex
+regex = ["dep:regex"]
+
 [dependencies]
 dirs = "5"
 indexmap = "2"
@@ -48,6 +53,7 @@ blas-src = { version = "0.10", optional = true, default-features = false, featur
 openblas-src = { version = "0.10", optional = true, features = ["static"] }
 serde_json = { version = "1", optional = true }
 matrw = { version = "=0.1.4", optional = true }
+regex = { version = "1", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

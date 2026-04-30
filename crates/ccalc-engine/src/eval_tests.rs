@@ -4168,3 +4168,316 @@ mod mat_tests {
         println!("Created {}", out.display());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 21a — String predicates and joining
+// ---------------------------------------------------------------------------
+
+fn call1(fname: &str, a: Value) -> Result<Value, String> {
+    let mut env = empty_env();
+    env.insert("_a".to_string(), a);
+    eval(
+        &Expr::Call(fname.to_string(), vec![Expr::Var("_a".to_string())]),
+        &env,
+    )
+}
+
+fn call2(fname: &str, a: Value, b: Value) -> Result<Value, String> {
+    let mut env = empty_env();
+    env.insert("_a".to_string(), a);
+    env.insert("_b".to_string(), b);
+    eval(
+        &Expr::Call(
+            fname.to_string(),
+            vec![Expr::Var("_a".to_string()), Expr::Var("_b".to_string())],
+        ),
+        &env,
+    )
+}
+
+fn call3(fname: &str, a: Value, b: Value, c: Value) -> Result<Value, String> {
+    let mut env = empty_env();
+    env.insert("_a".to_string(), a);
+    env.insert("_b".to_string(), b);
+    env.insert("_c".to_string(), c);
+    eval(
+        &Expr::Call(
+            fname.to_string(),
+            vec![
+                Expr::Var("_a".to_string()),
+                Expr::Var("_b".to_string()),
+                Expr::Var("_c".to_string()),
+            ],
+        ),
+        &env,
+    )
+}
+
+#[test]
+fn test_contains_found() {
+    assert_eq!(
+        call2("contains", Value::Str("hello world".into()), Value::Str("world".into())),
+        Ok(Value::Scalar(1.0))
+    );
+}
+
+#[test]
+fn test_contains_not_found() {
+    assert_eq!(
+        call2("contains", Value::Str("hello".into()), Value::Str("xyz".into())),
+        Ok(Value::Scalar(0.0))
+    );
+}
+
+#[test]
+fn test_contains_ignore_case() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "contains".to_string(),
+        vec![
+            Expr::StrLiteral("Hello".to_string()),
+            Expr::StrLiteral("hello".to_string()),
+            Expr::StrLiteral("IgnoreCase".to_string()),
+            Expr::Number(1.0),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(1.0)));
+}
+
+#[test]
+fn test_contains_ignore_case_false() {
+    let env = empty_env();
+    let expr = Expr::Call(
+        "contains".to_string(),
+        vec![
+            Expr::StrLiteral("Hello".to_string()),
+            Expr::StrLiteral("hello".to_string()),
+            Expr::StrLiteral("IgnoreCase".to_string()),
+            Expr::Number(0.0),
+        ],
+    );
+    assert_eq!(eval(&expr, &env), Ok(Value::Scalar(0.0)));
+}
+
+#[test]
+fn test_starts_with_true() {
+    assert_eq!(
+        call2("startsWith", Value::Str("hello".into()), Value::Str("he".into())),
+        Ok(Value::Scalar(1.0))
+    );
+}
+
+#[test]
+fn test_starts_with_false() {
+    assert_eq!(
+        call2("startsWith", Value::Str("hello".into()), Value::Str("lo".into())),
+        Ok(Value::Scalar(0.0))
+    );
+}
+
+#[test]
+fn test_ends_with_true() {
+    assert_eq!(
+        call2("endsWith", Value::Str("hello".into()), Value::Str("lo".into())),
+        Ok(Value::Scalar(1.0))
+    );
+}
+
+#[test]
+fn test_ends_with_false() {
+    assert_eq!(
+        call2("endsWith", Value::Str("hello".into()), Value::Str("he".into())),
+        Ok(Value::Scalar(0.0))
+    );
+}
+
+#[test]
+fn test_strjoin_with_delimiter() {
+    let cell = Value::Cell(vec![
+        Value::Str("a".into()),
+        Value::Str("b".into()),
+        Value::Str("c".into()),
+    ]);
+    assert_eq!(
+        call2("strjoin", cell, Value::Str(",".into())),
+        Ok(Value::Str("a,b,c".into()))
+    );
+}
+
+#[test]
+fn test_strjoin_default_space() {
+    let cell = Value::Cell(vec![Value::Str("x".into()), Value::Str("y".into())]);
+    assert_eq!(call1("strjoin", cell), Ok(Value::Str("x y".into())));
+}
+
+#[test]
+fn test_strjoin_single_element() {
+    let cell = Value::Cell(vec![Value::Str("only".into())]);
+    assert_eq!(call1("strjoin", cell), Ok(Value::Str("only".into())));
+}
+
+#[test]
+fn test_strjoin_empty_cell() {
+    let cell = Value::Cell(vec![]);
+    assert_eq!(call1("strjoin", cell), Ok(Value::Str("".into())));
+}
+
+#[test]
+fn test_strjoin_non_string_cell_errors() {
+    let cell = Value::Cell(vec![Value::Str("ok".into()), Value::Scalar(1.0)]);
+    assert!(call1("strjoin", cell).is_err());
+}
+
+#[test]
+fn test_strjoin_non_cell_errors() {
+    assert!(call1("strjoin", Value::Str("not a cell".into())).is_err());
+}
+
+#[test]
+fn test_contains_in_builtin_names() {
+    assert!(
+        builtin_names().contains(&"contains"),
+        "contains missing from builtin_names"
+    );
+}
+
+#[test]
+fn test_strjoin_in_builtin_names() {
+    assert!(
+        builtin_names().contains(&"strjoin"),
+        "strjoin missing from builtin_names"
+    );
+}
+
+#[test]
+fn test_starts_ends_with_in_builtin_names() {
+    assert!(builtin_names().contains(&"startsWith"));
+    assert!(builtin_names().contains(&"endsWith"));
+}
+
+#[test]
+fn test_regexp_in_builtin_names() {
+    assert!(builtin_names().contains(&"regexp"));
+    assert!(builtin_names().contains(&"regexpi"));
+    assert!(builtin_names().contains(&"regexprep"));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 21b — Regular expressions (feature-gated)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "regex")]
+mod regex_tests {
+    use super::*;
+
+    fn regexp(s: &str, pat: &str) -> Value {
+        call2("regexp", Value::Str(s.into()), Value::Str(pat.into()))
+            .expect("regexp failed")
+    }
+
+    fn regexp_match(s: &str, pat: &str) -> Value {
+        call3(
+            "regexp",
+            Value::Str(s.into()),
+            Value::Str(pat.into()),
+            Value::Str("match".into()),
+        )
+        .expect("regexp match failed")
+    }
+
+    fn regexpi(s: &str, pat: &str) -> Value {
+        call2("regexpi", Value::Str(s.into()), Value::Str(pat.into()))
+            .expect("regexpi failed")
+    }
+
+    fn regexprep(s: &str, pat: &str, rep: &str) -> Value {
+        call3(
+            "regexprep",
+            Value::Str(s.into()),
+            Value::Str(pat.into()),
+            Value::Str(rep.into()),
+        )
+        .expect("regexprep failed")
+    }
+
+    #[test]
+    fn regexp_returns_start_index() {
+        // 'abc 123 def' — digits start at char 5 (1-based)
+        assert_eq!(regexp("abc 123 def", r"\d+"), Value::Scalar(5.0));
+    }
+
+    #[test]
+    fn regexp_no_match_returns_empty_matrix() {
+        use ndarray::Array2;
+        assert_eq!(
+            regexp("hello", r"\d+"),
+            Value::Matrix(Array2::zeros((0, 0)))
+        );
+    }
+
+    #[test]
+    fn regexp_match_returns_cell_of_strings() {
+        match regexp_match("abc 123 def 456", r"\d+") {
+            Value::Cell(v) => {
+                assert_eq!(v.len(), 2);
+                assert_eq!(v[0], Value::Str("123".into()));
+                assert_eq!(v[1], Value::Str("456".into()));
+            }
+            other => panic!("expected Cell, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn regexp_match_no_matches_returns_empty_cell() {
+        match regexp_match("hello world", r"\d+") {
+            Value::Cell(v) => assert!(v.is_empty()),
+            other => panic!("expected empty Cell, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn regexpi_case_insensitive() {
+        assert_eq!(regexpi("Hello World", "hello"), Value::Scalar(1.0));
+    }
+
+    #[test]
+    fn regexprep_basic() {
+        assert_eq!(
+            regexprep("foo  bar", r"\s+", "_"),
+            Value::Str("foo_bar".into())
+        );
+    }
+
+    #[test]
+    fn regexprep_date_slash() {
+        assert_eq!(
+            regexprep("2024-01-15", "-", "/"),
+            Value::Str("2024/01/15".into())
+        );
+    }
+
+    #[test]
+    fn regexprep_literal_dollar_sign() {
+        // replacement is literal: '$1' must not be expanded as a capture group
+        assert_eq!(regexprep("a", "a", "$1"), Value::Str("$1".into()));
+    }
+
+    #[test]
+    fn regexp_invalid_pattern_errors() {
+        let result = call2("regexp", Value::Str("x".into()), Value::Str("[invalid".into()));
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("invalid pattern"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn regexp_unknown_option_errors() {
+        let result = call3(
+            "regexp",
+            Value::Str("x".into()),
+            Value::Str(r"\w".into()),
+            Value::Str("tokens".into()),
+        );
+        assert!(result.is_err());
+    }
+}

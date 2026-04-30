@@ -2176,6 +2176,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "complex",
         "cond",
         "conj",
+        "contains",
         "cos",
         "cov",
         "cumprod",
@@ -2186,6 +2187,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "dlmread",
         "dlmwrite",
         "eig",
+        "endsWith",
         "erf",
         "erfc",
         "exist",
@@ -2260,6 +2262,9 @@ pub fn builtin_names() -> &'static [&'static str] {
         "readmatrix",
         "readtable",
         "real",
+        "regexp",
+        "regexpi",
+        "regexprep",
         "rem",
         "reshape",
         "rmfield",
@@ -2272,11 +2277,13 @@ pub fn builtin_names() -> &'static [&'static str] {
         "sort",
         "sprintf",
         "sqrt",
+        "startsWith",
         "std",
         "str2double",
         "str2num",
         "strcmp",
         "strcmpi",
+        "strjoin",
         "strrep",
         "strsplit",
         "strtrim",
@@ -4137,6 +4144,106 @@ fn call_builtin(
                 .map(|p| Value::Str(p.to_string()))
                 .collect();
             Ok(Value::Cell(parts))
+        }
+        // strjoin(c) / strjoin(c, delim) — join a cell array of strings
+        ("strjoin", n) if n == 1 || n == 2 => {
+            let cells = match &args[0] {
+                Value::Cell(v) => v,
+                _ => {
+                    return Err(
+                        "strjoin: first argument must be a cell array of strings".to_string()
+                    )
+                }
+            };
+            let delim = if n == 2 {
+                string_arg(&args[1], name, 2)?.to_string()
+            } else {
+                " ".to_string()
+            };
+            let mut parts: Vec<String> = Vec::with_capacity(cells.len());
+            for (i, v) in cells.iter().enumerate() {
+                match v {
+                    Value::Str(s) | Value::StringObj(s) => parts.push(s.clone()),
+                    _ => return Err(format!("strjoin: element {} must be a string", i + 1)),
+                }
+            }
+            Ok(Value::Str(parts.join(&delim)))
+        }
+        // contains(s, pat) / contains(s, pat, 'IgnoreCase', tf) — substring check
+        ("contains", 2) => {
+            let s = string_arg(&args[0], name, 1)?;
+            let pat = string_arg(&args[1], name, 2)?;
+            Ok(Value::Scalar(bool_to_f64(s.contains(pat))))
+        }
+        ("contains", 4) => {
+            let s = string_arg(&args[0], name, 1)?;
+            let pat = string_arg(&args[1], name, 2)?;
+            let key = string_arg(&args[2], name, 3)?;
+            if key != "IgnoreCase" {
+                return Err(format!(
+                    "contains: unknown option '{key}'; expected 'IgnoreCase'"
+                ));
+            }
+            let ignore = match &args[3] {
+                Value::Scalar(n) => *n != 0.0,
+                _ => return Err("contains: 'IgnoreCase' value must be a scalar".to_string()),
+            };
+            if ignore {
+                Ok(Value::Scalar(bool_to_f64(
+                    s.to_lowercase().contains(&pat.to_lowercase()),
+                )))
+            } else {
+                Ok(Value::Scalar(bool_to_f64(s.contains(pat))))
+            }
+        }
+        // startsWith(s, pat) — prefix check
+        ("startsWith", 2) => {
+            let s = string_arg(&args[0], name, 1)?;
+            let pat = string_arg(&args[1], name, 2)?;
+            Ok(Value::Scalar(bool_to_f64(s.starts_with(pat))))
+        }
+        // endsWith(s, pat) — suffix check
+        ("endsWith", 2) => {
+            let s = string_arg(&args[0], name, 1)?;
+            let pat = string_arg(&args[1], name, 2)?;
+            Ok(Value::Scalar(bool_to_f64(s.ends_with(pat))))
+        }
+        // regexp(s, pat) / regexp(s, pat, 'match') — regular expression search
+        ("regexp", 2) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let pat = string_arg(&args[1], name, 2)?.to_string();
+            regexp_impl("regexp", &s, &pat, false, false)
+        }
+        ("regexp", 3) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let pat = string_arg(&args[1], name, 2)?.to_string();
+            let opt = string_arg(&args[2], name, 3)?;
+            if opt != "match" {
+                return Err(format!("regexp: unknown option '{opt}'; expected 'match'"));
+            }
+            regexp_impl("regexp", &s, &pat, false, true)
+        }
+        // regexpi(s, pat) — case-insensitive regexp
+        ("regexpi", 2) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let pat = string_arg(&args[1], name, 2)?.to_string();
+            regexp_impl("regexpi", &s, &pat, true, false)
+        }
+        ("regexpi", 3) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let pat = string_arg(&args[1], name, 2)?.to_string();
+            let opt = string_arg(&args[2], name, 3)?;
+            if opt != "match" {
+                return Err(format!("regexpi: unknown option '{opt}'; expected 'match'"));
+            }
+            regexp_impl("regexpi", &s, &pat, true, true)
+        }
+        // regexprep(s, pat, rep) — replace all matches with literal replacement
+        ("regexprep", 3) => {
+            let s = string_arg(&args[0], name, 1)?.to_string();
+            let pat = string_arg(&args[1], name, 2)?.to_string();
+            let rep = string_arg(&args[2], name, 3)?.to_string();
+            regexprep_impl(&s, &pat, &rep)
         }
         // error(fmt, args...) — raise a runtime error with a formatted message
         ("error", _) if !args.is_empty() => {
@@ -6444,6 +6551,65 @@ fn load_mat_file_impl(path: &str) -> Result<Value, String> {
 #[cfg(not(feature = "mat"))]
 fn load_mat_file_impl(_path: &str) -> Result<Value, String> {
     Err("load: .mat support not available — rebuild with --features mat".to_string())
+}
+
+// --- Regex built-in helpers ---
+
+#[cfg(feature = "regex")]
+fn regexp_impl(
+    fname: &str,
+    s: &str,
+    pat: &str,
+    ignore_case: bool,
+    return_match: bool,
+) -> Result<Value, String> {
+    use ndarray::Array2;
+    let full_pat = if ignore_case {
+        format!("(?i){pat}")
+    } else {
+        pat.to_string()
+    };
+    let re =
+        regex::Regex::new(&full_pat).map_err(|e| format!("{fname}: invalid pattern: {e}"))?;
+    if return_match {
+        let matches: Vec<Value> = re
+            .find_iter(s)
+            .map(|m| Value::Str(m.as_str().to_string()))
+            .collect();
+        Ok(Value::Cell(matches))
+    } else {
+        match re.find(s) {
+            Some(m) => Ok(Value::Scalar(
+                (s[..m.start()].chars().count() + 1) as f64,
+            )),
+            None => Ok(Value::Matrix(Array2::zeros((0, 0)))),
+        }
+    }
+}
+
+#[cfg(not(feature = "regex"))]
+fn regexp_impl(
+    fname: &str,
+    _s: &str,
+    _pat: &str,
+    _ignore_case: bool,
+    _return_match: bool,
+) -> Result<Value, String> {
+    Err(format!(
+        "{fname}: not available — rebuild with --features regex"
+    ))
+}
+
+#[cfg(feature = "regex")]
+fn regexprep_impl(s: &str, pat: &str, rep: &str) -> Result<Value, String> {
+    let re = regex::Regex::new(pat).map_err(|e| format!("regexprep: invalid pattern: {e}"))?;
+    let result = re.replace_all(s, regex::NoExpand(rep));
+    Ok(Value::Str(result.into_owned()))
+}
+
+#[cfg(not(feature = "regex"))]
+fn regexprep_impl(_s: &str, _pat: &str, _rep: &str) -> Result<Value, String> {
+    Err("regexprep: not available — rebuild with --features regex".to_string())
 }
 
 // --- JSON built-in helpers ---

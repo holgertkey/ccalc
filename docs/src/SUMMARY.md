@@ -72,3 +72,4 @@
 - [Phase 20a — JSON](./ccalc/phase20a-json.md)
 - [Phase 20c — CSV Improvements](./ccalc/phase20c-csv.md)
 - [Phase 20.5 — MAT File Read](./ccalc/phase205-mat.md)
+- [Phase 21 — String Completions and Regex](./ccalc/phase21-string-regex.md)

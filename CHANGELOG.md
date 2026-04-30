@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-04-30
+
+### Added
+
+- **Phase 21 — String completions and regex:**
+
+  - **21a — String predicates and joining:**
+    - `contains(s, pat)` — returns `1` if `pat` is a substring of `s`, `0` otherwise.
+    - `contains(s, pat, 'IgnoreCase', tf)` — 4-argument form for case-insensitive search.
+    - `startsWith(s, pat)` — prefix check; returns `1`/`0`.
+    - `endsWith(s, pat)` — suffix check; returns `1`/`0`.
+    - `strjoin(c)` / `strjoin(c, delim)` — joins a cell array of strings into a single char array. Default delimiter is a space. Rejects non-string cell elements with a clear error.
+    - All added as cases in `call_builtin`. No new tokens or AST nodes.
+
+  - **21b — Regular expressions (feature-gated):**
+    - `regexp(s, pat)` — returns the 1-based start index of the first match, or an empty matrix `[]` if no match.
+    - `regexp(s, pat, 'match')` — returns a `Cell` of `Str` with all matched substrings.
+    - `regexpi(s, pat)` / `regexpi(s, pat, 'match')` — case-insensitive variants; prepend `(?i)` to pattern.
+    - `regexprep(s, pat, rep)` — replace all non-overlapping matches with the **literal** string `rep` (capture-group expansion `$1`/`${name}` is suppressed via `regex::NoExpand`).
+    - Gated behind `--features regex` (adds `regex = "1"` optional dep to `ccalc-engine`). Without the feature, calling any of the three functions returns an informative error. All names always appear in `builtin_names()` for tab completion.
+    - `regex` passthrough feature added to the `ccalc` binary crate.
+    - 10 new tests in `eval_tests.rs::regex_tests` (gated `#[cfg(feature = "regex")]`).
+    - 14 new tests for 21a builtins.
+
 ## [0.25.0] - 2026-04-27
 
 ### Added
