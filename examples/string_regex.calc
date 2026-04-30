@@ -1,0 +1,186 @@
+% string_regex.calc — Phase 21 feature demo
+%
+% Covers: contains, startsWith, endsWith, strjoin  (21a — always available)
+%         regexp, regexpi, regexprep                (21b — requires --features regex)
+%
+% Usage:
+%   ccalc examples/string_regex.calc
+%   cargo run -- examples/string_regex.calc
+%
+% For the regex sections (5 onward), rebuild with:
+%   cargo build --features regex
+%   target/debug/ccalc examples/string_regex.calc
+
+% ── 1. contains ──────────────────────────────────────────────────────────────
+
+fprintf('=== 1. contains ===\n')
+
+log_line = 'ERROR: disk quota exceeded on /var/log';
+fprintf('log_line = %s\n', log_line)
+fprintf('  contains(log_line, "ERROR")    → %d  (1)\n', contains(log_line, 'ERROR'))
+fprintf('  contains(log_line, "WARNING")  → %d  (0)\n', contains(log_line, 'WARNING'))
+fprintf('  contains(log_line, "/var")     → %d  (1)\n', contains(log_line, '/var'))
+
+% Case-insensitive form — 4-arg: (s, pat, 'IgnoreCase', 0/1)
+fprintf('\nCase-insensitive:\n')
+msg = 'Temperature reading: 98.6 F';
+fprintf('  contains(msg, "temp", IgnoreCase=1)  → %d  (1)\n', ...
+    contains(msg, 'temp', 'IgnoreCase', 1))
+fprintf('  contains(msg, "temp", IgnoreCase=0)  → %d  (0)\n', ...
+    contains(msg, 'temp', 'IgnoreCase', 0))
+
+% ── 2. startsWith / endsWith ─────────────────────────────────────────────────
+
+fprintf('\n=== 2. startsWith / endsWith ===\n')
+
+% Check URL protocols
+urls = {'https://example.com', 'http://old-site.org', 'ftp://files.net'};
+fprintf('URL protocol check:\n')
+for k = 1:numel(urls)
+    u = urls{k};
+    fprintf('  %-28s  secure=%d\n', u, startsWith(u, 'https'))
+end
+
+% Filter by file extension
+files = {'report.pdf', 'data.csv', 'notes.txt', 'archive.csv'};
+fprintf('\nFile extension check:\n')
+for k = 1:numel(files)
+    f = files{k};
+    fprintf('  %-18s  is_csv=%d\n', f, endsWith(f, '.csv'))
+end
+
+% ── 3. strjoin ───────────────────────────────────────────────────────────────
+
+fprintf('\n=== 3. strjoin ===\n')
+
+% Default delimiter: space
+words = {'the', 'quick', 'brown', 'fox'};
+fprintf('strjoin(words)         → %s\n', strjoin(words))
+
+% Comma-separated list
+tags = {'rust', 'math', 'repl', 'cli'};
+fprintf('strjoin(tags, ", ")    → %s\n', strjoin(tags, ', '))
+
+% Build a path with /
+parts = {'usr', 'local', 'bin', 'ccalc'};
+fprintf('strjoin(parts, "/")    → /%s\n', strjoin(parts, '/'))
+
+% ── 4. strsplit + strjoin roundtrip ─────────────────────────────────────────
+
+fprintf('\n=== 4. strsplit / strjoin roundtrip ===\n')
+
+csv_line = 'Alice,30,Engineer,Berlin';
+fprintf('csv_line = %s\n', csv_line)
+
+fields = strsplit(csv_line, ',');
+fprintf('  fields{1} = %s\n', fields{1})
+fprintf('  fields{2} = %s\n', fields{2})
+fprintf('  fields{3} = %s\n', fields{3})
+fprintf('  fields{4} = %s\n', fields{4})
+
+% Rebuild with tab separator  (double-quoted string so \t is a real tab)
+fprintf('Rebuild as TSV:  %s\n', strjoin(fields, "\t"))
+
+% Process: upper-case the name field, then rejoin as CSV
+fields{1} = upper(fields{1});
+fprintf('Upper-cased name: %s\n', strjoin(fields, ','))
+
+% ── 5. regexp — index of first match ─────────────────────────────────────────
+%
+% Sections 5–8 require --features regex.
+% Without the feature, regexp/regexpi/regexprep return a "not available" error.
+
+fprintf('\n=== 5. regexp — first match index ===\n')
+
+% Locate the first run of digits in a log entry
+entry = 'Process 1042 exited with code 0';
+idx = regexp(entry, '\d+');
+fprintf('entry  = %s\n', entry)
+fprintf('regexp(entry, "\\d+")  → %g  (expected 9)\n', idx)
+
+% No match → empty matrix []
+no_match = regexp('no digits here', '\d+');
+fprintf('no match → %s\n', mat2str(no_match))
+
+% ── 6. regexp with 'match' — extract all matches ─────────────────────────────
+
+fprintf('\n=== 6. regexp — extract all matches ===\n')
+
+% Extract all numbers from a measurement string
+data = 'T=23.5 P=1013.2 H=67';
+nums = regexp(data, '[0-9]+\.?[0-9]*', 'match');
+fprintf('data = %s\n', data)
+fprintf('Extracted %d numbers:\n', numel(nums))
+for k = 1:numel(nums)
+    fprintf('  [%d] %s\n', k, nums{k})
+end
+
+% Extract words starting with a capital letter
+text2 = 'Alice met Bob and Carol in New York';
+names = regexp(text2, '[A-Z][a-z]+', 'match');
+fprintf('\nCapital words in: %s\n', text2)
+fprintf('Found: %s\n', strjoin(names, ', '))
+
+% ── 7. regexpi — case-insensitive ────────────────────────────────────────────
+
+fprintf('\n=== 7. regexpi — case-insensitive ===\n')
+
+text3 = 'The WARNING level exceeds the warning threshold';
+pos = regexpi(text3, 'warning');
+fprintf('text = %s\n', text3)
+fprintf('First "warning" (any case) at column %g\n', pos)
+
+hits = regexpi(text3, 'warning', 'match');
+fprintf('All matches (%d):\n', numel(hits))
+for k = 1:numel(hits)
+    fprintf('  [%d] %s\n', k, hits{k})
+end
+
+% ── 8. regexprep — replace all matches ───────────────────────────────────────
+
+fprintf('\n=== 8. regexprep — replace ===\n')
+
+% Normalise whitespace runs to a single space
+messy = 'word1   word2    word3  word4';
+fprintf('normalise spaces: %s\n', regexprep(messy, '\s+', ' '))
+
+% Replace date separators - and / (literal replacement only, no backrefs)
+date_str = '2024-03-15';
+fprintf('date with /: %s\n', regexprep(date_str, '-', '/'))
+
+% Replacement is always literal: '$1' is NOT expanded as a capture reference
+fprintf('literal "$1": %s  (not expanded)\n', regexprep('x', 'x', '$1'))
+
+% Redact numbers in a log entry
+raw = 'user_id=4921 score=87.3 level=5';
+fprintf('redacted: %s\n', regexprep(raw, '[0-9]+\.?[0-9]*', 'X'))
+
+% ── 9. Practical — classify log lines ────────────────────────────────────────
+
+fprintf('\n=== 9. Practical — parse log entries ===\n')
+
+% Build cell array of log lines one per assignment (no multiline literal)
+log_lines = {};
+log_lines{1} = 'INFO  2024-01-15 09:32:01 server started on port 8080';
+log_lines{2} = 'WARN  2024-01-15 09:32:45 memory usage at 82 percent';
+log_lines{3} = 'ERROR 2024-01-15 09:33:12 connection refused: 192.168.1.5';
+log_lines{4} = 'INFO  2024-01-15 09:34:00 request processed in 143 ms';
+
+fprintf('Parsing %d log lines:\n\n', numel(log_lines))
+
+for k = 1:numel(log_lines)
+    line = log_lines{k};
+
+    % Severity is the first word (first 5 chars, trimmed)
+    severity = strtrim(line(1:5));
+
+    is_problem = contains(severity, 'ERROR') || contains(severity, 'WARN');
+
+    if is_problem
+        fprintf('  [!] %s\n', line)
+    else
+        fprintf('      %s\n', line)
+    end
+end
+
+fprintf('\nDone.\n')
