@@ -4195,6 +4195,7 @@ fn call2(fname: &str, a: Value, b: Value) -> Result<Value, String> {
     )
 }
 
+#[cfg(feature = "regex")]
 fn call3(fname: &str, a: Value, b: Value, c: Value) -> Result<Value, String> {
     let mut env = empty_env();
     env.insert("_a".to_string(), a);
@@ -4216,7 +4217,11 @@ fn call3(fname: &str, a: Value, b: Value, c: Value) -> Result<Value, String> {
 #[test]
 fn test_contains_found() {
     assert_eq!(
-        call2("contains", Value::Str("hello world".into()), Value::Str("world".into())),
+        call2(
+            "contains",
+            Value::Str("hello world".into()),
+            Value::Str("world".into())
+        ),
         Ok(Value::Scalar(1.0))
     );
 }
@@ -4224,7 +4229,11 @@ fn test_contains_found() {
 #[test]
 fn test_contains_not_found() {
     assert_eq!(
-        call2("contains", Value::Str("hello".into()), Value::Str("xyz".into())),
+        call2(
+            "contains",
+            Value::Str("hello".into()),
+            Value::Str("xyz".into())
+        ),
         Ok(Value::Scalar(0.0))
     );
 }
@@ -4262,7 +4271,11 @@ fn test_contains_ignore_case_false() {
 #[test]
 fn test_starts_with_true() {
     assert_eq!(
-        call2("startsWith", Value::Str("hello".into()), Value::Str("he".into())),
+        call2(
+            "startsWith",
+            Value::Str("hello".into()),
+            Value::Str("he".into())
+        ),
         Ok(Value::Scalar(1.0))
     );
 }
@@ -4270,7 +4283,11 @@ fn test_starts_with_true() {
 #[test]
 fn test_starts_with_false() {
     assert_eq!(
-        call2("startsWith", Value::Str("hello".into()), Value::Str("lo".into())),
+        call2(
+            "startsWith",
+            Value::Str("hello".into()),
+            Value::Str("lo".into())
+        ),
         Ok(Value::Scalar(0.0))
     );
 }
@@ -4278,7 +4295,11 @@ fn test_starts_with_false() {
 #[test]
 fn test_ends_with_true() {
     assert_eq!(
-        call2("endsWith", Value::Str("hello".into()), Value::Str("lo".into())),
+        call2(
+            "endsWith",
+            Value::Str("hello".into()),
+            Value::Str("lo".into())
+        ),
         Ok(Value::Scalar(1.0))
     );
 }
@@ -4286,7 +4307,11 @@ fn test_ends_with_true() {
 #[test]
 fn test_ends_with_false() {
     assert_eq!(
-        call2("endsWith", Value::Str("hello".into()), Value::Str("he".into())),
+        call2(
+            "endsWith",
+            Value::Str("hello".into()),
+            Value::Str("he".into())
+        ),
         Ok(Value::Scalar(0.0))
     );
 }
@@ -4371,8 +4396,7 @@ mod regex_tests {
     use super::*;
 
     fn regexp(s: &str, pat: &str) -> Value {
-        call2("regexp", Value::Str(s.into()), Value::Str(pat.into()))
-            .expect("regexp failed")
+        call2("regexp", Value::Str(s.into()), Value::Str(pat.into())).expect("regexp failed")
     }
 
     fn regexp_match(s: &str, pat: &str) -> Value {
@@ -4386,8 +4410,7 @@ mod regex_tests {
     }
 
     fn regexpi(s: &str, pat: &str) -> Value {
-        call2("regexpi", Value::Str(s.into()), Value::Str(pat.into()))
-            .expect("regexpi failed")
+        call2("regexpi", Value::Str(s.into()), Value::Str(pat.into())).expect("regexpi failed")
     }
 
     fn regexprep(s: &str, pat: &str, rep: &str) -> Value {
@@ -4464,7 +4487,11 @@ mod regex_tests {
 
     #[test]
     fn regexp_invalid_pattern_errors() {
-        let result = call2("regexp", Value::Str("x".into()), Value::Str("[invalid".into()));
+        let result = call2(
+            "regexp",
+            Value::Str("x".into()),
+            Value::Str("[invalid".into()),
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(msg.contains("invalid pattern"), "unexpected error: {msg}");

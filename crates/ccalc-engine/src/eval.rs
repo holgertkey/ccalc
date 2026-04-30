@@ -4152,7 +4152,7 @@ fn call_builtin(
                 _ => {
                     return Err(
                         "strjoin: first argument must be a cell array of strings".to_string()
-                    )
+                    );
                 }
             };
             let delim = if n == 2 {
@@ -6569,8 +6569,7 @@ fn regexp_impl(
     } else {
         pat.to_string()
     };
-    let re =
-        regex::Regex::new(&full_pat).map_err(|e| format!("{fname}: invalid pattern: {e}"))?;
+    let re = regex::Regex::new(&full_pat).map_err(|e| format!("{fname}: invalid pattern: {e}"))?;
     if return_match {
         let matches: Vec<Value> = re
             .find_iter(s)
@@ -6579,9 +6578,7 @@ fn regexp_impl(
         Ok(Value::Cell(matches))
     } else {
         match re.find(s) {
-            Some(m) => Ok(Value::Scalar(
-                (s[..m.start()].chars().count() + 1) as f64,
-            )),
+            Some(m) => Ok(Value::Scalar((s[..m.start()].chars().count() + 1) as f64)),
             None => Ok(Value::Matrix(Array2::zeros((0, 0)))),
         }
     }
