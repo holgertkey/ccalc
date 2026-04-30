@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.25.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.26.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -1712,6 +1712,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `vector_utils.calc`     | `nan`/`inf`, reductions, sort/find/unique, `end` indexing, reshape/flip |
 | `complex_numbers.calc`  | Complex arithmetic, polar form, built-ins, AC circuit   |
 | `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
+| `string_regex.calc`     | Phase 21: `contains`/`startsWith`/`endsWith`, `strjoin`, `strsplit` roundtrip; `regexp`/`regexpi`/`regexprep` log parser — requires `--features regex` for sections 5–9 |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |

@@ -57,10 +57,11 @@ pub fn print(topic: Option<&str>) {
         Some("csv" | "readmatrix" | "readtable" | "writetable" | "table") => print_csv(),
         Some("json" | "jsondecode" | "jsonencode") => print_json(),
         Some("matfile" | "mat-file" | "loadmat" | "load-mat") => print_matfile(),
+        Some("regex" | "regexp" | "regexpi" | "regexprep" | "regular-expressions") => print_regex(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  files  csv  json  matfile  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  regex  files  csv  json  matfile  control  path  examples"
             );
         }
     }
@@ -144,7 +145,9 @@ Complex 3+4i  3+4j  4i  complex(re,im)    (Ni syntax works directly)
 Strings 'char array'  \"string object\"
         num2str  str2num  str2double  strcat  strcmp  strcmpi
         lower  upper  strtrim  strrep  ischar  isstring
-        strsplit(s,delim)  int2str(x)  mat2str(A)
+        strsplit(s,delim)  strjoin(c,delim)  int2str(x)  mat2str(A)
+        contains(s,pat)  startsWith(s,pat)  endsWith(s,pat)
+        regexp  regexpi  regexprep           (help regex for details)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -488,7 +491,8 @@ Special functions
 See also: help stats      (rand/randn/std/prctile/hist and full stats reference)
           help vectors    (sum, min, max, sort, find, norm, cumsum, ...)
           help complex    (full complex number reference)
-          help strings    (char arrays, string objects, full reference)
+          help strings    (char arrays, string objects, predicates, strjoin, ...)
+          help regex      (regexp, regexpi, regexprep — requires --features regex)
           help script     (fprintf/sprintf reference with format specifiers)
           help cells      (cell arrays, varargin, cellfun, arrayfun)"
     );
@@ -1370,6 +1374,8 @@ String built-in functions
     str2double(s)       char array → number  (NaN if not parseable)
     strsplit(s)         split on whitespace → cell array of char arrays
     strsplit(s, delim)  split on delimiter  → cell array of char arrays
+    strjoin(c)          join cell array with space → char array
+    strjoin(c, delim)   join cell array with delimiter
     strcat(a, b, ...)   concatenate two or more strings
     strcmp(a, b)        1 if equal (case-sensitive), else 0
     strcmpi(a, b)       1 if equal (case-insensitive), else 0
@@ -1381,10 +1387,18 @@ String built-in functions
     ischar(s)           1 if s is a char array, else 0
     isstring(s)         1 if s is a string object, else 0
 
-    strsplit examples
+Predicates
+    contains(s, pat)                       1 if pat found in s
+    contains(s, pat, 'IgnoreCase', 1)      case-insensitive variant
+    startsWith(s, pat)                     1 if s begins with pat
+    endsWith(s, pat)                       1 if s ends with pat
+
+    strsplit / strjoin examples
     parts = strsplit('a,b,c', ',')   → {{'a', 'b', 'c'}}  (cell array)
     parts{{1}}                       → 'a'
     words = strsplit('hello world')  → {{'hello', 'world'}}
+    strjoin({{'x','y','z'}}, '-')    → 'x-y-z'
+    strjoin({{'the','fox'}})         → 'the fox'
 
 Type checking
     ischar('hello')     →  1
@@ -1406,7 +1420,10 @@ Workspace
     ws/wl do not persist string variables (same policy as matrices).
     who shows: name [1×N char]  or  name [string]
 
-Example: ccalc examples/strings.calc"
+See also: help regex   (regexp, regexpi, regexprep — requires --features regex)
+
+Example: ccalc examples/strings.calc
+         ccalc examples/string_regex.calc"
     );
 }
 
@@ -2895,5 +2912,59 @@ Build with MAT support:
 
 See also: help files  help structs  help cells
 Example:  cargo run --features mat -- examples/mat/mat.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help regex
+// ---------------------------------------------------------------------------
+
+fn print_regex() {
+    println!(
+        "\
+REGULAR EXPRESSIONS  (requires: cargo build --features regex)
+
+Without the feature flag, calling regexp/regexpi/regexprep returns an
+informative error. All three names always appear in tab completion.
+
+regexp(s, pat)               1-based index of first match; [] if no match
+regexp(s, pat, 'match')      cell array of all matched substrings
+
+regexpi(s, pat)              case-insensitive regexp (prepends (?i))
+regexpi(s, pat, 'match')     case-insensitive, return all matches
+
+regexprep(s, pat, rep)       replace all matches with the literal string rep
+
+IMPORTANT: the replacement string in regexprep is always treated as a
+literal. Capture-group references ($1, ${{name}}) are NOT expanded.
+
+  regexprep('2024-03-15', '-', '/')     → '2024/03/15'
+  regexprep('foo  bar',   '\\s+', '_')  → 'foo_bar'
+  regexprep('a', 'a', '$1')             → '$1'   (not expanded)
+
+Pattern examples
+  '\\d+'               one or more digits
+  '[A-Z][a-z]+'        capital word
+  '\\d{{4}}-\\d{{2}}-\\d{{2}}'  ISO 8601 date
+  '[0-9]+\\.?[0-9]*'  integer or decimal number
+  '\\s+'               one or more whitespace chars
+
+No-match behaviour
+  regexp('abc', '\\d+')     → []    (empty 0×0 matrix, displays as [])
+  regexp('abc 5', '\\d+')   → 5    (1-based character index)
+
+match form — returns a cell array
+  regexp('a1 b2 c3', '\\d', 'match')   → {{'1','2','3'}}
+
+Case-insensitive
+  regexpi('Hello', 'hello')             → 1   (match at column 1)
+  regexpi('Hello World', 'world', 'match') → {{'World'}}
+
+Build with regex support:
+    cargo build --features regex
+    cargo build --release --features regex
+
+See also: help strings  (contains, startsWith, endsWith, strjoin, strrep, ...)
+Example:  cargo run --features regex -- examples/string_regex.calc"
     );
 }
