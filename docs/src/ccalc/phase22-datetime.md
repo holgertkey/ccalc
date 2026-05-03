@@ -32,7 +32,20 @@ Key functions: `days_from_civil`, `civil_from_days`, `timestamp_to_civil`,
 `isdatetime`, `isduration`, `isnat`,
 `datestr`, `datevec`, `datenum`, `posixtime`, `diff` (extended).
 
+## v0.27.0+001 fixes
+
+Three follow-up fixes applied after the initial phase release:
+
+- **Matrix literals** — `[datetime(...); datetime(...)]` and `[hours(1); hours(2)]` now produce
+  `DateTimeArray` / `DurationArray`. The matrix builder uses a two-pass approach: evaluate all
+  elements first, then dispatch on the type of the first element. Mixing datetime with duration
+  (or numeric) raises an error.
+- **`fprintf`/`sprintf` `%s`** — `DateTime` formats as `"yyyy-MM-dd HH:mm:ss"`;
+  `Duration` formats as `"HH:MM:SS"`.
+- **`isnat` on non-datetime** — now returns `0` instead of an error (MATLAB-compatible).
+
 ## Tests
 
-49 tests in `eval_tests.rs::datetime_tests`:
-constructors, extractors, predicates, arithmetic, formatting, array operations.
+62 tests in `eval_tests.rs::datetime_tests`:
+constructors, extractors, predicates, arithmetic, formatting, array operations,
+matrix literals, printf formatting.

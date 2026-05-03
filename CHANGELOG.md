@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.27.0+001] - 2026-05-03
+
+### Fixed
+
+- `fprintf`/`sprintf` `%s` now formats `DateTime` and `Duration` values (previously returned an error).
+- `isnat(x)` on any non-datetime value (scalar, duration, string, etc.) now returns `0` instead of throwing an error (MATLAB-compatible).
+- `[datetime(...); datetime(...)]` and `[hours(1); hours(2)]` matrix literals now produce `DateTimeArray` / `DurationArray`; mixing types raises an error.
+
+### Added
+
+- `examples/datetime.m` — Phase 22 demo script covering constructors, arithmetic, extractors, predicates, formatting, and project-timeline example.
+
 ## [0.27.0] - 2026-05-03
 
 ### Added

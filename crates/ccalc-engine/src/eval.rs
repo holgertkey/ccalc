@@ -970,100 +970,178 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             if rows.is_empty() {
                 return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
             }
-            // Each literal row is evaluated into a block (Array2).
-            // Elements within a row are horizontally concatenated;
-            // rows are then vertically concatenated.
-            let mut row_blocks: Vec<Array2<f64>> = Vec::with_capacity(rows.len());
+
+            // Pass 1: evaluate all elements, skipping empty rows.
+            let mut evaluated: Vec<Vec<Value>> = Vec::with_capacity(rows.len());
             for row in rows {
                 if row.is_empty() {
                     continue;
                 }
-                let mut elem_mats: Vec<Array2<f64>> = Vec::with_capacity(row.len());
+                let mut ev_row: Vec<Value> = Vec::with_capacity(row.len());
                 for elem_expr in row {
-                    match eval_inner(elem_expr, env, io.as_deref_mut())? {
-                        Value::Scalar(n) => elem_mats.push(Array2::from_elem((1, 1), n)),
-                        Value::Matrix(m) => elem_mats.push(m),
-                        Value::Void => {
-                            return Err("Void value cannot be used in matrix literal".to_string());
-                        }
-                        Value::Complex(_, _) => {
-                            return Err(
-                                "Complex elements in matrix literals are not supported yet"
-                                    .to_string(),
-                            );
-                        }
-                        Value::Str(_) | Value::StringObj(_) => {
-                            return Err(
-                                "String elements in matrix literals are not supported".to_string()
-                            );
-                        }
-                        Value::Lambda(_)
-                        | Value::Function { .. }
-                        | Value::Tuple(_)
-                        | Value::Cell(_)
-                        | Value::Struct(_)
-                        | Value::StructArray(_)
-                        | Value::DateTime(_)
-                        | Value::Duration(_)
-                        | Value::DateTimeArray(_)
-                        | Value::DurationArray(_) => {
-                            return Err("This type cannot be used in matrix literals".to_string());
-                        }
-                    }
+                    ev_row.push(eval_inner(elem_expr, env, io.as_deref_mut())?);
                 }
-                // All elements in this row must have the same number of rows.
-                let nrows = elem_mats[0].nrows();
-                for (i, m) in elem_mats.iter().enumerate().skip(1) {
-                    if m.nrows() != nrows {
-                        return Err(format!(
-                            "Matrix row height mismatch: expected {} rows, element {} has {} rows",
-                            nrows,
-                            i + 1,
-                            m.nrows()
-                        ));
-                    }
-                }
-                // Horizontal concatenation: collect each physical row across all blocks.
-                let ncols: usize = elem_mats.iter().map(|m| m.ncols()).sum();
-                let mut flat: Vec<f64> = Vec::with_capacity(nrows * ncols);
-                for r in 0..nrows {
-                    for m in &elem_mats {
-                        flat.extend(m.row(r).iter().copied());
-                    }
-                }
-                row_blocks.push(
-                    Array2::from_shape_vec((nrows, ncols), flat)
-                        .map_err(|e| format!("Matrix shape error: {e}"))?,
-                );
+                evaluated.push(ev_row);
             }
-            if row_blocks.is_empty() {
+            if evaluated.is_empty() {
                 return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
             }
-            let ncols = row_blocks[0].ncols();
-            if ncols == 0 {
-                let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
-                return Ok(Value::Matrix(Array2::zeros((total_rows, 0))));
+
+            // Pass 2: dispatch on the type of the first element.
+            enum MatKind {
+                Numeric,
+                DateTime,
+                Duration,
             }
-            // All row blocks must have the same number of columns.
-            for (i, blk) in row_blocks.iter().enumerate().skip(1) {
-                if blk.ncols() != ncols {
-                    return Err(format!(
-                        "Matrix column count mismatch: expected {} columns, row {} has {} columns",
-                        ncols,
-                        i + 1,
-                        blk.ncols()
-                    ));
+            let kind = match &evaluated[0][0] {
+                Value::Scalar(_) | Value::Matrix(_) => MatKind::Numeric,
+                Value::DateTime(_) | Value::DateTimeArray(_) => MatKind::DateTime,
+                Value::Duration(_) | Value::DurationArray(_) => MatKind::Duration,
+                Value::Void => {
+                    return Err("Void value cannot be used in matrix literal".to_string());
+                }
+                Value::Complex(_, _) => {
+                    return Err(
+                        "Complex elements in matrix literals are not supported yet".to_string()
+                    );
+                }
+                Value::Str(_) | Value::StringObj(_) => {
+                    return Err("String elements in matrix literals are not supported".to_string());
+                }
+                Value::Lambda(_)
+                | Value::Function { .. }
+                | Value::Tuple(_)
+                | Value::Cell(_)
+                | Value::Struct(_)
+                | Value::StructArray(_) => {
+                    return Err("This type cannot be used in matrix literals".to_string());
+                }
+            };
+
+            match kind {
+                MatKind::DateTime => {
+                    let mut ts: Vec<f64> = Vec::new();
+                    for ev_row in &evaluated {
+                        for val in ev_row {
+                            match val {
+                                Value::DateTime(t) => ts.push(*t),
+                                Value::DateTimeArray(v) => ts.extend_from_slice(v),
+                                _ => {
+                                    return Err(
+                                        "Matrix literal: cannot mix datetime with other types"
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Ok(Value::DateTimeArray(ts))
+                }
+                MatKind::Duration => {
+                    let mut sv: Vec<f64> = Vec::new();
+                    for ev_row in &evaluated {
+                        for val in ev_row {
+                            match val {
+                                Value::Duration(s) => sv.push(*s),
+                                Value::DurationArray(v) => sv.extend_from_slice(v),
+                                _ => {
+                                    return Err(
+                                        "Matrix literal: cannot mix duration with other types"
+                                            .to_string(),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Ok(Value::DurationArray(sv))
+                }
+                MatKind::Numeric => {
+                    // Each row is horizontally concatenated into an Array2 block;
+                    // blocks are then vertically concatenated.
+                    let mut row_blocks: Vec<Array2<f64>> = Vec::with_capacity(evaluated.len());
+                    for ev_row in &evaluated {
+                        let mut elem_mats: Vec<Array2<f64>> = Vec::with_capacity(ev_row.len());
+                        for val in ev_row {
+                            match val {
+                                Value::Scalar(n) => {
+                                    elem_mats.push(Array2::from_elem((1, 1), *n));
+                                }
+                                Value::Matrix(m) => elem_mats.push(m.clone()),
+                                Value::Void => {
+                                    return Err(
+                                        "Void value cannot be used in matrix literal".to_string()
+                                    );
+                                }
+                                Value::Complex(_, _) => {
+                                    return Err(
+                                        "Complex elements in matrix literals are not supported yet"
+                                            .to_string(),
+                                    );
+                                }
+                                Value::Str(_) | Value::StringObj(_) => {
+                                    return Err(
+                                        "String elements in matrix literals are not supported"
+                                            .to_string(),
+                                    );
+                                }
+                                _ => {
+                                    return Err(
+                                        "This type cannot be used in matrix literals".to_string()
+                                    );
+                                }
+                            }
+                        }
+                        let nrows = elem_mats[0].nrows();
+                        for (i, m) in elem_mats.iter().enumerate().skip(1) {
+                            if m.nrows() != nrows {
+                                return Err(format!(
+                                    "Matrix row height mismatch: expected {} rows, element {} has {} rows",
+                                    nrows,
+                                    i + 1,
+                                    m.nrows()
+                                ));
+                            }
+                        }
+                        let ncols: usize = elem_mats.iter().map(|m| m.ncols()).sum();
+                        let mut flat: Vec<f64> = Vec::with_capacity(nrows * ncols);
+                        for r in 0..nrows {
+                            for m in &elem_mats {
+                                flat.extend(m.row(r).iter().copied());
+                            }
+                        }
+                        row_blocks.push(
+                            Array2::from_shape_vec((nrows, ncols), flat)
+                                .map_err(|e| format!("Matrix shape error: {e}"))?,
+                        );
+                    }
+                    if row_blocks.is_empty() {
+                        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+                    }
+                    let ncols = row_blocks[0].ncols();
+                    if ncols == 0 {
+                        let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
+                        return Ok(Value::Matrix(Array2::zeros((total_rows, 0))));
+                    }
+                    for (i, blk) in row_blocks.iter().enumerate().skip(1) {
+                        if blk.ncols() != ncols {
+                            return Err(format!(
+                                "Matrix column count mismatch: expected {} columns, row {} has {} columns",
+                                ncols,
+                                i + 1,
+                                blk.ncols()
+                            ));
+                        }
+                    }
+                    let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
+                    let mut flat: Vec<f64> = Vec::with_capacity(total_rows * ncols);
+                    for blk in &row_blocks {
+                        flat.extend(blk.iter().copied());
+                    }
+                    let m = Array2::from_shape_vec((total_rows, ncols), flat)
+                        .map_err(|e| format!("Matrix shape error: {e}"))?;
+                    Ok(Value::Matrix(m))
                 }
             }
-            // Vertical concatenation.
-            let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
-            let mut flat: Vec<f64> = Vec::with_capacity(total_rows * ncols);
-            for blk in &row_blocks {
-                flat.extend(blk.iter().copied());
-            }
-            let m = Array2::from_shape_vec((total_rows, ncols), flat)
-                .map_err(|e| format!("Matrix shape error: {e}"))?;
-            Ok(Value::Matrix(m))
         }
         Expr::Transpose(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Transpose is not applicable to void".to_string()),
@@ -2061,14 +2139,14 @@ fn printf_string(v: &Value) -> Result<String, String> {
         Value::Complex(re, im) => Ok(format_complex(*re, *im, &FormatMode::Custom(6))),
         Value::Void => Err("fprintf: cannot format void as string".to_string()),
         Value::Matrix(_) => Err("fprintf: cannot format matrix as string".to_string()),
+        Value::DateTime(ts) => Ok(crate::datetime::format_datetime(*ts)),
+        Value::Duration(s) => Ok(crate::datetime::format_duration(*s)),
         Value::Lambda(_)
         | Value::Function { .. }
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
         | Value::StructArray(_)
-        | Value::DateTime(_)
-        | Value::Duration(_)
         | Value::DateTimeArray(_)
         | Value::DurationArray(_) => Err("fprintf: cannot format this type as string".to_string()),
     }
@@ -5062,7 +5140,7 @@ fn call_builtin(
                         .map_err(|e| e.to_string())?,
                 ))
             }
-            _ => Err("isnat: argument must be a datetime".to_string()),
+            _ => Ok(Value::Scalar(0.0)),
         },
 
         // ── Duration constructors / extractors (overloaded) ───────────────────
@@ -5097,7 +5175,7 @@ fn call_builtin(
         ("seconds", 1) => match &args[0] {
             Value::Duration(s) => Ok(Value::Scalar(*s)),
             Value::DurationArray(v) => {
-                let rows: Vec<f64> = v.iter().map(|s| *s).collect();
+                let rows = v.to_vec();
                 Ok(Value::Matrix(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,

@@ -5074,4 +5074,151 @@ mod datetime_tests {
             _ => panic!("expected Matrix"),
         }
     }
+
+    // ── Fix: isnat on non-datetime returns 0 ─────────────────────────────────
+
+    #[test]
+    fn isnat_on_scalar_returns_zero() {
+        assert_eq!(
+            call1("isnat", Value::Scalar(42.0)).unwrap(),
+            Value::Scalar(0.0)
+        );
+        assert_eq!(
+            call1("isnat", Value::Scalar(0.0)).unwrap(),
+            Value::Scalar(0.0)
+        );
+    }
+
+    #[test]
+    fn isnat_on_duration_returns_zero() {
+        assert_eq!(
+            call1("isnat", Value::Duration(3600.0)).unwrap(),
+            Value::Scalar(0.0)
+        );
+    }
+
+    // ── Fix: fprintf %s accepts DateTime and Duration ─────────────────────────
+
+    fn eval_str(src: &str) -> Result<Value, String> {
+        let env = Env::new();
+        eval_parse(src, &env)
+    }
+
+    #[test]
+    fn sprintf_datetime_as_string() {
+        let result = eval_str("sprintf('%s', datetime(2024, 6, 1))").unwrap();
+        assert_eq!(result, Value::Str("2024-06-01 00:00:00".to_string()));
+    }
+
+    #[test]
+    fn sprintf_duration_as_string() {
+        let result = eval_str("sprintf('%s', hours(2))").unwrap();
+        assert_eq!(result, Value::Str("02:00:00".to_string()));
+    }
+
+    #[test]
+    fn sprintf_nat_as_string() {
+        let result = eval_str("sprintf('%s', NaT)").unwrap();
+        assert_eq!(result, Value::Str("NaT".to_string()));
+    }
+
+    // ── Fix: [datetime(...); datetime(...)] matrix literals ───────────────────
+
+    #[test]
+    fn matrix_literal_datetime_column() {
+        let t1 = civil_to_timestamp(2024, 1, 1, 0, 0, 0.0);
+        let t2 = civil_to_timestamp(2024, 1, 2, 0, 0, 0.0);
+        let t3 = civil_to_timestamp(2024, 1, 3, 0, 0, 0.0);
+        let result =
+            eval_str("[datetime(2024,1,1); datetime(2024,1,2); datetime(2024,1,3)]").unwrap();
+        match result {
+            Value::DateTimeArray(v) => {
+                assert_eq!(v.len(), 3);
+                assert!((v[0] - t1).abs() < 1e-9);
+                assert!((v[1] - t2).abs() < 1e-9);
+                assert!((v[2] - t3).abs() < 1e-9);
+            }
+            _ => panic!("expected DateTimeArray, got {result:?}"),
+        }
+    }
+
+    #[test]
+    fn matrix_literal_datetime_row() {
+        let result = eval_str("[datetime(2024,1,1), datetime(2024,1,2)]").unwrap();
+        match result {
+            Value::DateTimeArray(v) => assert_eq!(v.len(), 2),
+            _ => panic!("expected DateTimeArray"),
+        }
+    }
+
+    #[test]
+    fn matrix_literal_single_datetime() {
+        let result = eval_str("[datetime(2024,6,1)]").unwrap();
+        match result {
+            Value::DateTimeArray(v) => assert_eq!(v.len(), 1),
+            _ => panic!("expected DateTimeArray"),
+        }
+    }
+
+    #[test]
+    fn matrix_literal_duration_column() {
+        let result = eval_str("[hours(1); hours(2); hours(3)]").unwrap();
+        match result {
+            Value::DurationArray(v) => {
+                assert_eq!(v.len(), 3);
+                assert!((v[0] - 3600.0).abs() < 1e-9);
+                assert!((v[1] - 7200.0).abs() < 1e-9);
+                assert!((v[2] - 10800.0).abs() < 1e-9);
+            }
+            _ => panic!("expected DurationArray"),
+        }
+    }
+
+    #[test]
+    fn matrix_literal_duration_row() {
+        let result = eval_str("[minutes(30), minutes(60)]").unwrap();
+        match result {
+            Value::DurationArray(v) => {
+                assert_eq!(v.len(), 2);
+                assert!((v[0] - 1800.0).abs() < 1e-9);
+                assert!((v[1] - 3600.0).abs() < 1e-9);
+            }
+            _ => panic!("expected DurationArray"),
+        }
+    }
+
+    #[test]
+    fn matrix_literal_datetime_concat_array() {
+        // [DateTimeArray; DateTime] should flatten
+        let result =
+            eval_str("[datetime(2024,1,1); datetime(2024,1,2); datetime(2024,1,3)]").unwrap();
+        match result {
+            Value::DateTimeArray(v) => assert_eq!(v.len(), 3),
+            _ => panic!("expected DateTimeArray"),
+        }
+    }
+
+    #[test]
+    fn matrix_literal_mixed_type_error() {
+        let result = eval_str("[datetime(2024,1,1); hours(1)]");
+        assert!(
+            result.is_err(),
+            "expected error for mixed datetime/duration"
+        );
+    }
+
+    #[test]
+    fn matrix_literal_datetime_diff_roundtrip() {
+        // Build a DateTimeArray via literal, then diff it
+        let result =
+            eval_str("diff([datetime(2024,1,1); datetime(2024,1,2); datetime(2024,1,3)])").unwrap();
+        match result {
+            Value::DurationArray(v) => {
+                assert_eq!(v.len(), 2);
+                assert!((v[0] - 86400.0).abs() < 1e-9);
+                assert!((v[1] - 86400.0).abs() < 1e-9);
+            }
+            _ => panic!("expected DurationArray"),
+        }
+    }
 }

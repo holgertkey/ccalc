@@ -160,7 +160,7 @@ pub fn format_datestr(ts: f64, pattern: &str) -> String {
         .copied()
         .unwrap_or("???");
     // Replace MMM before MM so the longer token wins.
-    let result = pattern
+    pattern
         .replace("yyyy", &format!("{y:04}"))
         .replace("MMM", mo_abbr)
         .replace("MM", &format!("{mo:02}"))
@@ -168,8 +168,7 @@ pub fn format_datestr(ts: f64, pattern: &str) -> String {
         .replace("HH", &format!("{h:02}"))
         .replace("mm", &format!("{mi:02}"))
         .replace("ss", &format!("{sec_i:02}"))
-        .replace("SSS", &format!("{ms:03}"));
-    result
+        .replace("SSS", &format!("{ms:03}"))
 }
 
 /// Returns the current UTC time as a Unix timestamp.
