@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `examples/datetime.m` — Phase 22 demo script covering constructors, arithmetic, extractors, predicates, formatting, and project-timeline example.
+- `examples/datetime.calc` — Phase 22 demo script covering constructors, arithmetic, extractors, predicates, formatting, and project-timeline example.
 
 ## [0.27.0] - 2026-05-03
 

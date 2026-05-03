@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.26.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.27.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -782,6 +782,90 @@ String objects use `+` for concatenation.
 
 ---
 
+## Datetime & Duration
+
+UTC datetime and duration values are first-class types. Timestamps are stored as seconds since the Unix epoch (1970-01-01 00:00:00 UTC).
+
+### Constructors
+
+```matlab
+datetime('2024-06-01')                      % from ISO 8601 date string
+datetime('2024-06-01 09:30:00')             % date + time
+datetime(2024, 6, 1)                        % from year, month, day
+datetime(2024, 6, 1, 9, 30, 0)             % from six components
+datetime(ts, 'ConvertFrom', 'posixtime')    % from Unix timestamp
+
+duration(1, 30, 0)    % 1 h 30 min → Duration
+hours(2)              % 2 hours
+minutes(90)           % 90 minutes
+seconds(45)           % 45 seconds
+days(1)               % 1 day
+milliseconds(500)     % 500 ms
+years(1)              % 365.2425 days
+```
+
+`NaT` is the Not-a-Time constant (analogous to `NaN` for numbers). Durations display as `HH:MM:SS`.
+
+### Arithmetic
+
+| Expression | Result |
+|---|---|
+| `datetime + duration` | `DateTime` |
+| `datetime - duration` | `DateTime` |
+| `datetime - datetime` | `Duration` |
+| `duration + duration` | `Duration` |
+| `duration * scalar` | `Duration` |
+
+```matlab
+t  = datetime(2024, 1, 1);
+t2 = t + hours(3);           % 2024-01-01 03:00:00
+elapsed = t2 - t;            % Duration: 03:00:00
+fprintf('%g minutes\n', minutes(elapsed))   % 180
+```
+
+### Component and duration extractors
+
+```matlab
+year(dt)   month(dt)   day(dt)    % DateTime → Scalar
+hour(dt)   minute(dt)  second(dt)
+
+hours(d)   minutes(d)  seconds(d)  days(d)  milliseconds(d)  % Duration → Scalar
+```
+
+### Predicates
+
+```matlab
+isdatetime(x)   % 1 if DateTime or DateTimeArray
+isduration(x)   % 1 if Duration or DurationArray
+isnat(x)        % 1 if NaT; 0 for any other value
+```
+
+### Formatting
+
+```matlab
+datestr(dt)                     % '15-Jun-2024 09:30:00'
+datestr(dt, 'yyyy/MM/dd')       % custom pattern
+datevec(dt)                     % [y m d H M S] row vector
+datenum(dt)                     % MATLAB serial date number
+posixtime(dt)                   % Unix timestamp as scalar
+fprintf('%s\n', dt)             % ISO: '2024-06-01 09:30:00'
+fprintf('%s\n', dur)            % HH:MM:SS: '01:30:00'
+```
+
+### Array operations
+
+```matlab
+% Matrix literals produce DateTimeArray / DurationArray
+dates = [datetime(2024,1,1); datetime(2024,2,1); datetime(2024,3,1)];
+durs  = [hours(1); hours(2); hours(3)];
+
+% diff — successive differences
+d = diff(dates);    % DurationArray  (each element = next − prev)
+fprintf('%g days\n', days(d))
+```
+
+---
+
 ## Complex Numbers
 
 `i` and `j` are pre-set to the imaginary unit `0 + 1i`. Complex numbers
@@ -1474,7 +1558,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1713,6 +1797,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `complex_numbers.calc`  | Complex arithmetic, polar form, built-ins, AC circuit   |
 | `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
 | `string_regex.calc`     | Phase 21: `contains`/`startsWith`/`endsWith`, `strjoin`, `strsplit` roundtrip; `regexp`/`regexpi`/`regexprep` log parser — requires `--features regex` for sections 5–9 |
+| `datetime.calc`         | Phase 22: `datetime`/`duration` constructors, arithmetic, component extractors, predicates, formatting (`datestr`/`datevec`/`datenum`/`posixtime`), array operations, project-timeline example |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |

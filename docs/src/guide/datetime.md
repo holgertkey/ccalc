@@ -97,6 +97,13 @@ posixtime(dt)                  % Unix timestamp as scalar
 
 ## Array operations
 
+Matrix literals build `DateTimeArray` or `DurationArray` when all elements are the same type:
+
+```
+t = [datetime(2024,1,1); datetime(2024,1,2); datetime(2024,1,3)];   % DateTimeArray
+d = [hours(1); hours(2); hours(3)];                                  % DurationArray
+```
+
 `diff(arr)` computes successive differences:
 - `DateTimeArray` → `DurationArray`
 - `DurationArray` → `DurationArray`
@@ -104,4 +111,16 @@ posixtime(dt)                  % Unix timestamp as scalar
 ```
 t = [datetime(2024,1,1); datetime(2024,1,2); datetime(2024,1,3)];
 d = diff(t);    % DurationArray of two 1-day durations
+```
+
+## `fprintf` and `sprintf`
+
+`DateTime` and `Duration` values format as strings with `%s`:
+
+```
+dt  = datetime(2024, 6, 1);
+dur = hours(2);
+fprintf('%s\n', dt)    % 2024-06-01 00:00:00
+fprintf('%s\n', dur)   % 02:00:00
+s = sprintf('elapsed: %s', dur);
 ```

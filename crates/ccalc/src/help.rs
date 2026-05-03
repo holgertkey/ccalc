@@ -58,10 +58,14 @@ pub fn print(topic: Option<&str>) {
         Some("json" | "jsondecode" | "jsonencode") => print_json(),
         Some("matfile" | "mat-file" | "loadmat" | "load-mat") => print_matfile(),
         Some("regex" | "regexp" | "regexpi" | "regexprep" | "regular-expressions") => print_regex(),
+        Some(
+            "datetime" | "duration" | "nat" | "isdatetime" | "isduration" | "isnat" | "datestr"
+            | "datevec" | "datenum" | "posixtime",
+        ) => print_datetime(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  regex  files  csv  json  matfile  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  examples"
             );
         }
     }
@@ -148,6 +152,14 @@ Strings 'char array'  \"string object\"
         strsplit(s,delim)  strjoin(c,delim)  int2str(x)  mat2str(A)
         contains(s,pat)  startsWith(s,pat)  endsWith(s,pat)
         regexp  regexpi  regexprep           (help regex for details)
+Datetime NaT  datetime('2024-06-01')  datetime(y,m,d[,H,M,S])
+         datetime(ts,'ConvertFrom','posixtime')
+         duration(H,M,S)  hours(n) minutes(n) seconds(n) days(n) milliseconds(n) years(n)
+         dt+dur→DateTime  dt-dur→DateTime  dt-dt→Duration  dur+dur  dur*scalar
+         year(dt) month(dt) day(dt) hour(dt) minute(dt) second(dt)
+         isdatetime(x)  isduration(x)  isnat(x)
+         datestr(dt[,fmt])  datevec(dt)  datenum(dt)  posixtime(dt)
+         [dt1;dt2]→DateTimeArray   [d1;d2]→DurationArray   diff(arr)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -246,6 +258,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help logic       comparison and logical operators, masks
   help complex     complex numbers, i/j unit, abs/angle/conj/real/imag
   help strings     char arrays, string objects, strcmp, num2str, ...
+  help datetime    datetime/duration types, constructors, arithmetic, formatting
   help files       file I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile, pwd
   help csv         readmatrix, readtable, writetable — CSV with headers and type inference
   help json        jsondecode / jsonencode (requires --features json build)
@@ -2966,5 +2979,125 @@ Build with regex support:
 
 See also: help strings  (contains, startsWith, endsWith, strjoin, strrep, ...)
 Example:  cargo run --features regex -- examples/string_regex.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help datetime
+// ---------------------------------------------------------------------------
+
+fn print_datetime() {
+    println!(
+        "\
+DATETIME & DURATION
+
+UTC datetime and duration values are first-class types.
+All timestamps are stored as seconds since the Unix epoch (1970-01-01 00:00:00 UTC).
+
+Value types
+    DateTime(f64)          single UTC timestamp  (NaN = NaT)
+    Duration(f64)          elapsed time in seconds (fractional)
+    DateTimeArray(Vec)     ordered sequence of UTC timestamps (N×1)
+    DurationArray(Vec)     ordered sequence of durations (N×1)
+
+    NaT  — Not-a-Time constant, analogous to NaN for scalars.
+
+Datetime constructors
+    datetime('2024-06-01')                 from ISO 8601 date string
+    datetime('2024-06-01 09:30:00')        date + time string
+    datetime(y, m, d)                      from year, month, day
+    datetime(y, m, d, H, M, S)            from six components
+    datetime(ts, 'ConvertFrom', 'posixtime')  from Unix timestamp
+
+Duration constructors  (all return a Duration value)
+    duration(H, M, S)       from hours, minutes, seconds
+    hours(n)                n hours
+    minutes(n)              n minutes
+    seconds(n)              n seconds
+    days(n)                 n days
+    milliseconds(n)         n milliseconds
+    years(n)                n years (365.2425 days each)
+
+    Durations display as HH:MM:SS (e.g. 01:30:00, 02:00:00.500).
+
+Arithmetic
+    Expression                Result type
+    datetime + duration    →  DateTime
+    datetime - duration    →  DateTime
+    datetime - datetime    →  Duration
+    duration + duration    →  Duration
+    duration * scalar      →  Duration
+    scalar * duration      →  Duration
+
+    Example:
+      t  = datetime(2024, 1, 1);
+      t2 = t + hours(3);             % 2024-01-01 03:00:00
+      t3 = t2 - minutes(30);         % 2024-01-01 02:30:00
+      elapsed = t2 - t;              % Duration: 03:00:00
+      fprintf('%g minutes\\n', minutes(elapsed))   % 180
+
+Component extractors  (DateTime → Scalar or DateTimeArray → column vector)
+    year(dt)    month(dt)    day(dt)
+    hour(dt)    minute(dt)   second(dt)
+
+Duration extractors  (Duration → Scalar, in the named unit)
+    hours(d)          total hours
+    minutes(d)        total minutes
+    seconds(d)        total seconds
+    days(d)           total days
+    milliseconds(d)   total milliseconds
+
+    Note: hours/minutes/seconds/days/milliseconds are dual-purpose — when called
+    with a Duration they extract (return a number); when called with a number they
+    construct a new Duration.
+
+Predicates
+    isdatetime(x)    1 if x is DateTime or DateTimeArray, else 0
+    isduration(x)    1 if x is Duration or DurationArray, else 0
+    isnat(x)         1 if x is NaT (DateTime(NaN)), else 0
+                     returns 0 (not an error) for non-datetime arguments
+
+Formatting and conversion
+    datestr(dt)                 default: '15-Jun-2024 00:00:00'
+    datestr(dt, 'yyyy/MM/dd')   custom format pattern
+    datevec(dt)                 [y m d H M S] as a 1×6 row vector
+    datenum(dt)                 MATLAB serial date number (days since 0000-01-00)
+    datenum(y, m, d)            serial date from components
+    posixtime(dt)               Unix timestamp as a scalar (seconds)
+
+    datestr pattern tokens:
+      yyyy  4-digit year        MMM   3-letter month (Jan, Feb, …)
+      MM    2-digit month       dd    2-digit day
+      HH    2-digit hour (24h)  mm    2-digit minute
+      ss    2-digit second      SSS   3-digit milliseconds
+
+fprintf / sprintf with %s
+    fprintf('%s\\n', dt)         2024-06-01 00:00:00  (ISO format)
+    fprintf('%s\\n', dur)        01:30:00             (HH:MM:SS)
+    s = sprintf('elapsed: %s', elapsed);
+
+Array operations
+    Build arrays with matrix literal syntax (all elements same type):
+      dates = [datetime(2024,1,1); datetime(2024,1,2); datetime(2024,1,3)]
+      durs  = [hours(1); hours(2); hours(3)]
+
+    diff(arr) — successive differences
+      DateTimeArray → DurationArray   (each element = next - prev)
+      DurationArray → DurationArray
+
+    Example:
+      t  = [datetime(2024,9,1); datetime(2024,10,1); datetime(2024,11,1)];
+      d  = diff(t);                    % [30 days; 31 days]
+      fprintf('%g days\\n', days(d))
+
+Practical example — project timeline:
+    kickoff = datetime(2024, 9,  2);
+    release = datetime(2025, 1, 20);
+    total   = days(release - kickoff);
+    fprintf('Project spans %g days\\n', total)
+    fprintf('Kickoff: %s\\n', datestr(kickoff, 'dd-MMM-yyyy'))
+
+See also: help format  help strings
+Example:  ccalc examples/datetime.calc"
     );
 }
