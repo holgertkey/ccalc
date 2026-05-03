@@ -1,4 +1,4 @@
-% datetime.m — Phase 22 feature demo
+% datetime.calc — Phase 22 feature demo
 %
 % Covers: datetime constructors, NaT, duration constructors,
 %         arithmetic, component extractors, predicates,
@@ -6,8 +6,8 @@
 %         and duration decomposition.
 %
 % Usage:
-%   ccalc examples/datetime.m
-%   cargo run -- examples/datetime.m
+%   ccalc examples/datetime.calc
+%   cargo run -- examples/datetime.calc
 
 % ── 1. Constructors ──────────────────────────────────────────────────────────
 
