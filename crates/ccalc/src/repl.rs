@@ -307,6 +307,10 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
         Some(Value::Cell(v)) => format!("{{1×{}}}", v.len()),
         Some(Value::Struct(_)) => "[1×1 struct]".to_string(),
         Some(Value::StructArray(arr)) => format!("[1×{} struct]", arr.len()),
+        Some(Value::DateTime(ts)) => ccalc_engine::datetime::format_datetime(*ts),
+        Some(Value::Duration(s)) => ccalc_engine::datetime::format_duration(*s),
+        Some(Value::DateTimeArray(v)) => format!("[{}×1 datetime]", v.len()),
+        Some(Value::DurationArray(v)) => format!("[{}×1 duration]", v.len()),
     }
 }
 
@@ -802,6 +806,27 @@ pub fn run() {
                                         }
                                     }
                                 }
+                                Value::DateTime(ts) => {
+                                    println!(
+                                        "{name} = {}",
+                                        ccalc_engine::datetime::format_datetime(*ts)
+                                    );
+                                }
+                                Value::Duration(s) => {
+                                    println!(
+                                        "{name} = {}",
+                                        ccalc_engine::datetime::format_duration(*s)
+                                    );
+                                }
+                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                    if let Some(full) = format_value_full(&val, &fmt) {
+                                        println!("{name} =");
+                                        println!("{full}");
+                                        if !compact {
+                                            println!();
+                                        }
+                                    }
+                                }
                             },
                             EvalResult::Value(val) => match &val {
                                 Value::Void => {}
@@ -845,6 +870,21 @@ pub fn run() {
                                 }
                                 Value::Tuple(_) => {}
                                 Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                                    if let Some(full) = format_value_full(&val, &fmt) {
+                                        println!("ans =");
+                                        println!("{full}");
+                                        if !compact {
+                                            println!();
+                                        }
+                                    }
+                                }
+                                Value::DateTime(ts) => {
+                                    println!("{}", ccalc_engine::datetime::format_datetime(*ts));
+                                }
+                                Value::Duration(s) => {
+                                    println!("{}", ccalc_engine::datetime::format_duration(*s));
+                                }
+                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
@@ -924,6 +964,18 @@ pub fn run_expr(expr: &str) {
                         println!("{full}");
                     }
                 }
+                Value::DateTime(ts) => {
+                    println!("{name} = {}", ccalc_engine::datetime::format_datetime(*ts));
+                }
+                Value::Duration(s) => {
+                    println!("{name} = {}", ccalc_engine::datetime::format_duration(*s));
+                }
+                Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                    if let Some(full) = format_value_full(&v, &fmt) {
+                        println!("{name} =");
+                        println!("{full}");
+                    }
+                }
             },
             EvalResult::Value(v) => match &v {
                 Value::Void => {}
@@ -958,6 +1010,18 @@ pub fn run_expr(expr: &str) {
                 }
                 Value::Tuple(_) => {}
                 Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                    if let Some(full) = format_value_full(&v, &fmt) {
+                        println!("ans =");
+                        println!("{full}");
+                    }
+                }
+                Value::DateTime(ts) => {
+                    println!("{}", ccalc_engine::datetime::format_datetime(*ts));
+                }
+                Value::Duration(s) => {
+                    println!("{}", ccalc_engine::datetime::format_duration(*s));
+                }
+                Value::DateTimeArray(_) | Value::DurationArray(_) => {
                     if let Some(full) = format_value_full(&v, &fmt) {
                         println!("ans =");
                         println!("{full}");
@@ -1423,6 +1487,27 @@ pub fn run_pipe(reader: impl BufRead) {
                                         }
                                     }
                                 }
+                                Value::DateTime(ts) => {
+                                    println!(
+                                        "{name} = {}",
+                                        ccalc_engine::datetime::format_datetime(*ts)
+                                    );
+                                }
+                                Value::Duration(s) => {
+                                    println!(
+                                        "{name} = {}",
+                                        ccalc_engine::datetime::format_duration(*s)
+                                    );
+                                }
+                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        println!("{name} =");
+                                        println!("{full}");
+                                        if !compact {
+                                            println!();
+                                        }
+                                    }
+                                }
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
@@ -1466,6 +1551,21 @@ pub fn run_pipe(reader: impl BufRead) {
                                 }
                                 Value::Tuple(_) => {}
                                 Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        println!("ans =");
+                                        println!("{full}");
+                                        if !compact {
+                                            println!();
+                                        }
+                                    }
+                                }
+                                Value::DateTime(ts) => {
+                                    println!("{}", ccalc_engine::datetime::format_datetime(*ts));
+                                }
+                                Value::Duration(s) => {
+                                    println!("{}", ccalc_engine::datetime::format_duration(*s));
+                                }
+                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
@@ -1546,6 +1646,12 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Cell(v) => println!("ans = {{1×{} cell}}", v.len()),
             Value::Struct(_) => println!("ans = [1×1 struct]"),
             Value::StructArray(arr) => println!("ans = [1×{} struct]", arr.len()),
+            Value::DateTime(ts) => {
+                println!("ans = {}", ccalc_engine::datetime::format_datetime(*ts))
+            }
+            Value::Duration(s) => println!("ans = {}", ccalc_engine::datetime::format_duration(*s)),
+            Value::DateTimeArray(v) => println!("ans = [{}×1 datetime]", v.len()),
+            Value::DurationArray(v) => println!("ans = [{}×1 duration]", v.len()),
         }
     }
 
@@ -1591,6 +1697,24 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             }
             Value::StructArray(arr) => {
                 matrices.push(format!("{name} = [1×{} struct]", arr.len()));
+            }
+            Value::DateTime(ts) => {
+                scalars.push(format!(
+                    "{name} = {} [datetime]",
+                    ccalc_engine::datetime::format_datetime(*ts)
+                ));
+            }
+            Value::Duration(s) => {
+                scalars.push(format!(
+                    "{name} = {} [duration]",
+                    ccalc_engine::datetime::format_duration(*s)
+                ));
+            }
+            Value::DateTimeArray(v) => {
+                matrices.push(format!("{name} = [{}×1 datetime]", v.len()));
+            }
+            Value::DurationArray(v) => {
+                matrices.push(format!("{name} = [{}×1 duration]", v.len()));
             }
         }
     }
@@ -1891,6 +2015,17 @@ fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
             Value::Function { .. } => println!("@function"),
             Value::Tuple(_) => {}
             Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                if let Some(full) = format_value_full(&v, fmt) {
+                    println!("{full}");
+                }
+            }
+            Value::DateTime(ts) => {
+                println!("{}", ccalc_engine::datetime::format_datetime(*ts));
+            }
+            Value::Duration(s) => {
+                println!("{}", ccalc_engine::datetime::format_duration(*s));
+            }
+            Value::DateTimeArray(_) | Value::DurationArray(_) => {
                 if let Some(full) = format_value_full(&v, fmt) {
                     println!("{full}");
                 }

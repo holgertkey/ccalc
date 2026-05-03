@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-05-03
+
+### Added
+
+- **Phase 22 — Datetime & Duration:**
+
+  - **New value types:**
+    - `Value::DateTime(f64)` — UTC timestamp (seconds since Unix epoch).
+    - `Value::Duration(f64)` — elapsed time in seconds (fractional).
+    - `Value::DateTimeArray(Vec<f64>)` — ordered sequence of UTC timestamps.
+    - `Value::DurationArray(Vec<f64>)` — ordered sequence of durations.
+    - `NaT` — parser-level Not-a-Time constant; evaluates to `DateTime(NaN)`.
+
+  - **New module `ccalc-engine::datetime`** — pure-Rust UTC calendar arithmetic (no external crate). Implements the Howard Hinnant proleptic Gregorian algorithm: `days_from_civil`, `civil_from_days`, `timestamp_to_civil`, `civil_to_timestamp`, `parse_iso8601`, `format_datetime`, `format_duration`, `format_datestr`, `now_timestamp`, `today_timestamp`, `to_datenum`, `from_datenum`.
+
+  - **Constructors:**
+    - `datetime('yyyy-MM-dd')` / `datetime('yyyy-MM-dd HH:mm:ss')` — parse ISO 8601 string.
+    - `datetime(y, m, d)` — from year/month/day scalars.
+    - `datetime(y, m, d, H, M, S)` — from six components.
+    - `datetime(ts, 'ConvertFrom', 'posixtime')` — from Unix timestamp.
+    - `duration(H, M, S)` — from hours/minutes/seconds.
+    - `hours(n)`, `minutes(n)`, `seconds(n)`, `days(n)`, `milliseconds(n)`, `years(n)` — scalar-to-Duration constructors.
+
+  - **Component extractors:**
+    - `year(dt)`, `month(dt)`, `day(dt)`, `hour(dt)`, `minute(dt)`, `second(dt)` — scalar or array forms.
+
+  - **Duration extractors (Duration → Scalar):**
+    - `hours(d)`, `minutes(d)`, `seconds(d)`, `days(d)`, `milliseconds(d)` — Duration-to-scalar conversions.
+
+  - **Predicates:**
+    - `isdatetime(x)`, `isduration(x)`, `isnat(x)`.
+
+  - **Formatting / conversion:**
+    - `datestr(dt)` — default format `dd-MMM-yyyy HH:mm:ss`; `datestr(dt, fmt)` — custom pattern tokens: `yyyy`, `MMM`, `MM`, `dd`, `HH`, `mm`, `ss`, `SSS`.
+    - `datevec(dt)` — returns 1×6 row vector `[y m d H M S]`.
+    - `datenum(dt)` / `datenum(y, m, d)` — MATLAB serial date number.
+    - `posixtime(dt)` — Unix timestamp as scalar.
+
+  - **Arithmetic:** `DateTime ± Duration → DateTime`, `DateTime − DateTime → Duration`, `Duration ± Duration → Duration`, `Duration × Scalar → Duration`; array broadcasting between DateTimeArray / DurationArray.
+
+  - **`diff(arr)`** — successive differences for `DateTimeArray` (→ `DurationArray`), `DurationArray` (→ `DurationArray`), and numeric `Matrix`.
+
+  - **49 new tests** in `eval_tests.rs::datetime_tests` covering constructors, extractors, predicates, arithmetic, formatting, and array operations.
+
 ## [0.26.0] - 2026-04-30
 
 ### Added

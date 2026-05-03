@@ -409,6 +409,8 @@ pub enum Expr {
     ///   for `+utils/my_function.calc` (or `+utils/+sub/func.calc` for nested packages)
     ///   on the session path and loads the function on demand.
     DotCall(Vec<String>, Vec<Expr>),
+    /// Not-a-Time sentinel: `NaT`. Evaluates to `Value::DateTime(f64::NAN)`.
+    NaT,
 }
 
 /// A binary operator used in [`Expr::BinOp`].
@@ -574,7 +576,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("Unary minus is not applicable to this type".to_string())
             }
         },
@@ -600,7 +606,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("Logical NOT is not applicable to this type".to_string())
             }
         },
@@ -943,14 +953,19 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             Value::Complex(re, im) => Ok(Value::Complex(re, im)),
             Value::Str(s) => Ok(Value::Str(s)),
             Value::StringObj(s) => Ok(Value::StringObj(s)),
+            // Arrays: orientation is ignored (Vec<f64> is always 1-D), return as-is.
+            v @ (Value::DateTimeArray(_) | Value::DurationArray(_)) => Ok(v),
             Value::Lambda(_)
             | Value::Function { .. }
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("Transpose is not applicable to this type".to_string()),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_) => Err("Transpose is not applicable to this type".to_string()),
         },
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
+        Expr::NaT => Ok(Value::DateTime(f64::NAN)),
         Expr::Matrix(rows) => {
             if rows.is_empty() {
                 return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
@@ -987,9 +1002,12 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         | Value::Tuple(_)
                         | Value::Cell(_)
                         | Value::Struct(_)
-                        | Value::StructArray(_) => {
-                            return Err("Struct/function values cannot be used in matrix literals"
-                                .to_string());
+                        | Value::StructArray(_)
+                        | Value::DateTime(_)
+                        | Value::Duration(_)
+                        | Value::DateTimeArray(_)
+                        | Value::DurationArray(_) => {
+                            return Err("This type cannot be used in matrix literals".to_string());
                         }
                     }
                 }
@@ -1055,65 +1073,33 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // Transpose of a char array or string object: return as-is (1×N not fully supported)
             Value::Str(s) => Ok(Value::Str(s)),
             Value::StringObj(s) => Ok(Value::StringObj(s)),
+            // Arrays: orientation is ignored (Vec<f64> is always 1-D), return as-is.
+            v @ (Value::DateTimeArray(_) | Value::DurationArray(_)) => Ok(v),
             Value::Lambda(_)
             | Value::Function { .. }
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("Transpose is not applicable to this type".to_string()),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_) => Err("Transpose is not applicable to this type".to_string()),
         },
         Expr::StrLiteral(s) => Ok(Value::Str(s.clone())),
         Expr::StringObjLiteral(s) => Ok(Value::StringObj(s.clone())),
         Expr::Range(start_expr, step_expr, stop_expr) => {
             let start = match eval_inner(start_expr, env, io.as_deref_mut())? {
                 Value::Scalar(n) => n,
-                Value::Void
-                | Value::Matrix(_)
-                | Value::Complex(_, _)
-                | Value::Str(_)
-                | Value::StringObj(_)
-                | Value::Lambda(_)
-                | Value::Function { .. }
-                | Value::Tuple(_)
-                | Value::Cell(_)
-                | Value::Struct(_)
-                | Value::StructArray(_) => {
-                    return Err("Range bounds must be real scalars".to_string());
-                }
+                _ => return Err("Range bounds must be real scalars".to_string()),
             };
             let stop = match eval_inner(stop_expr, env, io.as_deref_mut())? {
                 Value::Scalar(n) => n,
-                Value::Void
-                | Value::Matrix(_)
-                | Value::Complex(_, _)
-                | Value::Str(_)
-                | Value::StringObj(_)
-                | Value::Lambda(_)
-                | Value::Function { .. }
-                | Value::Tuple(_)
-                | Value::Cell(_)
-                | Value::Struct(_)
-                | Value::StructArray(_) => {
-                    return Err("Range bounds must be real scalars".to_string());
-                }
+                _ => return Err("Range bounds must be real scalars".to_string()),
             };
             let step = match step_expr {
                 None => 1.0,
                 Some(s) => match eval_inner(s, env, io)? {
                     Value::Scalar(n) => n,
-                    Value::Void
-                    | Value::Matrix(_)
-                    | Value::Complex(_, _)
-                    | Value::Str(_)
-                    | Value::StringObj(_)
-                    | Value::Lambda(_)
-                    | Value::Function { .. }
-                    | Value::Tuple(_)
-                    | Value::Cell(_)
-                    | Value::Struct(_)
-                    | Value::StructArray(_) => {
-                        return Err("Range step must be a real scalar".to_string());
-                    }
+                    _ => return Err("Range step must be a real scalar".to_string()),
                 },
             };
             if step == 0.0 {
@@ -1165,6 +1151,105 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
         | (_, Value::Struct(_))
         | (Value::StructArray(_), _)
         | (_, Value::StructArray(_)) => Err("Cannot apply operator to a struct value".to_string()),
+        // --- DateTime / Duration arithmetic ---
+        // datetime + duration → datetime
+        (Value::DateTime(t), Value::Duration(d)) => match op {
+            Op::Add => Ok(Value::DateTime(t + d)),
+            Op::Sub => Ok(Value::DateTime(t - d)),
+            _ => Err("Unsupported operator between datetime and duration".to_string()),
+        },
+        // duration + datetime → datetime (commutative add only)
+        (Value::Duration(d), Value::DateTime(t)) => match op {
+            Op::Add => Ok(Value::DateTime(t + d)),
+            _ => Err("Unsupported operator between duration and datetime".to_string()),
+        },
+        // datetime - datetime → duration
+        (Value::DateTime(t1), Value::DateTime(t2)) => match op {
+            Op::Sub => Ok(Value::Duration(t1 - t2)),
+            Op::Eq => Ok(Value::Scalar(bool_to_f64(
+                (t1 - t2).abs() < 1e-9 || (t1.is_nan() && t2.is_nan()),
+            ))),
+            Op::NotEq => Ok(Value::Scalar(bool_to_f64(
+                (t1 - t2).abs() >= 1e-9 && !(t1.is_nan() && t2.is_nan()),
+            ))),
+            Op::Lt => Ok(Value::Scalar(bool_to_f64(t1 < t2))),
+            Op::Gt => Ok(Value::Scalar(bool_to_f64(t1 > t2))),
+            Op::LtEq => Ok(Value::Scalar(bool_to_f64(t1 <= t2))),
+            Op::GtEq => Ok(Value::Scalar(bool_to_f64(t1 >= t2))),
+            _ => Err("Unsupported operator between two datetimes".to_string()),
+        },
+        // duration ± duration → duration; duration */ scalar → duration; duration / duration → scalar
+        (Value::Duration(d1), Value::Duration(d2)) => match op {
+            Op::Add => Ok(Value::Duration(d1 + d2)),
+            Op::Sub => Ok(Value::Duration(d1 - d2)),
+            Op::Div | Op::ElemDiv => Ok(Value::Scalar(d1 / d2)),
+            Op::Eq => Ok(Value::Scalar(bool_to_f64((d1 - d2).abs() < 1e-9))),
+            Op::NotEq => Ok(Value::Scalar(bool_to_f64((d1 - d2).abs() >= 1e-9))),
+            Op::Lt => Ok(Value::Scalar(bool_to_f64(d1 < d2))),
+            Op::Gt => Ok(Value::Scalar(bool_to_f64(d1 > d2))),
+            Op::LtEq => Ok(Value::Scalar(bool_to_f64(d1 <= d2))),
+            Op::GtEq => Ok(Value::Scalar(bool_to_f64(d1 >= d2))),
+            _ => Err("Unsupported operator between two durations".to_string()),
+        },
+        (Value::Duration(d), Value::Scalar(s)) => match op {
+            Op::Mul | Op::ElemMul => Ok(Value::Duration(d * s)),
+            Op::Div | Op::ElemDiv => Ok(Value::Duration(d / s)),
+            _ => Err("Unsupported operator between duration and scalar".to_string()),
+        },
+        (Value::Scalar(s), Value::Duration(d)) => match op {
+            Op::Mul | Op::ElemMul => Ok(Value::Duration(s * d)),
+            _ => Err("Unsupported operator between scalar and duration".to_string()),
+        },
+        // DateTime/Duration + arrays
+        (Value::DateTime(t), Value::DurationArray(dv)) => match op {
+            Op::Add => Ok(Value::DateTimeArray(dv.iter().map(|d| t + d).collect())),
+            Op::Sub => Ok(Value::DateTimeArray(dv.iter().map(|d| t - d).collect())),
+            _ => Err("Unsupported operator between datetime and duration array".to_string()),
+        },
+        (Value::DurationArray(dv), Value::DateTime(t)) => match op {
+            Op::Add => Ok(Value::DateTimeArray(dv.iter().map(|d| t + d).collect())),
+            _ => Err("Unsupported operator between duration array and datetime".to_string()),
+        },
+        (Value::DateTimeArray(tv), Value::Duration(d)) => match op {
+            Op::Add => Ok(Value::DateTimeArray(tv.iter().map(|t| t + d).collect())),
+            Op::Sub => Ok(Value::DateTimeArray(tv.iter().map(|t| t - d).collect())),
+            _ => Err("Unsupported operator between datetime array and duration".to_string()),
+        },
+        (Value::DateTimeArray(tv), Value::DurationArray(dv)) => match op {
+            Op::Add if tv.len() == dv.len() => Ok(Value::DateTimeArray(
+                tv.iter().zip(&dv).map(|(t, d)| t + d).collect(),
+            )),
+            Op::Sub if tv.len() == dv.len() => Ok(Value::DateTimeArray(
+                tv.iter().zip(&dv).map(|(t, d)| t - d).collect(),
+            )),
+            _ => Err("Unsupported or mismatched datetime/duration array operation".to_string()),
+        },
+        (Value::DateTimeArray(tv1), Value::DateTimeArray(tv2)) => match op {
+            Op::Sub if tv1.len() == tv2.len() => Ok(Value::DurationArray(
+                tv1.iter().zip(&tv2).map(|(a, b)| a - b).collect(),
+            )),
+            _ => Err("Unsupported operator between two datetime arrays".to_string()),
+        },
+        (Value::DurationArray(dv), Value::Scalar(s)) => match op {
+            Op::Mul | Op::ElemMul => Ok(Value::DurationArray(dv.iter().map(|d| d * s).collect())),
+            Op::Div | Op::ElemDiv => Ok(Value::DurationArray(dv.iter().map(|d| d / s).collect())),
+            _ => Err("Unsupported operator between duration array and scalar".to_string()),
+        },
+        (Value::Scalar(s), Value::DurationArray(dv)) => match op {
+            Op::Mul | Op::ElemMul => Ok(Value::DurationArray(dv.iter().map(|d| s * d).collect())),
+            _ => Err("Unsupported operator between scalar and duration array".to_string()),
+        },
+        // Catch-all: DateTime/Duration mixed with unsupported types
+        (Value::DateTime(_), _)
+        | (_, Value::DateTime(_))
+        | (Value::Duration(_), _)
+        | (_, Value::Duration(_))
+        | (Value::DateTimeArray(_), _)
+        | (_, Value::DateTimeArray(_))
+        | (Value::DurationArray(_), _)
+        | (_, Value::DurationArray(_)) => {
+            Err("Unsupported operation on datetime or duration value".to_string())
+        }
         // --- Complex arithmetic ---
         (Value::Complex(re1, im1), Value::Complex(re2, im2)) => {
             complex_binop(re1, im1, op, re2, im2)
@@ -1477,7 +1562,11 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => Err(format!(
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => Err(format!(
             "Function '{fname}' argument {pos} must be a scalar, got a non-numeric value"
         )),
     }
@@ -1602,7 +1691,11 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => {
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => {
             Err("Element-wise function not applicable to this type".to_string())
         }
     }
@@ -1629,7 +1722,11 @@ where
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => Err("Reduction not applicable to this type".to_string()),
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => Err("Reduction not applicable to this type".to_string()),
         Value::Matrix(m) => {
             if m.nrows() == 1 || m.ncols() == 1 {
                 let vals: Vec<f64> = m.iter().copied().collect();
@@ -1671,7 +1768,11 @@ where
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => {
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => {
             Err("Cumulative reduction not applicable to this type".to_string())
         }
         Value::Matrix(m) => {
@@ -1717,7 +1818,11 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => Err("find: not applicable to this type".to_string()),
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => Err("find: not applicable to this type".to_string()),
         Value::Complex(re, im) => {
             if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
                 Ok(Value::Matrix(
@@ -1961,7 +2066,11 @@ fn printf_string(v: &Value) -> Result<String, String> {
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => Err("fprintf: cannot format this type as string".to_string()),
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => Err("fprintf: cannot format this type as string".to_string()),
     }
 }
 
@@ -2181,8 +2290,15 @@ pub fn builtin_names() -> &'static [&'static str] {
         "cov",
         "cumprod",
         "cumsum",
+        "datenum",
+        "datestr",
+        "datevec",
+        "datetime",
+        "day",
+        "days",
         "det",
         "diag",
+        "diff",
         "disp",
         "dlmread",
         "dlmwrite",
@@ -2205,6 +2321,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "fprintf",
         "genpath",
         "histc",
+        "hour",
+        "hours",
         "hypot",
         "imag",
         "int2str",
@@ -2212,6 +2330,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "iqr",
         "iscell",
         "ischar",
+        "isdatetime",
+        "isduration",
         "isempty",
         "isfield",
         "isfile",
@@ -2219,6 +2339,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "isfolder",
         "isinf",
         "isnan",
+        "isnat",
         "isreal",
         "isstring",
         "isstruct",
@@ -2238,9 +2359,13 @@ pub fn builtin_names() -> &'static [&'static str] {
         "max",
         "mean",
         "median",
+        "milliseconds",
         "min",
+        "minute",
+        "minutes",
         "mod",
         "mode",
+        "month",
         "nan",
         "norm",
         "normcdf",
@@ -2252,6 +2377,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "ones",
         "orth",
         "pinv",
+        "posixtime",
         "prctile",
         "prod",
         "qr",
@@ -2270,6 +2396,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "rmfield",
         "rng",
         "round",
+        "second",
+        "seconds",
         "sign",
         "sin",
         "size",
@@ -2296,6 +2424,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "var",
         "writetable",
         "xor",
+        "year",
+        "years",
         "zeros",
         "zscore",
     ]
@@ -2529,9 +2659,13 @@ fn call_builtin(
             Value::StructArray(arr) => Ok(Value::Matrix(
                 Array2::from_shape_vec((1, 2), vec![1.0, arr.len() as f64]).unwrap(),
             )),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
-                Err("size: not applicable to function values".to_string())
-            }
+            Value::Lambda(_)
+            | Value::Function { .. }
+            | Value::Tuple(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => Err("size: not applicable to this type".to_string()),
         },
         ("size", 2) => {
             let dim = scalar_arg(&args[1], name, 2)? as usize;
@@ -2561,9 +2695,13 @@ fn call_builtin(
                     2 => Ok(Value::Scalar(arr.len() as f64)),
                     _ => Err(format!("size: invalid dimension {dim}")),
                 },
-                Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
-                    Err("size: not applicable to function values".to_string())
-                }
+                Value::Lambda(_)
+                | Value::Function { .. }
+                | Value::Tuple(_)
+                | Value::DateTime(_)
+                | Value::Duration(_)
+                | Value::DateTimeArray(_)
+                | Value::DurationArray(_) => Err("size: not applicable to this type".to_string()),
             }
         }
         ("length", 1) => match &args[0] {
@@ -2574,6 +2712,8 @@ fn call_builtin(
             Value::StringObj(_) => Ok(Value::Scalar(1.0)),
             Value::Cell(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::StructArray(arr) => Ok(Value::Scalar(arr.len() as f64)),
+            Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
+            Value::DateTime(_) | Value::Duration(_) => Ok(Value::Scalar(1.0)),
             Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
                 Err("length: not applicable to function values".to_string())
             }
@@ -2586,6 +2726,8 @@ fn call_builtin(
             Value::StringObj(_) => Ok(Value::Scalar(1.0)),
             Value::Cell(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::StructArray(arr) => Ok(Value::Scalar(arr.len() as f64)),
+            Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
+            Value::DateTime(_) | Value::Duration(_) => Ok(Value::Scalar(1.0)),
             Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
                 Err("numel: not applicable to function values".to_string())
             }
@@ -2605,7 +2747,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("trace: not applicable to non-numeric values".to_string())
             }
         },
@@ -2621,7 +2767,13 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("det: not applicable to non-numeric values".to_string()),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
+                Err("det: not applicable to non-numeric values".to_string())
+            }
         },
         ("inv", 1) => match &args[0] {
             Value::Void => Err("inv: not applicable to void".to_string()),
@@ -2649,7 +2801,13 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("inv: not applicable to non-numeric values".to_string()),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
+                Err("inv: not applicable to non-numeric values".to_string())
+            }
         },
         // --- Range / linspace ---
         ("linspace", 3) => {
@@ -2851,7 +3009,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("norm: not applicable to non-numeric values".to_string())
             }
         },
@@ -2910,7 +3072,11 @@ fn call_builtin(
                     | Value::Tuple(_)
                     | Value::Cell(_)
                     | Value::Struct(_)
-                    | Value::StructArray(_) => {
+                    | Value::StructArray(_)
+                    | Value::DateTime(_)
+                    | Value::Duration(_)
+                    | Value::DateTimeArray(_)
+                    | Value::DurationArray(_) => {
                         Err("norm: not applicable to non-numeric values".to_string())
                     }
                 }
@@ -2931,7 +3097,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("sort: not applicable to non-numeric values".to_string())
             }
             Value::Matrix(m) => {
@@ -2969,7 +3139,11 @@ fn call_builtin(
                 | Value::Tuple(_)
                 | Value::Cell(_)
                 | Value::Struct(_)
-                | Value::StructArray(_) => {
+                | Value::StructArray(_)
+                | Value::DateTime(_)
+                | Value::Duration(_)
+                | Value::DateTimeArray(_)
+                | Value::DurationArray(_) => {
                     Err("reshape: not applicable to non-numeric values".to_string())
                 }
                 Value::Matrix(m) => {
@@ -3003,7 +3177,13 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err(format!("{name}: not applicable to non-numeric values")),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
+                Err(format!("{name}: not applicable to non-numeric values"))
+            }
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -3028,7 +3208,13 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err(format!("{name}: not applicable to non-numeric values")),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
+                Err(format!("{name}: not applicable to non-numeric values"))
+            }
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -3077,7 +3263,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("unique: not applicable to non-numeric values".to_string())
             }
         },
@@ -3402,7 +3592,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("diag: not applicable to non-numeric values".to_string())
             }
         },
@@ -3421,7 +3615,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("real: not applicable to non-numeric values".to_string())
             }
         },
@@ -3438,7 +3636,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("imag: not applicable to non-numeric values".to_string())
             }
         },
@@ -3455,7 +3657,13 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("abs: not applicable to non-numeric values".to_string()),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
+                Err("abs: not applicable to non-numeric values".to_string())
+            }
         },
         // angle(z) — argument in radians; returns 0 for non-negative reals.
         ("angle", 1) => match &args[0] {
@@ -3474,7 +3682,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("angle: not applicable to non-numeric values".to_string())
             }
         },
@@ -3491,7 +3703,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => {
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => {
                 Err("conj: not applicable to non-numeric values".to_string())
             }
         },
@@ -3514,7 +3730,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Ok(Value::Scalar(0.0)),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => Ok(Value::Scalar(0.0)),
         },
         // --- String built-ins ---
         // num2str(x) — convert number to char array string
@@ -3537,7 +3757,11 @@ fn call_builtin(
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => Err("num2str: not applicable to this type".to_string()),
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => Err("num2str: not applicable to this type".to_string()),
         },
         // num2str(x, N) — N significant digits
         ("num2str", 2) => {
@@ -3563,7 +3787,13 @@ fn call_builtin(
                 | Value::Tuple(_)
                 | Value::Cell(_)
                 | Value::Struct(_)
-                | Value::StructArray(_) => Err("num2str: not applicable to this type".to_string()),
+                | Value::StructArray(_)
+                | Value::DateTime(_)
+                | Value::Duration(_)
+                | Value::DateTimeArray(_)
+                | Value::DurationArray(_) => {
+                    Err("num2str: not applicable to this type".to_string())
+                }
             }
         }
         // str2double(s) — parse string as f64; return NaN on failure
@@ -4641,6 +4871,395 @@ fn call_builtin(
             };
             assert_values_equal(&args[0], &args[1], Some(tol))
         }
+
+        // ── datetime() constructor ────────────────────────────────────────────
+        ("datetime", 1) => match &args[0] {
+            Value::Str(s) | Value::StringObj(s) => {
+                let s = s.as_str();
+                if s == "now" {
+                    return Ok(Value::DateTime(crate::datetime::now_timestamp()));
+                }
+                if s == "today" {
+                    return Ok(Value::DateTime(crate::datetime::today_timestamp()));
+                }
+                crate::datetime::parse_iso8601(s).map(Value::DateTime)
+            }
+            _ => Err("datetime: expected a string or numeric constructor arguments".to_string()),
+        },
+        // datetime(ts, 'ConvertFrom', 'posixtime') — must come before the 3-scalar form
+        ("datetime", 3) if matches!(&args[1], Value::Str(_) | Value::StringObj(_)) => {
+            let ts = scalar_arg(&args[0], "datetime", 1)?;
+            match (&args[1], &args[2]) {
+                (Value::Str(k) | Value::StringObj(k), Value::Str(v) | Value::StringObj(v))
+                    if k.eq_ignore_ascii_case("convertfrom")
+                        && v.eq_ignore_ascii_case("posixtime") =>
+                {
+                    Ok(Value::DateTime(ts))
+                }
+                _ => Err("datetime: unsupported arguments".to_string()),
+            }
+        }
+        ("datetime", 3) => {
+            let y = scalar_arg(&args[0], "datetime", 1)? as i64;
+            let mo = scalar_arg(&args[1], "datetime", 2)? as u32;
+            let d = scalar_arg(&args[2], "datetime", 3)? as u32;
+            Ok(Value::DateTime(crate::datetime::civil_to_timestamp(
+                y, mo, d, 0, 0, 0.0,
+            )))
+        }
+        ("datetime", 6) => {
+            let y = scalar_arg(&args[0], "datetime", 1)? as i64;
+            let mo = scalar_arg(&args[1], "datetime", 2)? as u32;
+            let d = scalar_arg(&args[2], "datetime", 3)? as u32;
+            let h = scalar_arg(&args[3], "datetime", 4)? as u32;
+            let mi = scalar_arg(&args[4], "datetime", 5)? as u32;
+            let s = scalar_arg(&args[5], "datetime", 6)?;
+            Ok(Value::DateTime(crate::datetime::civil_to_timestamp(
+                y, mo, d, h, mi, s,
+            )))
+        }
+
+        // ── Component extractors ──────────────────────────────────────────────
+        ("year", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (y, ..) = crate::datetime::timestamp_to_civil(*ts);
+                Ok(Value::Scalar(y as f64))
+            }
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| {
+                        let (y, ..) = crate::datetime::timestamp_to_civil(*ts);
+                        y as f64
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("year: argument must be a datetime".to_string()),
+        },
+        ("month", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (_, mo, ..) = crate::datetime::timestamp_to_civil(*ts);
+                Ok(Value::Scalar(mo as f64))
+            }
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| {
+                        let (_, mo, ..) = crate::datetime::timestamp_to_civil(*ts);
+                        mo as f64
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("month: argument must be a datetime".to_string()),
+        },
+        ("day", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (_, _, d, ..) = crate::datetime::timestamp_to_civil(*ts);
+                Ok(Value::Scalar(d as f64))
+            }
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| {
+                        let (_, _, d, ..) = crate::datetime::timestamp_to_civil(*ts);
+                        d as f64
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("day: argument must be a datetime".to_string()),
+        },
+        ("hour", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (_, _, _, h, ..) = crate::datetime::timestamp_to_civil(*ts);
+                Ok(Value::Scalar(h as f64))
+            }
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| {
+                        let (_, _, _, h, ..) = crate::datetime::timestamp_to_civil(*ts);
+                        h as f64
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("hour: argument must be a datetime or duration".to_string()),
+        },
+        ("minute", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (_, _, _, _, mi, ..) = crate::datetime::timestamp_to_civil(*ts);
+                Ok(Value::Scalar(mi as f64))
+            }
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| {
+                        let (_, _, _, _, mi, ..) = crate::datetime::timestamp_to_civil(*ts);
+                        mi as f64
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("minute: argument must be a datetime or duration".to_string()),
+        },
+        ("second", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (_, _, _, _, _, s) = crate::datetime::timestamp_to_civil(*ts);
+                Ok(Value::Scalar(s))
+            }
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| {
+                        let (_, _, _, _, _, s) = crate::datetime::timestamp_to_civil(*ts);
+                        s
+                    })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("second: argument must be a datetime or duration".to_string()),
+        },
+
+        // ── Predicates ────────────────────────────────────────────────────────
+        ("isdatetime", 1) => Ok(Value::Scalar(bool_to_f64(matches!(
+            &args[0],
+            Value::DateTime(_) | Value::DateTimeArray(_)
+        )))),
+        ("isduration", 1) => Ok(Value::Scalar(bool_to_f64(matches!(
+            &args[0],
+            Value::Duration(_) | Value::DurationArray(_)
+        )))),
+        ("isnat", 1) => match &args[0] {
+            Value::DateTime(ts) => Ok(Value::Scalar(bool_to_f64(ts.is_nan()))),
+            Value::DateTimeArray(v) => {
+                let rows: Vec<f64> = v
+                    .iter()
+                    .map(|ts| if ts.is_nan() { 1.0 } else { 0.0 })
+                    .collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("isnat: argument must be a datetime".to_string()),
+        },
+
+        // ── Duration constructors / extractors (overloaded) ───────────────────
+        ("hours", 1) => match &args[0] {
+            Value::Duration(s) => Ok(Value::Scalar(*s / 3600.0)),
+            Value::DurationArray(v) => {
+                let rows: Vec<f64> = v.iter().map(|s| s / 3600.0).collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => {
+                let s = scalar_arg(&args[0], "hours", 1)?;
+                Ok(Value::Duration(s * 3600.0))
+            }
+        },
+        ("minutes", 1) => match &args[0] {
+            Value::Duration(s) => Ok(Value::Scalar(*s / 60.0)),
+            Value::DurationArray(v) => {
+                let rows: Vec<f64> = v.iter().map(|s| s / 60.0).collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => {
+                let s = scalar_arg(&args[0], "minutes", 1)?;
+                Ok(Value::Duration(s * 60.0))
+            }
+        },
+        ("seconds", 1) => match &args[0] {
+            Value::Duration(s) => Ok(Value::Scalar(*s)),
+            Value::DurationArray(v) => {
+                let rows: Vec<f64> = v.iter().map(|s| *s).collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => {
+                let s = scalar_arg(&args[0], "seconds", 1)?;
+                Ok(Value::Duration(s))
+            }
+        },
+        ("days", 1) => match &args[0] {
+            Value::Duration(s) => Ok(Value::Scalar(*s / 86400.0)),
+            Value::DurationArray(v) => {
+                let rows: Vec<f64> = v.iter().map(|s| s / 86400.0).collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => {
+                let s = scalar_arg(&args[0], "days", 1)?;
+                Ok(Value::Duration(s * 86400.0))
+            }
+        },
+        ("milliseconds", 1) => match &args[0] {
+            Value::Duration(s) => Ok(Value::Scalar(*s * 1000.0)),
+            Value::DurationArray(v) => {
+                let rows: Vec<f64> = v.iter().map(|s| s * 1000.0).collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => {
+                let s = scalar_arg(&args[0], "milliseconds", 1)?;
+                Ok(Value::Duration(s / 1000.0))
+            }
+        },
+        ("years", 1) => match &args[0] {
+            Value::Duration(s) => Ok(Value::Scalar(*s / (365.2425 * 86400.0))),
+            Value::DurationArray(v) => {
+                let rows: Vec<f64> = v.iter().map(|s| s / (365.2425 * 86400.0)).collect();
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => {
+                let s = scalar_arg(&args[0], "years", 1)?;
+                Ok(Value::Duration(s * 365.2425 * 86400.0))
+            }
+        },
+        // duration(H, M, S)
+        ("duration", 3) => {
+            let h = scalar_arg(&args[0], "duration", 1)?;
+            let m = scalar_arg(&args[1], "duration", 2)?;
+            let s = scalar_arg(&args[2], "duration", 3)?;
+            Ok(Value::Duration(h * 3600.0 + m * 60.0 + s))
+        }
+
+        // ── Formatting and conversion ─────────────────────────────────────────
+        ("datestr", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let s = crate::datetime::format_datestr(*ts, "dd-MMM-yyyy HH:mm:ss");
+                Ok(Value::Str(s))
+            }
+            Value::DateTimeArray(v) => Ok(Value::Cell(
+                v.iter()
+                    .map(|ts| {
+                        Value::Str(crate::datetime::format_datestr(*ts, "dd-MMM-yyyy HH:mm:ss"))
+                    })
+                    .collect(),
+            )),
+            _ => Err("datestr: argument must be a datetime".to_string()),
+        },
+        ("datestr", 2) => {
+            let fmt_str = match &args[1] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("datestr: second argument must be a format string".to_string()),
+            };
+            match &args[0] {
+                Value::DateTime(ts) => {
+                    Ok(Value::Str(crate::datetime::format_datestr(*ts, &fmt_str)))
+                }
+                Value::DateTimeArray(v) => Ok(Value::Cell(
+                    v.iter()
+                        .map(|ts| Value::Str(crate::datetime::format_datestr(*ts, &fmt_str)))
+                        .collect(),
+                )),
+                _ => Err("datestr: first argument must be a datetime".to_string()),
+            }
+        }
+        ("datevec", 1) => match &args[0] {
+            Value::DateTime(ts) => {
+                let (y, mo, d, h, mi, s) = crate::datetime::timestamp_to_civil(*ts);
+                let sec_i = s.floor() as u32;
+                let data = vec![
+                    y as f64,
+                    mo as f64,
+                    d as f64,
+                    h as f64,
+                    mi as f64,
+                    sec_i as f64,
+                ];
+                Ok(Value::Matrix(
+                    ndarray::Array2::from_shape_vec((1, 6), data).map_err(|e| e.to_string())?,
+                ))
+            }
+            _ => Err("datevec: argument must be a datetime".to_string()),
+        },
+        ("datenum", 1) => match &args[0] {
+            Value::DateTime(ts) => Ok(Value::Scalar(crate::datetime::to_datenum(*ts))),
+            _ => Err("datenum: argument must be a datetime".to_string()),
+        },
+        ("datenum", 3) => {
+            let y = scalar_arg(&args[0], "datenum", 1)? as i64;
+            let mo = scalar_arg(&args[1], "datenum", 2)? as u32;
+            let d = scalar_arg(&args[2], "datenum", 3)? as u32;
+            let ts = crate::datetime::civil_to_timestamp(y, mo, d, 0, 0, 0.0);
+            Ok(Value::Scalar(crate::datetime::to_datenum(ts)))
+        }
+        ("posixtime", 1) => match &args[0] {
+            Value::DateTime(ts) => Ok(Value::Scalar(*ts)),
+            _ => Err("posixtime: argument must be a datetime".to_string()),
+        },
+
+        // ── diff for datetime/duration arrays ─────────────────────────────────
+        ("diff", 1) => match &args[0] {
+            Value::DateTimeArray(v) if v.len() >= 2 => {
+                let diffs: Vec<f64> = v.windows(2).map(|w| w[1] - w[0]).collect();
+                Ok(Value::DurationArray(diffs))
+            }
+            Value::DurationArray(v) if v.len() >= 2 => {
+                let diffs: Vec<f64> = v.windows(2).map(|w| w[1] - w[0]).collect();
+                Ok(Value::DurationArray(diffs))
+            }
+            Value::Matrix(m) => {
+                // diff on numeric matrix: successive differences along first non-singleton dim
+                let (nrows, ncols) = (m.nrows(), m.ncols());
+                if ncols > 1 && nrows == 1 {
+                    // Row vector → diff along columns
+                    let data: Vec<f64> =
+                        (0..ncols - 1).map(|j| m[[0, j + 1]] - m[[0, j]]).collect();
+                    Ok(Value::Matrix(
+                        ndarray::Array2::from_shape_vec((1, data.len()), data)
+                            .map_err(|e| e.to_string())?,
+                    ))
+                } else if nrows > 1 {
+                    // Column vector or matrix → diff along rows
+                    let data: Vec<f64> = (0..nrows - 1)
+                        .flat_map(|i| (0..ncols).map(move |j| m[[i + 1, j]] - m[[i, j]]))
+                        .collect();
+                    Ok(Value::Matrix(
+                        ndarray::Array2::from_shape_vec((nrows - 1, ncols), data)
+                            .map_err(|e| e.to_string())?,
+                    ))
+                } else {
+                    Err("diff: input must have at least 2 elements".to_string())
+                }
+            }
+            _ => Err("diff: unsupported argument type".to_string()),
+        },
 
         _ => {
             let hint = suggest_similar(name, env);
@@ -5864,6 +6483,79 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                         DimIdx::All | DimIdx::Indices(_) => Ok(Value::StringObj(s.clone())),
                     }
                 }
+                Value::DateTimeArray(v) => {
+                    let total = v.len();
+                    let env1 = env_with_end(env, total);
+                    match resolve_dim(&args[0], total, &env1)? {
+                        DimIdx::All => Ok(Value::DateTimeArray(v.clone())),
+                        DimIdx::Indices(idxs) => {
+                            if idxs.len() == 1 {
+                                let i = idxs[0];
+                                if i >= total {
+                                    return Err(format!(
+                                        "Index {} out of range (1..{})",
+                                        i + 1,
+                                        total
+                                    ));
+                                }
+                                Ok(Value::DateTime(v[i]))
+                            } else {
+                                let mut sel = Vec::with_capacity(idxs.len());
+                                for &i in &idxs {
+                                    if i >= total {
+                                        return Err(format!(
+                                            "Index {} out of range (1..{})",
+                                            i + 1,
+                                            total
+                                        ));
+                                    }
+                                    sel.push(v[i]);
+                                }
+                                Ok(Value::DateTimeArray(sel))
+                            }
+                        }
+                    }
+                }
+                Value::DurationArray(v) => {
+                    let total = v.len();
+                    let env1 = env_with_end(env, total);
+                    match resolve_dim(&args[0], total, &env1)? {
+                        DimIdx::All => Ok(Value::DurationArray(v.clone())),
+                        DimIdx::Indices(idxs) => {
+                            if idxs.len() == 1 {
+                                let i = idxs[0];
+                                if i >= total {
+                                    return Err(format!(
+                                        "Index {} out of range (1..{})",
+                                        i + 1,
+                                        total
+                                    ));
+                                }
+                                Ok(Value::Duration(v[i]))
+                            } else {
+                                let mut sel = Vec::with_capacity(idxs.len());
+                                for &i in &idxs {
+                                    if i >= total {
+                                        return Err(format!(
+                                            "Index {} out of range (1..{})",
+                                            i + 1,
+                                            total
+                                        ));
+                                    }
+                                    sel.push(v[i]);
+                                }
+                                Ok(Value::DurationArray(sel))
+                            }
+                        }
+                    }
+                }
+                Value::DateTime(_) | Value::Duration(_) => {
+                    // Scalar datetime/duration: indexing with (1) is valid, returns self.
+                    let env1 = env_with_end(env, 1);
+                    match resolve_dim(&args[0], 1, &env1)? {
+                        DimIdx::All | DimIdx::Indices(_) => Ok(val.clone()),
+                    }
+                }
             }
         }
         2 => {
@@ -5879,21 +6571,17 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     | Value::Cell(_)
                     | Value::Struct(_)
                     | Value::StructArray(_)
+                    | Value::DateTime(_)
+                    | Value::Duration(_)
+                    | Value::DateTimeArray(_)
+                    | Value::DurationArray(_)
             ) {
                 return Err("2D indexing not supported for this type".to_string());
             }
             let (nrows, ncols) = match val {
                 Value::Scalar(_) | Value::Complex(_, _) => (1, 1),
                 Value::Matrix(m) => (m.nrows(), m.ncols()),
-                Value::Void
-                | Value::Str(_)
-                | Value::StringObj(_)
-                | Value::Lambda(_)
-                | Value::Function { .. }
-                | Value::Tuple(_)
-                | Value::Cell(_)
-                | Value::Struct(_)
-                | Value::StructArray(_) => unreachable!(),
+                _ => unreachable!(),
             };
             let env_r = env_with_end(env, nrows);
             let env_c = env_with_end(env, ncols);
@@ -5911,18 +6599,10 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
 
             if rows.len() == 1 && cols.len() == 1 {
                 match val {
-                    Value::Void
-                    | Value::Str(_)
-                    | Value::StringObj(_)
-                    | Value::Lambda(_)
-                    | Value::Function { .. }
-                    | Value::Tuple(_)
-                    | Value::Cell(_)
-                    | Value::Struct(_)
-                    | Value::StructArray(_) => unreachable!(),
                     Value::Scalar(n) => Ok(Value::Scalar(*n)),
                     Value::Complex(re, im) => Ok(Value::Complex(*re, *im)),
                     Value::Matrix(m) => Ok(Value::Scalar(m[[rows[0], cols[0]]])),
+                    _ => unreachable!(),
                 }
             } else {
                 let out_r = rows.len();
@@ -5931,18 +6611,10 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     .iter()
                     .flat_map(|&r| {
                         cols.iter().map(move |&c| match val {
-                            Value::Void
-                            | Value::Str(_)
-                            | Value::StringObj(_)
-                            | Value::Lambda(_)
-                            | Value::Function { .. }
-                            | Value::Tuple(_)
-                            | Value::Cell(_)
-                            | Value::Struct(_)
-                            | Value::StructArray(_) => unreachable!(),
                             Value::Scalar(n) => *n,
                             Value::Complex(re, _) => *re,
                             Value::Matrix(m) => m[[r, c]],
+                            _ => unreachable!(),
                         })
                     })
                     .collect();
@@ -6011,8 +6683,12 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
-        | Value::StructArray(_) => {
-            return Err("Index must be numeric, not a function".to_string());
+        | Value::StructArray(_)
+        | Value::DateTime(_)
+        | Value::Duration(_)
+        | Value::DateTimeArray(_)
+        | Value::DurationArray(_) => {
+            return Err("Index must be numeric, not a function or datetime".to_string());
         }
     };
     // Logical mask: a 0/1 array whose element count matches dim_size selects by boolean mask.
@@ -6171,6 +6847,7 @@ pub fn expr_to_string(e: &Expr) -> String {
         Expr::CellLiteral(_) => "{...}".to_string(),
         Expr::CellIndex(e, i) => format!("{}{{{}}}", expr_to_string(e), expr_to_string(i)),
         Expr::Colon => ":".to_string(),
+        Expr::NaT => "NaT".to_string(),
         Expr::FieldGet(base, field) => format!("{}.{field}", expr_to_string(base)),
         Expr::DotCall(segs, args) => {
             let args_str = args
@@ -6211,6 +6888,10 @@ pub fn format_value(v: &Value, base: Base, mode: &FormatMode) -> String {
         Value::Cell(v) => format!("{{1×{} cell}}", v.len()),
         Value::Struct(_) => "[1×1 struct]".to_string(),
         Value::StructArray(arr) => format!("[1×{} struct]", arr.len()),
+        Value::DateTime(ts) => crate::datetime::format_datetime(*ts),
+        Value::Duration(s) => crate::datetime::format_duration(*s),
+        Value::DateTimeArray(v) => format!("[{}×1 datetime]", v.len()),
+        Value::DurationArray(v) => format!("[{}×1 duration]", v.len()),
     }
 }
 
@@ -6225,11 +6906,15 @@ pub fn format_value_full(v: &Value, mode: &FormatMode) -> Option<String> {
         | Value::StringObj(_)
         | Value::Lambda(_)
         | Value::Function { .. }
-        | Value::Tuple(_) => None,
+        | Value::Tuple(_)
+        | Value::DateTime(_)
+        | Value::Duration(_) => None,
         Value::Matrix(m) => Some(format_matrix(m, mode)),
         Value::Cell(elems) => Some(format_cell(elems, mode)),
         Value::Struct(map) => Some(format_struct(map, mode)),
         Value::StructArray(arr) => Some(format_struct_array(arr, mode)),
+        Value::DateTimeArray(v) => Some(format_datetime_array(v)),
+        Value::DurationArray(v) => Some(format_duration_array(v)),
     }
 }
 
@@ -6314,6 +6999,22 @@ fn format_struct_array(arr: &[IndexMap<String, Value>], mode: &FormatMode) -> St
             };
             lines.push(format!("    {key}: {val_str}"));
         }
+    }
+    lines.join("\n")
+}
+
+fn format_datetime_array(v: &[f64]) -> String {
+    let mut lines = Vec::with_capacity(v.len());
+    for ts in v {
+        lines.push(format!("  {}", crate::datetime::format_datetime(*ts)));
+    }
+    lines.join("\n")
+}
+
+fn format_duration_array(v: &[f64]) -> String {
+    let mut lines = Vec::with_capacity(v.len());
+    for secs in v {
+        lines.push(format!("  {}", crate::datetime::format_duration(*secs)));
     }
     lines.join("\n")
 }

@@ -4508,3 +4508,570 @@ mod regex_tests {
         assert!(result.is_err());
     }
 }
+
+// ── Phase 22 — Datetime & Duration tests ─────────────────────────────────────
+
+#[cfg(test)]
+mod datetime_tests {
+    use super::*;
+    use crate::datetime::{civil_to_timestamp, format_datetime, format_duration};
+
+    fn dt(y: i64, mo: u32, d: u32, h: u32, mi: u32, s: f64) -> Value {
+        Value::DateTime(civil_to_timestamp(y, mo, d, h, mi, s))
+    }
+
+    fn call1(fname: &str, a: Value) -> Result<Value, String> {
+        let mut env = Env::new();
+        env.insert("_a".to_string(), a);
+        eval(
+            &Expr::Call(fname.to_string(), vec![Expr::Var("_a".to_string())]),
+            &env,
+        )
+    }
+
+    fn call2(fname: &str, a: Value, b: Value) -> Result<Value, String> {
+        let mut env = Env::new();
+        env.insert("_a".to_string(), a);
+        env.insert("_b".to_string(), b);
+        eval(
+            &Expr::Call(
+                fname.to_string(),
+                vec![Expr::Var("_a".to_string()), Expr::Var("_b".to_string())],
+            ),
+            &env,
+        )
+    }
+
+    fn call3(fname: &str, a: Value, b: Value, c: Value) -> Result<Value, String> {
+        let mut env = Env::new();
+        env.insert("_a".to_string(), a);
+        env.insert("_b".to_string(), b);
+        env.insert("_c".to_string(), c);
+        eval(
+            &Expr::Call(
+                fname.to_string(),
+                vec![
+                    Expr::Var("_a".to_string()),
+                    Expr::Var("_b".to_string()),
+                    Expr::Var("_c".to_string()),
+                ],
+            ),
+            &env,
+        )
+    }
+
+    fn scalar(v: &Value) -> f64 {
+        match v {
+            Value::Scalar(n) => *n,
+            other => panic!("expected Scalar, got {other:?}"),
+        }
+    }
+
+    fn dur(v: &Value) -> f64 {
+        match v {
+            Value::Duration(s) => *s,
+            other => panic!("expected Duration, got {other:?}"),
+        }
+    }
+
+    fn ts(v: &Value) -> f64 {
+        match v {
+            Value::DateTime(t) => *t,
+            other => panic!("expected DateTime, got {other:?}"),
+        }
+    }
+
+    // ── Constructors ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn datetime_iso_string() {
+        let v = call1("datetime", Value::Str("2024-01-15".into())).unwrap();
+        let expected = civil_to_timestamp(2024, 1, 15, 0, 0, 0.0);
+        assert!((ts(&v) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datetime_iso_with_time() {
+        let v = call1("datetime", Value::Str("2024-01-15 09:30:00".into())).unwrap();
+        let expected = civil_to_timestamp(2024, 1, 15, 9, 30, 0.0);
+        assert!((ts(&v) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datetime_three_args() {
+        let v = call3(
+            "datetime",
+            Value::Scalar(2024.0),
+            Value::Scalar(6.0),
+            Value::Scalar(1.0),
+        )
+        .unwrap();
+        let expected = civil_to_timestamp(2024, 6, 1, 0, 0, 0.0);
+        assert!((ts(&v) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datetime_six_args() {
+        let mut env = Env::new();
+        for (k, v) in [
+            ("_y", 2024.0),
+            ("_mo", 3.0),
+            ("_d", 10.0),
+            ("_h", 14.0),
+            ("_mi", 30.0),
+            ("_s", 0.0),
+        ] {
+            env.insert(k.to_string(), Value::Scalar(v));
+        }
+        let args: Vec<Expr> = ["_y", "_mo", "_d", "_h", "_mi", "_s"]
+            .iter()
+            .map(|k| Expr::Var(k.to_string()))
+            .collect();
+        let v = eval(&Expr::Call("datetime".to_string(), args), &env).unwrap();
+        let expected = civil_to_timestamp(2024, 3, 10, 14, 30, 0.0);
+        assert!((ts(&v) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datetime_posixtime_convert() {
+        let ts_val = 1_700_000_000.0_f64;
+        let v = call3(
+            "datetime",
+            Value::Scalar(ts_val),
+            Value::Str("ConvertFrom".into()),
+            Value::Str("posixtime".into()),
+        )
+        .unwrap();
+        assert!((ts(&v) - ts_val).abs() < 1e-9);
+    }
+
+    #[test]
+    fn nat_constant() {
+        let env = Env::new();
+        let v = eval(&Expr::NaT, &env).unwrap();
+        match v {
+            Value::DateTime(t) => assert!(t.is_nan()),
+            _ => panic!("expected DateTime(NaN)"),
+        }
+    }
+
+    // ── Duration constructors ─────────────────────────────────────────────────
+
+    #[test]
+    fn duration_hms() {
+        let v = call3(
+            "duration",
+            Value::Scalar(1.0),
+            Value::Scalar(30.0),
+            Value::Scalar(0.0),
+        )
+        .unwrap();
+        assert!((dur(&v) - 5400.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn hours_constructor() {
+        let v = call1("hours", Value::Scalar(2.0)).unwrap();
+        assert!((dur(&v) - 7200.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn minutes_constructor() {
+        let v = call1("minutes", Value::Scalar(90.0)).unwrap();
+        assert!((dur(&v) - 5400.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn seconds_constructor() {
+        let v = call1("seconds", Value::Scalar(45.0)).unwrap();
+        assert!((dur(&v) - 45.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn days_constructor() {
+        let v = call1("days", Value::Scalar(2.0)).unwrap();
+        assert!((dur(&v) - 172800.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn milliseconds_constructor() {
+        let v = call1("milliseconds", Value::Scalar(500.0)).unwrap();
+        assert!((dur(&v) - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn years_constructor() {
+        let v = call1("years", Value::Scalar(1.0)).unwrap();
+        assert!((dur(&v) - 365.2425 * 86400.0).abs() < 1e-9);
+    }
+
+    // ── Duration extractors (Duration → Scalar) ───────────────────────────────
+
+    #[test]
+    fn hours_extractor() {
+        let d = Value::Duration(7200.0);
+        let v = call1("hours", d).unwrap();
+        assert!((scalar(&v) - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn minutes_extractor() {
+        let d = Value::Duration(5400.0);
+        let v = call1("minutes", d).unwrap();
+        assert!((scalar(&v) - 90.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn seconds_extractor() {
+        let d = Value::Duration(45.0);
+        let v = call1("seconds", d).unwrap();
+        assert!((scalar(&v) - 45.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn days_extractor() {
+        let d = Value::Duration(172800.0);
+        let v = call1("days", d).unwrap();
+        assert!((scalar(&v) - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn milliseconds_extractor() {
+        let d = Value::Duration(0.5);
+        let v = call1("milliseconds", d).unwrap();
+        assert!((scalar(&v) - 500.0).abs() < 1e-9);
+    }
+
+    // ── Component extractors ──────────────────────────────────────────────────
+
+    #[test]
+    fn year_extractor() {
+        let v = call1("year", dt(2024, 3, 10, 0, 0, 0.0)).unwrap();
+        assert_eq!(scalar(&v) as i64, 2024);
+    }
+
+    #[test]
+    fn month_extractor() {
+        let v = call1("month", dt(2024, 3, 10, 0, 0, 0.0)).unwrap();
+        assert_eq!(scalar(&v) as u32, 3);
+    }
+
+    #[test]
+    fn day_extractor() {
+        let v = call1("day", dt(2024, 3, 10, 0, 0, 0.0)).unwrap();
+        assert_eq!(scalar(&v) as u32, 10);
+    }
+
+    #[test]
+    fn hour_extractor() {
+        let v = call1("hour", dt(2024, 3, 10, 14, 30, 0.0)).unwrap();
+        assert_eq!(scalar(&v) as u32, 14);
+    }
+
+    #[test]
+    fn minute_extractor() {
+        let v = call1("minute", dt(2024, 3, 10, 14, 30, 0.0)).unwrap();
+        assert_eq!(scalar(&v) as u32, 30);
+    }
+
+    #[test]
+    fn second_extractor() {
+        let v = call1("second", dt(2024, 3, 10, 14, 30, 45.0)).unwrap();
+        assert!((scalar(&v) - 45.0).abs() < 1e-6);
+    }
+
+    // ── Predicates ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn isdatetime_true() {
+        let v = call1("isdatetime", dt(2024, 1, 1, 0, 0, 0.0)).unwrap();
+        assert_eq!(scalar(&v), 1.0);
+    }
+
+    #[test]
+    fn isdatetime_false_for_scalar() {
+        let v = call1("isdatetime", Value::Scalar(42.0)).unwrap();
+        assert_eq!(scalar(&v), 0.0);
+    }
+
+    #[test]
+    fn isduration_true() {
+        let v = call1("isduration", Value::Duration(3600.0)).unwrap();
+        assert_eq!(scalar(&v), 1.0);
+    }
+
+    #[test]
+    fn isduration_false_for_scalar() {
+        let v = call1("isduration", Value::Scalar(42.0)).unwrap();
+        assert_eq!(scalar(&v), 0.0);
+    }
+
+    #[test]
+    fn isnat_true() {
+        let v = call1("isnat", Value::DateTime(f64::NAN)).unwrap();
+        assert_eq!(scalar(&v), 1.0);
+    }
+
+    #[test]
+    fn isnat_false() {
+        let v = call1("isnat", dt(2024, 1, 1, 0, 0, 0.0)).unwrap();
+        assert_eq!(scalar(&v), 0.0);
+    }
+
+    // ── Arithmetic ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn datetime_plus_duration() {
+        let t = dt(2024, 1, 1, 0, 0, 0.0);
+        let d = Value::Duration(3600.0);
+        let env = {
+            let mut e = Env::new();
+            e.insert("t".to_string(), t);
+            e.insert("d".to_string(), d);
+            e
+        };
+        let result = eval(
+            &Expr::BinOp(
+                Box::new(Expr::Var("t".to_string())),
+                Op::Add,
+                Box::new(Expr::Var("d".to_string())),
+            ),
+            &env,
+        )
+        .unwrap();
+        let expected = civil_to_timestamp(2024, 1, 1, 1, 0, 0.0);
+        assert!((ts(&result) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datetime_minus_duration() {
+        let t = dt(2024, 1, 2, 0, 0, 0.0);
+        let d = Value::Duration(86400.0);
+        let env = {
+            let mut e = Env::new();
+            e.insert("t".to_string(), t);
+            e.insert("d".to_string(), d);
+            e
+        };
+        let result = eval(
+            &Expr::BinOp(
+                Box::new(Expr::Var("t".to_string())),
+                Op::Sub,
+                Box::new(Expr::Var("d".to_string())),
+            ),
+            &env,
+        )
+        .unwrap();
+        let expected = civil_to_timestamp(2024, 1, 1, 0, 0, 0.0);
+        assert!((ts(&result) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datetime_minus_datetime() {
+        let t1 = dt(2024, 1, 2, 0, 0, 0.0);
+        let t2 = dt(2024, 1, 1, 0, 0, 0.0);
+        let env = {
+            let mut e = Env::new();
+            e.insert("t1".to_string(), t1);
+            e.insert("t2".to_string(), t2);
+            e
+        };
+        let result = eval(
+            &Expr::BinOp(
+                Box::new(Expr::Var("t1".to_string())),
+                Op::Sub,
+                Box::new(Expr::Var("t2".to_string())),
+            ),
+            &env,
+        )
+        .unwrap();
+        assert!((dur(&result) - 86400.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn duration_plus_duration() {
+        let d1 = Value::Duration(3600.0);
+        let d2 = Value::Duration(1800.0);
+        let env = {
+            let mut e = Env::new();
+            e.insert("d1".to_string(), d1);
+            e.insert("d2".to_string(), d2);
+            e
+        };
+        let result = eval(
+            &Expr::BinOp(
+                Box::new(Expr::Var("d1".to_string())),
+                Op::Add,
+                Box::new(Expr::Var("d2".to_string())),
+            ),
+            &env,
+        )
+        .unwrap();
+        assert!((dur(&result) - 5400.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn duration_times_scalar() {
+        let d = Value::Duration(3600.0);
+        let env = {
+            let mut e = Env::new();
+            e.insert("d".to_string(), d);
+            e
+        };
+        let result = eval(
+            &Expr::BinOp(
+                Box::new(Expr::Var("d".to_string())),
+                Op::Mul,
+                Box::new(Expr::Number(2.0)),
+            ),
+            &env,
+        )
+        .unwrap();
+        assert!((dur(&result) - 7200.0).abs() < 1e-9);
+    }
+
+    // ── Formatting ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn format_datetime_known() {
+        let ts_val = civil_to_timestamp(2024, 1, 15, 9, 30, 0.0);
+        assert_eq!(format_datetime(ts_val), "2024-01-15 09:30:00");
+    }
+
+    #[test]
+    fn format_datetime_nat() {
+        assert_eq!(format_datetime(f64::NAN), "NaT");
+    }
+
+    #[test]
+    fn format_duration_hours() {
+        assert_eq!(format_duration(3600.0), "01:00:00");
+    }
+
+    #[test]
+    fn format_duration_days() {
+        assert_eq!(format_duration(86400.0 + 7200.0), "1d 02:00:00");
+    }
+
+    #[test]
+    fn format_duration_subsecond() {
+        assert_eq!(format_duration(0.5), "00:00:00.500");
+    }
+
+    #[test]
+    fn datestr_default_format() {
+        let v = call1("datestr", dt(2024, 1, 15, 9, 30, 0.0)).unwrap();
+        match v {
+            Value::Str(s) => assert_eq!(s, "15-Jan-2024 09:30:00"),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn datestr_custom_format() {
+        let v = call2(
+            "datestr",
+            dt(2024, 6, 1, 0, 0, 0.0),
+            Value::Str("yyyy/MM/dd".into()),
+        )
+        .unwrap();
+        match v {
+            Value::Str(s) => assert_eq!(s, "2024/06/01"),
+            _ => panic!(),
+        }
+    }
+
+    // ── datevec ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn datevec_returns_row_vector() {
+        let v = call1("datevec", dt(2024, 3, 10, 14, 30, 0.0)).unwrap();
+        match &v {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[1, 6]);
+                assert_eq!(m[[0, 0]], 2024.0);
+                assert_eq!(m[[0, 1]], 3.0);
+                assert_eq!(m[[0, 2]], 10.0);
+                assert_eq!(m[[0, 3]], 14.0);
+                assert_eq!(m[[0, 4]], 30.0);
+                assert_eq!(m[[0, 5]], 0.0);
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    // ── datenum / posixtime ───────────────────────────────────────────────────
+
+    #[test]
+    fn datenum_epoch() {
+        let v = call1("datenum", dt(1970, 1, 1, 0, 0, 0.0)).unwrap();
+        assert!((scalar(&v) - 719529.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn datenum_three_args() {
+        let v = call3(
+            "datenum",
+            Value::Scalar(1970.0),
+            Value::Scalar(1.0),
+            Value::Scalar(1.0),
+        )
+        .unwrap();
+        assert!((scalar(&v) - 719529.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn posixtime_roundtrip() {
+        let ts_val = civil_to_timestamp(2024, 6, 1, 12, 0, 0.0);
+        let v = call1("posixtime", Value::DateTime(ts_val)).unwrap();
+        assert!((scalar(&v) - ts_val).abs() < 1e-9);
+    }
+
+    // ── Array operations ──────────────────────────────────────────────────────
+
+    #[test]
+    fn diff_datetime_array() {
+        let v1 = civil_to_timestamp(2024, 1, 1, 0, 0, 0.0);
+        let v2 = civil_to_timestamp(2024, 1, 2, 0, 0, 0.0);
+        let v3 = civil_to_timestamp(2024, 1, 3, 0, 0, 0.0);
+        let arr = Value::DateTimeArray(vec![v1, v2, v3]);
+        let result = call1("diff", arr).unwrap();
+        match result {
+            Value::DurationArray(diffs) => {
+                assert_eq!(diffs.len(), 2);
+                assert!((diffs[0] - 86400.0).abs() < 1e-9);
+                assert!((diffs[1] - 86400.0).abs() < 1e-9);
+            }
+            _ => panic!("expected DurationArray"),
+        }
+    }
+
+    #[test]
+    fn diff_duration_array() {
+        let arr = Value::DurationArray(vec![3600.0, 7200.0, 10800.0]);
+        let result = call1("diff", arr).unwrap();
+        match result {
+            Value::DurationArray(diffs) => {
+                assert_eq!(diffs.len(), 2);
+                assert!((diffs[0] - 3600.0).abs() < 1e-9);
+            }
+            _ => panic!("expected DurationArray"),
+        }
+    }
+
+    #[test]
+    fn year_extractor_on_array() {
+        let t1 = civil_to_timestamp(2023, 6, 1, 0, 0, 0.0);
+        let t2 = civil_to_timestamp(2024, 6, 1, 0, 0, 0.0);
+        let arr = Value::DateTimeArray(vec![t1, t2]);
+        let result = call1("year", arr).unwrap();
+        match result {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[2, 1]);
+                assert_eq!(m[[0, 0]], 2023.0);
+                assert_eq!(m[[1, 0]], 2024.0);
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+}

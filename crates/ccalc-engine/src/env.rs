@@ -91,6 +91,20 @@ pub enum Value {
     /// Created with `s(i).field = val` (1-based). Indexed with `s(i)` which returns
     /// a `Value::Struct`. `s.field` collects the field across all elements.
     StructArray(Vec<IndexMap<String, Value>>),
+    /// A UTC timestamp: seconds since 1970-01-01 00:00:00 UTC.
+    ///
+    /// `f64::NAN` represents the `NaT` (Not-a-Time) sentinel.
+    DateTime(f64),
+    /// An elapsed duration stored as a fractional number of seconds.
+    ///
+    /// May be negative (e.g. `t1 - t2` when `t1 < t2`).
+    Duration(f64),
+    /// An ordered sequence of UTC timestamps (seconds since epoch).
+    ///
+    /// Each element follows the same `NaT`-as-NaN convention as [`Value::DateTime`].
+    DateTimeArray(Vec<f64>),
+    /// An ordered sequence of elapsed durations (seconds, fractional).
+    DurationArray(Vec<f64>),
 }
 
 impl Value {
@@ -117,7 +131,11 @@ impl Value {
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
-            | Value::StructArray(_) => None,
+            | Value::StructArray(_)
+            | Value::DateTime(_)
+            | Value::Duration(_)
+            | Value::DateTimeArray(_)
+            | Value::DurationArray(_) => None,
         }
     }
 }

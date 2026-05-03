@@ -518,6 +518,17 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 output.push(full);
                             }
                         }
+                        Value::DateTime(ts) => {
+                            output.push(ccalc_engine::datetime::format_datetime(*ts));
+                        }
+                        Value::Duration(s) => {
+                            output.push(ccalc_engine::datetime::format_duration(*s));
+                        }
+                        Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                            if let Some(full) = format_value_full(&v, &fmt) {
+                                output.push(full);
+                            }
+                        }
                     },
                     Err(e) => output.push(format!("Error: {e}")),
                 }
@@ -567,6 +578,24 @@ fn pipe_output(input: &str) -> Vec<String> {
                                         output.push(full);
                                     }
                                 }
+                                Value::DateTime(ts) => {
+                                    output.push(format!(
+                                        "{name} = {}",
+                                        ccalc_engine::datetime::format_datetime(*ts)
+                                    ));
+                                }
+                                Value::Duration(s) => {
+                                    output.push(format!(
+                                        "{name} = {}",
+                                        ccalc_engine::datetime::format_duration(*s)
+                                    ));
+                                }
+                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        output.push(format!("{name} ="));
+                                        output.push(full);
+                                    }
+                                }
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
@@ -600,6 +629,18 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 Value::Function { .. } => output.push("@function".to_string()),
                                 Value::Tuple(_) => {}
                                 Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                                    if let Some(full) = format_value_full(&v, &fmt) {
+                                        output.push("ans =".to_string());
+                                        output.push(full);
+                                    }
+                                }
+                                Value::DateTime(ts) => {
+                                    output.push(ccalc_engine::datetime::format_datetime(*ts));
+                                }
+                                Value::Duration(s) => {
+                                    output.push(ccalc_engine::datetime::format_duration(*s));
+                                }
+                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push("ans =".to_string());
                                         output.push(full);

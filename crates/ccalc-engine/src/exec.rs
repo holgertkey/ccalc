@@ -634,6 +634,10 @@ fn is_truthy(val: &Value) -> bool {
         Value::Cell(v) => !v.is_empty(),
         // A struct / struct array is always truthy.
         Value::Struct(_) | Value::StructArray(_) => true,
+        // Datetime/Duration are truthy when not NaT/zero.
+        Value::DateTime(ts) => !ts.is_nan(),
+        Value::Duration(s) => *s != 0.0,
+        Value::DateTimeArray(v) | Value::DurationArray(v) => !v.is_empty(),
     }
 }
 
@@ -706,6 +710,32 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
             }
         }
         Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+            if let Some(full) = format_value_full(val, fmt) {
+                let prefix = label.unwrap_or("ans");
+                println!("{prefix} =");
+                println!("{full}");
+                if !compact {
+                    println!();
+                }
+            }
+        }
+        Value::DateTime(ts) => {
+            let s = crate::datetime::format_datetime(*ts);
+            if let Some(name) = label {
+                println!("{name} = {s}");
+            } else {
+                println!("{s}");
+            }
+        }
+        Value::Duration(secs) => {
+            let s = crate::datetime::format_duration(*secs);
+            if let Some(name) = label {
+                println!("{name} = {s}");
+            } else {
+                println!("{s}");
+            }
+        }
+        Value::DateTimeArray(_) | Value::DurationArray(_) => {
             if let Some(full) = format_value_full(val, fmt) {
                 let prefix = label.unwrap_or("ans");
                 println!("{prefix} =");

@@ -2448,6 +2448,8 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                     "e" => Expr::Var("e".to_string()),
                     "nan" | "NaN" => Expr::Number(f64::NAN),
                     "inf" | "Inf" => Expr::Number(f64::INFINITY),
+                    // NaT → Value::DateTime(NaN); parser-level constant to prevent shadowing.
+                    "NaT" => Expr::NaT,
                     // All other identifiers → variable reference (resolved at eval time)
                     _ => Expr::Var(name),
                 }

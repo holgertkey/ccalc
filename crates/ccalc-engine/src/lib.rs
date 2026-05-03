@@ -36,6 +36,9 @@ pub mod io;
 /// Tokenizer, recursive-descent parser, and [`Stmt`](parser::Stmt) AST.
 pub mod parser;
 
+/// Datetime arithmetic helpers: UTC timestamp ↔ civil calendar conversion, formatting, parsing.
+pub mod datetime;
+
 #[cfg(feature = "json")]
 pub(crate) mod json;
 
