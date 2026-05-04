@@ -5222,3 +5222,293 @@ mod datetime_tests {
         }
     }
 }
+
+// ── Phase 23 — Matrix utilities and set operations ────────────────────────────
+mod phase23_tests {
+    use super::*;
+    use crate::env::Env;
+
+    fn ep(src: &str) -> Result<Value, String> {
+        let env = Env::new();
+        eval_parse(src, &env)
+    }
+
+    fn mat(rows: usize, cols: usize, data: Vec<f64>) -> Value {
+        Value::Matrix(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap())
+    }
+
+    // ── 23a — triu / tril / repmat / kron ────────────────────────────────────
+
+    #[test]
+    fn triu_no_offset() {
+        // triu([1 2 3; 4 5 6; 7 8 9]) → [1 2 3; 0 5 6; 0 0 9]
+        let result = ep("triu([1 2 3; 4 5 6; 7 8 9])").unwrap();
+        assert_eq!(result, mat(3, 3, vec![1.0, 2.0, 3.0, 0.0, 5.0, 6.0, 0.0, 0.0, 9.0]));
+    }
+
+    #[test]
+    fn triu_positive_offset() {
+        // triu(A, 1) — above main diagonal
+        let result = ep("triu([1 2 3; 4 5 6; 7 8 9], 1)").unwrap();
+        assert_eq!(result, mat(3, 3, vec![0.0, 2.0, 3.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn triu_negative_offset() {
+        // triu(A, -1) — includes one sub-diagonal
+        let result = ep("triu([1 2 3; 4 5 6; 7 8 9], -1)").unwrap();
+        assert_eq!(result, mat(3, 3, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 8.0, 9.0]));
+    }
+
+    #[test]
+    fn tril_no_offset() {
+        // tril([1 2 3; 4 5 6; 7 8 9]) → [1 0 0; 4 5 0; 7 8 9]
+        let result = ep("tril([1 2 3; 4 5 6; 7 8 9])").unwrap();
+        assert_eq!(result, mat(3, 3, vec![1.0, 0.0, 0.0, 4.0, 5.0, 0.0, 7.0, 8.0, 9.0]));
+    }
+
+    #[test]
+    fn tril_negative_offset() {
+        // tril(A, -1) — below main diagonal
+        let result = ep("tril([1 2 3; 4 5 6; 7 8 9], -1)").unwrap();
+        assert_eq!(result, mat(3, 3, vec![0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 7.0, 8.0, 0.0]));
+    }
+
+    #[test]
+    fn tril_positive_offset() {
+        // tril(A, 1) — includes one super-diagonal
+        let result = ep("tril([1 2 3; 4 5 6; 7 8 9], 1)").unwrap();
+        assert_eq!(result, mat(3, 3, vec![1.0, 2.0, 0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]));
+    }
+
+    #[test]
+    fn repmat_2x3() {
+        // repmat([1 2; 3 4], 2, 3) → 4×6
+        let result = ep("repmat([1 2; 3 4], 2, 3)").unwrap();
+        #[rustfmt::skip]
+        let expected = mat(4, 6, vec![
+            1.0, 2.0, 1.0, 2.0, 1.0, 2.0,
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+            1.0, 2.0, 1.0, 2.0, 1.0, 2.0,
+            3.0, 4.0, 3.0, 4.0, 3.0, 4.0,
+        ]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn repmat_1x1() {
+        let result = ep("repmat([5 6], 1, 1)").unwrap();
+        assert_eq!(result, mat(1, 2, vec![5.0, 6.0]));
+    }
+
+    #[test]
+    fn kron_identity_scaling() {
+        // kron([1 0; 0 1], [1 2; 3 4]) → 4×4 block-diagonal
+        let result = ep("kron([1 0; 0 1], [1 2; 3 4])").unwrap();
+        #[rustfmt::skip]
+        let expected = mat(4, 4, vec![
+            1.0, 2.0, 0.0, 0.0,
+            3.0, 4.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 2.0,
+            0.0, 0.0, 3.0, 4.0,
+        ]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn kron_simple() {
+        // kron([1 2], [3; 4]) → [3; 4; 6; 8]... actually [3 6; 4 8] — 2×2
+        let result = ep("kron([1 2], [3; 4])").unwrap();
+        assert_eq!(result, mat(2, 2, vec![3.0, 6.0, 4.0, 8.0]));
+    }
+
+    // ── 23b — cross / dot ─────────────────────────────────────────────────────
+
+    #[test]
+    fn cross_unit_vectors() {
+        // cross([1 0 0], [0 1 0]) → [0 0 1]
+        let result = ep("cross([1 0 0], [0 1 0])").unwrap();
+        assert_eq!(result, mat(1, 3, vec![0.0, 0.0, 1.0]));
+    }
+
+    #[test]
+    fn cross_general() {
+        // cross([1 2 3], [4 5 6]) → [-3 6 -3]
+        let result = ep("cross([1 2 3], [4 5 6])").unwrap();
+        assert_eq!(result, mat(1, 3, vec![-3.0, 6.0, -3.0]));
+    }
+
+    #[test]
+    fn cross_column_orientation() {
+        // Result orientation matches first argument (column vector in → column vector out)
+        let result = ep("cross([1; 0; 0], [0; 1; 0])").unwrap();
+        assert_eq!(result, mat(3, 1, vec![0.0, 0.0, 1.0]));
+    }
+
+    #[test]
+    fn cross_wrong_length_error() {
+        assert!(ep("cross([1 2], [3 4])").is_err());
+    }
+
+    #[test]
+    fn dot_basic() {
+        // dot([1 2 3], [4 5 6]) → 32
+        let result = ep("dot([1 2 3], [4 5 6])").unwrap();
+        assert_eq!(result, Value::Scalar(32.0));
+    }
+
+    #[test]
+    fn dot_length_mismatch_error() {
+        assert!(ep("dot([1 2], [3 4 5])").is_err());
+    }
+
+    // ── 23c — intersect / union / setdiff / ismember ──────────────────────────
+
+    #[test]
+    fn intersect_basic() {
+        let result = ep("intersect([1 3 5 7], [3 5 9])").unwrap();
+        assert_eq!(result, mat(1, 2, vec![3.0, 5.0]));
+    }
+
+    #[test]
+    fn intersect_empty() {
+        let result = ep("intersect([1 2], [3 4])").unwrap();
+        match result {
+            Value::Matrix(m) => assert_eq!(m.ncols(), 0),
+            _ => panic!("expected empty matrix"),
+        }
+    }
+
+    #[test]
+    fn intersect_nan_excluded() {
+        // NaN ≠ NaN, so NaN is never a member
+        let result = ep("intersect([1 nan 3], [nan 1 2])").unwrap();
+        assert_eq!(result, mat(1, 1, vec![1.0]));
+    }
+
+    #[test]
+    fn union_basic() {
+        let result = ep("union([1 3 5], [3 5 7])").unwrap();
+        assert_eq!(result, mat(1, 4, vec![1.0, 3.0, 5.0, 7.0]));
+    }
+
+    #[test]
+    fn union_with_duplicates() {
+        let result = ep("union([1 2 2 3], [2 3 4])").unwrap();
+        assert_eq!(result, mat(1, 4, vec![1.0, 2.0, 3.0, 4.0]));
+    }
+
+    #[test]
+    fn setdiff_basic() {
+        let result = ep("setdiff([1 2 3 4 5], [2 4])").unwrap();
+        assert_eq!(result, mat(1, 3, vec![1.0, 3.0, 5.0]));
+    }
+
+    #[test]
+    fn setdiff_empty_result() {
+        let result = ep("setdiff([1 2], [1 2 3])").unwrap();
+        match result {
+            Value::Matrix(m) => assert_eq!(m.ncols(), 0),
+            _ => panic!("expected empty matrix"),
+        }
+    }
+
+    #[test]
+    fn ismember_scalar_found() {
+        let result = ep("ismember(3, [1 2 3 4])").unwrap();
+        assert_eq!(result, Value::Scalar(1.0));
+    }
+
+    #[test]
+    fn ismember_scalar_not_found() {
+        let result = ep("ismember(5, [1 2 3 4])").unwrap();
+        assert_eq!(result, Value::Scalar(0.0));
+    }
+
+    #[test]
+    fn ismember_vector() {
+        let result = ep("ismember([1 6 3], [1 2 3 4])").unwrap();
+        assert_eq!(result, mat(1, 3, vec![1.0, 0.0, 1.0]));
+    }
+
+    #[test]
+    fn ismember_nan_is_false() {
+        // NaN ≠ NaN in IEEE semantics
+        let result = ep("ismember(nan, [nan])").unwrap();
+        assert_eq!(result, Value::Scalar(0.0));
+    }
+
+    // ── 23d — sub2ind / ind2sub / repelem ─────────────────────────────────────
+
+    #[test]
+    fn sub2ind_scalar() {
+        // sub2ind([3 4], 2, 3) → 8
+        let result = ep("sub2ind([3 4], 2, 3)").unwrap();
+        assert_eq!(result, Value::Scalar(8.0));
+    }
+
+    #[test]
+    fn sub2ind_vector() {
+        // sub2ind([3 4], [1 2], [1 3]) → [1 7]... wait:
+        // (1-1)*3+1=1, (3-1)*3+2=8 — let's verify formula: (c-1)*rows + r
+        // r=[1,2], c=[1,3]: (1-1)*3+1=1, (3-1)*3+2=8
+        let result = ep("sub2ind([3 4], [1 2], [1 3])").unwrap();
+        assert_eq!(result, mat(1, 2, vec![1.0, 8.0]));
+    }
+
+    #[test]
+    fn ind2sub_scalar() {
+        // ind2sub([3 4], 8) → r=2, c=3
+        let result = ep("ind2sub([3 4], 8)").unwrap();
+        match result {
+            Value::Tuple(v) => {
+                assert_eq!(v[0], Value::Scalar(2.0));
+                assert_eq!(v[1], Value::Scalar(3.0));
+            }
+            _ => panic!("expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn ind2sub_vector() {
+        // ind2sub([3 4], [1 7]) → r=[1 1], c=[1 3]
+        // idx=1: (1-1)%3+1=1, (1-1)/3+1=1
+        // idx=7: (7-1)%3+1=1, (7-1)/3+1=3
+        let result = ep("ind2sub([3 4], [1 7])").unwrap();
+        match result {
+            Value::Tuple(v) => {
+                assert_eq!(v[0], mat(1, 2, vec![1.0, 1.0]));
+                assert_eq!(v[1], mat(1, 2, vec![1.0, 3.0]));
+            }
+            _ => panic!("expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn repelem_scalar_n() {
+        // repelem([1 2 3], 3) → [1 1 1 2 2 2 3 3 3]
+        let result = ep("repelem([1 2 3], 3)").unwrap();
+        assert_eq!(result, mat(1, 9, vec![1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0]));
+    }
+
+    #[test]
+    fn repelem_vector_n() {
+        // repelem([1 2 3], [2 1 3]) → [1 1 2 3 3 3]
+        let result = ep("repelem([1 2 3], [2 1 3])").unwrap();
+        assert_eq!(result, mat(1, 6, vec![1.0, 1.0, 2.0, 3.0, 3.0, 3.0]));
+    }
+
+    #[test]
+    fn repelem_2d() {
+        // repelem([1 2; 3 4], 2, 3) — each element repeated 2 rows × 3 cols
+        let result = ep("repelem([1 2; 3 4], 2, 3)").unwrap();
+        #[rustfmt::skip]
+        let expected = mat(4, 6, vec![
+            1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
+            1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
+            3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
+            3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
+        ]);
+        assert_eq!(result, expected);
+    }
+}

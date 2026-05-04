@@ -647,6 +647,49 @@ See `examples/statistics.calc` for a full worked example.
 
 ---
 
+## Matrix Utilities & Set Operations
+
+### Triangular extraction and tiling
+
+| Function          | Description |
+|-------------------|-------------|
+| `triu(A)`         | Upper triangular (zeros below main diagonal) |
+| `triu(A, k)`      | Upper triangular with offset `k` (k>0: above main, k<0: include sub-diagonals) |
+| `tril(A)`         | Lower triangular (zeros above main diagonal) |
+| `tril(A, k)`      | Lower triangular with offset `k` |
+| `repmat(A, m, n)` | Tile `A` in an `m × n` block grid |
+| `kron(A, B)`      | Kronecker (tensor) product |
+
+### Vector products
+
+| Function       | Description |
+|----------------|-------------|
+| `cross(a, b)`  | Cross product of two length-3 vectors; result orientation matches `a` |
+| `dot(a, b)`    | Inner product `sum(a .* b)` → scalar |
+
+### Set operations
+
+Results are always sorted ascending and deduplicated. NaN is never a member (IEEE semantics).
+
+| Function           | Description |
+|--------------------|-------------|
+| `intersect(a, b)`  | Elements present in both vectors |
+| `union(a, b)`      | All unique elements from both vectors |
+| `setdiff(a, b)`    | Elements of `a` not in `b` |
+| `ismember(x, v)`   | `1` if `x` ∈ `v`; element-wise for vector `x` |
+
+### Index conversion and element repetition
+
+| Function              | Description |
+|-----------------------|-------------|
+| `sub2ind(sz, r, c)`   | Row/col subscripts → 1-based column-major linear index |
+| `ind2sub(sz, idx)`    | Linear index → `[r; c]` tuple (use `[r, c] = ind2sub(...)`) |
+| `repelem(v, n)`       | Repeat each element of `v` exactly `n` times |
+| `repelem(v, nv)`      | Repeat `v(i)` by `nv(i)` times (per-element counts) |
+| `repelem(A, m, n)`    | 2-D: repeat each element `m` rows × `n` cols |
+
+---
+
 ## Bitwise Functions
 
 All require **non-negative integer** arguments — combine naturally with `0xFF`, `0b1010`, `0o17` literals.
@@ -1558,7 +1601,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `examples`
 
 ## Keyboard shortcuts
 

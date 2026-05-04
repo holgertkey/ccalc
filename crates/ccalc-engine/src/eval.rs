@@ -2362,6 +2362,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "chol",
         "complex",
         "cond",
+        "cross",
         "conj",
         "contains",
         "cos",
@@ -2377,6 +2378,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "det",
         "diag",
         "diff",
+        "dot",
         "disp",
         "dlmread",
         "dlmwrite",
@@ -2403,10 +2405,13 @@ pub fn builtin_names() -> &'static [&'static str] {
         "hours",
         "hypot",
         "imag",
+        "ind2sub",
         "int2str",
+        "intersect",
         "inv",
         "iqr",
         "iscell",
+        "ismember",
         "ischar",
         "isdatetime",
         "isduration",
@@ -2423,6 +2428,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "isstruct",
         "jsonencode",
         "jsondecode",
+        "kron",
         "kurtosis",
         "lasterr",
         "length",
@@ -2470,10 +2476,13 @@ pub fn builtin_names() -> &'static [&'static str] {
         "regexpi",
         "regexprep",
         "rem",
+        "repelem",
+        "repmat",
         "reshape",
         "rmfield",
         "rng",
         "round",
+        "setdiff",
         "second",
         "seconds",
         "sign",
@@ -2493,10 +2502,14 @@ pub fn builtin_names() -> &'static [&'static str] {
         "strrep",
         "strsplit",
         "strtrim",
+        "sub2ind",
         "sum",
         "svd",
         "tan",
         "trace",
+        "tril",
+        "triu",
+        "union",
         "unique",
         "upper",
         "var",
@@ -5337,6 +5350,403 @@ fn call_builtin(
                 }
             }
             _ => Err("diff: unsupported argument type".to_string()),
+        },
+
+        // ── Phase 23a — Matrix shape utilities ───────────────────────────────
+
+        ("triu", 1) => match &args[0] {
+            Value::Matrix(m) => {
+                let mut r = m.clone();
+                for i in 0..m.nrows() {
+                    for j in 0..m.ncols() {
+                        if (j as isize) < (i as isize) {
+                            r[[i, j]] = 0.0;
+                        }
+                    }
+                }
+                Ok(Value::Matrix(r))
+            }
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            _ => Err("triu: argument must be a numeric matrix".to_string()),
+        },
+        ("triu", 2) => match (&args[0], &args[1]) {
+            (Value::Matrix(m), Value::Scalar(k)) => {
+                let k = *k as isize;
+                let mut r = m.clone();
+                for i in 0..m.nrows() {
+                    for j in 0..m.ncols() {
+                        if (j as isize) - (i as isize) < k {
+                            r[[i, j]] = 0.0;
+                        }
+                    }
+                }
+                Ok(Value::Matrix(r))
+            }
+            _ => Err("triu: expects (matrix, scalar)".to_string()),
+        },
+
+        ("tril", 1) => match &args[0] {
+            Value::Matrix(m) => {
+                let mut r = m.clone();
+                for i in 0..m.nrows() {
+                    for j in 0..m.ncols() {
+                        if (j as isize) > (i as isize) {
+                            r[[i, j]] = 0.0;
+                        }
+                    }
+                }
+                Ok(Value::Matrix(r))
+            }
+            Value::Scalar(n) => Ok(Value::Scalar(*n)),
+            _ => Err("tril: argument must be a numeric matrix".to_string()),
+        },
+        ("tril", 2) => match (&args[0], &args[1]) {
+            (Value::Matrix(m), Value::Scalar(k)) => {
+                let k = *k as isize;
+                let mut r = m.clone();
+                for i in 0..m.nrows() {
+                    for j in 0..m.ncols() {
+                        if (j as isize) - (i as isize) > k {
+                            r[[i, j]] = 0.0;
+                        }
+                    }
+                }
+                Ok(Value::Matrix(r))
+            }
+            _ => Err("tril: expects (matrix, scalar)".to_string()),
+        },
+
+        ("repmat", 3) => match (&args[0], &args[1], &args[2]) {
+            (Value::Matrix(a), Value::Scalar(rm), Value::Scalar(cn)) => {
+                let rm = *rm as usize;
+                let cn = *cn as usize;
+                if rm == 0 || cn == 0 {
+                    return Ok(Value::Matrix(Array2::zeros((0, 0))));
+                }
+                let row_tile: Vec<Array2<f64>> = std::iter::repeat_n(a.view(), cn).map(|v| v.to_owned()).collect();
+                let row_block = ndarray::concatenate(ndarray::Axis(1), &row_tile.iter().map(|m| m.view()).collect::<Vec<_>>())
+                    .map_err(|e| e.to_string())?;
+                let col_tiles: Vec<Array2<f64>> = std::iter::repeat_n(row_block.view(), rm).map(|v| v.to_owned()).collect();
+                let result = ndarray::concatenate(ndarray::Axis(0), &col_tiles.iter().map(|m| m.view()).collect::<Vec<_>>())
+                    .map_err(|e| e.to_string())?;
+                Ok(Value::Matrix(result))
+            }
+            (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => {
+                let rm = *rm as usize;
+                let cn = *cn as usize;
+                Ok(Value::Matrix(Array2::from_elem((rm, cn), *s)))
+            }
+            _ => Err("repmat: expects (matrix, m, n)".to_string()),
+        },
+
+        ("kron", 2) => match (&args[0], &args[1]) {
+            (Value::Matrix(a), Value::Matrix(b)) => {
+                let (ra, ca) = (a.nrows(), a.ncols());
+                let (rb, cb) = (b.nrows(), b.ncols());
+                let mut result = Array2::<f64>::zeros((ra * rb, ca * cb));
+                for i in 0..ra {
+                    for j in 0..ca {
+                        let aij = a[[i, j]];
+                        for p in 0..rb {
+                            for q in 0..cb {
+                                result[[i * rb + p, j * cb + q]] = aij * b[[p, q]];
+                            }
+                        }
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+            (Value::Scalar(s), Value::Matrix(b)) => {
+                Ok(Value::Matrix(b.mapv(|x| x * s)))
+            }
+            (Value::Matrix(a), Value::Scalar(s)) => {
+                Ok(Value::Matrix(a.mapv(|x| x * s)))
+            }
+            (Value::Scalar(a), Value::Scalar(b)) => Ok(Value::Scalar(a * b)),
+            _ => Err("kron: arguments must be numeric matrices".to_string()),
+        },
+
+        // ── Phase 23b — Vector products ──────────────────────────────────────
+
+        ("cross", 2) => {
+            fn to_vec3(v: &Value, argn: usize) -> Result<[f64; 3], String> {
+                match v {
+                    Value::Matrix(m) => {
+                        let flat: Vec<f64> = m.iter().copied().collect();
+                        if flat.len() != 3 {
+                            Err(format!("cross: argument {} must have exactly 3 elements", argn))
+                        } else {
+                            Ok([flat[0], flat[1], flat[2]])
+                        }
+                    }
+                    _ => Err(format!("cross: argument {} must be a 3-element vector", argn)),
+                }
+            }
+            let a = to_vec3(&args[0], 1)?;
+            let b = to_vec3(&args[1], 2)?;
+            let cx = a[1] * b[2] - a[2] * b[1];
+            let cy = a[2] * b[0] - a[0] * b[2];
+            let cz = a[0] * b[1] - a[1] * b[0];
+            // Result orientation follows first argument
+            let result = match &args[0] {
+                Value::Matrix(m) if m.nrows() == 1 => {
+                    Array2::from_shape_vec((1, 3), vec![cx, cy, cz]).unwrap()
+                }
+                _ => Array2::from_shape_vec((3, 1), vec![cx, cy, cz]).unwrap(),
+            };
+            Ok(Value::Matrix(result))
+        }
+
+        ("dot", 2) => {
+            fn to_flat(v: &Value, argn: usize) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Matrix(m) => Ok(m.iter().copied().collect()),
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    _ => Err(format!("dot: argument {} must be a numeric vector", argn)),
+                }
+            }
+            let a = to_flat(&args[0], 1)?;
+            let b = to_flat(&args[1], 2)?;
+            if a.len() != b.len() {
+                return Err(format!(
+                    "dot: vectors must have the same length ({} vs {})",
+                    a.len(), b.len()
+                ));
+            }
+            let s: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+            Ok(Value::Scalar(s))
+        }
+
+        // ── Phase 23c — Set operations ────────────────────────────────────────
+
+        ("intersect", 2) => {
+            fn to_sorted_vec(v: &Value, fname: &str) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Matrix(m) => {
+                        let mut vals: Vec<f64> = m.iter().copied().collect();
+                        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                        Ok(vals)
+                    }
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    _ => Err(format!("{fname}: arguments must be numeric vectors")),
+                }
+            }
+            let a = to_sorted_vec(&args[0], "intersect")?;
+            let b = to_sorted_vec(&args[1], "intersect")?;
+            let b_set: std::collections::HashSet<u64> = b.iter()
+                .filter(|x| !x.is_nan())
+                .map(|x| x.to_bits())
+                .collect();
+            let mut result: Vec<f64> = Vec::new();
+            for x in &a {
+                if !x.is_nan() && b_set.contains(&x.to_bits()) {
+                    if result.last().is_none_or(|&last| last != *x) {
+                        result.push(*x);
+                    }
+                }
+            }
+            let n = result.len();
+            if n == 0 {
+                Ok(Value::Matrix(Array2::zeros((1, 0))))
+            } else {
+                Ok(Value::Matrix(Array2::from_shape_vec((1, n), result).unwrap()))
+            }
+        }
+
+        ("union", 2) => {
+            fn collect_vals(v: &Value, fname: &str) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Matrix(m) => Ok(m.iter().copied().collect()),
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    _ => Err(format!("{fname}: arguments must be numeric vectors")),
+                }
+            }
+            let mut combined = collect_vals(&args[0], "union")?;
+            combined.extend(collect_vals(&args[1], "union")?);
+            combined.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let mut result: Vec<f64> = Vec::new();
+            for x in combined {
+                if result.last().is_none_or(|&last| last != x) {
+                    result.push(x);
+                }
+            }
+            let n = result.len();
+            if n == 0 {
+                Ok(Value::Matrix(Array2::zeros((1, 0))))
+            } else {
+                Ok(Value::Matrix(Array2::from_shape_vec((1, n), result).unwrap()))
+            }
+        }
+
+        ("setdiff", 2) => {
+            fn collect_vals2(v: &Value, fname: &str) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Matrix(m) => Ok(m.iter().copied().collect()),
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    _ => Err(format!("{fname}: arguments must be numeric vectors")),
+                }
+            }
+            let a = collect_vals2(&args[0], "setdiff")?;
+            let b = collect_vals2(&args[1], "setdiff")?;
+            let b_set: std::collections::HashSet<u64> = b.iter()
+                .filter(|x| !x.is_nan())
+                .map(|x| x.to_bits())
+                .collect();
+            let mut a_sorted = a.clone();
+            a_sorted.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+            let mut result: Vec<f64> = Vec::new();
+            for x in a_sorted {
+                if !x.is_nan() && !b_set.contains(&x.to_bits()) {
+                    if result.last().is_none_or(|&last| last != x) {
+                        result.push(x);
+                    }
+                }
+            }
+            let n = result.len();
+            if n == 0 {
+                Ok(Value::Matrix(Array2::zeros((1, 0))))
+            } else {
+                Ok(Value::Matrix(Array2::from_shape_vec((1, n), result).unwrap()))
+            }
+        }
+
+        ("ismember", 2) => {
+            fn collect_vals3(v: &Value, fname: &str) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Matrix(m) => Ok(m.iter().copied().collect()),
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    _ => Err(format!("{fname}: arguments must be numeric")),
+                }
+            }
+            let set: std::collections::HashSet<u64> = collect_vals3(&args[1], "ismember")?
+                .into_iter()
+                .filter(|x| !x.is_nan())
+                .map(|x| x.to_bits())
+                .collect();
+            match &args[0] {
+                Value::Scalar(s) => {
+                    let found = !s.is_nan() && set.contains(&s.to_bits());
+                    Ok(Value::Scalar(if found { 1.0 } else { 0.0 }))
+                }
+                Value::Matrix(m) => {
+                    let result: Vec<f64> = m.iter()
+                        .map(|x| if !x.is_nan() && set.contains(&x.to_bits()) { 1.0 } else { 0.0 })
+                        .collect();
+                    let shape = m.raw_dim();
+                    Ok(Value::Matrix(Array2::from_shape_vec(shape, result).unwrap()))
+                }
+                _ => Err("ismember: first argument must be numeric".to_string()),
+            }
+        }
+
+        // ── Phase 23d — Index utilities and element repetition ────────────────
+
+        ("sub2ind", 3) => {
+            let sz = match &args[0] {
+                Value::Matrix(m) if m.len() == 2 => (m[[0, 0]] as usize, m[[0, 1]] as usize),
+                _ => return Err("sub2ind: first argument must be [rows cols]".to_string()),
+            };
+            let rows = sz.0;
+            fn idx_vals(v: &Value, argn: usize) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    Value::Matrix(m) => Ok(m.iter().copied().collect()),
+                    _ => Err(format!("sub2ind: argument {} must be numeric", argn)),
+                }
+            }
+            let r = idx_vals(&args[1], 2)?;
+            let c = idx_vals(&args[2], 3)?;
+            if r.len() != c.len() {
+                return Err("sub2ind: row and column index vectors must have the same length".to_string());
+            }
+            if r.len() == 1 {
+                let idx = (c[0] as usize - 1) * rows + r[0] as usize;
+                Ok(Value::Scalar(idx as f64))
+            } else {
+                let vals: Vec<f64> = r.iter().zip(c.iter())
+                    .map(|(&ri, &ci)| ((ci as usize - 1) * rows + ri as usize) as f64)
+                    .collect();
+                let n = vals.len();
+                Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+            }
+        }
+
+        ("ind2sub", 2) => {
+            let sz = match &args[0] {
+                Value::Matrix(m) if m.len() == 2 => (m[[0, 0]] as usize, m[[0, 1]] as usize),
+                _ => return Err("ind2sub: first argument must be [rows cols]".to_string()),
+            };
+            let rows = sz.0;
+            fn idx_vals2(v: &Value, argn: usize) -> Result<Vec<f64>, String> {
+                match v {
+                    Value::Scalar(s) => Ok(vec![*s]),
+                    Value::Matrix(m) => Ok(m.iter().copied().collect()),
+                    _ => Err(format!("ind2sub: argument {} must be numeric", argn)),
+                }
+            }
+            let indices = idx_vals2(&args[1], 2)?;
+            if indices.len() == 1 {
+                let idx = indices[0] as usize;
+                let r = ((idx - 1) % rows + 1) as f64;
+                let c = ((idx - 1) / rows + 1) as f64;
+                Ok(Value::Tuple(vec![Value::Scalar(r), Value::Scalar(c)]))
+            } else {
+                let n = indices.len();
+                let rs: Vec<f64> = indices.iter().map(|&idx| ((idx as usize - 1) % rows + 1) as f64).collect();
+                let cs: Vec<f64> = indices.iter().map(|&idx| ((idx as usize - 1) / rows + 1) as f64).collect();
+                let rm = Value::Matrix(Array2::from_shape_vec((1, n), rs).unwrap());
+                let cm = Value::Matrix(Array2::from_shape_vec((1, n), cs).unwrap());
+                Ok(Value::Tuple(vec![rm, cm]))
+            }
+        }
+
+        ("repelem", 2) => match (&args[0], &args[1]) {
+            (Value::Matrix(a), Value::Scalar(n)) => {
+                let n = *n as usize;
+                let flat: Vec<f64> = a.iter().flat_map(|&x| std::iter::repeat(x).take(n)).collect();
+                let total = flat.len();
+                Ok(Value::Matrix(Array2::from_shape_vec((1, total), flat).unwrap()))
+            }
+            (Value::Matrix(a), Value::Matrix(ns)) => {
+                let av: Vec<f64> = a.iter().copied().collect();
+                let nv: Vec<f64> = ns.iter().copied().collect();
+                if av.len() != nv.len() {
+                    return Err("repelem: element count vector must match source vector length".to_string());
+                }
+                let flat: Vec<f64> = av.iter().zip(nv.iter())
+                    .flat_map(|(&x, &n)| std::iter::repeat(x).take(n as usize))
+                    .collect();
+                let total = flat.len();
+                Ok(Value::Matrix(Array2::from_shape_vec((1, total), flat).unwrap()))
+            }
+            (Value::Scalar(s), Value::Scalar(n)) => {
+                let n = *n as usize;
+                Ok(Value::Matrix(Array2::from_elem((1, n), *s)))
+            }
+            _ => Err("repelem: unsupported argument types".to_string()),
+        },
+        ("repelem", 3) => match (&args[0], &args[1], &args[2]) {
+            (Value::Matrix(a), Value::Scalar(rm), Value::Scalar(cn)) => {
+                let rm = *rm as usize;
+                let cn = *cn as usize;
+                let (nrows, ncols) = (a.nrows(), a.ncols());
+                let mut result = Array2::<f64>::zeros((nrows * rm, ncols * cn));
+                for i in 0..nrows {
+                    for j in 0..ncols {
+                        let v = a[[i, j]];
+                        for di in 0..rm {
+                            for dj in 0..cn {
+                                result[[i * rm + di, j * cn + dj]] = v;
+                            }
+                        }
+                    }
+                }
+                Ok(Value::Matrix(result))
+            }
+            (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => {
+                Ok(Value::Matrix(Array2::from_elem((*rm as usize, *cn as usize), *s)))
+            }
+            _ => Err("repelem: expects (matrix, m, n) for 2D repetition".to_string()),
         },
 
         _ => {

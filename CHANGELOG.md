@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-05-04
+
+### Added
+
+- **Phase 23 — Matrix utilities and set operations** (13 new built-in functions, no new syntax):
+  - **23a — Triangular extraction and tiling:** `triu(A[,k])`, `tril(A[,k])`, `repmat(A,m,n)`, `kron(A,B)`.
+  - **23b — Vector products:** `cross(a,b)` (3-element vectors; result orientation matches `a`), `dot(a,b)` (inner product → scalar).
+  - **23c — Set operations:** `intersect(a,b)`, `union(a,b)`, `setdiff(a,b)`, `ismember(x,v)`. All results are sorted and deduplicated; NaN is never a member (IEEE semantics).
+  - **23d — Index utilities:** `sub2ind(sz,r,c)`, `ind2sub(sz,idx)` (returns a tuple for use with `[r,c] = ind2sub(...)`), `repelem(v,n)` / `repelem(v,nv)` / `repelem(A,m,n)`.
+  - 33 new tests in `mod phase23_tests` (822 total).
+  - New guide page `docs/src/guide/set-operations.md`; `help setops` topic added.
+
 ## [0.27.0+001] - 2026-05-03
 
 ### Fixed

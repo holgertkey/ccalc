@@ -62,10 +62,14 @@ pub fn print(topic: Option<&str>) {
             "datetime" | "duration" | "nat" | "isdatetime" | "isduration" | "isnat" | "datestr"
             | "datevec" | "datenum" | "posixtime",
         ) => print_datetime(),
+        Some(
+            "setops" | "set" | "sets" | "triu" | "tril" | "repmat" | "kron" | "cross" | "dot"
+            | "intersect" | "union" | "setdiff" | "ismember" | "sub2ind" | "ind2sub" | "repelem",
+        ) => print_setops(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  examples"
             );
         }
     }
@@ -160,6 +164,10 @@ Datetime NaT  datetime('2024-06-01')  datetime(y,m,d[,H,M,S])
          isdatetime(x)  isduration(x)  isnat(x)
          datestr(dt[,fmt])  datevec(dt)  datenum(dt)  posixtime(dt)
          [dt1;dt2]→DateTimeArray   [d1;d2]→DurationArray   diff(arr)
+Set ops triu(A[,k])  tril(A[,k])  repmat(A,m,n)  kron(A,B)
+        cross(a,b)  dot(a,b)
+        intersect  union  setdiff  ismember
+        sub2ind([r c],r,c)  ind2sub([r c],idx)  repelem(v,n)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -265,6 +273,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help matfile     load('file.mat') — MAT file read (requires --features mat build)
   help control     if/for/while, break/continue, compound assignment, run/source
   help path        addpath/rmpath/path()/genpath() — session search path
+  help setops      triu/tril/repmat/kron/cross/dot, set ops, sub2ind/ind2sub/repelem
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -3099,5 +3108,75 @@ Practical example — project timeline:
 
 See also: help format  help strings
 Example:  ccalc examples/datetime.calc"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help setops  (Phase 23 — Matrix utilities and set operations)
+// ---------------------------------------------------------------------------
+
+fn print_setops() {
+    println!(
+        "\
+MATRIX UTILITIES AND SET OPERATIONS  (help setops)
+
+── Triangular extraction ────────────────────────────────────────────────────────
+    triu(A)        upper triangular (zeros below main diagonal)
+    triu(A, k)     upper triangular offset by k  (k>0: above main, k<0: include sub)
+    tril(A)        lower triangular (zeros above main diagonal)
+    tril(A, k)     lower triangular offset by k
+
+    A = [1 2 3; 4 5 6; 7 8 9];
+    triu(A)        % [1 2 3; 0 5 6; 0 0 9]
+    triu(A, 1)     % [0 2 3; 0 0 6; 0 0 0]
+    tril(A)        % [1 0 0; 4 5 0; 7 8 9]
+    tril(A, -1)    % [0 0 0; 4 0 0; 7 8 0]
+
+── Tiling and Kronecker product ─────────────────────────────────────────────────
+    repmat(A, m, n)    tile A as m×n block grid → (m*rows)×(n*cols) result
+    kron(A, B)         Kronecker (tensor) product
+
+    repmat([1 2; 3 4], 2, 3)           % 4×6 block matrix
+    kron([1 0; 0 1], [1 2; 3 4])       % 4×4 block-diagonal identity scaling
+
+── Vector products ───────────────────────────────────────────────────────────────
+    cross(a, b)    cross product of two length-3 vectors; result orientation = a
+    dot(a, b)      inner (dot) product; returns scalar
+
+    cross([1 0 0], [0 1 0])    % [0 0 1]
+    cross([1 2 3], [4 5 6])    % [-3 6 -3]
+    dot([1 2 3], [4 5 6])      % 32
+
+── Set operations (sorted, unique; NaN follows IEEE: never a member) ─────────────
+    intersect(a, b)    elements in both a and b
+    union(a, b)        all unique elements from a and b
+    setdiff(a, b)      elements of a not in b
+    ismember(x, v)     1 if x is in v; element-wise for vector x
+
+    intersect([1 3 5 7], [3 5 9])    % [3 5]
+    union([1 3 5], [3 5 7])          % [1 3 5 7]
+    setdiff([1 2 3 4 5], [2 4])      % [1 3 5]
+    ismember(3, [1 2 3 4])           % 1
+    ismember([1 6 3], [1 2 3 4])     % [1 0 1]
+
+── Index conversion ──────────────────────────────────────────────────────────────
+    sub2ind(sz, r, c)      row/col subscripts → linear index (1-based, column-major)
+    ind2sub(sz, idx)       linear index → [row; col] returned as tuple
+
+    sub2ind([3 4], 2, 3)           % 8
+    sub2ind([3 4], [1 2], [1 3])   % [1 8]
+    [r, c] = ind2sub([3 4], 8)     % r=2, c=3
+    [r, c] = ind2sub([3 4], [1 7]) % r=[1 1], c=[1 3]
+
+── Element repetition ────────────────────────────────────────────────────────────
+    repelem(v, n)       repeat each element of v exactly n times
+    repelem(v, nv)      repeat v(i) by nv(i) times (per-element counts)
+    repelem(A, m, n)    repeat each element of A in m rows × n cols
+
+    repelem([1 2 3], 3)          % [1 1 1 2 2 2 3 3 3]
+    repelem([1 2 3], [2 1 3])    % [1 1 2 3 3 3]
+    repelem([1 2; 3 4], 2, 3)    % 4×6 element-wise tiling
+
+See also: help matrices  help vectors  help linalg"
     );
 }
