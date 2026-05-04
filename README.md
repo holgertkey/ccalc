@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.28.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.29.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -687,6 +687,47 @@ Results are always sorted ascending and deduplicated. NaN is never a member (IEE
 | `repelem(v, n)`       | Repeat each element of `v` exactly `n` times |
 | `repelem(v, nv)`      | Repeat `v(i)` by `nv(i)` times (per-element counts) |
 | `repelem(A, m, n)`    | 2-D: repeat each element `m` rows × `n` cols |
+
+---
+
+## Polynomial Operations & Interpolation
+
+Polynomials are **row vectors of coefficients in descending degree order**:
+`p(x) = x² − 3x + 2` → `[1, -3, 2]`
+
+| Function | Signature | Description |
+|---|---|---|
+| `polyval(p, x)` | scalar or matrix `x` | Evaluate polynomial at `x` (Horner's method) |
+| `polyfit(x, y, n)` | data vectors + degree | Least-squares degree-`n` fit (Vandermonde + QR) |
+| `roots(p)` | coefficient vector | All roots; real roots → Matrix, complex → Cell |
+| `poly(r)` | root vector or matrix | Monic polynomial from roots; `poly(A)` = characteristic polynomial |
+| `conv(a, b)` | two vectors | Polynomial multiplication; result length = `m+n−1` |
+| `deconv(c, b)` | `[q, r] = deconv(c, b)` | Polynomial long division; `conv(b,q)+r==c` |
+| `interp1(x, y, xi)` | `interp1(x, y, xi[, method])` | Piecewise interpolation; methods: `'linear'` (default), `'nearest'`, `'previous'`, `'next'` |
+
+```matlab
+p = [1 0 1];              % x² + 1
+polyval(p, [0 1 2])       % → [1 2 5]
+
+x = [0 1 2 3 4];
+y = [1 2 5 10 17];
+c = polyfit(x, y, 2)      % → [1.0  0.0  1.0]  (≈ x² + 1)
+
+roots([1 2 1])            % → [-1; -1]  (repeated root)
+roots([1 0 1])            % → {0+1i; 0-1i}  (complex pair — Cell)
+
+poly([1 2 3])             % → [1 -6 11 -6]  (x-1)(x-2)(x-3)
+poly([2 1; 0 3])          % → [1 -5 6]  characteristic polynomial
+
+conv([1 2 3], [1 1])      % → [1 3 5 3]
+[q, r] = deconv([1 3 5 3], [1 1])   % q=[1 2 3], r=[0 0 0 0]
+
+xi = [0 1 2 3]; yi = [0 1 4 9];
+interp1(xi, yi, 1.5)               % → 2.5  (linear)
+interp1(xi, yi, 1.5, 'nearest')    % → 1
+```
+
+See `examples/polynomials.m` and `help poly` for full documentation.
 
 ---
 
@@ -1601,7 +1642,7 @@ All forms desugar at parse time — no performance penalty.
 | `load('path')`                    | Load from explicit file             |
 | Ctrl+C / Ctrl+D                   | Quit                                |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `examples`
 
 ## Keyboard shortcuts
 
@@ -1842,6 +1883,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `string_regex.calc`     | Phase 21: `contains`/`startsWith`/`endsWith`, `strjoin`, `strsplit` roundtrip; `regexp`/`regexpi`/`regexprep` log parser — requires `--features regex` for sections 5–9 |
 | `datetime.calc`         | Phase 22: `datetime`/`duration` constructors, arithmetic, component extractors, predicates, formatting (`datestr`/`datevec`/`datenum`/`posixtime`), array operations, project-timeline example |
 | `set_operations.m`      | Phase 23: `triu`/`tril`, `repmat`, `kron`, `cross`, `dot`, `intersect`/`union`/`setdiff`/`ismember`, `sub2ind`/`ind2sub`, `repelem`; voter-overlap analysis example |
+| `polynomials.m`         | Phase 24: `polyval`, `polyfit`, `roots`, `poly`, `conv`, `deconv`, `interp1`; curve fitting and interpolation examples |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
