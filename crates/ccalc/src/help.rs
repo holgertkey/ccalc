@@ -905,8 +905,9 @@ Workspace
     ws  saves only scalar variables — matrices are not persisted.
     who shows dimensions:  A = [2×2 double]
 
-See also: help linalg  (advanced linear algebra reference)
-          help index   (full indexed-assignment reference)"
+See also: help linalg   (advanced linear algebra reference)
+          help index    (full indexed-assignment reference)
+          help setops   (triu/tril/repmat/kron, set ops, sub2ind/repelem)"
     );
 }
 
@@ -1171,7 +1172,7 @@ end in index expressions
     A(:, end)           last column
     A(1:end-1, 2:end)   submatrix: all rows except last, col 2 to end
 
-See also: help matrices  help functions  help stats
+See also: help matrices  help functions  help stats  help setops
 Example:  ccalc examples/vector_utils.calc"
     );
 }
