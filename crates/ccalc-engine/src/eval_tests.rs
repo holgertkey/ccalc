@@ -5658,7 +5658,7 @@ mod phase24_tests {
         match r {
             Value::Matrix(m) => {
                 assert_eq!(m.shape(), &[2, 1]);
-                let mut vals = vec![m[[0, 0]], m[[1, 0]]];
+                let mut vals = [m[[0, 0]], m[[1, 0]]];
                 vals.sort_by(|a, b| b.partial_cmp(a).unwrap());
                 assert!(approx(vals[0], 2.0), "root0={}", vals[0]);
                 assert!(approx(vals[1], 1.0), "root1={}", vals[1]);
