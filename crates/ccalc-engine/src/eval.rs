@@ -2365,6 +2365,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "cross",
         "conj",
         "contains",
+        "conv",
         "cos",
         "cov",
         "cumprod",
@@ -2375,6 +2376,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "datetime",
         "day",
         "days",
+        "deconv",
         "det",
         "diag",
         "diff",
@@ -2407,6 +2409,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "imag",
         "ind2sub",
         "int2str",
+        "interp1",
         "intersect",
         "inv",
         "iqr",
@@ -2461,6 +2464,9 @@ pub fn builtin_names() -> &'static [&'static str] {
         "ones",
         "orth",
         "pinv",
+        "poly",
+        "polyfit",
+        "polyval",
         "posixtime",
         "prctile",
         "prod",
@@ -2481,6 +2487,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "reshape",
         "rmfield",
         "rng",
+        "roots",
         "round",
         "setdiff",
         "second",
@@ -5795,6 +5802,183 @@ fn call_builtin(
             _ => Err("repelem: expects (matrix, m, n) for 2D repetition".to_string()),
         },
 
+        // ── Phase 24a — Polynomial evaluation, fitting, and roots ────────────
+        ("polyval", 2) => {
+            let coeffs = poly_coeffs(&args[0], "polyval")?;
+            if coeffs.is_empty() {
+                return Err("polyval: polynomial vector is empty".to_string());
+            }
+            match &args[1] {
+                Value::Scalar(x) => Ok(Value::Scalar(horner(&coeffs, *x))),
+                Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| horner(&coeffs, x)))),
+                _ => Err("polyval: second argument must be a real numeric value".to_string()),
+            }
+        }
+
+        ("polyfit", 3) => {
+            let xv = poly_coeffs(&args[0], "polyfit")?;
+            let yv = poly_coeffs(&args[1], "polyfit")?;
+            let deg = match &args[2] {
+                Value::Scalar(n) => {
+                    let d = *n as usize;
+                    if *n < 0.0 || (*n - d as f64).abs() > 1e-9 {
+                        return Err("polyfit: degree must be a non-negative integer".to_string());
+                    }
+                    d
+                }
+                _ => return Err("polyfit: degree must be a scalar".to_string()),
+            };
+            if xv.len() != yv.len() {
+                return Err("polyfit: x and y must have the same length".to_string());
+            }
+            let m = xv.len();
+            let ncols = deg + 1;
+            if ncols > m {
+                return Err(format!(
+                    "polyfit: not enough data points ({m}) for degree-{deg} fit"
+                ));
+            }
+            // Build Vandermonde matrix (m × ncols), highest power first
+            let mut vander = Array2::<f64>::zeros((m, ncols));
+            for (i, &xi) in xv.iter().enumerate() {
+                for j in 0..ncols {
+                    vander[[i, j]] = xi.powi((deg - j) as i32);
+                }
+            }
+            // Solve via QR: V*c = y  →  Q*R*c = y  →  R*c = Q^T*y
+            let (q, r) = qr_decompose(&vander)?;
+            let qty: Vec<f64> = (0..ncols)
+                .map(|i| (0..m).map(|k| q[[k, i]] * yv[k]).sum())
+                .collect();
+            // Extract upper-left ncols×ncols block of R
+            let mut r_sq = Array2::<f64>::zeros((ncols, ncols));
+            for i in 0..ncols {
+                for j in 0..ncols {
+                    r_sq[[i, j]] = r[[i, j]];
+                }
+            }
+            let coeffs = poly_back_sub(&r_sq, &qty)?;
+            let result = Array2::from_shape_vec((1, ncols), coeffs)
+                .map_err(|e| format!("polyfit: internal error: {e}"))?;
+            Ok(Value::Matrix(result))
+        }
+
+        ("roots", 1) => {
+            let raw = poly_coeffs(&args[0], "roots")?;
+            // Strip leading zeros
+            let start = raw.iter().position(|&c| c != 0.0).unwrap_or(raw.len());
+            let coeffs = &raw[start..];
+            if coeffs.len() <= 1 {
+                return Ok(Value::Matrix(Array2::zeros((0, 1))));
+            }
+            let roots = durand_kerner(coeffs)?;
+            Ok(roots_to_value(&roots))
+        }
+
+        ("poly", 1) => match &args[0] {
+            Value::Scalar(r) => {
+                let data = vec![1.0, -*r];
+                Ok(Value::Matrix(Array2::from_shape_vec((1, 2), data).unwrap()))
+            }
+            Value::Matrix(m) => {
+                if m.nrows() == 1 || m.ncols() == 1 {
+                    // Root vector: expand (x − r_1)(x − r_2)…
+                    let roots: Vec<f64> = if m.nrows() == 1 {
+                        m.row(0).iter().copied().collect()
+                    } else {
+                        m.column(0).iter().copied().collect()
+                    };
+                    let mut p = vec![1.0_f64];
+                    for &r in &roots {
+                        p = poly_conv(&p, &[1.0, -r]);
+                    }
+                    let ncols = p.len();
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, ncols), p).unwrap(),
+                    ))
+                } else {
+                    // Square matrix: characteristic polynomial via Faddeev-LeVerrier
+                    let coeffs = characteristic_poly(m)?;
+                    let ncols = coeffs.len();
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, ncols), coeffs).unwrap(),
+                    ))
+                }
+            }
+            _ => Err("poly: argument must be a numeric vector or square matrix".to_string()),
+        },
+
+        // ── Phase 24b — Convolution, deconvolution, interpolation ────────────
+        ("conv", 2) => {
+            let a = poly_coeffs(&args[0], "conv")?;
+            let b = poly_coeffs(&args[1], "conv")?;
+            if a.is_empty() || b.is_empty() {
+                return Ok(Value::Matrix(Array2::zeros((1, 0))));
+            }
+            let c = poly_conv(&a, &b);
+            let len = c.len();
+            Ok(Value::Matrix(Array2::from_shape_vec((1, len), c).unwrap()))
+        }
+
+        ("deconv", 2) => {
+            let c = poly_coeffs(&args[0], "deconv")?;
+            let b = poly_coeffs(&args[1], "deconv")?;
+            let (q, r) = poly_deconv(&c, &b)?;
+            let qn = q.len();
+            let rn = r.len();
+            let q_val = Value::Matrix(Array2::from_shape_vec((1, qn), q).unwrap());
+            let r_val = Value::Matrix(Array2::from_shape_vec((1, rn), r).unwrap());
+            Ok(Value::Tuple(vec![q_val, r_val]))
+        }
+
+        ("interp1", 3) => {
+            let xv = poly_coeffs(&args[0], "interp1")?;
+            let yv = poly_coeffs(&args[1], "interp1")?;
+            if xv.len() != yv.len() {
+                return Err("interp1: x and y must have the same length".to_string());
+            }
+            if xv.len() < 2 {
+                return Err("interp1: requires at least two knot points".to_string());
+            }
+            match &args[2] {
+                Value::Scalar(xi) => Ok(Value::Scalar(interp1_at(&xv, &yv, *xi, "linear"))),
+                Value::Matrix(xi_m) => Ok(Value::Matrix(
+                    xi_m.mapv(|xi| interp1_at(&xv, &yv, xi, "linear")),
+                )),
+                _ => Err("interp1: query points must be numeric".to_string()),
+            }
+        }
+
+        ("interp1", 4) => {
+            let xv = poly_coeffs(&args[0], "interp1")?;
+            let yv = poly_coeffs(&args[1], "interp1")?;
+            let method = match &args[3] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("interp1: method argument must be a string".to_string()),
+            };
+            if !matches!(method.as_str(), "linear" | "nearest" | "previous" | "next") {
+                return Err(format!(
+                    "interp1: unknown method '{method}'; supported: linear nearest previous next"
+                ));
+            }
+            if xv.len() != yv.len() {
+                return Err("interp1: x and y must have the same length".to_string());
+            }
+            if xv.len() < 2 {
+                return Err("interp1: requires at least two knot points".to_string());
+            }
+            match &args[2] {
+                Value::Scalar(xi) => Ok(Value::Scalar(interp1_at(&xv, &yv, *xi, &method))),
+                Value::Matrix(xi_m) => {
+                    let m_str = method.as_str();
+                    Ok(Value::Matrix(
+                        xi_m.mapv(|xi| interp1_at(&xv, &yv, xi, m_str)),
+                    ))
+                }
+                _ => Err("interp1: query points must be numeric".to_string()),
+            }
+        }
+
         _ => {
             let hint = suggest_similar(name, env);
             match hint {
@@ -7873,6 +8057,282 @@ fn jsonencode_impl(arg: &Value) -> Result<Value, String> {
 #[cfg(not(feature = "json"))]
 fn jsonencode_impl(_arg: &Value) -> Result<Value, String> {
     Err("jsonencode: not available — rebuild with --features json".to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Phase 24 — Polynomial helpers
+// ---------------------------------------------------------------------------
+
+/// Evaluates a polynomial with real coefficients at a complex point using Horner's method.
+fn cpoly_eval(coeffs: &[f64], z: (f64, f64)) -> (f64, f64) {
+    let mut acc = (0.0_f64, 0.0_f64);
+    for &c in coeffs {
+        // acc = acc * z + c
+        acc = (acc.0 * z.0 - acc.1 * z.1 + c, acc.0 * z.1 + acc.1 * z.0);
+    }
+    acc
+}
+
+/// Evaluates a polynomial at a real point using Horner's method.
+fn horner(coeffs: &[f64], x: f64) -> f64 {
+    coeffs.iter().fold(0.0, |acc, &c| acc * x + c)
+}
+
+/// Extracts polynomial (or 1-D knot) coefficients from a scalar or row/column vector `Value`.
+fn poly_coeffs(v: &Value, fname: &str) -> Result<Vec<f64>, String> {
+    match v {
+        Value::Scalar(s) => Ok(vec![*s]),
+        Value::Matrix(m) => {
+            if m.nrows() == 1 {
+                Ok(m.row(0).iter().copied().collect())
+            } else if m.ncols() == 1 {
+                Ok(m.column(0).iter().copied().collect())
+            } else {
+                Err(format!(
+                    "{fname}: argument must be a vector, got {}×{}",
+                    m.nrows(),
+                    m.ncols()
+                ))
+            }
+        }
+        _ => Err(format!("{fname}: argument must be a real numeric vector")),
+    }
+}
+
+/// Discrete linear convolution of two sequences. Result length = `a.len() + b.len() − 1`.
+fn poly_conv(a: &[f64], b: &[f64]) -> Vec<f64> {
+    if a.is_empty() || b.is_empty() {
+        return vec![];
+    }
+    let mut result = vec![0.0_f64; a.len() + b.len() - 1];
+    for (i, &ai) in a.iter().enumerate() {
+        for (j, &bj) in b.iter().enumerate() {
+            result[i + j] += ai * bj;
+        }
+    }
+    result
+}
+
+/// Polynomial long division `c / b` → `(quotient, remainder)`.
+///
+/// The remainder has the same length as `c` (MATLAB convention), satisfying
+/// `conv(b, q) + r == c` element-wise.
+fn poly_deconv(c: &[f64], b: &[f64]) -> Result<(Vec<f64>, Vec<f64>), String> {
+    if b.is_empty() || b.iter().all(|&x| x == 0.0) {
+        return Err("deconv: divisor polynomial must not be zero".to_string());
+    }
+    let mc = c.len();
+    let mb = b.len();
+    if mb > mc {
+        return Ok((vec![0.0], c.to_vec()));
+    }
+    let q_len = mc - mb + 1;
+    let mut remainder = c.to_vec();
+    let mut q = vec![0.0_f64; q_len];
+    for i in 0..q_len {
+        let coeff = remainder[i] / b[0];
+        q[i] = coeff;
+        for j in 0..mb {
+            remainder[i + j] -= coeff * b[j];
+        }
+    }
+    // Zero out rounding residuals relative to the input scale
+    let scale = c.iter().map(|v| v.abs()).fold(0.0_f64, f64::max).max(1.0);
+    for x in &mut remainder {
+        if x.abs() < 1e-10 * scale {
+            *x = 0.0;
+        }
+    }
+    Ok((q, remainder))
+}
+
+/// Finds all roots of `coeffs` (degree = `coeffs.len() − 1`) using the
+/// Durand–Kerner (Weierstrass) iteration.
+///
+/// Returns roots as `(re, im)` pairs sorted by descending real part, then
+/// descending imaginary part.
+fn durand_kerner(coeffs: &[f64]) -> Result<Vec<(f64, f64)>, String> {
+    let n = coeffs.len() - 1; // degree
+    if n == 0 {
+        return Ok(vec![]);
+    }
+    let lc = coeffs[0];
+    if lc == 0.0 {
+        return Err("roots: leading coefficient must not be zero".to_string());
+    }
+    // Normalize to monic polynomial
+    let monic: Vec<f64> = coeffs.iter().map(|&c| c / lc).collect();
+
+    // Cauchy root bound: all roots have |z| ≤ r
+    let r = 1.0 + monic[1..].iter().map(|c| c.abs()).fold(0.0_f64, f64::max);
+
+    // Initial guesses on a circle, rotated by 0.25/n turns to avoid the real axis
+    // (a purely real start can stall for polynomials with purely imaginary roots).
+    let mut z: Vec<(f64, f64)> = (0..n)
+        .map(|k| {
+            let angle = 2.0 * std::f64::consts::PI * (k as f64 + 0.25) / n as f64;
+            (r * angle.cos(), r * angle.sin())
+        })
+        .collect();
+
+    const MAX_ITER: usize = 2000;
+    const EPS: f64 = 1e-12;
+
+    for _ in 0..MAX_ITER {
+        let z_old = z.clone();
+        let mut max_corr = 0.0_f64;
+        for i in 0..n {
+            let (pre, pim) = cpoly_eval(&monic, z_old[i]);
+            // denominator = Π_{j≠i}(z_i − z_j)
+            let mut dre = 1.0_f64;
+            let mut dim = 0.0_f64;
+            for j in 0..n {
+                if j == i {
+                    continue;
+                }
+                let (dr, di) = (z_old[i].0 - z_old[j].0, z_old[i].1 - z_old[j].1);
+                (dre, dim) = (dre * dr - dim * di, dre * di + dim * dr);
+            }
+            // correction = p(z_i) / denom
+            let d2 = dre * dre + dim * dim;
+            let (cre, cim) = if d2 > 0.0 {
+                ((pre * dre + pim * dim) / d2, (pim * dre - pre * dim) / d2)
+            } else {
+                (pre, pim)
+            };
+            let corr_abs = (cre * cre + cim * cim).sqrt();
+            max_corr = max_corr.max(corr_abs);
+            z[i] = (z_old[i].0 - cre, z_old[i].1 - cim);
+        }
+        if max_corr < EPS {
+            break;
+        }
+    }
+
+    // Sort by descending real part, then descending imaginary part
+    z.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
+    });
+
+    Ok(z)
+}
+
+/// Converts a list of complex roots into a `Value`.
+///
+/// Returns a real `Matrix` (column vector) when all imaginary parts are below
+/// `1e-9`; otherwise returns a `Cell` of `Scalar`/`Complex` elements.
+fn roots_to_value(roots: &[(f64, f64)]) -> Value {
+    const IMAG_TOL: f64 = 1e-9;
+    let all_real = roots.iter().all(|(_, im)| im.abs() < IMAG_TOL);
+    if all_real {
+        let data: Vec<f64> = roots.iter().map(|(re, _)| *re).collect();
+        let n = data.len();
+        Value::Matrix(Array2::from_shape_vec((n, 1), data).unwrap())
+    } else {
+        let vals: Vec<Value> = roots
+            .iter()
+            .map(|&(re, im)| {
+                if im.abs() < IMAG_TOL {
+                    Value::Scalar(re)
+                } else {
+                    Value::Complex(re, im)
+                }
+            })
+            .collect();
+        Value::Cell(vals)
+    }
+}
+
+/// Computes the characteristic polynomial of a square matrix using the
+/// Faddeev-LeVerrier algorithm.
+///
+/// Returns coefficients `[1, c_{n-1}, …, c_0]` in descending degree order.
+fn characteristic_poly(a: &Array2<f64>) -> Result<Vec<f64>, String> {
+    let n = a.nrows();
+    if a.ncols() != n {
+        return Err("poly: matrix must be square".to_string());
+    }
+    if n == 0 {
+        return Ok(vec![1.0]);
+    }
+    let mut coeffs = vec![0.0_f64; n + 1];
+    coeffs[0] = 1.0;
+    let mut nk = Array2::<f64>::eye(n); // N_0 = I
+    for (k, coeff) in coeffs.iter_mut().enumerate().skip(1) {
+        let ank = a.dot(&nk); // A * N_{k-1}
+        let tr: f64 = (0..n).map(|i| ank[[i, i]]).sum();
+        let ak = -tr / k as f64;
+        *coeff = ak;
+        nk = ank; // N_k = A*N_{k-1} + a_k*I
+        for i in 0..n {
+            nk[[i, i]] += ak;
+        }
+    }
+    Ok(coeffs)
+}
+
+/// Back-substitution solver for upper-triangular system `R * x = b`.
+fn poly_back_sub(r: &Array2<f64>, b: &[f64]) -> Result<Vec<f64>, String> {
+    let n = r.nrows();
+    let mut x = vec![0.0_f64; n];
+    for i in (0..n).rev() {
+        let mut s = b[i];
+        for j in (i + 1)..n {
+            s -= r[[i, j]] * x[j];
+        }
+        if r[[i, i]].abs() < 1e-14 {
+            return Err(
+                "polyfit: Vandermonde matrix is rank-deficient; reduce polynomial degree"
+                    .to_string(),
+            );
+        }
+        x[i] = s / r[[i, i]];
+    }
+    Ok(x)
+}
+
+/// Evaluates `interp1` at a single query point `xi` using the given `method`.
+///
+/// Returns `NaN` for queries outside `[x[0], x[n-1]]`.
+fn interp1_at(x: &[f64], y: &[f64], xi: f64, method: &str) -> f64 {
+    let n = x.len();
+    if xi < x[0] || xi > x[n - 1] {
+        return f64::NAN;
+    }
+    // Index of the leftmost knot ≤ xi (in [0, n-1])
+    let lo = x.partition_point(|&xk| xk <= xi).saturating_sub(1);
+    // For methods that need a right neighbour, clamp to n-2
+    let lo2 = lo.min(n - 2);
+    match method {
+        "nearest" => {
+            if lo == n - 1 {
+                return y[n - 1];
+            }
+            if (xi - x[lo2]) <= (x[lo2 + 1] - xi) {
+                y[lo2]
+            } else {
+                y[lo2 + 1]
+            }
+        }
+        "previous" => y[lo],
+        "next" => {
+            if lo == n - 1 || xi == x[lo] {
+                y[lo]
+            } else {
+                y[lo2 + 1]
+            }
+        }
+        _ => {
+            // "linear" (default)
+            if lo == n - 1 {
+                return y[n - 1];
+            }
+            let t = (xi - x[lo2]) / (x[lo2 + 1] - x[lo2]);
+            y[lo2] + t * (y[lo2 + 1] - y[lo2])
+        }
+    }
 }
 
 #[cfg(test)]

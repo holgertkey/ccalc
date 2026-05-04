@@ -66,10 +66,14 @@ pub fn print(topic: Option<&str>) {
             "setops" | "set" | "sets" | "triu" | "tril" | "repmat" | "kron" | "cross" | "dot"
             | "intersect" | "union" | "setdiff" | "ismember" | "sub2ind" | "ind2sub" | "repelem",
         ) => print_setops(),
+        Some(
+            "poly" | "polyfit" | "polyval" | "roots" | "conv" | "deconv" | "interp1" | "polynomial"
+            | "polynomials" | "interpolation",
+        ) => print_poly(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  examples"
             );
         }
     }
@@ -274,6 +278,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help control     if/for/while, break/continue, compound assignment, run/source
   help path        addpath/rmpath/path()/genpath() — session search path
   help setops      triu/tril/repmat/kron/cross/dot, set ops, sub2ind/ind2sub/repelem
+  help poly        polyval/polyfit/roots/poly, conv/deconv, interp1
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -3179,5 +3184,64 @@ MATRIX UTILITIES AND SET OPERATIONS  (help setops)
     repelem([1 2; 3 4], 2, 3)    % 4×6 element-wise tiling
 
 See also: help matrices  help vectors  help linalg"
+    );
+}
+
+// help poly  (Phase 24 — Polynomial operations and interpolation)
+// ---------------------------------------------------------------------------
+
+fn print_poly() {
+    println!(
+        "\
+POLYNOMIAL OPERATIONS AND INTERPOLATION  (help poly)
+
+Polynomials are row vectors of coefficients in descending degree order.
+  p(x) = x² − 3x + 2  →  [1 -3 2]   (p(1)=0, p(2)=0)
+
+── Evaluation ────────────────────────────────────────────────────────────────
+    polyval(p, x)     evaluate polynomial p at scalar or vector x (Horner)
+
+    p = [1 0 1];          % x² + 1
+    polyval(p, 0)         % 1
+    polyval(p, [0 1 2])   % [1 2 5]
+
+── Fitting ───────────────────────────────────────────────────────────────────
+    polyfit(x, y, n)  least-squares polynomial of degree n through (x, y)
+
+    x = [0 1 2 3 4];
+    y = [1 2 5 10 17];
+    p = polyfit(x, y, 2)  % → [1.0 0.0 1.0]  (x² + 1)
+
+── Roots and monic polynomial ────────────────────────────────────────────────
+    roots(p)      roots of p; column vector (Matrix if all real, Cell if complex)
+    poly(r)       monic polynomial with given roots; poly(A) char. polynomial
+
+    p = [1 0 1];
+    roots(p)           % {{0+1i; 0-1i}}  (Cell — complex roots)
+    poly([1 2 3])      % [1 -6 11 -6]  (x-1)(x-2)(x-3)
+    poly([1 2; 0 3])   % [1 -4 3]      characteristic polynomial
+
+── Convolution and deconvolution ─────────────────────────────────────────────
+    conv(a, b)        polynomial multiplication / discrete convolution
+    deconv(c, b)      polynomial long division; returns [q, r] tuple
+
+    conv([1 2 3], [1 1])         % [1 3 5 3]
+    [q, r] = deconv([1 3 5 3], [1 1])   % q=[1 2 3], r=[0 0 0 0]
+    % invariant: conv(b, q) + r == c
+
+── Interpolation ─────────────────────────────────────────────────────────────
+    interp1(x, y, xi)            piecewise linear interpolation at xi
+    interp1(x, y, xi, method)   choose method: linear nearest previous next
+
+    x = [0 1 2 3];
+    y = [0 1 4 9];
+    interp1(x, y, 1.5)                   % 2.5  (linear)
+    interp1(x, y, [0.5 1.5 2.5])        % [0.5 2.5 6.5]
+    interp1(x, y, 1.5, 'nearest')        % 1    (snap to closest knot)
+    interp1(x, y, 1.5, 'previous')       % 1    (left step / ZOH)
+    interp1(x, y, 1.5, 'next')           % 4    (right step)
+    interp1(x, y, 99)                    % NaN  (out of range)
+
+See also: help linalg  help vectors  help matrices"
     );
 }

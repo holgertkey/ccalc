@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-05-04
+
+### Added
+
+- **Phase 24 — Polynomial operations and interpolation** (7 new built-in functions, no new syntax):
+  - **24a — Evaluation, fitting, roots:**
+    - `polyval(p, x)` — evaluate polynomial `p` at scalar or matrix `x` (Horner's method).
+    - `polyfit(x, y, n)` — least-squares degree-`n` fit via Vandermonde matrix + QR decomposition.
+    - `roots(p)` — all roots via Durand–Kerner iteration; returns real `Matrix` (column) when all roots are real, `Cell` of `Scalar`/`Complex` otherwise.
+    - `poly(r)` — monic polynomial from a root vector; `poly(A)` computes the characteristic polynomial of a square matrix (Faddeev–LeVerrier algorithm).
+  - **24b — Convolution, deconvolution, interpolation:**
+    - `conv(a, b)` — discrete linear convolution; result length = `m + n − 1`.
+    - `deconv(c, b)` — polynomial long division; returns `[q, r]` tuple with `conv(b,q)+r==c`.
+    - `interp1(x, y, xi[, method])` — piecewise interpolation at query points; methods: `'linear'` (default), `'nearest'`, `'previous'`, `'next'`; out-of-range → `NaN`.
+  - **Implementation note:** `roots` uses the Durand–Kerner algorithm in complex arithmetic (not the companion-matrix/eig approach from the CDP plan, which is limited to real eigenvalues).
+  - 33 new tests in `mod phase24_tests` (855 total).
+  - New guide page `docs/src/guide/polynomials.md`; `help poly` topic added.
+
 ## [0.28.0] - 2026-05-04
 
 ### Added

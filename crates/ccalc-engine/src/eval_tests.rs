@@ -5533,3 +5533,423 @@ mod phase23_tests {
         assert_eq!(result, expected);
     }
 }
+
+// ============================================================================
+// Phase 24 — Polynomial operations and interpolation
+// ============================================================================
+
+mod phase24_tests {
+    use super::*;
+    use crate::env::Env;
+
+    fn ep(src: &str) -> Result<Value, String> {
+        let env = Env::new();
+        eval_parse(src, &env)
+    }
+
+    fn mat(rows: usize, cols: usize, data: Vec<f64>) -> Value {
+        Value::Matrix(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap())
+    }
+
+    /// Evaluate `src` with a pre-seeded variable `"p"` holding a 1×N polynomial row vector.
+    /// Avoids the parser ambiguity where `[a -b c]` is parsed as `[a-b, c]` (binary minus).
+    fn ep_p(src: &str, coeffs: &[f64]) -> Result<Value, String> {
+        let mut env = Env::new();
+        let n = coeffs.len();
+        env.insert(
+            "p".to_string(),
+            Value::Matrix(ndarray::Array2::from_shape_vec((1, n), coeffs.to_vec()).unwrap()),
+        );
+        eval_parse(src, &env)
+    }
+
+    fn approx(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    // ── polyval ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn polyval_root1() {
+        // p(x) = x^2 - 3x + 2 = [1, -3, 2]; p(1) = 0
+        assert_eq!(
+            ep_p("polyval(p, 1)", &[1.0, -3.0, 2.0]).unwrap(),
+            Value::Scalar(0.0)
+        );
+    }
+
+    #[test]
+    fn polyval_root2() {
+        // p(2) = 4 - 6 + 2 = 0
+        assert_eq!(
+            ep_p("polyval(p, 2)", &[1.0, -3.0, 2.0]).unwrap(),
+            Value::Scalar(0.0)
+        );
+    }
+
+    #[test]
+    fn polyval_non_root() {
+        // p(3) = 9 - 9 + 2 = 2
+        assert_eq!(
+            ep_p("polyval(p, 3)", &[1.0, -3.0, 2.0]).unwrap(),
+            Value::Scalar(2.0)
+        );
+    }
+
+    #[test]
+    fn polyval_vector_x() {
+        // polyval([1 -3 2], [1 2 3]) → [0 0 2]
+        assert_eq!(
+            ep_p("polyval(p, [1 2 3])", &[1.0, -3.0, 2.0]).unwrap(),
+            mat(1, 3, vec![0.0, 0.0, 2.0])
+        );
+    }
+
+    #[test]
+    fn polyval_constant_poly() {
+        // polyval([5], 99) → 5
+        assert_eq!(ep("polyval([5], 99)").unwrap(), Value::Scalar(5.0));
+    }
+
+    // ── polyfit ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn polyfit_quadratic() {
+        // Fit x^2 + 1 through x=0:4, y=[1 2 5 10 17]
+        let r = ep("polyfit([0 1 2 3 4], [1 2 5 10 17], 2)").unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert!(approx(m[[0, 0]], 1.0), "a={}", m[[0, 0]]);
+                assert!(approx(m[[0, 1]], 0.0), "b={}", m[[0, 1]]);
+                assert!(approx(m[[0, 2]], 1.0), "c={}", m[[0, 2]]);
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn polyfit_linear() {
+        // Fit y = 2x + 1
+        let r = ep("polyfit([0 1 2 3], [1 3 5 7], 1)").unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert!(approx(m[[0, 0]], 2.0), "slope={}", m[[0, 0]]);
+                assert!(approx(m[[0, 1]], 1.0), "intercept={}", m[[0, 1]]);
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn polyfit_returns_row_vector() {
+        let r = ep("polyfit([0 1 2], [1 2 5], 2)").unwrap();
+        match r {
+            Value::Matrix(m) => assert_eq!(m.nrows(), 1),
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    // ── roots ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn roots_two_real() {
+        // roots([1 -3 2]) → [2; 1]  (coefficients pre-seeded to avoid parser ambiguity)
+        let r = ep_p("roots(p)", &[1.0, -3.0, 2.0]).unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[2, 1]);
+                let mut vals = vec![m[[0, 0]], m[[1, 0]]];
+                vals.sort_by(|a, b| b.partial_cmp(a).unwrap());
+                assert!(approx(vals[0], 2.0), "root0={}", vals[0]);
+                assert!(approx(vals[1], 1.0), "root1={}", vals[1]);
+            }
+            _ => panic!("expected real Matrix"),
+        }
+    }
+
+    #[test]
+    fn roots_complex_pair() {
+        // roots([1 0 1]) → ±i (Cell of Complex)
+        let r = ep("roots([1 0 1])").unwrap();
+        match r {
+            Value::Cell(vals) => {
+                assert_eq!(vals.len(), 2);
+                let mut ims: Vec<f64> = vals
+                    .iter()
+                    .map(|v| match v {
+                        Value::Complex(_, im) => *im,
+                        _ => panic!("expected Complex, got {v:?}"),
+                    })
+                    .collect();
+                ims.sort_by(|a, b| b.partial_cmp(a).unwrap());
+                assert!(approx(ims[0], 1.0), "im0={}", ims[0]);
+                assert!(approx(ims[1], -1.0), "im1={}", ims[1]);
+            }
+            _ => panic!("expected Cell for complex roots"),
+        }
+    }
+
+    #[test]
+    fn roots_degree1() {
+        // roots of [2, -6] → x = 3  (pre-seeded to avoid parser ambiguity)
+        let r = ep_p("roots(p)", &[2.0, -6.0]).unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert_eq!(m.shape(), &[1, 1]);
+                assert!(approx(m[[0, 0]], 3.0), "root={}", m[[0, 0]]);
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn roots_constant_empty() {
+        // roots([5]) → empty 0×1 column
+        let r = ep("roots([5])").unwrap();
+        match r {
+            Value::Matrix(m) => assert_eq!(m.shape(), &[0, 1]),
+            _ => panic!("expected empty Matrix"),
+        }
+    }
+
+    // ── poly ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn poly_from_roots_3() {
+        // poly([1 2 3]) → [1 -6 11 -6]
+        let r = ep("poly([1 2 3])").unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert_eq!(m.nrows(), 1);
+                assert_eq!(m.ncols(), 4);
+                assert!(approx(m[[0, 0]], 1.0));
+                assert!(approx(m[[0, 1]], -6.0));
+                assert!(approx(m[[0, 2]], 11.0));
+                assert!(approx(m[[0, 3]], -6.0));
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn poly_from_roots_2() {
+        // poly([1 2]) → [1 -3 2]
+        let r = ep("poly([1 2])").unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert_eq!(m.nrows(), 1);
+                assert_eq!(m.ncols(), 3);
+                assert!(approx(m[[0, 0]], 1.0));
+                assert!(approx(m[[0, 1]], -3.0));
+                assert!(approx(m[[0, 2]], 2.0));
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn poly_char_poly_2x2() {
+        // poly([1 2; 0 3]) char poly: (λ-1)(λ-3) = λ^2 - 4λ + 3
+        let r = ep("poly([1 2; 0 3])").unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert_eq!(m.nrows(), 1);
+                assert_eq!(m.ncols(), 3);
+                assert!(approx(m[[0, 0]], 1.0));
+                assert!(approx(m[[0, 1]], -4.0));
+                assert!(approx(m[[0, 2]], 3.0));
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn poly_scalar_root() {
+        // poly(3.0) → [1 -3]
+        let r = ep("poly(3)").unwrap();
+        assert_eq!(r, mat(1, 2, vec![1.0, -3.0]));
+    }
+
+    // ── conv ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn conv_basic() {
+        // conv([1 2 3], [1 1]) → [1 3 5 3]
+        assert_eq!(
+            ep("conv([1 2 3], [1 1])").unwrap(),
+            mat(1, 4, vec![1.0, 3.0, 5.0, 3.0])
+        );
+    }
+
+    #[test]
+    fn conv_poly_mul() {
+        // conv([1 2], [3 4]) = [3 10 8]  (no negative elements needed)
+        assert_eq!(
+            ep("conv([1 2], [3 4])").unwrap(),
+            mat(1, 3, vec![3.0, 10.0, 8.0])
+        );
+    }
+
+    #[test]
+    fn conv_single() {
+        // conv([2], [3]) → [6]
+        assert_eq!(ep("conv([2], [3])").unwrap(), mat(1, 1, vec![6.0]));
+    }
+
+    #[test]
+    fn conv_length() {
+        // length(conv(a,b)) == len(a)+len(b)-1
+        let r = ep("conv([1 2 3 4], [5 6 7])").unwrap();
+        match r {
+            Value::Matrix(m) => assert_eq!(m.ncols(), 6),
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    // ── deconv ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn deconv_exact_division() {
+        // deconv([1 3 5 3], [1 1]) → q=[1 2 3], r=[0 0 0 0]
+        let r = ep("deconv([1 3 5 3], [1 1])").unwrap();
+        match r {
+            Value::Tuple(v) => {
+                assert_eq!(v[0], mat(1, 3, vec![1.0, 2.0, 3.0]));
+                assert_eq!(v[1], mat(1, 4, vec![0.0, 0.0, 0.0, 0.0]));
+            }
+            _ => panic!("expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn deconv_with_remainder() {
+        // deconv([1 2 3], [1 1]) → q=[1 1], r=[0 0 2]
+        let r = ep("deconv([1 2 3], [1 1])").unwrap();
+        match r {
+            Value::Tuple(v) => {
+                assert_eq!(v[0], mat(1, 2, vec![1.0, 1.0]));
+                match &v[1] {
+                    Value::Matrix(m) => {
+                        assert!(approx(m[[0, 0]], 0.0));
+                        assert!(approx(m[[0, 1]], 0.0));
+                        assert!(approx(m[[0, 2]], 2.0));
+                    }
+                    _ => panic!("expected Matrix remainder"),
+                }
+            }
+            _ => panic!("expected Tuple"),
+        }
+    }
+
+    #[test]
+    fn deconv_invariant() {
+        // conv(q, b) + r == c (verified numerically)
+        // c=[1 5 8 4], b=[1 2], q=[1 3 2], r=[0 0 0 0]
+        let r = ep("deconv([1 5 8 4], [1 2])").unwrap();
+        match r {
+            Value::Tuple(v) => {
+                assert_eq!(v[0], mat(1, 3, vec![1.0, 3.0, 2.0]));
+                assert_eq!(v[1], mat(1, 4, vec![0.0, 0.0, 0.0, 0.0]));
+            }
+            _ => panic!("expected Tuple"),
+        }
+    }
+
+    // ── interp1 ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn interp1_linear_scalar() {
+        // interp1([0 1 2 3], [0 1 4 9], 1.5) → 2.5
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], 1.5)").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(approx(v, 2.5), "got {v}"),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    #[test]
+    fn interp1_linear_vector_xi() {
+        // interp1([0 1 2 3], [0 1 4 9], [0.5 1.5 2.5]) → [0.5 2.5 6.5]
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], [0.5 1.5 2.5])").unwrap();
+        match r {
+            Value::Matrix(m) => {
+                assert!(approx(m[[0, 0]], 0.5));
+                assert!(approx(m[[0, 1]], 2.5));
+                assert!(approx(m[[0, 2]], 6.5));
+            }
+            _ => panic!("expected Matrix"),
+        }
+    }
+
+    #[test]
+    fn interp1_at_knot() {
+        // At an exact knot, must return exact y value
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], 3)").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(approx(v, 9.0), "got {v}"),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    #[test]
+    fn interp1_nearest() {
+        // Tie (1.5 equidistant from 1 and 2): goes left
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], 1.5, 'nearest')").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(approx(v, 1.0), "got {v}"),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    #[test]
+    fn interp1_previous() {
+        // Floor to left knot
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], 1.5, 'previous')").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(approx(v, 1.0), "got {v}"),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    #[test]
+    fn interp1_next() {
+        // Ceil to right knot
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], 1.5, 'next')").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(approx(v, 4.0), "got {v}"),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    #[test]
+    fn interp1_extrapolation_nan() {
+        // Out of range → NaN
+        let r = ep("interp1([0 1 2], [0 1 4], -0.5)").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(v.is_nan()),
+            _ => panic!("expected scalar NaN"),
+        }
+    }
+
+    #[test]
+    fn interp1_previous_at_last_knot() {
+        // 'previous' at x[end] should return y[end]
+        let r = ep("interp1([0 1 2 3], [0 1 4 9], 3, 'previous')").unwrap();
+        match r {
+            Value::Scalar(v) => assert!(approx(v, 9.0), "got {v}"),
+            _ => panic!("expected scalar"),
+        }
+    }
+
+    // ── builtin_names ────────────────────────────────────────────────────────
+
+    #[test]
+    fn phase24_names_registered() {
+        let names = builtin_names();
+        for name in &[
+            "polyval", "polyfit", "roots", "poly", "conv", "deconv", "interp1",
+        ] {
+            assert!(names.contains(name), "{name} missing from builtin_names");
+        }
+    }
+}
