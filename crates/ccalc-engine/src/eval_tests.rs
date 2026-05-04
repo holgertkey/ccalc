@@ -5243,42 +5243,60 @@ mod phase23_tests {
     fn triu_no_offset() {
         // triu([1 2 3; 4 5 6; 7 8 9]) → [1 2 3; 0 5 6; 0 0 9]
         let result = ep("triu([1 2 3; 4 5 6; 7 8 9])").unwrap();
-        assert_eq!(result, mat(3, 3, vec![1.0, 2.0, 3.0, 0.0, 5.0, 6.0, 0.0, 0.0, 9.0]));
+        assert_eq!(
+            result,
+            mat(3, 3, vec![1.0, 2.0, 3.0, 0.0, 5.0, 6.0, 0.0, 0.0, 9.0])
+        );
     }
 
     #[test]
     fn triu_positive_offset() {
         // triu(A, 1) — above main diagonal
         let result = ep("triu([1 2 3; 4 5 6; 7 8 9], 1)").unwrap();
-        assert_eq!(result, mat(3, 3, vec![0.0, 2.0, 3.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0]));
+        assert_eq!(
+            result,
+            mat(3, 3, vec![0.0, 2.0, 3.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0])
+        );
     }
 
     #[test]
     fn triu_negative_offset() {
         // triu(A, -1) — includes one sub-diagonal
         let result = ep("triu([1 2 3; 4 5 6; 7 8 9], -1)").unwrap();
-        assert_eq!(result, mat(3, 3, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 8.0, 9.0]));
+        assert_eq!(
+            result,
+            mat(3, 3, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.0, 8.0, 9.0])
+        );
     }
 
     #[test]
     fn tril_no_offset() {
         // tril([1 2 3; 4 5 6; 7 8 9]) → [1 0 0; 4 5 0; 7 8 9]
         let result = ep("tril([1 2 3; 4 5 6; 7 8 9])").unwrap();
-        assert_eq!(result, mat(3, 3, vec![1.0, 0.0, 0.0, 4.0, 5.0, 0.0, 7.0, 8.0, 9.0]));
+        assert_eq!(
+            result,
+            mat(3, 3, vec![1.0, 0.0, 0.0, 4.0, 5.0, 0.0, 7.0, 8.0, 9.0])
+        );
     }
 
     #[test]
     fn tril_negative_offset() {
         // tril(A, -1) — below main diagonal
         let result = ep("tril([1 2 3; 4 5 6; 7 8 9], -1)").unwrap();
-        assert_eq!(result, mat(3, 3, vec![0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 7.0, 8.0, 0.0]));
+        assert_eq!(
+            result,
+            mat(3, 3, vec![0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 7.0, 8.0, 0.0])
+        );
     }
 
     #[test]
     fn tril_positive_offset() {
         // tril(A, 1) — includes one super-diagonal
         let result = ep("tril([1 2 3; 4 5 6; 7 8 9], 1)").unwrap();
-        assert_eq!(result, mat(3, 3, vec![1.0, 2.0, 0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]));
+        assert_eq!(
+            result,
+            mat(3, 3, vec![1.0, 2.0, 0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+        );
     }
 
     #[test]
@@ -5488,7 +5506,10 @@ mod phase23_tests {
     fn repelem_scalar_n() {
         // repelem([1 2 3], 3) → [1 1 1 2 2 2 3 3 3]
         let result = ep("repelem([1 2 3], 3)").unwrap();
-        assert_eq!(result, mat(1, 9, vec![1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0]));
+        assert_eq!(
+            result,
+            mat(1, 9, vec![1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0])
+        );
     }
 
     #[test]
