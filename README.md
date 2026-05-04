@@ -1841,6 +1841,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `strings.calc`          | Char arrays, string objects, arithmetic, built-ins, unit labels |
 | `string_regex.calc`     | Phase 21: `contains`/`startsWith`/`endsWith`, `strjoin`, `strsplit` roundtrip; `regexp`/`regexpi`/`regexprep` log parser — requires `--features regex` for sections 5–9 |
 | `datetime.calc`         | Phase 22: `datetime`/`duration` constructors, arithmetic, component extractors, predicates, formatting (`datestr`/`datevec`/`datenum`/`posixtime`), array operations, project-timeline example |
+| `set_operations.m`      | Phase 23: `triu`/`tril`, `repmat`, `kron`, `cross`, `dot`, `intersect`/`union`/`setdiff`/`ismember`, `sub2ind`/`ind2sub`, `repelem`; voter-overlap analysis example |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
