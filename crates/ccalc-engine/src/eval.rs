@@ -5741,10 +5741,7 @@ fn call_builtin(
         ("repelem", 2) => match (&args[0], &args[1]) {
             (Value::Matrix(a), Value::Scalar(n)) => {
                 let n = *n as usize;
-                let flat: Vec<f64> = a
-                    .iter()
-                    .flat_map(|&x| std::iter::repeat_n(x, n))
-                    .collect();
+                let flat: Vec<f64> = a.iter().flat_map(|&x| std::iter::repeat_n(x, n)).collect();
                 let total = flat.len();
                 Ok(Value::Matrix(
                     Array2::from_shape_vec((1, total), flat).unwrap(),
