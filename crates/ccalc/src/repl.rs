@@ -726,6 +726,12 @@ pub fn run() {
                 continue;
             }
 
+            // eval(...) — dynamic string execution; must route through exec_stmts
+            // so that variable mutations persist in the caller's workspace
+            if try_eval_stmt(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
             // addpath() / rmpath() / path() — search path management
             if try_path_cmd(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
                 continue;
@@ -1112,6 +1118,44 @@ fn try_run_source(
     }
 }
 
+/// Tries to handle `eval(...)` calls as top-level statements so that variable
+/// mutations inside the eval string persist in the caller's workspace.
+///
+/// Without this intercept, `eval(...)` on its own line falls through to
+/// `evaluate()` → `call_builtin` → `eval_str_impl`, which runs on a cloned env
+/// and discards all mutations.  Routing through `exec_stmts` gives the exec.rs
+/// intercept a chance to apply `eval_str_impl` against `&mut env` directly.
+///
+/// Returns `true` if the statement was intercepted (caller should `continue`),
+/// `false` if normal evaluation should proceed.
+fn try_eval_stmt(
+    stmt: &str,
+    silent: bool,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> bool {
+    let s = stmt.trim_start();
+    if !s.starts_with("eval(") {
+        return false;
+    }
+    match parse(stmt) {
+        Ok(parsed) => {
+            match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
+                Ok(_) => {}
+                Err(e) => {
+                    set_last_err(&e);
+                    eprintln!("Error: {e}");
+                }
+            }
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// Tries to handle `addpath(...)`, `rmpath(...)`, `path()` commands.
 ///
 /// These are intercepted at the exec_stmts level when called from blocks, but for
@@ -1423,6 +1467,12 @@ pub fn run_pipe(reader: impl BufRead) {
 
             // run() / source() — execute a script file in the current workspace
             if try_run_source(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
+                continue;
+            }
+
+            // eval(...) — dynamic string execution; must route through exec_stmts
+            // so that variable mutations persist in the caller's workspace
+            if try_eval_stmt(stmt, silent, &mut env, &mut io, &fmt, base, compact) {
                 continue;
             }
 

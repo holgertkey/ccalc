@@ -34,6 +34,7 @@
 - [Datetime & Duration](./guide/datetime.md)
 - [Matrix Utilities & Set Operations](./guide/set-operations.md)
 - [Polynomial Operations & Interpolation](./guide/polynomials.md)
+- [Dynamic Evaluation & Timing](./guide/eval.md)
 
 # Architecture
 
@@ -79,3 +80,4 @@
 - [Phase 22 — Datetime & Duration](./ccalc/phase22-datetime.md)
 - [Phase 23 — Matrix Utilities & Set Operations](./ccalc/phase23-set-operations.md)
 - [Phase 24 — Polynomial Operations & Interpolation](./ccalc/phase24-polynomials.md)
+- [Phase 25 — Dynamic Evaluation & Timing](./ccalc/phase25-eval.md)

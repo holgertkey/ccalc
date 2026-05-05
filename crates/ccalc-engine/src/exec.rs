@@ -37,7 +37,8 @@ use crate::eval::{
     global_declare, global_frame_pop, global_frame_push, global_get, global_init_if_absent,
     global_refresh_into_env, global_set, is_global, is_persistent, persistent_declare,
     persistent_frame_pop, persistent_frame_push, persistent_load, persistent_save,
-    set_autoload_hook, set_display_ctx, set_fn_call_hook, set_last_err, set_nargout,
+    set_autoload_hook, set_display_ctx, set_eval_str_hook, set_fn_call_hook, set_last_err,
+    set_nargout,
 };
 use crate::io::IoContext;
 use crate::parser::{Stmt, parse_stmts};
@@ -185,6 +186,29 @@ pub enum Signal {
 pub fn init() {
     set_fn_call_hook(call_user_function);
     set_autoload_hook(try_autoload);
+    set_eval_str_hook(eval_str_impl);
+}
+
+/// Executes a code string against a snapshot clone of `env` and returns `ans`.
+///
+/// Used by `call_builtin` when `eval()` appears in expression context such as
+/// `y = eval('2+2')`. Variable mutations inside the string do **not** propagate
+/// back to the caller — use `eval()` as a standalone statement for that.
+fn eval_str_impl(code: &str, env: &crate::env::Env) -> Result<crate::env::Value, String> {
+    let mut env_clone = env.clone();
+    env_clone
+        .entry("ans".to_string())
+        .or_insert(crate::env::Value::Scalar(0.0));
+    let mut tmp_io = crate::io::IoContext::new();
+    let fmt = get_display_fmt();
+    let base = get_display_base();
+    let compact = get_display_compact();
+    let stmts = parse_stmts(code).map_err(|e| format!("eval: parse error: {e}"))?;
+    exec_stmts(&stmts, &mut env_clone, &mut tmp_io, &fmt, base, compact)?;
+    Ok(env_clone
+        .get("ans")
+        .cloned()
+        .unwrap_or(crate::env::Value::Void))
 }
 
 /// Searches for `<name>.calc` or `<name>.m` on the session path and loads it.
@@ -1059,6 +1083,53 @@ pub fn exec_stmts(
                     match result? {
                         None => {}
                         Some(sig) => return Ok(Some(sig)),
+                    }
+                    continue;
+                }
+
+                // Intercept eval(str) / eval(str, catch_str) — execute code in current workspace.
+                // Variable assignments inside the string persist in the caller's scope,
+                // matching MATLAB `eval` semantics. Uses the same RUN_DEPTH limit as run/source.
+                if let Expr::Call(fn_name, args) = expr
+                    && fn_name == "eval"
+                    && (args.len() == 1 || args.len() == 2)
+                {
+                    let code_val = eval_with_io(&args[0], env, io)?;
+                    let code_str = match code_val {
+                        Value::Str(s) | Value::StringObj(s) => s,
+                        _ => return Err("eval: argument must be a string".to_string()),
+                    };
+                    let depth = RUN_DEPTH.with(|d| d.get());
+                    if depth >= 64 {
+                        return Err("eval: maximum nesting depth (64) exceeded".to_string());
+                    }
+                    RUN_DEPTH.with(|d| d.set(depth + 1));
+                    let run_result = (|| -> Result<Option<Signal>, String> {
+                        let stmts = parse_stmts(&code_str)
+                            .map_err(|e| format!("eval: parse error: {e}"))?;
+                        exec_stmts(&stmts, env, io, fmt, base, compact)
+                    })();
+                    RUN_DEPTH.with(|d| d.set(depth));
+                    match run_result {
+                        Err(e) if args.len() == 2 => {
+                            set_last_err(&e);
+                            let catch_val = eval_with_io(&args[1], env, io)?;
+                            let catch_str = match catch_val {
+                                Value::Str(s) | Value::StringObj(s) => s,
+                                _ => {
+                                    return Err("eval: catch argument must be a string".to_string());
+                                }
+                            };
+                            let catch_stmts = parse_stmts(&catch_str)
+                                .map_err(|e| format!("eval: catch parse error: {e}"))?;
+                            match exec_stmts(&catch_stmts, env, io, fmt, base, compact)? {
+                                None => {}
+                                Some(sig) => return Ok(Some(sig)),
+                            }
+                        }
+                        Err(e) => return Err(e),
+                        Ok(None) => {}
+                        Ok(Some(sig)) => return Ok(Some(sig)),
                     }
                     continue;
                 }

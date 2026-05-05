@@ -6,14 +6,14 @@ disp(x)                       % 1.4142...
 
 eval('disp(pi)')              % prints 3.14159...
 
-% Concatenate strings to build code dynamically
-code = ['y = ' num2str(3.14) ' * 2'];
+% Build code string dynamically
+code = sprintf('y = %g * 2', 3.14);
 eval(code)
 disp(y)                       % 6.28
 
 % ── eval: dynamic variable naming ──────────────────────────────────────────
 for k = 1:4
-  eval(['v' num2str(k) ' = k^2'])
+  eval(sprintf('v%d = k^2', k))
 end
 disp(v1)   % 1
 disp(v2)   % 4
@@ -48,7 +48,7 @@ fprintf('50x50 multiply: %.6f s,  +inv: %.6f s\n', t_after_mul, t_after_inv)
 ops = {'sin(pi/4)', 'exp(1)', 'sqrt(2) * sqrt(2)'};
 tic
 for k = 1:3
-  eval(['r = ' ops{k}]);
+  eval(sprintf('r = %s', ops{k}));
   fprintf('ops{%d} = %g\n', k, r)
 end
 fprintf('three eval calls: %.6f s\n', toc)

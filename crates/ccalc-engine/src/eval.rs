@@ -80,6 +80,41 @@ pub fn resolve_autoloaded(name: &str) -> Option<Value> {
     AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
 }
 
+// ── Eval-string hook (set by exec::init) ────────────────────────────────────
+
+/// Executes a code string against an immutable snapshot of the env and returns `ans`.
+///
+/// Used by [`call_builtin`] when `eval()` appears in expression context
+/// (e.g. `y = eval('2+2')`). Env mutations inside the string do **not** persist —
+/// the hook executes against a clone. For env-mutating eval, use `eval()` as a
+/// standalone statement.
+pub type EvalStrHook = fn(code: &str, env: &Env) -> Result<Value, String>;
+
+thread_local! {
+    static EVAL_STR_HOOK: Cell<Option<EvalStrHook>> = const { Cell::new(None) };
+}
+
+/// Registers the hook that executes a code string in expression context.
+///
+/// Must be called by `exec::init()` before any `eval()` expression-context call.
+pub fn set_eval_str_hook(f: EvalStrHook) {
+    EVAL_STR_HOOK.with(|c| c.set(Some(f)));
+}
+
+fn call_eval_str_hook(code: &str, env: &Env) -> Result<Value, String> {
+    match EVAL_STR_HOOK.with(|c| c.get()) {
+        Some(hook) => hook(code, env),
+        None => Err("eval: exec::init() not called".to_string()),
+    }
+}
+
+// ── Tic timer (thread-local) ─────────────────────────────────────────────────
+
+thread_local! {
+    /// Start time set by the most recent `tic` call.
+    static TIC_TIME: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
+}
+
 // ── Last error (thread-local) ────────────────────────────────────────────────
 
 thread_local! {
@@ -549,13 +584,16 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             }
             // 'e' falls back to Euler's number if not defined in env
             if name == "e" {
-                Ok(Value::Scalar(std::f64::consts::E))
-            } else {
-                let hint = suggest_similar(name, env);
-                match hint {
-                    Some(s) => Err(format!("Undefined variable '{name}'; did you mean '{s}'?")),
-                    None => Err(format!("Undefined variable: '{name}'")),
-                }
+                return Ok(Value::Scalar(std::f64::consts::E));
+            }
+            // Try as a zero-argument built-in call (e.g., `tic`, `toc` written without parens).
+            if let Ok(val) = call_builtin(name, &[], env, io.as_deref_mut()) {
+                return Ok(val);
+            }
+            let hint = suggest_similar(name, env);
+            match hint {
+                Some(s) => Err(format!("Undefined variable '{name}'; did you mean '{s}'?")),
+                None => Err(format!("Undefined variable: '{name}'")),
             }
         }),
         Expr::UnaryMinus(e) => match eval_inner(e, env, io)? {
@@ -742,6 +780,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     | "rand"
                     | "randn"
                     | "rng"
+                    | "tic"
+                    | "toc"
             );
             if evaled.is_empty() && !no_ans_inject {
                 evaled.push(env.get("ans").cloned().unwrap_or(Value::Scalar(0.0)));
@@ -2387,6 +2427,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "eig",
         "endsWith",
         "erf",
+        "eval",
         "erfc",
         "exist",
         "exp",
@@ -2513,6 +2554,8 @@ pub fn builtin_names() -> &'static [&'static str] {
         "sum",
         "svd",
         "tan",
+        "tic",
+        "toc",
         "trace",
         "tril",
         "triu",
@@ -5976,6 +6019,45 @@ fn call_builtin(
                     ))
                 }
                 _ => Err("interp1: query points must be numeric".to_string()),
+            }
+        }
+
+        // ── 25b: tic / toc ────────────────────────────────────────────────────
+        ("tic", 0) => {
+            TIC_TIME.with(|t| t.set(Some(std::time::Instant::now())));
+            Ok(Value::Void)
+        }
+        ("toc", 0) => {
+            let elapsed = TIC_TIME.with(|t| t.get().map(|s| s.elapsed().as_secs_f64()));
+            match elapsed {
+                Some(t) => Ok(Value::Scalar(t)),
+                None => Err("toc: tic must be called before toc".to_string()),
+            }
+        }
+
+        // ── 25a: eval (expression context — env mutations do not persist) ────
+        ("eval", 1) => {
+            let code = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("eval: argument must be a string".to_string()),
+            };
+            call_eval_str_hook(&code, env)
+        }
+        ("eval", 2) => {
+            let code = match &args[0] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("eval: argument must be a string".to_string()),
+            };
+            match call_eval_str_hook(&code, env) {
+                Err(e) => {
+                    set_last_err(&e);
+                    let catch = match &args[1] {
+                        Value::Str(s) | Value::StringObj(s) => s.clone(),
+                        _ => return Err("eval: catch argument must be a string".to_string()),
+                    };
+                    call_eval_str_hook(&catch, env)
+                }
+                ok => ok,
             }
         }
 

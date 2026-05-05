@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-05-05
+
+### Added
+
+- **Phase 25 — Dynamic evaluation and timing** (3 new built-in functions):
+  - **25a — `eval`:**
+    - `eval(str)` — executes a string as code in the current workspace; variable mutations persist in the caller's scope (MATLAB semantics).
+    - `eval(str, catch_str)` — two-argument form: if `str` errors, execute `catch_str` instead; original error stored in `lasterr()`.
+    - In expression context (`y = eval('...')`), returns `ans` of the inner execution; env mutations inside are discarded.
+    - Nesting depth capped at 64 (shared with `run`/`source`).
+  - **25b — `tic` / `toc`:**
+    - `tic` — starts (or restarts) a wall-clock timer; returns `Void`.
+    - `toc` — returns elapsed seconds since last `tic` as a scalar; multiple calls after one `tic` are valid; calling before `tic` is an error.
+    - Both work with or without parentheses (`tic`, `tic()`).
+  - **Engine change:** `Expr::Var` handler now falls back to `call_builtin(name, &[], ...)` for unresolved names, enabling zero-arg built-ins to be called without parentheses.
+  - 11 new tests in `mod phase25_tests` (866 total).
+  - New guide page `docs/src/guide/eval.md`; `help eval` topic added.
+
 ## [0.29.0] - 2026-05-04
 
 ### Added

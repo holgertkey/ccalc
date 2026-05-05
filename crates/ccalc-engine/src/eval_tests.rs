@@ -5953,3 +5953,126 @@ mod phase24_tests {
         }
     }
 }
+
+// ============================================================================
+// Phase 25 — Dynamic evaluation and timing
+// ============================================================================
+
+mod phase25_tests {
+    use super::*;
+
+    fn run_code(src: &str) -> crate::env::Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .expect("exec failed");
+        env
+    }
+
+    fn scalar_val(env: &crate::env::Env, name: &str) -> f64 {
+        match env.get(name) {
+            Some(Value::Scalar(x)) => *x,
+            other => panic!("{name} not a scalar: {other:?}"),
+        }
+    }
+
+    // ── 25a — eval (statement context — env mutations persist) ───────────────
+
+    #[test]
+    fn eval_basic_assignment() {
+        let env = run_code("eval('x = sqrt(2)')");
+        let x = scalar_val(&env, "x");
+        assert!((x - 2.0_f64.sqrt()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn eval_defines_variable_in_scope() {
+        let env = run_code("eval('y = 42')");
+        assert_eq!(scalar_val(&env, "y"), 42.0);
+    }
+
+    #[test]
+    fn eval_dynamic_naming_in_loop() {
+        // sprintf avoids the apostrophe/transpose ambiguity in string building
+        let env = run_code("for k = 1:3\n  eval(sprintf('v%d = k*k', k))\nend");
+        assert_eq!(scalar_val(&env, "v1"), 1.0);
+        assert_eq!(scalar_val(&env, "v2"), 4.0);
+        assert_eq!(scalar_val(&env, "v3"), 9.0);
+    }
+
+    #[test]
+    fn eval_catch_triggered_on_error() {
+        let env = run_code("eval('error(''intentional'')', 'caught = 1')");
+        assert_eq!(scalar_val(&env, "caught"), 1.0);
+    }
+
+    #[test]
+    fn eval_catch_not_triggered_on_success() {
+        let env = run_code("eval('ok = 1', 'caught = 1')");
+        assert_eq!(scalar_val(&env, "ok"), 1.0);
+        assert!(env.get("caught").is_none());
+    }
+
+    #[test]
+    fn eval_nested_eval() {
+        // eval inside eval — depth guard allows it up to 64 levels
+        let env = run_code("eval('eval(\"inner = 7\")')");
+        assert_eq!(scalar_val(&env, "inner"), 7.0);
+    }
+
+    // ── 25a — eval (expression context — env mutations do not persist) ────────
+
+    #[test]
+    fn eval_expression_context_returns_ans() {
+        // y = eval('2+2') captures the ans from the inner evaluation
+        let env = run_code("y = eval('2 + 2')");
+        assert_eq!(scalar_val(&env, "y"), 4.0);
+    }
+
+    // ── 25b — tic / toc ──────────────────────────────────────────────────────
+
+    #[test]
+    fn tic_toc_nonnegative() {
+        let env = run_code("tic; t = toc");
+        assert!(scalar_val(&env, "t") >= 0.0);
+    }
+
+    #[test]
+    fn toc_multiple_calls_after_single_tic() {
+        // Both calls should return non-negative and t2 >= t1
+        let env = run_code("tic; t1 = toc; t2 = toc");
+        let t1 = scalar_val(&env, "t1");
+        let t2 = scalar_val(&env, "t2");
+        assert!(t1 >= 0.0, "t1 negative: {t1}");
+        assert!(t2 >= t1, "t2 < t1: {t2} < {t1}");
+    }
+
+    #[test]
+    fn tic_inside_loop() {
+        let env = run_code("tic()\nfor i = 1:100\n  x = i * i\nend\nt = toc()");
+        assert!(scalar_val(&env, "t") >= 0.0);
+    }
+
+    // ── builtin_names ────────────────────────────────────────────────────────
+
+    #[test]
+    fn phase25_names_registered() {
+        let names = builtin_names();
+        for name in &["eval", "tic", "toc"] {
+            assert!(names.contains(name), "{name} missing from builtin_names");
+        }
+    }
+}

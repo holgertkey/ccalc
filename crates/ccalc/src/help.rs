@@ -70,10 +70,11 @@ pub fn print(topic: Option<&str>) {
             "poly" | "polyfit" | "polyval" | "roots" | "conv" | "deconv" | "interp1" | "polynomial"
             | "polynomials" | "interpolation",
         ) => print_poly(),
+        Some("eval" | "tic" | "toc" | "dynamic" | "timing" | "metaprogramming") => print_eval(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  examples"
             );
         }
     }
@@ -3243,5 +3244,65 @@ Polynomials are row vectors of coefficients in descending degree order.
     interp1(x, y, 99)                    % NaN  (out of range)
 
 See also: help linalg  help vectors  help matrices"
+    );
+}
+
+// help eval  (Phase 25 — Dynamic evaluation and timing)
+// ---------------------------------------------------------------------------
+
+fn print_eval() {
+    println!(
+        "\
+DYNAMIC EVALUATION AND TIMING  (help eval)
+
+── eval — string execution ───────────────────────────────────────────────────
+    eval(str)            execute str as code in the current workspace
+    eval(str, catch_str) execute str; if it errors, execute catch_str instead
+
+Variables defined inside eval() persist in the caller's scope:
+
+    eval('x = sqrt(2)')        % x is now defined
+    x                          % → 1.4142…
+
+    % Dynamic variable naming:
+    for k = 1:3
+      eval(sprintf('v%d = k*k', k))   % creates v1, v2, v3
+    end
+    v1    % 1
+    v2    % 4
+    v3    % 9
+
+    % Two-argument form — catch errors:
+    eval('1/0', 'disp(''caught error'')')
+
+    % eval() in expression context captures ans of the inner execution:
+    y = eval('2 + 2')    % y = 4  (env mutations inside do not persist)
+
+Notes:
+  - Nesting depth is capped at 64 (shared with run/source).
+  - eval() called as a standalone statement allows env mutations.
+  - In expression context (y = eval(...)) mutations inside are discarded.
+
+── tic / toc — elapsed time ──────────────────────────────────────────────────
+    tic              start (or restart) the timer
+    toc              read elapsed seconds since last tic
+
+    tic
+    x = rand(500) * rand(500);
+    t = toc              % → elapsed seconds, e.g. 0.0042
+
+    tic
+    for k = 1:1000
+      x = k^2;
+    end
+    fprintf('loop: %.4f s\\n', toc)
+
+Notes:
+  - tic returns Void (no display).
+  - toc returns a scalar; multiple toc calls after one tic are valid.
+  - Calling toc before tic is an error.
+  - Both tic and toc can be written without parentheses: tic  toc
+
+See also: help control  help script  help errors"
     );
 }
