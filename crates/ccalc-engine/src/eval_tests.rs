@@ -6023,7 +6023,7 @@ mod phase25_tests {
     fn eval_catch_not_triggered_on_success() {
         let env = run_code("eval('ok = 1', 'caught = 1')");
         assert_eq!(scalar_val(&env, "ok"), 1.0);
-        assert!(env.get("caught").is_none());
+        assert!(!env.contains_key("caught"));
     }
 
     #[test]
