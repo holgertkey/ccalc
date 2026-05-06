@@ -1917,10 +1917,16 @@ cargo bench --bench engine -- loop_10k   # run one benchmark
 Optional features:
 
 ```bash
-cargo build --release --features json   # enable jsondecode / jsonencode (serde_json)
-cargo build --release --features blas   # accelerate matrix multiply via system OpenBLAS
-cargo build --release --features json,blas  # both
+cargo build --release --features json         # enable jsondecode / jsonencode (serde_json)
+cargo build --release --features blas         # link system OpenBLAS — faster A*B, inv, \, svd, …
+cargo build --release --features blas-static  # same, but statically linked (no runtime dep)
+cargo build --release --features json,blas    # combine features
 ```
+
+**BLAS** accelerates all matrix multiply and solve operations (pure-Rust is
+used by default and is sufficient for matrices up to ~200×200).
+Requires `libopenblas-dev` on Linux or `brew install openblas` on macOS.
+The API is identical in both builds.
 
 ---
 

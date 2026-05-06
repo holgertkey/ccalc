@@ -2587,8 +2587,18 @@ fn print_linalg() {
         "\
 ADVANCED LINEAR ALGEBRA  (help linalg)
 
-All decompositions are pure-Rust with no BLAS/LAPACK dependency.
 Multi-output functions use  [a, b, ...] = f(x)  assignment syntax.
+
+Performance — optional BLAS build
+    Default build: pure-Rust arithmetic (no system dependencies).
+    Fast enough for matrices up to a few hundred rows.
+
+    For larger work, rebuild with OpenBLAS for a significant speedup:
+        cargo build --release --features blas          (dynamic link)
+        cargo build --release --features blas-static   (static link, no runtime dep)
+
+    Requires libopenblas-dev (Linux) or brew install openblas (macOS).
+    The API is identical in both builds.
 
 ─── QR decomposition ──────────────────────────────────────────────────────────
 
