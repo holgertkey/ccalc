@@ -304,11 +304,18 @@ fn push_imag_suffix(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, tokens
 fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
+    // Track whether the character immediately before the current position was
+    // whitespace.  Used to disambiguate `'`: after whitespace it always starts
+    // a char-array literal; without preceding whitespace after a value-producing
+    // token it is a transpose operator.
+    let mut prev_was_ws = true; // treat start-of-input like after whitespace
 
     while let Some(&c) = chars.peek() {
         match c {
             ' ' | '\t' => {
                 chars.next();
+                prev_was_ws = true;
+                continue; // skip the prev_was_ws = false at the bottom
             }
             '+' => {
                 chars.next();
@@ -366,19 +373,23 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             '\'' => {
-                // Determine whether this is a transpose operator or a char array literal.
-                // Transpose if preceded by a value-producing token (number, ident, ')', ']', or a previous apostrophe).
-                let is_transpose = matches!(
-                    tokens.last(),
-                    Some(
-                        Token::Number(_)
-                            | Token::Ident(_)
-                            | Token::RParen
-                            | Token::RBracket
-                            | Token::Apostrophe
-                            | Token::Str(_)
-                    )
-                );
+                // Disambiguate transpose vs char-array literal.
+                // Rule (matches MATLAB): `'` is transpose only when it appears
+                // WITHOUT preceding whitespace after a value-producing token.
+                // With preceding whitespace it always starts a new string literal,
+                // which is the key to making `['a' 'b']` work correctly.
+                let is_transpose = !prev_was_ws
+                    && matches!(
+                        tokens.last(),
+                        Some(
+                            Token::Number(_)
+                                | Token::Ident(_)
+                                | Token::RParen
+                                | Token::RBracket
+                                | Token::Apostrophe
+                                | Token::Str(_)
+                        )
+                    );
                 chars.next(); // consume the opening '
                 if is_transpose {
                     tokens.push(Token::Apostrophe);
@@ -687,6 +698,7 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
             }
             _ => return Err(format!("Unexpected character: '{c}'")),
         }
+        prev_was_ws = false;
     }
 
     Ok(tokens)

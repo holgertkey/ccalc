@@ -1032,11 +1032,13 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 Numeric,
                 DateTime,
                 Duration,
+                Str,
             }
             let kind = match &evaluated[0][0] {
                 Value::Scalar(_) | Value::Matrix(_) => MatKind::Numeric,
                 Value::DateTime(_) | Value::DateTimeArray(_) => MatKind::DateTime,
                 Value::Duration(_) | Value::DurationArray(_) => MatKind::Duration,
+                Value::Str(_) | Value::StringObj(_) => MatKind::Str,
                 Value::Void => {
                     return Err("Void value cannot be used in matrix literal".to_string());
                 }
@@ -1044,9 +1046,6 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     return Err(
                         "Complex elements in matrix literals are not supported yet".to_string()
                     );
-                }
-                Value::Str(_) | Value::StringObj(_) => {
-                    return Err("String elements in matrix literals are not supported".to_string());
                 }
                 Value::Lambda(_)
                 | Value::Function { .. }
@@ -1118,11 +1117,18 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                                             .to_string(),
                                     );
                                 }
-                                Value::Str(_) | Value::StringObj(_) => {
-                                    return Err(
-                                        "String elements in matrix literals are not supported"
-                                            .to_string(),
-                                    );
+                                // In numeric context, char arrays contribute their
+                                // Unicode code values — MATLAB compatible: [65 'b'] = [65 98]
+                                Value::Str(s) | Value::StringObj(s) => {
+                                    let codes: Vec<f64> =
+                                        s.chars().map(|c| c as u32 as f64).collect();
+                                    let mat = if codes.is_empty() {
+                                        Array2::<f64>::zeros((1, 0))
+                                    } else {
+                                        Array2::from_shape_vec((1, codes.len()), codes)
+                                            .map_err(|e| format!("Matrix shape error: {e}"))?
+                                    };
+                                    elem_mats.push(mat);
                                 }
                                 _ => {
                                     return Err(
@@ -1180,6 +1186,40 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     let m = Array2::from_shape_vec((total_rows, ncols), flat)
                         .map_err(|e| format!("Matrix shape error: {e}"))?;
                     Ok(Value::Matrix(m))
+                }
+                MatKind::Str => {
+                    if evaluated.len() > 1 {
+                        return Err(
+                            "Multi-row char-array literals are not supported".to_string(),
+                        );
+                    }
+                    let mut out = String::new();
+                    for val in &evaluated[0] {
+                        match val {
+                            Value::Str(s) | Value::StringObj(s) => out.push_str(s),
+                            Value::Scalar(n) => {
+                                let code = n.round();
+                                out.push(
+                                    char::from_u32(code as u32)
+                                        .ok_or_else(|| format!("char: invalid code {n}"))?,
+                                );
+                            }
+                            Value::Matrix(m) => {
+                                for &n in m.iter() {
+                                    out.push(
+                                        char::from_u32(n.round() as u32)
+                                            .ok_or_else(|| format!("char: invalid code {n}"))?,
+                                    );
+                                }
+                            }
+                            _ => {
+                                return Err(
+                                    "This type cannot be used in a char-array literal".to_string(),
+                                )
+                            }
+                        }
+                    }
+                    Ok(Value::Str(out))
                 }
             }
         }

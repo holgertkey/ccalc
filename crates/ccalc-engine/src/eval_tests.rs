@@ -6076,3 +6076,139 @@ mod phase25_tests {
         }
     }
 }
+
+// ============================================================================
+// Char-array matrix literals — ['a' 'b'], ['A' 66], [65 'B']
+// ============================================================================
+
+mod char_array_literal_tests {
+    use super::*;
+
+    fn ep(src: &str) -> Result<Value, String> {
+        eval_parse(src, &crate::env::Env::new())
+    }
+
+    fn run_code(src: &str) -> crate::env::Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
+            .expect("exec failed");
+        env
+    }
+
+    fn str_val(env: &crate::env::Env, name: &str) -> String {
+        match env.get(name) {
+            Some(Value::Str(s)) | Some(Value::StringObj(s)) => s.clone(),
+            other => panic!("{name} not a string: {other:?}"),
+        }
+    }
+
+    fn mat_row(v: &Value) -> Vec<f64> {
+        match v {
+            Value::Matrix(m) => m.iter().copied().collect(),
+            Value::Scalar(n) => vec![*n],
+            other => panic!("expected matrix/scalar, got {other:?}"),
+        }
+    }
+
+    // ── basic: all-string elements ────────────────────────────────────────────
+
+    #[test]
+    fn two_char_arrays_concat() {
+        let v = ep("['hello' ' world']").unwrap();
+        assert_eq!(v, Value::Str("hello world".to_string()));
+    }
+
+    #[test]
+    fn three_char_arrays_concat() {
+        let v = ep("['a' 'b' 'c']").unwrap();
+        assert_eq!(v, Value::Str("abc".to_string()));
+    }
+
+    #[test]
+    fn empty_string_element_ignored() {
+        let v = ep("['hi' '' '!']").unwrap();
+        assert_eq!(v, Value::Str("hi!".to_string()));
+    }
+
+    // ── mixed: string context, numeric elements become chars ──────────────────
+
+    #[test]
+    fn str_context_scalar_becomes_char() {
+        // ['A' 66 67] → 'ABC'  (65='A', 66='B', 67='C')
+        let v = ep("['A' 66 67]").unwrap();
+        assert_eq!(v, Value::Str("ABC".to_string()));
+    }
+
+    #[test]
+    fn str_context_matrix_becomes_chars() {
+        // ['A' [66 67]] → 'ABC'
+        let v = ep("['A' [66 67]]").unwrap();
+        assert_eq!(v, Value::Str("ABC".to_string()));
+    }
+
+    #[test]
+    fn str_context_only_scalars() {
+        // [65 66 67] — numeric context, but ['A' 'B' 'C'] must produce 'ABC'
+        let v = ep("['A' 'B' 'C']").unwrap();
+        assert_eq!(v, Value::Str("ABC".to_string()));
+    }
+
+    // ── mixed: numeric context, string elements become code values ────────────
+
+    #[test]
+    fn numeric_context_str_becomes_codes() {
+        // [65 'B'] — first element numeric → result is numeric [65 66]
+        let v = ep("[65 'B']").unwrap();
+        assert_eq!(mat_row(&v), vec![65.0, 66.0]);
+    }
+
+    #[test]
+    fn numeric_context_multi_char_str() {
+        // [1 'AB'] → [1 65 66]
+        let v = ep("[1 'AB']").unwrap();
+        assert_eq!(mat_row(&v), vec![1.0, 65.0, 66.0]);
+    }
+
+    // ── dynamic string building (the main practical use case) ─────────────────
+
+    #[test]
+    fn dynamic_concat_with_num2str() {
+        let env = run_code("k = 3; s = ['v' num2str(k)]");
+        assert_eq!(str_val(&env, "s"), "v3");
+    }
+
+    #[test]
+    fn dynamic_code_concat_for_eval() {
+        // The pattern that was broken before this feature
+        let env = run_code("code = ['y = ' num2str(3.14) ' * 2']; eval(code)");
+        match env.get("y") {
+            Some(Value::Scalar(v)) => {
+                // 3.14 * 2 = 6.28; avoid the clippy::approx_constant lint
+                assert!((v - 6.0 - 0.28).abs() < 1e-9, "y = {v}")
+            }
+            other => panic!("y not a scalar: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dynamic_variable_naming_with_concat() {
+        let env = run_code(
+            "for k = 1:3\n  eval(['v' num2str(k) ' = k*10'])\nend",
+        );
+        match env.get("v1") {
+            Some(Value::Scalar(v)) => assert!((v - 10.0).abs() < 1e-9),
+            other => panic!("v1 not a scalar: {other:?}"),
+        }
+        match env.get("v3") {
+            Some(Value::Scalar(v)) => assert!((v - 30.0).abs() < 1e-9),
+            other => panic!("v3 not a scalar: {other:?}"),
+        }
+    }
+}
