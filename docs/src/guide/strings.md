@@ -59,6 +59,37 @@ Use `''` inside a char array to include a literal `'`:
 it's fine
 ```
 
+### Char-array concatenation with `[...]`
+
+The bracket operator concatenates char arrays horizontally — the standard
+MATLAB/Octave idiom for building strings dynamically:
+
+```matlab
+['hello' ' world']          % → 'hello world'
+['a' 'b' 'c']               % → 'abc'
+['prefix_' num2str(k)]      % → 'prefix_3'  (when k = 3)
+```
+
+**String context** (first element is a char array): numeric elements are
+treated as Unicode code points and become characters.
+
+```matlab
+['A' 66 67]                 % → 'ABC'  (65='A', 66='B', 67='C')
+['A' [66 67]]               % → 'ABC'  (matrix of codes)
+```
+
+**Numeric context** (first element is numeric): char-array elements
+contribute their code values.
+
+```matlab
+[65 'B']                    % → [65 66]
+[1 'AB']                    % → [1 65 66]
+```
+
+**Note:** each space before a `'` signals the start of a new string literal,
+matching MATLAB whitespace-aware disambiguation. `['a' 'b']` with a space
+between the two char arrays correctly produces `'ab'`.
+
 ---
 
 ## String objects

@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0+001] - 2026-05-06
+
+### Added
+
+- **Char-array matrix literals** — `['str' expr 'str']` now concatenates
+  char arrays horizontally, matching MATLAB/Octave semantics:
+  - **String context** (first element is a char array): numeric elements become
+    characters via Unicode code point — `['A' 66 67]` → `'ABC'`.
+  - **Numeric context** (first element is numeric): char-array elements
+    contribute their code values — `[65 'B']` → `[65 66]`.
+  - Common dynamic-string idiom now works: `['v' num2str(k) ' = k^2']`.
+
+### Fixed
+
+- **`eval(...)` statement context in pipe/script mode**: standalone `eval`
+  calls on their own line (outside a block) now correctly mutate the caller's
+  workspace. Previously they fell through to `evaluate()` → `call_builtin`,
+  which ran on a cloned env and discarded all variable assignments.
+- **`'` transpose disambiguation**: a `'` preceded by whitespace is now
+  always tokenized as the start of a new char-array literal, never as a
+  transpose. This is the correct MATLAB rule and fixes `['a' 'b']` being
+  mis-parsed as `('a')' b`.
+- **Clippy** — `env.get("caught").is_none()` replaced with `!env.contains_key("caught")`.
+- 11 new tests in `mod char_array_literal_tests` (877 total).
+
 ## [0.30.0] - 2026-05-05
 
 ### Added

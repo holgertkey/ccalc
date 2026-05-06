@@ -1381,6 +1381,12 @@ Char arrays — single quotes  (MATLAB classic, numeric-compatible)
     'abc' + 1          →  [98  99  100]
     'abc' == 'aXc'     →  [1  0  1]      element-wise comparison
 
+    Concatenation with [...] — MATLAB-style dynamic string building
+    ['hello' ' world']          →  'hello world'
+    ['prefix_' num2str(k)]      →  'prefix_3'   (when k = 3)
+    ['A' 66 67]                 →  'ABC'        (numbers → chars by code)
+    [65 'B']                    →  [65 66]      (numeric context: chars → codes)
+
 String objects — double quotes  (modern style, scalar element)
     \"hello\"            →  StringObj(\"hello\")
     \"it\"\"s ok\"         →  it\"s ok          \"\" inside \"\" = escaped quote

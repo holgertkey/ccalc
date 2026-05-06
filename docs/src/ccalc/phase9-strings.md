@@ -32,20 +32,25 @@ The `'` character has two meanings:
 
 The tokenizer tracks the last emitted token and applies this rule:
 
-| Last token | `'` is |
-|---|---|
-| `Number`, `Ident`, `RParen`, `RBracket`, `Apostrophe`, `Str` | Transpose (`Token::Apostrophe`) |
-| Anything else (including "nothing" = start of input) | Char array literal start |
+| Preceding whitespace | Last token | `'` is |
+|---|---|---|
+| yes (or start of input) | any | Char array literal start |
+| no | `Number`, `Ident`, `RParen`, `RBracket`, `Apostrophe`, `Str` | Transpose (`Token::Apostrophe`) |
+| no | anything else | Char array literal start |
+
+The whitespace rule (added in v0.30.0+001) is the key to making `['a' 'b']`
+work correctly: the space before `'b'` signals a new string, not a
+transpose of `'a'`.
 
 When a char array literal is detected, the tokenizer consumes characters
 until the next `'`. The sequence `''` (two consecutive single quotes)
 represents a literal single-quote inside the string.
 
 ```
-'hello'      →  Token::Str("hello")
-'it''s ok'   →  Token::Str("it's ok")
-x'           →  Ident("x")  Apostrophe       (transpose)
-'A''         →  Str("A")    Apostrophe       (char array, then transpose)
+'hello'        →  Token::Str("hello")
+'it''s ok'     →  Token::Str("it's ok")
+x'             →  Ident("x")  Apostrophe       (transpose, no space)
+['a' 'b']      →  LBracket  Str("a")  Str("b")  RBracket  (space → new string)
 ```
 
 ### `"..."` string object tokens
@@ -162,12 +167,40 @@ either with string-specific logic or a clear error message.
 
 ## What was not changed
 
-- Matrix literals containing string elements are not yet supported
-  (`['a', 'b']` as a char matrix). This requires a separate char-matrix
-  representation and is deferred to a later phase.
 - Workspace save/load for strings is intentionally skipped (same policy
   as matrices and complex).
 - `strsplit` requires cell arrays (not yet implemented) and is deferred.
 - The `split_stmts()` function in `repl.rs` already tracked single-quoted
   and double-quoted string boundaries (from earlier disambiguation work in
   Phase 4). No changes were needed there.
+
+---
+
+## Enhancement — v0.30.0+001: char-array matrix literals
+
+### What was added
+
+`['str' expr 'str']` — horizontal concatenation of char arrays inside
+bracket literals, matching MATLAB/Octave semantics.
+
+**String context** (first element is `Str`/`StringObj`): the result is a
+single `Value::Str`. Numeric scalars and matrices are treated as Unicode
+code points (e.g., `['A' 66]` → `'AB'`).
+
+**Numeric context** (first element is numeric): `Str`/`StringObj` elements
+contribute their code values to the numeric row (e.g., `[65 'B']` → `[65 66]`).
+
+Multi-row char-array literals are not supported; building a 2-D char matrix
+would require a new type that doesn't exist in ccalc's `Value` enum.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `crates/ccalc-engine/src/eval.rs` | Added `MatKind::Str` arm to matrix literal evaluator; extended `MatKind::Numeric` to handle `Str`/`StringObj` elements |
+| `crates/ccalc-engine/src/parser.rs` | `tokenize()`: added `prev_was_ws` flag; `'` after whitespace always starts a string |
+| `crates/ccalc-engine/src/eval_tests.rs` | `mod char_array_literal_tests` — 11 new tests |
+| `docs/src/guide/strings.md` | New section "Char-array concatenation with `[...]`" |
+| `crates/ccalc/src/help.rs` | Added `[...]` concatenation to `help strings` |
+
+**Test count:** 877 total (11 new).
