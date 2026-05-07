@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Parsed function body cache: body source string → pre-parsed, all-silent statements.
-type BodyCache = HashMap<String, Rc<Vec<(Stmt, bool)>>>;
+type BodyCache = HashMap<String, Rc<Vec<(Stmt, bool, usize)>>>;
 
 /// Expands a leading `~` to the user's home directory.
 ///
@@ -82,10 +82,10 @@ thread_local! {
 /// `map(|(s,_)| (s, true))` only silences the top level.  Nested bodies inside `if`,
 /// `for`, `while`, `switch`, `do..until`, and `try..catch` keep their original flags
 /// and would still print.  This function walks the full statement tree.
-fn silence_all(stmts: Vec<(Stmt, bool)>) -> Vec<(Stmt, bool)> {
+fn silence_all(stmts: Vec<(Stmt, bool, usize)>) -> Vec<(Stmt, bool, usize)> {
     stmts
         .into_iter()
-        .map(|(stmt, _)| {
+        .map(|(stmt, _, line)| {
             let stmt = match stmt {
                 Stmt::If {
                     cond,
@@ -141,17 +141,17 @@ fn silence_all(stmts: Vec<(Stmt, bool)>) -> Vec<(Stmt, bool)> {
                 },
                 other => other,
             };
-            (stmt, true)
+            (stmt, true, line)
         })
         .collect()
 }
 
 /// Returns a parsed, all-silent body for `body_source`, using the cache when possible.
 ///
-/// "All-silent" means every `(Stmt, bool)` has `bool = true` — function bodies
+/// "All-silent" means every `(Stmt, bool, usize)` has `bool = true` — function bodies
 /// never print output directly. The parse result is shared via `Rc` so that
 /// repeated calls to the same function avoid both allocation and parsing work.
-fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool)>>, String> {
+fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool, usize)>>, String> {
     BODY_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(body) = cache.get(body_source) {
@@ -164,6 +164,31 @@ fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool)>>, String>
         cache.insert(body_source.to_string(), Rc::clone(&rc));
         Ok(rc)
     })
+}
+
+/// Appends ` near line N` to an error message if it does not already contain one.
+///
+/// `line == 0` means "no source location available" and is passed through unchanged.
+fn annotate_line(e: String, line: usize) -> String {
+    if line == 0 || e.contains("near line") {
+        e
+    } else {
+        format!("{e} near line {line}")
+    }
+}
+
+/// Strips a trailing ` near line N` suffix from an error message.
+///
+/// Used when storing an error in a `catch` variable — `e.message` should contain
+/// the original message only, matching MATLAB/Octave semantics.
+fn strip_near_line(s: String) -> String {
+    if let Some(pos) = s.rfind(" near line ") {
+        let after = &s[pos + " near line ".len()..];
+        if !after.is_empty() && after.bytes().all(|b| b.is_ascii_digit()) {
+            return s[..pos].to_string();
+        }
+    }
+    s
 }
 
 /// Flow control signal returned by [`exec_stmts`].
@@ -232,7 +257,7 @@ fn try_autoload(name: &str) -> bool {
         let Ok(stmts) = parse_stmts(&content) else {
             continue;
         };
-        if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _))) {
+        if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _, _))) {
             continue;
         }
         let primary_name = match &stmts[0].0 {
@@ -240,7 +265,7 @@ fn try_autoload(name: &str) -> bool {
             _ => continue,
         };
         let mut locals: IndexMap<String, Value> = IndexMap::new();
-        for (stmt, _) in &stmts {
+        for (stmt, _, _) in &stmts {
             if let Stmt::FunctionDef {
                 name: n,
                 outputs,
@@ -325,7 +350,7 @@ fn try_autoload_pkg(qualified: &str) -> bool {
             let Ok(stmts) = parse_stmts(&content) else {
                 continue;
             };
-            if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _))) {
+            if !matches!(stmts.first(), Some((Stmt::FunctionDef { .. }, _, _))) {
                 continue;
             }
             let primary_name = match &stmts[0].0 {
@@ -333,7 +358,7 @@ fn try_autoload_pkg(qualified: &str) -> bool {
                 _ => continue,
             };
             let mut locals: IndexMap<String, Value> = IndexMap::new();
-            for (stmt, _) in &stmts {
+            for (stmt, _, _) in &stmts {
                 if let Stmt::FunctionDef {
                     name: n,
                     outputs,
@@ -810,7 +835,7 @@ fn set_nested(
 /// Loop implementations (`For`, `While`) catch `Break`/`Continue` internally.
 /// A signal that escapes to the top-level caller should be reported as an error.
 pub fn exec_stmts(
-    stmts: &[(Stmt, bool)],
+    stmts: &[(Stmt, bool, usize)],
     env: &mut Env,
     io: &mut IoContext,
     fmt: &FormatMode,
@@ -820,11 +845,12 @@ pub fn exec_stmts(
     // Propagate display settings to eval.rs so named function bodies can use them.
     set_display_ctx(fmt, base, compact);
 
-    for (stmt, silent) in stmts {
+    for (stmt, silent, stmt_line) in stmts {
         match stmt {
             Stmt::Assign(name, expr) => {
                 set_nargout(1);
-                let val = eval_with_io(expr, env, io)?;
+                let val = eval_with_io(expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 env.insert(name.clone(), val.clone());
                 // Mirror to the shared global store when declared global in this scope.
                 if is_global(name) {
@@ -1001,14 +1027,14 @@ pub fn exec_stmts(
                     let is_fn_file = !run_stmts.is_empty()
                         && run_stmts
                             .iter()
-                            .all(|(s, _)| matches!(s, Stmt::FunctionDef { .. }));
+                            .all(|(s, _, _)| matches!(s, Stmt::FunctionDef { .. }));
                     let result = if is_fn_file {
                         let primary_name = match &run_stmts[0].0 {
                             Stmt::FunctionDef { name, .. } => name.clone(),
                             _ => unreachable!(),
                         };
                         let mut locals: IndexMap<String, Value> = IndexMap::new();
-                        for (stmt, _) in &run_stmts {
+                        for (stmt, _, _) in &run_stmts {
                             if let Stmt::FunctionDef {
                                 name,
                                 outputs,
@@ -1053,7 +1079,7 @@ pub fn exec_stmts(
                     } else {
                         // Pre-load all local function defs so that forward references
                         // within the script work (MATLAB local-function semantics).
-                        for (stmt, _) in run_stmts.iter() {
+                        for (stmt, _, _) in run_stmts.iter() {
                             if let Stmt::FunctionDef {
                                 name,
                                 outputs,
@@ -1268,7 +1294,8 @@ pub fn exec_stmts(
                     continue;
                 }
 
-                let val = eval_with_io(expr, env, io)?;
+                let val = eval_with_io(expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 env.insert("ans".to_string(), val.clone());
                 if !silent && !matches!(val, Value::Void) {
                     print_value(None, &val, fmt, base, compact);
@@ -1281,13 +1308,16 @@ pub fn exec_stmts(
                 elseif_branches,
                 else_body,
             } => {
-                let cond_val = eval_with_io(cond, env, io)?;
-                let chosen: Option<&[(Stmt, bool)]> = if is_truthy(&cond_val) {
+                let cond_val = eval_with_io(cond, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let chosen: Option<&[(Stmt, bool, usize)]> = if is_truthy(&cond_val) {
                     Some(body)
                 } else {
                     let mut found = None;
                     for (ei_cond, ei_body) in elseif_branches {
-                        if is_truthy(&eval_with_io(ei_cond, env, io)?) {
+                        if is_truthy(&eval_with_io(ei_cond, env, io)
+                            .map_err(|e| annotate_line(e, *stmt_line))?)
+                        {
                             found = Some(ei_body.as_slice());
                             break;
                         }
@@ -1309,7 +1339,8 @@ pub fn exec_stmts(
                 range_expr,
                 body,
             } => {
-                let range_val = eval_with_io(range_expr, env, io)?;
+                let range_val = eval_with_io(range_expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 let iter_cols: Vec<Value> = match range_val {
                     Value::Scalar(n) => vec![Value::Scalar(n)],
                     Value::Matrix(m) => {
@@ -1346,7 +1377,9 @@ pub fn exec_stmts(
             }
 
             Stmt::While { cond, body } => loop {
-                if !is_truthy(&eval_with_io(cond, env, io)?) {
+                if !is_truthy(&eval_with_io(cond, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?)
+                {
                     break;
                 }
                 match exec_stmts(body, env, io, fmt, base, compact)? {
@@ -1366,11 +1399,13 @@ pub fn exec_stmts(
                 cases,
                 otherwise_body,
             } => {
-                let switch_val = eval_with_io(expr, env, io)?;
+                let switch_val = eval_with_io(expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 let mut matched = false;
                 'switch_loop: for (case_exprs, case_body) in cases {
                     for case_expr in case_exprs {
-                        let case_val = eval_with_io(case_expr, env, io)?;
+                        let case_val = eval_with_io(case_expr, env, io)
+                            .map_err(|e| annotate_line(e, *stmt_line))?;
                         // When the case expression is a Cell, check if switch_val
                         // matches any element of the cell (Phase 12.5c).
                         let is_match = if let Value::Cell(cell_elems) = &case_val {
@@ -1428,7 +1463,9 @@ pub fn exec_stmts(
                     Some(Signal::Continue) | None => {}
                     Some(Signal::Return) => return Ok(Some(Signal::Return)),
                 }
-                if is_truthy(&eval_with_io(cond, env, io)?) {
+                if is_truthy(&eval_with_io(cond, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?)
+                {
                     break;
                 }
             },
@@ -1445,7 +1482,7 @@ pub fn exec_stmts(
                     set_last_err(&msg);
                     if let Some(var) = catch_var {
                         let mut map = IndexMap::new();
-                        map.insert("message".to_string(), Value::Str(msg));
+                        map.insert("message".to_string(), Value::Str(strip_near_line(msg)));
                         env.insert(var.clone(), Value::Struct(map));
                     }
                     if let Some(sig) = exec_stmts(catch_body, env, io, fmt, base, compact)? {
@@ -1485,8 +1522,10 @@ pub fn exec_stmts(
                     _ => 0,
                 };
                 let env_end = write_env_with_end(env, cell_len);
-                let idx = eval_with_io(idx_expr, &env_end, io)?;
-                let rhs = eval_with_io(val_expr, env, io)?;
+                let idx = eval_with_io(idx_expr, &env_end, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let rhs = eval_with_io(val_expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 let i = match idx {
                     Value::Scalar(n) => n as isize,
                     _ => return Err(format!("{cell_name}{{}}: index must be a scalar integer")),
@@ -1529,7 +1568,8 @@ pub fn exec_stmts(
 
             // ── struct field assignment ──────────────────────────────────────
             Stmt::FieldSet(base_name, path, rhs_expr) => {
-                let rhs = eval_with_io(rhs_expr, env, io)?;
+                let rhs = eval_with_io(rhs_expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 let root = match env.remove(base_name) {
                     Some(Value::Struct(m)) => m,
                     None => IndexMap::new(),
@@ -1548,8 +1588,10 @@ pub fn exec_stmts(
 
             // ── struct array element field assignment ────────────────────────
             Stmt::StructArrayFieldSet(base_name, idx_expr, path, rhs_expr) => {
-                let rhs = eval_with_io(rhs_expr, env, io)?;
-                let idx_val = eval_with_io(idx_expr, env, io)?;
+                let rhs = eval_with_io(rhs_expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let idx_val = eval_with_io(idx_expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 let idx = match &idx_val {
                     Value::Scalar(n) => {
                         let i = *n as isize;
@@ -1594,7 +1636,8 @@ pub fn exec_stmts(
                 indices,
                 value,
             } => {
-                let rhs = eval_with_io(value, env, io)?;
+                let rhs = eval_with_io(value, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 // For persistent vars: refresh from the store before applying a partial
                 // update so that values written by recursive calls are not overwritten.
                 if is_persistent(name) {
@@ -1618,7 +1661,8 @@ pub fn exec_stmts(
             // ── multi-assign ─────────────────────────────────────────────────
             Stmt::MultiAssign { targets, expr } => {
                 set_nargout(targets.len());
-                let val = eval_with_io(expr, env, io)?;
+                let val = eval_with_io(expr, env, io)
+                    .map_err(|e| annotate_line(e, *stmt_line))?;
                 let vals: Vec<Value> = match val {
                     Value::Tuple(v) => v,
                     other => vec![other],

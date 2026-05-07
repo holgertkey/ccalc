@@ -2773,7 +2773,7 @@ fn test_lambda_captures_lexical_env() {
 #[test]
 fn test_parse_return_stmt() {
     let stmts = parse_stmts("return").unwrap();
-    assert!(matches!(stmts.as_slice(), [(Stmt::Return, false)]));
+    assert!(matches!(stmts.as_slice(), [(Stmt::Return, false, _)]));
 }
 
 #[test]
@@ -4397,4 +4397,87 @@ fn test_block_comment_does_not_break_function_doc() {
         }
         other => panic!("expected FunctionDef, got {other:?}"),
     }
+}
+
+// ── near line N error messages ─────────────────────────────────────────────────
+
+#[test]
+fn test_near_line_simple_assign() {
+    // Error in an assignment on line 3 should say "near line 3".
+    let result = run_block_result("x = 1;\ny = 2;\nz = undefined_var;");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("near line 3"),
+        "expected 'near line 3' in: {msg}"
+    );
+}
+
+#[test]
+fn test_near_line_expr() {
+    // Error in a bare expression on line 2 should say "near line 2".
+    let result = run_block_result("a = 1;\nbad_name + 1;");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("near line 2"),
+        "expected 'near line 2' in: {msg}"
+    );
+}
+
+#[test]
+fn test_near_line_inside_for() {
+    // Error inside a for body should report the body statement's line.
+    // "for" is on line 1, "bad" is on line 2.
+    let result = run_block_result("for k = 1:3\n  bad_var;\nend");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("near line 2"),
+        "expected 'near line 2' in: {msg}"
+    );
+}
+
+#[test]
+fn test_near_line_if_condition() {
+    // Error in an if condition should report the if line.
+    let result = run_block_result("x = 1;\nif no_such_var > 0\n  x = 2;\nend");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("near line 2"),
+        "expected 'near line 2' in: {msg}"
+    );
+}
+
+#[test]
+fn test_near_line_not_double_annotated() {
+    // Errors should not accumulate multiple "near line" annotations.
+    let result = run_block_result("for k = 1:2\n  if bad_var\n    x = 1;\n  end\nend");
+    let msg = result.unwrap_err();
+    let count = msg.matches("near line").count();
+    assert_eq!(count, 1, "expected exactly one 'near line' in: {msg}");
+}
+
+#[test]
+fn test_try_catch_message_no_line_annotation() {
+    // e.message in catch should NOT contain "near line" — MATLAB semantics.
+    let env = run_block(
+        "try\n  bad_var;\ncatch e\n  msg = e.message;\nend",
+    );
+    match env.get("msg") {
+        Some(Value::Str(s)) => {
+            assert!(
+                !s.contains("near line"),
+                "catch e.message should not contain 'near line', got: {s}"
+            );
+        }
+        other => panic!("expected Str, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_parse_stmts_line_numbers() {
+    // Verify the parser records the correct 1-based line numbers.
+    let stmts = parse_stmts("x = 1;\ny = 2;\nz = 3;").unwrap();
+    assert_eq!(stmts.len(), 3);
+    assert_eq!(stmts[0].2, 1);
+    assert_eq!(stmts[1].2, 2);
+    assert_eq!(stmts[2].2, 3);
 }

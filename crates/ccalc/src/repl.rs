@@ -1063,7 +1063,7 @@ fn try_exec_stmt(
     match parsed {
         Stmt::Assign(_, _) | Stmt::Expr(_) => false, // handled by evaluate()
         other => {
-            match exec_stmts(&[(other, silent)], env, io, fmt, base, compact) {
+            match exec_stmts(&[(other, silent, 0)], env, io, fmt, base, compact) {
                 Ok(Some(Signal::Return)) => {
                     eprintln!("Error: 'return' outside a function");
                 }
@@ -1105,7 +1105,7 @@ fn try_run_source(
     }
     match parse(stmt) {
         Ok(parsed) => {
-            match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
+            match exec_stmts(&[(parsed, silent, 0)], env, io, fmt, base, compact) {
                 Ok(_) => {}
                 Err(e) => {
                     set_last_err(&e);
@@ -1143,7 +1143,7 @@ fn try_eval_stmt(
     }
     match parse(stmt) {
         Ok(parsed) => {
-            match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
+            match exec_stmts(&[(parsed, silent, 0)], env, io, fmt, base, compact) {
                 Ok(_) => {}
                 Err(e) => {
                     set_last_err(&e);
@@ -1176,7 +1176,7 @@ fn try_path_cmd(
     }
     match parse(stmt) {
         Ok(parsed) => {
-            match exec_stmts(&[(parsed, silent)], env, io, fmt, base, compact) {
+            match exec_stmts(&[(parsed, silent, 0)], env, io, fmt, base, compact) {
                 Ok(_) => {}
                 Err(e) => {
                     set_last_err(&e);

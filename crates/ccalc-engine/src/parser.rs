@@ -12,11 +12,11 @@ pub enum Stmt {
         /// The condition expression evaluated to decide which branch to take.
         cond: Expr,
         /// Statements to execute when `cond` is truthy.
-        body: Vec<(Stmt, bool)>,
+        body: Vec<(Stmt, bool, usize)>,
         /// Zero or more `elseif (cond) body` branches, in source order.
-        elseif_branches: Vec<(Expr, Vec<(Stmt, bool)>)>,
+        elseif_branches: Vec<(Expr, Vec<(Stmt, bool, usize)>)>,
         /// Statements to execute when no condition matched, or `None` if there is no `else`.
-        else_body: Option<Vec<(Stmt, bool)>>,
+        else_body: Option<Vec<(Stmt, bool, usize)>>,
     },
     /// `for var = range_expr; body; end` — iterates over columns of the range matrix
     For {
@@ -25,14 +25,14 @@ pub enum Stmt {
         /// Expression that produces the matrix whose columns are iterated.
         range_expr: Expr,
         /// Loop body statements.
-        body: Vec<(Stmt, bool)>,
+        body: Vec<(Stmt, bool, usize)>,
     },
     /// `while cond; body; end`
     While {
         /// Loop condition — re-evaluated before each iteration.
         cond: Expr,
         /// Loop body statements.
-        body: Vec<(Stmt, bool)>,
+        body: Vec<(Stmt, bool, usize)>,
     },
     /// `break` — exits the innermost enclosing loop
     Break,
@@ -48,16 +48,16 @@ pub enum Stmt {
         /// The expression whose value is matched against each `case`.
         expr: Expr,
         /// Each case is a list of match patterns and the body to run on a match.
-        cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)>,
+        cases: Vec<(Vec<Expr>, Vec<(Stmt, bool, usize)>)>,
         /// Fallback body executed when no `case` matches, or `None` if there is no `otherwise`.
-        otherwise_body: Option<Vec<(Stmt, bool)>>,
+        otherwise_body: Option<Vec<(Stmt, bool, usize)>>,
     },
     /// `do; body; until (cond)` — Octave-specific post-test loop.
     ///
     /// The body always executes at least once. `break` and `continue` work as in `while`.
     DoUntil {
         /// Loop body — always executed at least once before the condition is checked.
-        body: Vec<(Stmt, bool)>,
+        body: Vec<(Stmt, bool, usize)>,
         /// Condition tested after each iteration; loop exits when it becomes truthy.
         cond: Expr,
     },
@@ -99,11 +99,11 @@ pub enum Stmt {
     /// with field `message` containing the error string.
     TryCatch {
         /// Statements in the protected `try` block.
-        try_body: Vec<(Stmt, bool)>,
+        try_body: Vec<(Stmt, bool, usize)>,
         /// Optional name of the catch variable bound to a struct with a `message` field.
         catch_var: Option<String>,
         /// Statements executed when an error is caught.
-        catch_body: Vec<(Stmt, bool)>,
+        catch_body: Vec<(Stmt, bool, usize)>,
     },
     /// `c{i} = v` — cell element assignment.
     ///
@@ -1425,12 +1425,13 @@ fn split_block_line(line: &str) -> Vec<String> {
     parts
 }
 
-/// Parses a multi-line block string into a sequence of `(Stmt, silent)` pairs.
+/// Parses a multi-line block string into a sequence of `(Stmt, silent, line)` triples.
 ///
 /// The input may contain multiple lines separated by `\n` or `\r\n`.
 /// Block keywords (`if`/`for`/`while`/`end`/…) are handled recursively.
-/// Each statement carries a `silent` flag (`true` when terminated by `;`).
-pub fn parse_stmts(input: &str) -> Result<Vec<(Stmt, bool)>, String> {
+/// Each statement carries a `silent` flag (`true` when terminated by `;`) and a
+/// 1-based source line number (`usize`) for use in error messages.
+pub fn parse_stmts(input: &str) -> Result<Vec<(Stmt, bool, usize)>, String> {
     let raw_lines: Vec<&str> = input.lines().collect();
     let stripped = strip_block_comments(&raw_lines)?;
     let stripped_str = stripped.join("\n");
@@ -1446,10 +1447,11 @@ fn parse_stmts_from_lines(
     lines: &[&str],
     pos: &mut usize,
     stop_at: &[&str],
-) -> Result<Vec<(Stmt, bool)>, String> {
+) -> Result<Vec<(Stmt, bool, usize)>, String> {
     let mut stmts = Vec::new();
 
     while *pos < lines.len() {
+        let stmt_line = *pos + 1; // 1-based source line number for this statement
         let raw = lines[*pos];
         let line = strip_line_comment(raw).trim();
 
@@ -1481,7 +1483,8 @@ fn parse_stmts_from_lines(
                 let virtual_refs: Vec<&str> = virtual_parts.iter().map(|s| s.as_str()).collect();
                 let mut vpos = 0;
                 let inner = parse_stmts_from_lines(&virtual_refs, &mut vpos, stop_at)?;
-                stmts.extend(inner);
+                // All virtual lines map to the same physical source line.
+                stmts.extend(inner.into_iter().map(|(s, silent, _)| (s, silent, stmt_line)));
                 *pos += 1;
                 continue;
             }
@@ -1541,6 +1544,7 @@ fn parse_stmts_from_lines(
                         else_body,
                     },
                     false,
+                    stmt_line,
                 ));
             }
 
@@ -1561,6 +1565,7 @@ fn parse_stmts_from_lines(
                         body,
                     },
                     false,
+                    stmt_line,
                 ));
             }
 
@@ -1574,16 +1579,16 @@ fn parse_stmts_from_lines(
                 *pos += 1;
                 let body = parse_stmts_from_lines(lines, pos, &["end"])?;
                 expect_end(lines, pos, "while")?;
-                stmts.push((Stmt::While { cond, body }, false));
+                stmts.push((Stmt::While { cond, body }, false, stmt_line));
             }
 
             // ── break / continue ─────────────────────────────────────────────
             Some("break") => {
-                stmts.push((Stmt::Break, false));
+                stmts.push((Stmt::Break, false, stmt_line));
                 *pos += 1;
             }
             Some("continue") => {
-                stmts.push((Stmt::Continue, false));
+                stmts.push((Stmt::Continue, false, stmt_line));
                 *pos += 1;
             }
 
@@ -1597,8 +1602,8 @@ fn parse_stmts_from_lines(
                 *pos += 1;
 
                 #[allow(clippy::type_complexity)]
-                let mut cases: Vec<(Vec<Expr>, Vec<(Stmt, bool)>)> = Vec::new();
-                let mut otherwise_body: Option<Vec<(Stmt, bool)>> = None;
+                let mut cases: Vec<(Vec<Expr>, Vec<(Stmt, bool, usize)>)> = Vec::new();
+                let mut otherwise_body: Option<Vec<(Stmt, bool, usize)>> = None;
 
                 loop {
                     if *pos >= lines.len() {
@@ -1642,6 +1647,7 @@ fn parse_stmts_from_lines(
                         otherwise_body,
                     },
                     false,
+                    stmt_line,
                 ));
             }
 
@@ -1662,7 +1668,7 @@ fn parse_stmts_from_lines(
                 }
                 let cond = parse_condition(cond_str)?;
                 *pos += 1;
-                stmts.push((Stmt::DoUntil { body, cond }, false));
+                stmts.push((Stmt::DoUntil { body, cond }, false, stmt_line));
             }
 
             // ── function definition ──────────────────────────────────────────
@@ -1735,12 +1741,13 @@ fn parse_stmts_from_lines(
                         doc,
                     },
                     false,
+                    stmt_line,
                 ));
             }
 
             // ── return ───────────────────────────────────────────────────────
             Some("return") => {
-                stmts.push((Stmt::Return, false));
+                stmts.push((Stmt::Return, false, stmt_line));
                 *pos += 1;
             }
 
@@ -1783,6 +1790,7 @@ fn parse_stmts_from_lines(
                         catch_body,
                     },
                     false,
+                    stmt_line,
                 ));
             }
 
@@ -1797,7 +1805,7 @@ fn parse_stmts_from_lines(
                 // expression parser cannot handle. Convert to a Call so exec_stmts
                 // can intercept it.
                 if line == "clear" {
-                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), vec![])), false));
+                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), vec![])), false, stmt_line));
                     *pos += 1;
                     continue;
                 }
@@ -1809,7 +1817,7 @@ fn parse_stmts_from_lines(
                         .split_whitespace()
                         .map(|n| Expr::StrLiteral(n.to_string()))
                         .collect();
-                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), names)), false));
+                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), names)), false, stmt_line));
                     *pos += 1;
                     continue;
                 }
@@ -1830,13 +1838,13 @@ fn parse_stmts_from_lines(
                     } else {
                         vec![Expr::StrLiteral(arg)]
                     };
-                    stmts.push((Stmt::Expr(Expr::Call("format".to_string(), args)), true));
+                    stmts.push((Stmt::Expr(Expr::Call("format".to_string(), args)), true, stmt_line));
                     *pos += 1;
                     continue;
                 }
 
                 for (stmt_str, silent) in split_stmts(raw) {
-                    stmts.push((parse(stmt_str)?, silent));
+                    stmts.push((parse(stmt_str)?, silent, stmt_line));
                 }
                 *pos += 1;
             }
