@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0+002] - 2026-05-07
+
+### Added
+
+- **`near line N` error messages** — runtime errors that occur inside block
+  statements, function bodies, and scripts executed via `run()`/`source()`
+  now include the 1-based source line number of the failing statement:
+  ```
+  Error: Undefined variable: 'bad_var' near line 3
+  ```
+  - Each `(Stmt, bool)` in the parsed AST now carries a `usize` line number,
+    recorded during parsing from the `pos` counter in `parse_stmts_from_lines`.
+  - `exec_stmts` wraps every `eval_with_io` call with
+    `.map_err(|e| annotate_line(e, stmt_line))?`; errors that already contain
+    `"near line"` are passed through unchanged (innermost location wins).
+  - `catch` variable `e.message` strips the suffix before storing, matching
+    MATLAB/Octave semantics where `e.message` is the clean message and
+    location info lives in `e.stack`.
+  - Single-line block expansions (`if cond; body; end`) map all virtual lines
+    back to the original physical source line.
+  - 7 new regression tests (884 total).
+
 ## [0.30.0+001] - 2026-05-06
 
 ### Added

@@ -123,6 +123,68 @@ comparison for both scalars and matrices.
 
 ---
 
+---
+
+## 19e — `near line N` in error messages
+
+Introduced in **v0.30.0+002**.
+
+Runtime errors that occur inside block statements, function bodies, or scripts
+executed via `run()`/`source()` now include the 1-based source line number of
+the failing statement:
+
+```
+Error: Undefined variable: 'bad_var' near line 3
+```
+
+### Where it applies
+
+| Context | Has line number? |
+|---------|-----------------|
+| Inside `for`/`while`/`if`/`switch`/`do`-`until` body | ✓ |
+| Inside `try`/`catch` body | ✓ |
+| Inside a user-defined function body | ✓ |
+| Script run via `run('file.m')` or `source('file.m')` | ✓ |
+| Single statements typed at the REPL or piped line-by-line | — |
+
+### `try/catch` and `e.message`
+
+The catch variable stores the **original** message without the line suffix,
+matching MATLAB/Octave semantics. Location information in Octave lives in
+`e.stack.line`; in ccalc it is only surfaced in the printed error.
+
+```matlab
+try
+  x = bad_var;
+catch e
+  disp(e.message)   % "Undefined variable: 'bad_var'"  (no "near line")
+end
+```
+
+### Innermost location wins
+
+When errors propagate through nested blocks, the location of the innermost
+failing statement is reported and outer wrappers do not re-annotate:
+
+```matlab
+for k = 1:3
+  if bad_var > 0   % line 2 — this line is reported
+    x = 1;
+  end
+end
+% Error: Undefined variable: 'bad_var' near line 2
+```
+
+**Implementation**: `(Stmt, bool)` throughout the AST became `(Stmt, bool, usize)`.
+`parse_stmts_from_lines` records `*pos + 1` (1-based) at the start of each loop
+iteration. Single-line block expansions (`if cond; body; end`) remap all virtual
+inner lines back to the physical source line. `exec_stmts` wraps `eval_with_io`
+calls with `.map_err(|e| annotate_line(e, stmt_line))?`; `annotate_line` is a
+no-op when `line == 0` (synthetic REPL statements) or when the message already
+contains `"near line"`.
+
+---
+
 ## Example
 
 ```bash

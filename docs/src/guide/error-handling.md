@@ -71,4 +71,20 @@ Error: Undefined variable 'my_valu'; did you mean 'my_value'?
 
 No suggestion is shown when no close match exists.
 
+## Source location in error messages
+
+Errors inside block statements, function bodies, and scripts executed via
+`run()`/`source()` include a `near line N` suffix pointing to the failing line:
+
+```
+Error: Undefined variable: 'v' near line 3
+```
+
+The line number is 1-based and relative to the immediately enclosing block or
+function body, matching Octave's convention.
+
+When an error propagates through nested blocks the **innermost** location is
+kept — outer wrappers do not overwrite it. Inside a `catch` block, `e.message`
+contains the original message without the `near line` suffix.
+
 See [`help errors`](../ccalc/phase14-error-handling.md) for the full reference.
