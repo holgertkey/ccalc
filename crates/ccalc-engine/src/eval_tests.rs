@@ -6212,3 +6212,158 @@ mod char_array_literal_tests {
         }
     }
 }
+
+// ============================================================================
+// contains_end optimization — regression tests (Phase 26)
+// Verify that all `end`-in-index forms still work after the env-clone
+// optimization that skips the HashMap clone when `end` is absent.
+// ============================================================================
+
+mod end_index_regression_tests {
+    use super::*;
+
+    fn run_code(src: &str) -> crate::env::Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .expect("exec failed");
+        env
+    }
+
+    fn scalar_val(env: &crate::env::Env, name: &str) -> f64 {
+        match env.get(name) {
+            Some(Value::Scalar(x)) => *x,
+            other => panic!("{name} not a scalar: {other:?}"),
+        }
+    }
+
+    fn rv(src: &str) -> Vec<f64> {
+        let env = run_code(src);
+        match env.get("r").unwrap() {
+            Value::Matrix(m) => m.iter().copied().collect(),
+            Value::Scalar(n) => vec![*n],  // env.get returns &Value so n is &f64
+            other => panic!("expected numeric, got {other:?}"),
+        }
+    }
+
+    fn sc(src: &str) -> f64 {
+        scalar_val(&run_code(src), "r")
+    }
+
+    // ── read indexing ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn end_read_last_element() {
+        // v(end) — single end reference
+        assert_eq!(sc("v = [10, 20, 30]; r = v(end)"), 30.0);
+    }
+
+    #[test]
+    fn end_read_end_minus_one() {
+        // v(end-1) — arithmetic on end
+        assert_eq!(sc("v = [10, 20, 30]; r = v(end-1)"), 20.0);
+    }
+
+    #[test]
+    fn end_read_range_to_end() {
+        // v(2:end) — range ending at end
+        assert_eq!(rv("v = [10, 20, 30, 40]; r = v(2:end)"), vec![20.0, 30.0, 40.0]);
+    }
+
+    #[test]
+    fn end_read_range_from_start_to_end() {
+        // v(1:end) — full range
+        assert_eq!(rv("v = [5, 6, 7]; r = v(1:end)"), vec![5.0, 6.0, 7.0]);
+    }
+
+    #[test]
+    fn end_read_2d_row() {
+        // A(end, :) — last row
+        let env = run_code("A = [1,2; 3,4; 5,6]; r = A(end, :)");
+        assert_eq!(
+            match env.get("r").unwrap() {
+                Value::Matrix(m) => m.iter().copied().collect::<Vec<_>>(),
+                Value::Scalar(n) => vec![*n],
+                other => panic!("{other:?}"),
+            },
+            vec![5.0, 6.0]
+        );
+    }
+
+    #[test]
+    fn end_read_2d_col() {
+        // A(:, end) — last column
+        let env = run_code("A = [1,2,3; 4,5,6]; r = A(:, end)");
+        assert_eq!(
+            match env.get("r").unwrap() {
+                Value::Matrix(m) => m.iter().copied().collect::<Vec<_>>(),
+                Value::Scalar(n) => vec![*n],
+                other => panic!("{other:?}"),
+            },
+            vec![3.0, 6.0]
+        );
+    }
+
+    // ── write indexing (exec_index_set) ───────────────────────────────────────
+
+    #[test]
+    fn end_write_grow_past_end() {
+        // v(end+1) = x — grow row vector beyond current end
+        let env = run_code("v = [1, 2, 3]; v(end+1) = 99; r = v(4)");
+        assert_eq!(scalar_val(&env, "r"), 99.0);
+    }
+
+    #[test]
+    fn end_write_overwrite_last() {
+        // v(end) = x — overwrite last element
+        assert_eq!(sc("v = [1, 2, 3]; v(end) = 77; r = v(3)"), 77.0);
+    }
+
+    // ── no-end path — simple indexed access must still work ──────────────────
+
+    #[test]
+    fn no_end_indexed_read_by_variable() {
+        // v(j) — no end; exercises the skip-clone branch
+        assert_eq!(sc("v = [10, 20, 30]; j = 2; r = v(j)"), 20.0);
+    }
+
+    #[test]
+    fn no_end_indexed_write_by_variable() {
+        // v(j) = x — no end; exercises the skip-clone write branch
+        assert_eq!(sc("v = [1, 2, 3]; j = 2; v(j) = 99; r = v(j)"), 99.0);
+    }
+
+    #[test]
+    fn no_end_sort_loop_correctness() {
+        // Minimal bubble sort kernel — exercises v(j) reads and v(j+1) writes
+        // in a nested for loop (the hot path for the performance fix).
+        let env = run_code(
+            "v = [5, 3, 1, 4, 2];\n\
+             n = length(v);\n\
+             for i = 1:n-1\n\
+               for j = 1:n-i\n\
+                 if v(j) > v(j+1)\n\
+                   t = v(j);\n\
+                   v(j) = v(j+1);\n\
+                   v(j+1) = t;\n\
+                 end\n\
+               end\n\
+             end\n\
+             r = v(1)",
+        );
+        assert_eq!(scalar_val(&env, "r"), 1.0);
+    }
+}

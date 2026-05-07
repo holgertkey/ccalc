@@ -3615,7 +3615,9 @@ fn call_builtin(
                 Some(ctx) => ctx.write_to_fd(1, &output)?,
                 None => {
                     print!("{output}");
-                    std::io::stdout().flush().ok();
+                    if output.contains('\n') {
+                        std::io::stdout().flush().ok();
+                    }
                 }
             }
             Ok(Value::Void)
@@ -4275,7 +4277,9 @@ fn call_builtin(
                 Some(ctx) => ctx.write_to_fd(1, &output)?,
                 None => {
                     print!("{output}");
-                    std::io::stdout().flush().ok();
+                    if output.contains('\n') {
+                        std::io::stdout().flush().ok();
+                    }
                 }
             }
             Ok(Value::Void)
@@ -4305,7 +4309,9 @@ fn call_builtin(
                     if fd == 1 {
                         use std::io::Write;
                         print!("{output}");
-                        std::io::stdout().flush().ok();
+                        if output.contains('\n') {
+                            std::io::stdout().flush().ok();
+                        }
                     } else {
                         return Err("fprintf: file I/O not available in this context".to_string());
                     }
@@ -7174,6 +7180,37 @@ fn env_with_end(env: &Env, dim_size: usize) -> Env {
     e
 }
 
+/// Returns `true` if `expr` (or any sub-expression) references the identifier `end`.
+///
+/// Used to skip the full [`Env`] clone inside [`eval_index`] when `end` is absent.
+pub(crate) fn contains_end(expr: &Expr) -> bool {
+    match expr {
+        Expr::Var(s) => s == "end",
+        Expr::Number(_)
+        | Expr::Colon
+        | Expr::StrLiteral(_)
+        | Expr::StringObjLiteral(_)
+        | Expr::NaT
+        | Expr::FuncHandle(_) => false,
+        Expr::UnaryMinus(e)
+        | Expr::UnaryNot(e)
+        | Expr::Transpose(e)
+        | Expr::PlainTranspose(e)
+        | Expr::FieldGet(e, _) => contains_end(e),
+        Expr::BinOp(l, _, r) => contains_end(l) || contains_end(r),
+        Expr::Call(_, args) | Expr::DotCall(_, args) => args.iter().any(contains_end),
+        Expr::Matrix(rows) => rows.iter().flat_map(|r| r.iter()).any(contains_end),
+        Expr::Range(a, step, b) => {
+            contains_end(a)
+                || step.as_deref().map_or(false, contains_end)
+                || contains_end(b)
+        }
+        Expr::Lambda { body, .. } => contains_end(body),
+        Expr::CellLiteral(elems) => elems.iter().any(contains_end),
+        Expr::CellIndex(a, b) => contains_end(a) || contains_end(b),
+    }
+}
+
 /// Evaluates `val(args...)` — indexing a variable with one or two index arguments.
 ///
 /// Disambiguation rule (Octave semantics): a name that exists in `Env` is always
@@ -7194,8 +7231,14 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 }
                 Value::StructArray(arr) => {
                     let total = arr.len();
-                    let env1 = env_with_end(env, total);
-                    match resolve_dim(&args[0], total, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, total);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], total, env1)? {
                         DimIdx::All => {
                             // s(:) — return all elements as a new struct array
                             Ok(Value::StructArray(arr.clone()))
@@ -7229,21 +7272,39 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     }
                 }
                 Value::Scalar(n) => {
-                    let env1 = env_with_end(env, 1);
-                    match resolve_dim(&args[0], 1, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, 1);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], 1, env1)? {
                         DimIdx::All | DimIdx::Indices(_) => Ok(Value::Scalar(*n)),
                     }
                 }
                 Value::Complex(re, im) => {
-                    let env1 = env_with_end(env, 1);
-                    match resolve_dim(&args[0], 1, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, 1);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], 1, env1)? {
                         DimIdx::All | DimIdx::Indices(_) => Ok(Value::Complex(*re, *im)),
                     }
                 }
                 Value::Matrix(m) => {
                     let total = m.nrows() * m.ncols();
-                    let env1 = env_with_end(env, total);
-                    match resolve_dim(&args[0], total, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, total);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], total, env1)? {
                         DimIdx::All => {
                             // A(:) → column vector, column-major order
                             let mut flat = Vec::with_capacity(total);
@@ -7287,8 +7348,14 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     // Index into a char array — returns char code(s)
                     let chars: Vec<char> = s.chars().collect();
                     let total = chars.len();
-                    let env1 = env_with_end(env, total);
-                    match resolve_dim(&args[0], total, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, total);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], total, env1)? {
                         DimIdx::All => {
                             let codes: Vec<f64> = chars.iter().map(|&c| c as u32 as f64).collect();
                             if codes.len() == 1 {
@@ -7318,15 +7385,27 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 }
                 Value::StringObj(s) => {
                     // String object indexing — treat as single element
-                    let env1 = env_with_end(env, 1);
-                    match resolve_dim(&args[0], 1, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, 1);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], 1, env1)? {
                         DimIdx::All | DimIdx::Indices(_) => Ok(Value::StringObj(s.clone())),
                     }
                 }
                 Value::DateTimeArray(v) => {
                     let total = v.len();
-                    let env1 = env_with_end(env, total);
-                    match resolve_dim(&args[0], total, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, total);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], total, env1)? {
                         DimIdx::All => Ok(Value::DateTimeArray(v.clone())),
                         DimIdx::Indices(idxs) => {
                             if idxs.len() == 1 {
@@ -7358,8 +7437,14 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 }
                 Value::DurationArray(v) => {
                     let total = v.len();
-                    let env1 = env_with_end(env, total);
-                    match resolve_dim(&args[0], total, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, total);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], total, env1)? {
                         DimIdx::All => Ok(Value::DurationArray(v.clone())),
                         DimIdx::Indices(idxs) => {
                             if idxs.len() == 1 {
@@ -7391,8 +7476,14 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 }
                 Value::DateTime(_) | Value::Duration(_) => {
                     // Scalar datetime/duration: indexing with (1) is valid, returns self.
-                    let env1 = env_with_end(env, 1);
-                    match resolve_dim(&args[0], 1, &env1)? {
+                    let _owned_env;
+                    let env1: &Env = if contains_end(&args[0]) {
+                        _owned_env = env_with_end(env, 1);
+                        &_owned_env
+                    } else {
+                        env
+                    };
+                    match resolve_dim(&args[0], 1, env1)? {
                         DimIdx::All | DimIdx::Indices(_) => Ok(val.clone()),
                     }
                 }
@@ -7423,10 +7514,22 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 Value::Matrix(m) => (m.nrows(), m.ncols()),
                 _ => unreachable!(),
             };
-            let env_r = env_with_end(env, nrows);
-            let env_c = env_with_end(env, ncols);
-            let row_idx = resolve_dim(&args[0], nrows, &env_r)?;
-            let col_idx = resolve_dim(&args[1], ncols, &env_c)?;
+            let _owned_r;
+            let env_r: &Env = if contains_end(&args[0]) {
+                _owned_r = env_with_end(env, nrows);
+                &_owned_r
+            } else {
+                env
+            };
+            let _owned_c;
+            let env_c: &Env = if contains_end(&args[1]) {
+                _owned_c = env_with_end(env, ncols);
+                &_owned_c
+            } else {
+                env
+            };
+            let row_idx = resolve_dim(&args[0], nrows, env_r)?;
+            let col_idx = resolve_dim(&args[1], ncols, env_c)?;
 
             let rows: Vec<usize> = match row_idx {
                 DimIdx::All => (0..nrows).collect(),

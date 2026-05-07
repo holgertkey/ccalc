@@ -1521,8 +1521,14 @@ pub fn exec_stmts(
                     Some(Value::Cell(v)) => v.len(),
                     _ => 0,
                 };
-                let env_end = write_env_with_end(env, cell_len);
-                let idx = eval_with_io(idx_expr, &env_end, io)
+                let _owned_end;
+                let env_end: &Env = if crate::eval::contains_end(idx_expr) {
+                    _owned_end = write_env_with_end(env, cell_len);
+                    &_owned_end
+                } else {
+                    env
+                };
+                let idx = eval_with_io(idx_expr, env_end, io)
                     .map_err(|e| annotate_line(e, *stmt_line))?;
                 let rhs = eval_with_io(val_expr, env, io)
                     .map_err(|e| annotate_line(e, *stmt_line))?;
@@ -1800,8 +1806,14 @@ fn exec_index_set(
     match indices.len() {
         1 => {
             let total = mat.nrows() * mat.ncols();
-            let env_end = write_env_with_end(env, total);
-            let widx = resolve_write_dim(&indices[0], total, &env_end, io)?;
+            let _owned_end;
+            let env_end: &Env = if crate::eval::contains_end(&indices[0]) {
+                _owned_end = write_env_with_end(env, total);
+                &_owned_end
+            } else {
+                env
+            };
+            let widx = resolve_write_dim(&indices[0], total, env_end, io)?;
 
             // Determine which 0-based positions to write.
             let positions: Vec<usize> = match widx {
@@ -1873,10 +1885,22 @@ fn exec_index_set(
         2 => {
             let nrows = mat.nrows();
             let ncols = mat.ncols();
-            let env_r = write_env_with_end(env, nrows);
-            let env_c = write_env_with_end(env, ncols);
-            let ridx = resolve_write_dim(&indices[0], nrows, &env_r, io)?;
-            let cidx = resolve_write_dim(&indices[1], ncols, &env_c, io)?;
+            let _owned_r;
+            let env_r: &Env = if crate::eval::contains_end(&indices[0]) {
+                _owned_r = write_env_with_end(env, nrows);
+                &_owned_r
+            } else {
+                env
+            };
+            let _owned_c;
+            let env_c: &Env = if crate::eval::contains_end(&indices[1]) {
+                _owned_c = write_env_with_end(env, ncols);
+                &_owned_c
+            } else {
+                env
+            };
+            let ridx = resolve_write_dim(&indices[0], nrows, env_r, io)?;
+            let cidx = resolve_write_dim(&indices[1], ncols, env_c, io)?;
 
             let rows: Vec<usize> = match ridx {
                 WriteIdx::All => (0..nrows.max(1)).collect(),
