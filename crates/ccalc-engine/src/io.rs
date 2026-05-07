@@ -122,12 +122,16 @@ impl IoContext {
         match fd {
             1 => {
                 print!("{s}");
-                std::io::stdout().flush().ok();
+                if s.contains('\n') {
+                    std::io::stdout().flush().ok();
+                }
                 Ok(())
             }
             2 => {
                 eprint!("{s}");
-                std::io::stderr().flush().ok();
+                if s.contains('\n') {
+                    std::io::stderr().flush().ok();
+                }
                 Ok(())
             }
             _ => match self.handles.get_mut(&fd) {
