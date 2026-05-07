@@ -6097,8 +6097,15 @@ mod char_array_literal_tests {
         let mut env = crate::env::Env::new();
         env.insert("ans".to_string(), Value::Scalar(0.0));
         let mut io = IoContext::new();
-        crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
-            .expect("exec failed");
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .expect("exec failed");
         env
     }
 
@@ -6199,9 +6206,7 @@ mod char_array_literal_tests {
 
     #[test]
     fn dynamic_variable_naming_with_concat() {
-        let env = run_code(
-            "for k = 1:3\n  eval(['v' num2str(k) ' = k*10'])\nend",
-        );
+        let env = run_code("for k = 1:3\n  eval(['v' num2str(k) ' = k*10'])\nend");
         match env.get("v1") {
             Some(Value::Scalar(v)) => assert!((v - 10.0).abs() < 1e-9),
             other => panic!("v1 not a scalar: {other:?}"),
@@ -6254,7 +6259,7 @@ mod end_index_regression_tests {
         let env = run_code(src);
         match env.get("r").unwrap() {
             Value::Matrix(m) => m.iter().copied().collect(),
-            Value::Scalar(n) => vec![*n],  // env.get returns &Value so n is &f64
+            Value::Scalar(n) => vec![*n], // env.get returns &Value so n is &f64
             other => panic!("expected numeric, got {other:?}"),
         }
     }
@@ -6280,7 +6285,10 @@ mod end_index_regression_tests {
     #[test]
     fn end_read_range_to_end() {
         // v(2:end) — range ending at end
-        assert_eq!(rv("v = [10, 20, 30, 40]; r = v(2:end)"), vec![20.0, 30.0, 40.0]);
+        assert_eq!(
+            rv("v = [10, 20, 30, 40]; r = v(2:end)"),
+            vec![20.0, 30.0, 40.0]
+        );
     }
 
     #[test]

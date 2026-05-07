@@ -849,8 +849,7 @@ pub fn exec_stmts(
         match stmt {
             Stmt::Assign(name, expr) => {
                 set_nargout(1);
-                let val = eval_with_io(expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let val = eval_with_io(expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 env.insert(name.clone(), val.clone());
                 // Mirror to the shared global store when declared global in this scope.
                 if is_global(name) {
@@ -1294,8 +1293,7 @@ pub fn exec_stmts(
                     continue;
                 }
 
-                let val = eval_with_io(expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let val = eval_with_io(expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 env.insert("ans".to_string(), val.clone());
                 if !silent && !matches!(val, Value::Void) {
                     print_value(None, &val, fmt, base, compact);
@@ -1308,16 +1306,17 @@ pub fn exec_stmts(
                 elseif_branches,
                 else_body,
             } => {
-                let cond_val = eval_with_io(cond, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let cond_val =
+                    eval_with_io(cond, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let chosen: Option<&[(Stmt, bool, usize)]> = if is_truthy(&cond_val) {
                     Some(body)
                 } else {
                     let mut found = None;
                     for (ei_cond, ei_body) in elseif_branches {
-                        if is_truthy(&eval_with_io(ei_cond, env, io)
-                            .map_err(|e| annotate_line(e, *stmt_line))?)
-                        {
+                        if is_truthy(
+                            &eval_with_io(ei_cond, env, io)
+                                .map_err(|e| annotate_line(e, *stmt_line))?,
+                        ) {
                             found = Some(ei_body.as_slice());
                             break;
                         }
@@ -1339,8 +1338,8 @@ pub fn exec_stmts(
                 range_expr,
                 body,
             } => {
-                let range_val = eval_with_io(range_expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let range_val =
+                    eval_with_io(range_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let iter_cols: Vec<Value> = match range_val {
                     Value::Scalar(n) => vec![Value::Scalar(n)],
                     Value::Matrix(m) => {
@@ -1377,9 +1376,9 @@ pub fn exec_stmts(
             }
 
             Stmt::While { cond, body } => loop {
-                if !is_truthy(&eval_with_io(cond, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?)
-                {
+                if !is_truthy(
+                    &eval_with_io(cond, env, io).map_err(|e| annotate_line(e, *stmt_line))?,
+                ) {
                     break;
                 }
                 match exec_stmts(body, env, io, fmt, base, compact)? {
@@ -1399,8 +1398,8 @@ pub fn exec_stmts(
                 cases,
                 otherwise_body,
             } => {
-                let switch_val = eval_with_io(expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let switch_val =
+                    eval_with_io(expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let mut matched = false;
                 'switch_loop: for (case_exprs, case_body) in cases {
                     for case_expr in case_exprs {
@@ -1463,9 +1462,9 @@ pub fn exec_stmts(
                     Some(Signal::Continue) | None => {}
                     Some(Signal::Return) => return Ok(Some(Signal::Return)),
                 }
-                if is_truthy(&eval_with_io(cond, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?)
-                {
+                if is_truthy(
+                    &eval_with_io(cond, env, io).map_err(|e| annotate_line(e, *stmt_line))?,
+                ) {
                     break;
                 }
             },
@@ -1530,8 +1529,8 @@ pub fn exec_stmts(
                 };
                 let idx = eval_with_io(idx_expr, env_end, io)
                     .map_err(|e| annotate_line(e, *stmt_line))?;
-                let rhs = eval_with_io(val_expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let rhs =
+                    eval_with_io(val_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let i = match idx {
                     Value::Scalar(n) => n as isize,
                     _ => return Err(format!("{cell_name}{{}}: index must be a scalar integer")),
@@ -1574,8 +1573,8 @@ pub fn exec_stmts(
 
             // ── struct field assignment ──────────────────────────────────────
             Stmt::FieldSet(base_name, path, rhs_expr) => {
-                let rhs = eval_with_io(rhs_expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let rhs =
+                    eval_with_io(rhs_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let root = match env.remove(base_name) {
                     Some(Value::Struct(m)) => m,
                     None => IndexMap::new(),
@@ -1594,10 +1593,10 @@ pub fn exec_stmts(
 
             // ── struct array element field assignment ────────────────────────
             Stmt::StructArrayFieldSet(base_name, idx_expr, path, rhs_expr) => {
-                let rhs = eval_with_io(rhs_expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
-                let idx_val = eval_with_io(idx_expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let rhs =
+                    eval_with_io(rhs_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
+                let idx_val =
+                    eval_with_io(idx_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let idx = match &idx_val {
                     Value::Scalar(n) => {
                         let i = *n as isize;
@@ -1642,8 +1641,7 @@ pub fn exec_stmts(
                 indices,
                 value,
             } => {
-                let rhs = eval_with_io(value, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let rhs = eval_with_io(value, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 // For persistent vars: refresh from the store before applying a partial
                 // update so that values written by recursive calls are not overwritten.
                 if is_persistent(name) {
@@ -1667,8 +1665,7 @@ pub fn exec_stmts(
             // ── multi-assign ─────────────────────────────────────────────────
             Stmt::MultiAssign { targets, expr } => {
                 set_nargout(targets.len());
-                let val = eval_with_io(expr, env, io)
-                    .map_err(|e| annotate_line(e, *stmt_line))?;
+                let val = eval_with_io(expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let vals: Vec<Value> = match val {
                     Value::Tuple(v) => v,
                     other => vec![other],

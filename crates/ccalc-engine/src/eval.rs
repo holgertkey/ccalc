@@ -1189,9 +1189,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 }
                 MatKind::Str => {
                     if evaluated.len() > 1 {
-                        return Err(
-                            "Multi-row char-array literals are not supported".to_string(),
-                        );
+                        return Err("Multi-row char-array literals are not supported".to_string());
                     }
                     let mut out = String::new();
                     for val in &evaluated[0] {
@@ -1214,8 +1212,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                             }
                             _ => {
                                 return Err(
-                                    "This type cannot be used in a char-array literal".to_string(),
-                                )
+                                    "This type cannot be used in a char-array literal".to_string()
+                                );
                             }
                         }
                     }
@@ -7201,9 +7199,7 @@ pub(crate) fn contains_end(expr: &Expr) -> bool {
         Expr::Call(_, args) | Expr::DotCall(_, args) => args.iter().any(contains_end),
         Expr::Matrix(rows) => rows.iter().flat_map(|r| r.iter()).any(contains_end),
         Expr::Range(a, step, b) => {
-            contains_end(a)
-                || step.as_deref().map_or(false, contains_end)
-                || contains_end(b)
+            contains_end(a) || step.as_deref().is_some_and(contains_end) || contains_end(b)
         }
         Expr::Lambda { body, .. } => contains_end(body),
         Expr::CellLiteral(elems) => elems.iter().any(contains_end),

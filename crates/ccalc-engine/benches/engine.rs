@@ -34,7 +34,11 @@ fn run(code: &str, env: &mut Env) {
 }
 
 /// Execute a pre-parsed statement list, panicking on error. Used inside `b.iter()`.
-fn exec_checked(stmts: &[(ccalc_engine::parser::Stmt, bool)], env: &mut Env, io: &mut IoContext) {
+fn exec_checked(
+    stmts: &[(ccalc_engine::parser::Stmt, bool, usize)],
+    env: &mut Env,
+    io: &mut IoContext,
+) {
     exec_stmts(stmts, env, io, &FormatMode::Short, Base::Dec, true)
         .unwrap_or_else(|e| panic!("bench exec failed: {e}"));
 }

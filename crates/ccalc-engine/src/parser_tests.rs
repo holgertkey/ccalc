@@ -4458,9 +4458,7 @@ fn test_near_line_not_double_annotated() {
 #[test]
 fn test_try_catch_message_no_line_annotation() {
     // e.message in catch should NOT contain "near line" — MATLAB semantics.
-    let env = run_block(
-        "try\n  bad_var;\ncatch e\n  msg = e.message;\nend",
-    );
+    let env = run_block("try\n  bad_var;\ncatch e\n  msg = e.message;\nend");
     match env.get("msg") {
         Some(Value::Str(s)) => {
             assert!(

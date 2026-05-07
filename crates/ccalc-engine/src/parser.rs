@@ -1484,7 +1484,11 @@ fn parse_stmts_from_lines(
                 let mut vpos = 0;
                 let inner = parse_stmts_from_lines(&virtual_refs, &mut vpos, stop_at)?;
                 // All virtual lines map to the same physical source line.
-                stmts.extend(inner.into_iter().map(|(s, silent, _)| (s, silent, stmt_line)));
+                stmts.extend(
+                    inner
+                        .into_iter()
+                        .map(|(s, silent, _)| (s, silent, stmt_line)),
+                );
                 *pos += 1;
                 continue;
             }
@@ -1805,7 +1809,11 @@ fn parse_stmts_from_lines(
                 // expression parser cannot handle. Convert to a Call so exec_stmts
                 // can intercept it.
                 if line == "clear" {
-                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), vec![])), false, stmt_line));
+                    stmts.push((
+                        Stmt::Expr(Expr::Call("clear".to_string(), vec![])),
+                        false,
+                        stmt_line,
+                    ));
                     *pos += 1;
                     continue;
                 }
@@ -1817,7 +1825,11 @@ fn parse_stmts_from_lines(
                         .split_whitespace()
                         .map(|n| Expr::StrLiteral(n.to_string()))
                         .collect();
-                    stmts.push((Stmt::Expr(Expr::Call("clear".to_string(), names)), false, stmt_line));
+                    stmts.push((
+                        Stmt::Expr(Expr::Call("clear".to_string(), names)),
+                        false,
+                        stmt_line,
+                    ));
                     *pos += 1;
                     continue;
                 }
@@ -1838,7 +1850,11 @@ fn parse_stmts_from_lines(
                     } else {
                         vec![Expr::StrLiteral(arg)]
                     };
-                    stmts.push((Stmt::Expr(Expr::Call("format".to_string(), args)), true, stmt_line));
+                    stmts.push((
+                        Stmt::Expr(Expr::Call("format".to_string(), args)),
+                        true,
+                        stmt_line,
+                    ));
                     *pos += 1;
                     continue;
                 }
