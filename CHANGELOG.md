@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0+003] - 2026-05-07
+
+### Fixed
+
+- **`fprintf` / `disp` output stutter** — `IoContext::write_to_fd` (the code
+  path used by all REPL and script execution) now flushes stdout/stderr only
+  when the output string contains a newline character, instead of after every
+  single write. Previously, each `fprintf('%d ', v(k))` call inside a loop
+  triggered a separate OS `flush` syscall, causing visible character-by-character
+  output. Now all numbers on a line appear atomically when the trailing
+  `fprintf('\n')` flushes the buffer.
+
+### Performance
+
+- **`contains_end` optimization — up to ~700× fewer env clones in index-heavy
+  loops** — added `pub(crate) fn contains_end(expr: &Expr) -> bool` in
+  `eval.rs` that recursively checks whether an index expression references the
+  identifier `end`. All 11 `env_with_end` call sites in `eval_index` and all
+  4 `write_env_with_end` call sites in `exec.rs` now skip the full
+  `HashMap::clone()` when `end` is absent. For typical loops with indices like
+  `v(j)` or `v(j+1)`, **zero** environment clones occur — previously each
+  indexed read or write cloned the entire variable environment.
+  - 11 regression tests added in `end_index_regression_tests` (895 total).
+
 ## [0.30.0+002] - 2026-05-07
 
 ### Added
