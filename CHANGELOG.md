@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0+005] - 2026-05-08
+
+### Fixed
+
+- **`prctile` / `iqr` interpolation method** — switched from Type 7 (R's
+  formula, `idx = (n-1)*p/100`) to **Type 5 / Hazen** (`idx = n*p/100 - 0.5`,
+  clamped to `[0, n-1]`), which matches Octave and MATLAB.  Examples that
+  exposed the difference:
+  - `prctile([1 1 2 2 3 4 7 12 20], 25)` → **1.75** (was 2)
+  - `prctile([1 1 2 2 3 4 7 12 20], 75)` → **8.25** (was 7), IQR **6.5** (was 5)
+  - `prctile([2 4 4 4 5 5 7 9], 75)` → **6** (was 5.5), IQR **2** (was 1.5)
+  - `iqr([1 2 3 4 5])` → **2.5** (was 2)
+
+- **`skewness` for constant vectors** — when all values are equal, `std = 0`
+  and the formula `m3 / m2^(3/2)` reduces to `0/0`.  Now returns **NaN** to
+  match Octave (was returning 0).  Consistent with `kurtosis`, which already
+  returned NaN in this case.
+
+  3 Octave-pinning regression tests added for `prctile`; 902 tests total.
+
 ## [0.30.0+004] - 2026-05-08
 
 ### Performance

@@ -2787,17 +2787,52 @@ fn test_prctile_matrix_columnwise() {
     assert!((m[[0, 1]] - 20.0).abs() < 1e-10);
 }
 
+// Octave-compatibility regression tests for prctile (Type 5 / Hazen formula)
+
+#[test]
+fn test_prctile_octave_right_skewed_q1() {
+    // prctile([1 1 2 2 3 4 7 12 20], 25) = 1.75  (Octave verified)
+    let env = empty_env();
+    let v = eval_parse("prctile([1 1 2 2 3 4 7 12 20], 25)", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!((x - 1.75).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_octave_right_skewed_q3() {
+    // prctile([1 1 2 2 3 4 7 12 20], 75) = 8.25  (Octave verified)
+    let env = empty_env();
+    let v = eval_parse("prctile([1 1 2 2 3 4 7 12 20], 75)", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!((x - 8.25).abs() < 1e-10);
+}
+
+#[test]
+fn test_prctile_octave_classic_q3() {
+    // prctile([2 4 4 4 5 5 7 9], 75) = 6  (Octave verified)
+    let env = empty_env();
+    let v = eval_parse("prctile([2 4 4 4 5 5 7 9], 75)", &env).unwrap();
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!((x - 6.0).abs() < 1e-10);
+}
+
 // --- iqr ---
 
 #[test]
 fn test_iqr_basic() {
-    // iqr([1 2 3 4 5]) = prctile(75) - prctile(25) = 4 - 2 = 2
+    // iqr([1 2 3 4 5]): Octave Type-5 → Q1=1.75, Q3=4.25, iqr=2.5
     let env = empty_env();
     let v = eval_parse("iqr([1 2 3 4 5])", &env).unwrap();
     let Value::Scalar(x) = v else {
         panic!("expected scalar")
     };
-    assert!((x - 2.0).abs() < 1e-10);
+    assert!((x - 2.5).abs() < 1e-10);
 }
 
 #[test]
@@ -3001,10 +3036,14 @@ fn test_skewness_scalar_is_zero() {
 }
 
 #[test]
-fn test_skewness_constant_vector_is_zero() {
+fn test_skewness_constant_vector_is_nan() {
+    // constant vector: std=0, so m3/m2^(3/2) = 0/0 → NaN (Octave-compatible)
     let env = empty_env();
     let v = eval_parse("skewness([3 3 3 3])", &env).unwrap();
-    assert_eq!(v, Value::Scalar(0.0));
+    let Value::Scalar(x) = v else {
+        panic!("expected scalar")
+    };
+    assert!(x.is_nan());
 }
 
 // --- kurtosis ---

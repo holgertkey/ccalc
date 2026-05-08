@@ -1853,7 +1853,8 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
         return sorted[0];
     }
     let p = p.clamp(0.0, 100.0);
-    let idx = p / 100.0 * (n - 1) as f64;
+    // Octave/MATLAB Type 5 (Hazen): r = n*p/100 + 0.5 (1-indexed), clamped to [1,n].
+    let idx = (p / 100.0 * n as f64 - 0.5).max(0.0).min((n - 1) as f64);
     let lo = idx.floor() as usize;
     let hi = idx.ceil() as usize;
     let frac = idx - lo as f64;
@@ -3577,7 +3578,7 @@ fn call_builtin(
                 let mean = s.iter().sum::<f64>() / n as f64;
                 let m2 = s.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64;
                 if m2 == 0.0 {
-                    return 0.0;
+                    return f64::NAN;
                 }
                 let m3 = s.iter().map(|&x| (x - mean).powi(3)).sum::<f64>() / n as f64;
                 m3 / m2.powf(1.5)
