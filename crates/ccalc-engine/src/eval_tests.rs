@@ -6375,3 +6375,117 @@ mod end_index_regression_tests {
         assert_eq!(scalar_val(&env, "r"), 1.0);
     }
 }
+
+// ── Loop-performance regression tests ────────────────────────────────────────
+//
+// These guard against the O(n²) regressions fixed in v0.30.0+004:
+//   1. exec_index_set cloning the whole matrix on every indexed write.
+//   2. eval_inner's Expr::Call cloning the whole matrix on every indexed read.
+//   3. Repeated filesystem stat() calls for builtins inside loops (autoload miss).
+//
+// All three tests must produce correct results; the performance contract is
+// implicit (they would time-out or OOM under the old O(n²) code).
+mod loop_performance_regression_tests {
+    use super::*;
+
+    fn run(src: &str) -> crate::env::Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
+            .expect("exec failed");
+        env
+    }
+
+    fn sc(env: &crate::env::Env, name: &str) -> f64 {
+        match env.get(name) {
+            Some(Value::Scalar(x)) => *x,
+            other => panic!("{name} not a scalar: {other:?}"),
+        }
+    }
+
+    fn row_vec(env: &crate::env::Env, name: &str) -> Vec<f64> {
+        match env.get(name) {
+            Some(Value::Matrix(m)) => m.iter().copied().collect(),
+            Some(Value::Scalar(x)) => vec![*x],
+            other => panic!("{name} not numeric: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn indexed_write_loop_n1000() {
+        // y(k) = k in a 1000-iteration loop — would be quadratic before the fix.
+        let env = run(
+            "n = 1000;\n\
+             y = zeros(1, n);\n\
+             for k = 1:n\n\
+               y(k) = k;\n\
+             end",
+        );
+        let y = row_vec(&env, "y");
+        assert_eq!(y.len(), 1000);
+        assert_eq!(y[0], 1.0);
+        assert_eq!(y[499], 500.0);
+        assert_eq!(y[999], 1000.0);
+    }
+
+    #[test]
+    fn indexed_read_write_loop_n1000() {
+        // Reads x(k) and writes y(k) inside a 1000-iteration loop.
+        // Both x(k) reads and y(k) writes were O(n) per iteration before the fix.
+        let env = run(
+            "n = 1000;\n\
+             x = linspace(0, 1, n);\n\
+             y = zeros(1, n);\n\
+             for k = 1:n\n\
+               y(k) = x(k) * 2;\n\
+             end",
+        );
+        let y = row_vec(&env, "y");
+        assert_eq!(y.len(), 1000);
+        assert!((y[0] - 0.0).abs() < 1e-10);
+        // linspace(0,1,1000): x(500) = 499/999 * 2 ≈ 0.9980 (not exactly 1.0)
+        assert!((y[499] - 2.0 * 499.0 / 999.0).abs() < 1e-10);
+        assert!((y[999] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn lambda_call_loop_n1000() {
+        // Calls an anonymous function 1000 times inside a loop.
+        // The autoload miss-cache prevents O(n) filesystem stat() calls per iteration.
+        let env = run(
+            "n = 1000;\n\
+             f = @(x) x * x;\n\
+             s = 0;\n\
+             for k = 1:n\n\
+               s = s + f(k);\n\
+             end",
+        );
+        // sum of k^2 for k=1..1000 = n*(n+1)*(2n+1)/6
+        let expected = 1000.0 * 1001.0 * 2001.0 / 6.0;
+        assert!((sc(&env, "s") - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn lambda_with_indexed_read_loop_n500() {
+        // Combines lambda call + indexed read — the pattern in trapz_rule.
+        let env = run(
+            "n = 500;\n\
+             f = @(x) x * x;\n\
+             x = linspace(1, 2, n);\n\
+             y = zeros(1, n);\n\
+             for k = 1:n\n\
+               y(k) = f(x(k));\n\
+             end",
+        );
+        let y = row_vec(&env, "y");
+        assert_eq!(y.len(), 500);
+        assert!((y[0] - 1.0).abs() < 1e-10);
+        assert!((y[499] - 4.0).abs() < 1e-6);
+    }
+}

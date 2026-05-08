@@ -51,6 +51,9 @@ thread_local! {
     static AUTOLOAD_HOOK: Cell<Option<AutoloadHook>> = const { Cell::new(None) };
     /// Cache of autoloaded functions — populated by the autoload hook, read by eval_inner.
     static AUTOLOAD_CACHE: RefCell<Env> = RefCell::new(Env::new());
+    /// Names that were searched and NOT found on the path — avoids repeated filesystem
+    /// stat() calls for built-in names (sin, cos, …) inside tight loops.
+    static AUTOLOAD_MISS_CACHE: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
 }
 
 /// Registers the autoload hook. Called by `exec::init()`.
@@ -63,21 +66,36 @@ pub fn autoload_cache_insert(name: String, val: Value) {
     AUTOLOAD_CACHE.with(|c| c.borrow_mut().insert(name, val));
 }
 
+/// Clears the negative-autoload miss cache.
+///
+/// Call this when the session path changes so that names previously not found
+/// on the old path can be re-searched on the updated path.
+pub fn clear_autoload_miss_cache() {
+    AUTOLOAD_MISS_CACHE.with(|c| c.borrow_mut().clear());
+}
+
 /// Returns an autoloaded function by name, triggering the autoload hook if needed.
 ///
-/// Checks the cache first; if not present, fires the registered hook (which searches
-/// the session path for `<name>.calc` / `<name>.m`). Returns `None` when neither the
-/// cache nor the hook can resolve the name.
+/// Checks the positive cache first, then the negative (miss) cache, and only fires
+/// the filesystem hook when the name has not been tried before.  Returns `None` when
+/// neither the cache nor the hook can resolve the name.
 pub fn resolve_autoloaded(name: &str) -> Option<Value> {
     let cached = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned());
     if cached.is_some() {
         return cached;
     }
+    if AUTOLOAD_MISS_CACHE.with(|c| c.borrow().contains(name)) {
+        return None;
+    }
     let hook = AUTOLOAD_HOOK.with(|c| c.get());
     if let Some(f) = hook {
         f(name);
     }
-    AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
+    let found = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned());
+    if found.is_none() {
+        AUTOLOAD_MISS_CACHE.with(|c| c.borrow_mut().insert(name.to_string()));
+    }
+    found
 }
 
 // ── Eval-string hook (set by exec::init) ────────────────────────────────────
@@ -673,7 +691,15 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // If the name resolves to a variable in env, check its type.
             // User functions (Lambda, Function) are called; other values are indexed.
             // Variables shadow built-in function names (Octave semantics).
-            if let Some(val) = env.get(name).cloned() {
+            //
+            // Non-function variables are forwarded via borrow (no clone) to avoid
+            // copying large matrix values on every indexed read (e.g. x(k) in a loop).
+            if let Some(env_val) = env.get(name) {
+                if !matches!(env_val, Value::Lambda(_) | Value::Function { .. }) {
+                    return eval_index(env_val, args, env);
+                }
+                // Lambda/Function: clone is cheap (Rc for Lambda, Strings for Function).
+                let val = env_val.clone();
                 match &val {
                     Value::Lambda(f) => {
                         // Evaluate arguments and call the closure directly.
@@ -717,24 +743,28 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                             }
                         };
                     }
-                    _ => return eval_index(&val, args, env),
+                    _ => unreachable!(),
                 }
             }
-            // Autoload: if name is not in env and not yet tried as a builtin,
-            // ask exec.rs to search for <name>.calc / <name>.m on the path.
-            // If found, the function is inserted into env and we call it directly.
-            // Autoload: search for <name>.calc / <name>.m if not in env or cache.
-            let cached = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned());
-            let autoloaded_val = cached.or_else(|| {
-                let loaded = AUTOLOAD_HOOK
-                    .with(|c| c.get())
-                    .is_some_and(|hook| hook(name));
-                if loaded {
-                    AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
-                } else {
-                    None
-                }
-            });
+            // Autoload: search for <name>.calc / <name>.m if not in env.
+            // Check positive cache → negative (miss) cache → fire filesystem hook.
+            // Names that fail the hook are recorded in the miss cache so the
+            // filesystem is not searched again within the same session.
+            let autoloaded_val = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
+                .or_else(|| {
+                    if AUTOLOAD_MISS_CACHE.with(|c| c.borrow().contains(name.as_str())) {
+                        return None;
+                    }
+                    let loaded = AUTOLOAD_HOOK
+                        .with(|c| c.get())
+                        .is_some_and(|hook| hook(name));
+                    if loaded {
+                        AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
+                    } else {
+                        AUTOLOAD_MISS_CACHE.with(|c| c.borrow_mut().insert(name.to_string()));
+                        None
+                    }
+                });
             if let Some(val) = autoloaded_val {
                 let mut evaled = Vec::with_capacity(args.len());
                 for a in args {

@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.30.0+004] - 2026-05-08
+
+### Performance
+
+- **O(n²) → O(n) loop performance** — three bottlenecks fixed that caused
+  loops with indexed reads/writes and lambda calls to degrade quadratically:
+
+  1. **`exec_index_set` matrix clone** — the indexed-write path
+     (`y(k) = val`) previously cloned the entire target matrix on every
+     iteration via `env.get(name).clone()`.  Now uses `env.remove()` after
+     index-expression resolution to take ownership (move, not copy).
+     For a pre-allocated 10 001-element vector this eliminated ~800 MB of
+     unnecessary data copying per `trapz_rule(n=10000)` call.
+
+  2. **`eval_inner` indexed-read clone** — `Expr::Call` dispatch checked
+     `env.get(name).cloned()` to determine whether a name is a variable to
+     index or a function to call.  For matrix variables this cloned the
+     whole array.  Now the code uses a borrow for non-function values
+     (`eval_index(env_val, args, env)`) and only clones for `Lambda`/`Function`
+     (cheap: `Rc` reference count or `String` fields).
+
+  3. **Autoload miss cache** — when a name that is a built-in (e.g. `sin`,
+     `cos`, `exp`) is called inside a lambda, `eval_inner` previously fired
+     `try_autoload(name)` on every call.  That function searches the session
+     path with multiple `Path::exists()` filesystem stat() calls, and the
+     negative result was never cached.  Added `AUTOLOAD_MISS_CACHE`
+     (`thread_local HashSet<String>`) so each name is searched at most once
+     per session.  This reduced per-lambda-call overhead from ~2.4 ms to
+     ~0.06 ms for typical built-in functions.
+
+  Combined effect: `trapz_rule_demo.m` (including the n = 10 000 convergence
+  table in Example 4) dropped from **≈ 28 s → ≈ 0.3 s** (~97× speedup).
+  These optimizations apply broadly to any loop that does repeated indexed
+  reads, indexed writes, or anonymous-function calls on vectors.
+
+  - 4 regression tests added in `loop_performance_regression_tests` (899 total).
+
 ## [0.30.0+003] - 2026-05-07
 
 ### Fixed

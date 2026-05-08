@@ -1788,29 +1788,32 @@ fn exec_index_set(
     env: &mut Env,
     io: &mut IoContext,
 ) -> Result<(), String> {
-    // Represent target variable as a matrix (scalar → 1×1, empty var → 0×0).
-    let (mut mat, was_scalar) = match env.get(name) {
-        Some(Value::Matrix(m)) => (m.clone(), false),
-        Some(Value::Scalar(n)) => (Array2::from_elem((1, 1), *n), true),
-        None | Some(Value::Void) => (Array2::zeros((0, 0)), false),
-        Some(_) => {
-            return Err(format!(
-                "'{name}' is not a matrix; cannot use () indexed assignment"
-            ));
-        }
-    };
-
     match indices.len() {
         1 => {
-            let total = mat.nrows() * mat.ncols();
-            let _owned_end;
-            let env_end: &Env = if crate::eval::contains_end(&indices[0]) {
-                _owned_end = write_env_with_end(env, total);
-                &_owned_end
-            } else {
-                env
+            // Borrow env read-only to get matrix dimensions — no clone.
+            let (total, nrows_hint, ncols_hint) = match env.get(name) {
+                Some(Value::Matrix(m)) => (m.nrows() * m.ncols(), m.nrows(), m.ncols()),
+                Some(Value::Scalar(_)) => (1, 1, 1),
+                None | Some(Value::Void) => (0, 0, 0),
+                Some(_) => {
+                    return Err(format!(
+                        "'{name}' is not a matrix; cannot use () indexed assignment"
+                    ))
+                }
             };
-            let widx = resolve_write_dim(&indices[0], total, env_end, io)?;
+
+            // Resolve the index expression while env still contains `name`, so that
+            // self-referential indices like A(A(1)) = v work correctly.
+            let widx = {
+                let _owned_end;
+                let env_end: &Env = if crate::eval::contains_end(&indices[0]) {
+                    _owned_end = write_env_with_end(env, total);
+                    &_owned_end
+                } else {
+                    env
+                };
+                resolve_write_dim(&indices[0], total, env_end, io)?
+            };
 
             // Determine which 0-based positions to write.
             let positions: Vec<usize> = match widx {
@@ -1844,17 +1847,31 @@ fn exec_index_set(
             let required = required.max(total);
 
             // Determine output shape: keep original orientation when growing a vector.
-            let (out_rows, out_cols) = if mat.nrows() == 0 || mat.ncols() == 0 {
+            let (out_rows, out_cols) = if nrows_hint == 0 || ncols_hint == 0 {
                 // Empty → default to row vector.
                 (1, required)
-            } else if mat.nrows() == 1 {
+            } else if nrows_hint == 1 {
                 (1, required)
-            } else if mat.ncols() == 1 {
+            } else if ncols_hint == 1 {
                 (required, 1)
             } else if required > total {
                 return Err("Cannot grow a 2-D matrix with linear indexing".to_string());
             } else {
-                (mat.nrows(), mat.ncols())
+                (nrows_hint, ncols_hint)
+            };
+
+            // Take ownership from env — moves the Array2 (pointer + metadata only),
+            // avoiding the O(n) clone that would make repeated writes O(n²).
+            let mut mat = match env.remove(name) {
+                Some(Value::Matrix(m)) => m,
+                Some(Value::Scalar(n)) => Array2::from_elem((1, 1), n),
+                None | Some(Value::Void) => Array2::zeros((0, 0)),
+                Some(other) => {
+                    env.insert(name.to_string(), other);
+                    return Err(format!(
+                        "'{name}' is not a matrix; cannot use () indexed assignment"
+                    ));
+                }
             };
 
             // Grow matrix if needed, preserving existing data at correct column-major positions.
@@ -1878,26 +1895,48 @@ fn exec_index_set(
                 let col = pos / mat.nrows();
                 mat[[row, col]] = val;
             }
+
+            let result = if mat.nrows() == 1 && mat.ncols() == 1 {
+                Value::Scalar(mat[[0, 0]])
+            } else {
+                Value::Matrix(mat)
+            };
+            env.insert(name.to_string(), result);
         }
         2 => {
-            let nrows = mat.nrows();
-            let ncols = mat.ncols();
-            let _owned_r;
-            let env_r: &Env = if crate::eval::contains_end(&indices[0]) {
-                _owned_r = write_env_with_end(env, nrows);
-                &_owned_r
-            } else {
-                env
+            // Borrow env read-only to get matrix dimensions — no clone.
+            let (nrows, ncols) = match env.get(name) {
+                Some(Value::Matrix(m)) => (m.nrows(), m.ncols()),
+                Some(Value::Scalar(_)) => (1, 1),
+                None | Some(Value::Void) => (0, 0),
+                Some(_) => {
+                    return Err(format!(
+                        "'{name}' is not a matrix; cannot use () indexed assignment"
+                    ))
+                }
             };
-            let _owned_c;
-            let env_c: &Env = if crate::eval::contains_end(&indices[1]) {
-                _owned_c = write_env_with_end(env, ncols);
-                &_owned_c
-            } else {
-                env
+
+            // Resolve both index expressions while env still contains `name`.
+            let (ridx, cidx) = {
+                let _owned_r;
+                let env_r: &Env = if crate::eval::contains_end(&indices[0]) {
+                    _owned_r = write_env_with_end(env, nrows);
+                    &_owned_r
+                } else {
+                    env
+                };
+                let _owned_c;
+                let env_c: &Env = if crate::eval::contains_end(&indices[1]) {
+                    _owned_c = write_env_with_end(env, ncols);
+                    &_owned_c
+                } else {
+                    env
+                };
+                (
+                    resolve_write_dim(&indices[0], nrows, env_r, io)?,
+                    resolve_write_dim(&indices[1], ncols, env_c, io)?,
+                )
             };
-            let ridx = resolve_write_dim(&indices[0], nrows, env_r, io)?;
-            let cidx = resolve_write_dim(&indices[1], ncols, env_c, io)?;
 
             let rows: Vec<usize> = match ridx {
                 WriteIdx::All => (0..nrows.max(1)).collect(),
@@ -1923,17 +1962,6 @@ fn exec_index_set(
                 .unwrap_or(0)
                 .max(ncols);
 
-            // Grow matrix if needed (fill new cells with 0).
-            if req_rows != nrows || req_cols != ncols {
-                let mut new_mat = Array2::<f64>::zeros((req_rows, req_cols));
-                for r in 0..nrows {
-                    for c in 0..ncols {
-                        new_mat[[r, c]] = mat[[r, c]];
-                    }
-                }
-                mat = new_mat;
-            }
-
             // Collect RHS values.
             let n_sel = rows.len() * cols.len();
             let rhs_vals: Vec<f64> = match &rhs {
@@ -1958,6 +1986,30 @@ fn exec_index_set(
                 }
             };
 
+            // Take ownership from env — moves the Array2, avoiding the O(n) clone.
+            let mut mat = match env.remove(name) {
+                Some(Value::Matrix(m)) => m,
+                Some(Value::Scalar(n)) => Array2::from_elem((1, 1), n),
+                None | Some(Value::Void) => Array2::zeros((0, 0)),
+                Some(other) => {
+                    env.insert(name.to_string(), other);
+                    return Err(format!(
+                        "'{name}' is not a matrix; cannot use () indexed assignment"
+                    ));
+                }
+            };
+
+            // Grow matrix if needed (fill new cells with 0).
+            if req_rows != nrows || req_cols != ncols {
+                let mut new_mat = Array2::<f64>::zeros((req_rows, req_cols));
+                for r in 0..nrows {
+                    for c in 0..ncols {
+                        new_mat[[r, c]] = mat[[r, c]];
+                    }
+                }
+                mat = new_mat;
+            }
+
             // Write values row-major over selected (row, col) pairs.
             let mut k = 0;
             for &r in &rows {
@@ -1966,17 +2018,15 @@ fn exec_index_set(
                     k += 1;
                 }
             }
+
+            let result = if mat.nrows() == 1 && mat.ncols() == 1 {
+                Value::Scalar(mat[[0, 0]])
+            } else {
+                Value::Matrix(mat)
+            };
+            env.insert(name.to_string(), result);
         }
         _ => return Err("Indexed assignment supports at most 2 indices".to_string()),
     }
-
-    // Collapse a 1×1 matrix to a scalar.
-    let result = if mat.nrows() == 1 && mat.ncols() == 1 {
-        Value::Scalar(mat[[0, 0]])
-    } else {
-        Value::Matrix(mat)
-    };
-    let _ = was_scalar;
-    env.insert(name.to_string(), result);
     Ok(())
 }

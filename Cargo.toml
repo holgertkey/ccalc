@@ -3,7 +3,7 @@ members = ["crates/ccalc", "crates/ccalc-engine"]
 resolver = "2"
 
 [workspace.package]
-version = "0.30.0+003"
+version = "0.30.0+004"
 authors = ["Holgert K <holgertkey@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/holgertkey/ccalc"
