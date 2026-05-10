@@ -3407,6 +3407,6 @@ fftshift, ifftshift, and fftfreq are always available.
     fprintf('10 Hz: |S| = %.2f  (expect %.2f)\\n', mag(11), n/2)
     fprintf('25 Hz: |S| = %.2f  (expect %.2f)\\n', mag(26), 0.5*n/2)
 
-See also: help complex  help vectors  examples/fft_demo.m"
+See also: help complex  help vectors  examples/fft_demo.calc"
     );
 }

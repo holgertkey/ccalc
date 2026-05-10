@@ -764,7 +764,7 @@ n = 8; fs = 1000;
 f = fftfreq(n, 1/fs)      % → [0 125 250 375 -500 -375 -250 -125]
 ```
 
-See `examples/fft_demo.m` and `help fft` for a full worked example.
+See `examples/fft_demo.calc` and `help fft` for a full worked example.
 
 ---
 
@@ -1921,7 +1921,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `datetime.calc`         | Phase 22: `datetime`/`duration` constructors, arithmetic, component extractors, predicates, formatting (`datestr`/`datevec`/`datenum`/`posixtime`), array operations, project-timeline example |
 | `set_operations.m`      | Phase 23: `triu`/`tril`, `repmat`, `kron`, `cross`, `dot`, `intersect`/`union`/`setdiff`/`ismember`, `sub2ind`/`ind2sub`, `repelem`; voter-overlap analysis example |
 | `polynomials.m`         | Phase 24: `polyval`, `polyfit`, `roots`, `poly`, `conv`, `deconv`, `interp1`; curve fitting and interpolation examples |
-| `fft_demo.m`            | Phase 26: `fft`, `ifft`, zero-padded FFT, `fftshift`/`ifftshift`, `fftfreq`, two-tone power spectrum — requires `--features fft` for `fft`/`ifft` |
+| `fft_demo.calc`            | Phase 26: `fft`, `ifft`, zero-padded FFT, `fftshift`/`ifftshift`, `fftfreq`, two-tone power spectrum — requires `--features fft` for `fft`/`ifft` |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
