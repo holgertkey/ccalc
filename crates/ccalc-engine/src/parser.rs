@@ -1,5 +1,11 @@
 use crate::eval::{Expr, Op, expr_to_string};
 
+/// A parsed statement entry: `(statement, is_silent, source_line)`.
+///
+/// `is_silent` is `true` when the statement ends with `;` (output suppressed).
+/// `source_line` is the 1-based line number within the input string.
+pub type StmtEntry = (Stmt, bool, usize);
+
 /// Top-level statement returned by [`parse`] and [`parse_stmts`].
 #[derive(Debug)]
 pub enum Stmt {
@@ -12,11 +18,11 @@ pub enum Stmt {
         /// The condition expression evaluated to decide which branch to take.
         cond: Expr,
         /// Statements to execute when `cond` is truthy.
-        body: Vec<(Stmt, bool, usize)>,
+        body: Vec<StmtEntry>,
         /// Zero or more `elseif (cond) body` branches, in source order.
-        elseif_branches: Vec<(Expr, Vec<(Stmt, bool, usize)>)>,
+        elseif_branches: Vec<(Expr, Vec<StmtEntry>)>,
         /// Statements to execute when no condition matched, or `None` if there is no `else`.
-        else_body: Option<Vec<(Stmt, bool, usize)>>,
+        else_body: Option<Vec<StmtEntry>>,
     },
     /// `for var = range_expr; body; end` — iterates over columns of the range matrix
     For {
@@ -25,14 +31,14 @@ pub enum Stmt {
         /// Expression that produces the matrix whose columns are iterated.
         range_expr: Expr,
         /// Loop body statements.
-        body: Vec<(Stmt, bool, usize)>,
+        body: Vec<StmtEntry>,
     },
     /// `while cond; body; end`
     While {
         /// Loop condition — re-evaluated before each iteration.
         cond: Expr,
         /// Loop body statements.
-        body: Vec<(Stmt, bool, usize)>,
+        body: Vec<StmtEntry>,
     },
     /// `break` — exits the innermost enclosing loop
     Break,
@@ -43,21 +49,20 @@ pub enum Stmt {
     /// Each case carries a list of match expressions (single value today; cell-array
     /// multi-value is deferred to Phase 11.5b) and a statement body.
     /// `otherwise` is optional.
-    #[allow(clippy::type_complexity)]
     Switch {
         /// The expression whose value is matched against each `case`.
         expr: Expr,
         /// Each case is a list of match patterns and the body to run on a match.
-        cases: Vec<(Vec<Expr>, Vec<(Stmt, bool, usize)>)>,
+        cases: Vec<(Vec<Expr>, Vec<StmtEntry>)>,
         /// Fallback body executed when no `case` matches, or `None` if there is no `otherwise`.
-        otherwise_body: Option<Vec<(Stmt, bool, usize)>>,
+        otherwise_body: Option<Vec<StmtEntry>>,
     },
     /// `do; body; until (cond)` — Octave-specific post-test loop.
     ///
     /// The body always executes at least once. `break` and `continue` work as in `while`.
     DoUntil {
         /// Loop body — always executed at least once before the condition is checked.
-        body: Vec<(Stmt, bool, usize)>,
+        body: Vec<StmtEntry>,
         /// Condition tested after each iteration; loop exits when it becomes truthy.
         cond: Expr,
     },
@@ -99,11 +104,11 @@ pub enum Stmt {
     /// with field `message` containing the error string.
     TryCatch {
         /// Statements in the protected `try` block.
-        try_body: Vec<(Stmt, bool, usize)>,
+        try_body: Vec<StmtEntry>,
         /// Optional name of the catch variable bound to a struct with a `message` field.
         catch_var: Option<String>,
         /// Statements executed when an error is caught.
-        catch_body: Vec<(Stmt, bool, usize)>,
+        catch_body: Vec<StmtEntry>,
     },
     /// `c{i} = v` — cell element assignment.
     ///
@@ -1431,7 +1436,7 @@ fn split_block_line(line: &str) -> Vec<String> {
 /// Block keywords (`if`/`for`/`while`/`end`/…) are handled recursively.
 /// Each statement carries a `silent` flag (`true` when terminated by `;`) and a
 /// 1-based source line number (`usize`) for use in error messages.
-pub fn parse_stmts(input: &str) -> Result<Vec<(Stmt, bool, usize)>, String> {
+pub fn parse_stmts(input: &str) -> Result<Vec<StmtEntry>, String> {
     let raw_lines: Vec<&str> = input.lines().collect();
     let stripped = strip_block_comments(&raw_lines)?;
     let stripped_str = stripped.join("\n");
@@ -1447,7 +1452,7 @@ fn parse_stmts_from_lines(
     lines: &[&str],
     pos: &mut usize,
     stop_at: &[&str],
-) -> Result<Vec<(Stmt, bool, usize)>, String> {
+) -> Result<Vec<StmtEntry>, String> {
     let mut stmts = Vec::new();
 
     while *pos < lines.len() {
@@ -1606,8 +1611,8 @@ fn parse_stmts_from_lines(
                 *pos += 1;
 
                 #[allow(clippy::type_complexity)]
-                let mut cases: Vec<(Vec<Expr>, Vec<(Stmt, bool, usize)>)> = Vec::new();
-                let mut otherwise_body: Option<Vec<(Stmt, bool, usize)>> = None;
+                let mut cases: Vec<(Vec<Expr>, Vec<StmtEntry>)> = Vec::new();
+                let mut otherwise_body: Option<Vec<StmtEntry>> = None;
 
                 loop {
                     if *pos >= lines.len() {

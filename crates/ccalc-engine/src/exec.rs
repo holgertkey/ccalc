@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Parsed function body cache: body source string → pre-parsed, all-silent statements.
-type BodyCache = HashMap<String, Rc<Vec<(Stmt, bool, usize)>>>;
+type BodyCache = HashMap<String, Rc<Vec<StmtEntry>>>;
 
 /// Expands a leading `~` to the user's home directory.
 ///
@@ -41,7 +41,7 @@ use crate::eval::{
     set_nargout,
 };
 use crate::io::IoContext;
-use crate::parser::{Stmt, parse_stmts};
+use crate::parser::{Stmt, StmtEntry, parse_stmts};
 
 thread_local! {
     /// Tracks the current script nesting depth to prevent infinite recursion via `run()`.
@@ -82,7 +82,7 @@ thread_local! {
 /// `map(|(s,_)| (s, true))` only silences the top level.  Nested bodies inside `if`,
 /// `for`, `while`, `switch`, `do..until`, and `try..catch` keep their original flags
 /// and would still print.  This function walks the full statement tree.
-fn silence_all(stmts: Vec<(Stmt, bool, usize)>) -> Vec<(Stmt, bool, usize)> {
+fn silence_all(stmts: Vec<StmtEntry>) -> Vec<StmtEntry> {
     stmts
         .into_iter()
         .map(|(stmt, _, line)| {
@@ -148,10 +148,10 @@ fn silence_all(stmts: Vec<(Stmt, bool, usize)>) -> Vec<(Stmt, bool, usize)> {
 
 /// Returns a parsed, all-silent body for `body_source`, using the cache when possible.
 ///
-/// "All-silent" means every `(Stmt, bool, usize)` has `bool = true` — function bodies
+/// "All-silent" means every [`StmtEntry`]'s `is_silent` flag is `true` — function bodies
 /// never print output directly. The parse result is shared via `Rc` so that
 /// repeated calls to the same function avoid both allocation and parsing work.
-fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<(Stmt, bool, usize)>>, String> {
+fn get_or_parse_body(body_source: &str) -> Result<Rc<Vec<StmtEntry>>, String> {
     BODY_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if let Some(body) = cache.get(body_source) {
@@ -835,7 +835,7 @@ fn set_nested(
 /// Loop implementations (`For`, `While`) catch `Break`/`Continue` internally.
 /// A signal that escapes to the top-level caller should be reported as an error.
 pub fn exec_stmts(
-    stmts: &[(Stmt, bool, usize)],
+    stmts: &[StmtEntry],
     env: &mut Env,
     io: &mut IoContext,
     fmt: &FormatMode,
@@ -1308,7 +1308,7 @@ pub fn exec_stmts(
             } => {
                 let cond_val =
                     eval_with_io(cond, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
-                let chosen: Option<&[(Stmt, bool, usize)]> = if is_truthy(&cond_val) {
+                let chosen: Option<&[StmtEntry]> = if is_truthy(&cond_val) {
                     Some(body)
                 } else {
                     let mut found = None;
