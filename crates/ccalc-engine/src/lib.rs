@@ -44,3 +44,6 @@ pub(crate) mod json;
 
 #[cfg(feature = "mat")]
 pub(crate) mod mat;
+
+#[cfg(feature = "fft")]
+pub(crate) mod fft;

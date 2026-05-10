@@ -750,7 +750,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // Check positive cache → negative (miss) cache → fire filesystem hook.
             // Names that fail the hook are recorded in the miss cache so the
             // filesystem is not searched again within the same session.
-            let autoloaded_val = AUTOLOAD_CACHE.with(|c| c.borrow().get(name).cloned())
+            let autoloaded_val = AUTOLOAD_CACHE
+                .with(|c| c.borrow().get(name).cloned())
                 .or_else(|| {
                     if AUTOLOAD_MISS_CACHE.with(|c| c.borrow().contains(name.as_str())) {
                         return None;
@@ -2502,9 +2503,14 @@ pub fn builtin_names() -> &'static [&'static str] {
         "exp",
         "eye",
         "fclose",
+        "fft",
+        "fftfreq",
+        "fftshift",
         "fgetl",
         "fgets",
         "fieldnames",
+        "ifft",
+        "ifftshift",
         "find",
         "fliplr",
         "flipud",
@@ -5043,6 +5049,127 @@ fn call_builtin(
             }
             _ => Err("pinv: argument must be a real numeric matrix".to_string()),
         },
+
+        // ── Phase 26 — FFT ───────────────────────────────────────────────────────
+        ("fft", 1) => fft_call(&args[0], None),
+        ("fft", 2) => {
+            let n = scalar_arg(&args[1], "fft", 2)?;
+            let n = n as usize;
+            if n == 0 {
+                return Err("fft: length must be positive".to_string());
+            }
+            fft_call(&args[0], Some(n))
+        }
+        ("ifft", 1) => ifft_call(&args[0]),
+
+        // fftshift(x) — circular shift by floor(N/2), no feature flag required
+        ("fftshift", 1) => match &args[0] {
+            Value::Scalar(s) => Ok(Value::Scalar(*s)),
+            Value::Matrix(m) => {
+                let (nrows, ncols) = (m.nrows(), m.ncols());
+                if nrows == 1 {
+                    let n = ncols;
+                    let shift = n / 2;
+                    let data: Vec<f64> = m.iter().copied().collect();
+                    let mut out = vec![0.0f64; n];
+                    for (i, &x) in data.iter().enumerate() {
+                        out[(i + shift) % n] = x;
+                    }
+                    Ok(Value::Matrix(Array2::from_shape_vec((1, n), out).unwrap()))
+                } else if ncols == 1 {
+                    let n = nrows;
+                    let shift = n / 2;
+                    let data: Vec<f64> = m.iter().copied().collect();
+                    let mut out = vec![0.0f64; n];
+                    for (i, &x) in data.iter().enumerate() {
+                        out[(i + shift) % n] = x;
+                    }
+                    Ok(Value::Matrix(Array2::from_shape_vec((n, 1), out).unwrap()))
+                } else {
+                    let row_shift = nrows / 2;
+                    let col_shift = ncols / 2;
+                    let mut out = Array2::<f64>::zeros((nrows, ncols));
+                    for i in 0..nrows {
+                        for j in 0..ncols {
+                            out[[(i + row_shift) % nrows, (j + col_shift) % ncols]] = m[[i, j]];
+                        }
+                    }
+                    Ok(Value::Matrix(out))
+                }
+            }
+            _ => Err("fftshift: argument must be a numeric matrix".to_string()),
+        },
+
+        // ifftshift(x) — inverse circular shift by ceil(N/2), no feature flag required
+        ("ifftshift", 1) => match &args[0] {
+            Value::Scalar(s) => Ok(Value::Scalar(*s)),
+            Value::Matrix(m) => {
+                let (nrows, ncols) = (m.nrows(), m.ncols());
+                if nrows == 1 {
+                    let n = ncols;
+                    let shift = n.div_ceil(2);
+                    let data: Vec<f64> = m.iter().copied().collect();
+                    let mut out = vec![0.0f64; n];
+                    for (i, &x) in data.iter().enumerate() {
+                        out[(i + shift) % n] = x;
+                    }
+                    Ok(Value::Matrix(Array2::from_shape_vec((1, n), out).unwrap()))
+                } else if ncols == 1 {
+                    let n = nrows;
+                    let shift = n.div_ceil(2);
+                    let data: Vec<f64> = m.iter().copied().collect();
+                    let mut out = vec![0.0f64; n];
+                    for (i, &x) in data.iter().enumerate() {
+                        out[(i + shift) % n] = x;
+                    }
+                    Ok(Value::Matrix(Array2::from_shape_vec((n, 1), out).unwrap()))
+                } else {
+                    let row_shift = nrows.div_ceil(2);
+                    let col_shift = ncols.div_ceil(2);
+                    let mut out = Array2::<f64>::zeros((nrows, ncols));
+                    for i in 0..nrows {
+                        for j in 0..ncols {
+                            out[[(i + row_shift) % nrows, (j + col_shift) % ncols]] = m[[i, j]];
+                        }
+                    }
+                    Ok(Value::Matrix(out))
+                }
+            }
+            _ => Err("ifftshift: argument must be a numeric matrix".to_string()),
+        },
+
+        // fftfreq(n, d) — DFT sample frequencies, no feature flag required
+        ("fftfreq", 2) => {
+            let n = match &args[0] {
+                Value::Scalar(s) => {
+                    let n = *s as usize;
+                    if *s < 1.0 || (*s - n as f64).abs() > 1e-9 {
+                        return Err("fftfreq: n must be a positive integer".to_string());
+                    }
+                    n
+                }
+                _ => return Err("fftfreq: first argument must be a scalar integer".to_string()),
+            };
+            let d = scalar_arg(&args[1], "fftfreq", 2)?;
+            if d == 0.0 {
+                return Err("fftfreq: sample spacing d must be nonzero".to_string());
+            }
+            // NumPy-compatible formula: [0:pos_count-1, -neg_count:-1] / (n*d)
+            let pos_count = (n - 1) / 2 + 1;
+            let neg_count = n / 2;
+            let factor = 1.0 / (n as f64 * d);
+            let mut freqs = Vec::with_capacity(n);
+            for k in 0..pos_count as i64 {
+                freqs.push(k as f64 * factor);
+            }
+            let neg_start = -(neg_count as i64);
+            for k in neg_start..0 {
+                freqs.push(k as f64 * factor);
+            }
+            Ok(Value::Matrix(
+                Array2::from_shape_vec((1, n), freqs).unwrap(),
+            ))
+        }
 
         // jsondecode(str) / jsonencode(val)
         ("jsondecode", 1) => jsondecode_impl(&args[0]),
@@ -8278,6 +8405,96 @@ fn regexprep_impl(s: &str, pat: &str, rep: &str) -> Result<Value, String> {
 #[cfg(not(feature = "regex"))]
 fn regexprep_impl(_s: &str, _pat: &str, _rep: &str) -> Result<Value, String> {
     Err("regexprep: not available — rebuild with --features regex".to_string())
+}
+
+// ── Phase 26 — FFT built-in helpers ─────────────────────────────────────────
+
+/// Extracts a flat real vector from a Scalar or 1-D Matrix (row or column).
+#[cfg(feature = "fft")]
+fn extract_real_vec(v: &Value, name: &str) -> Result<Vec<f64>, String> {
+    match v {
+        Value::Scalar(s) => Ok(vec![*s]),
+        Value::Matrix(m) if m.nrows() == 1 || m.ncols() == 1 => Ok(m.iter().copied().collect()),
+        Value::Matrix(m) => Err(format!(
+            "{name}: input must be a vector (got {}×{} matrix)",
+            m.nrows(),
+            m.ncols()
+        )),
+        _ => Err(format!("{name}: input must be a real numeric vector")),
+    }
+}
+
+/// Wraps a `Vec<(f64,f64)>` of FFT output into a `Value::Cell` of `Value::Complex`.
+#[cfg(feature = "fft")]
+fn complex_pairs_to_cell(data: Vec<(f64, f64)>) -> Value {
+    Value::Cell(
+        data.into_iter()
+            .map(|(re, im)| Value::Complex(re, im))
+            .collect(),
+    )
+}
+
+/// Extracts a flat complex vector from a Cell (of Complex/Scalar) or a real Matrix.
+#[cfg(feature = "fft")]
+fn extract_complex_vec(v: &Value, name: &str) -> Result<Vec<(f64, f64)>, String> {
+    match v {
+        Value::Scalar(s) => Ok(vec![(*s, 0.0)]),
+        Value::Matrix(m) => Ok(m.iter().copied().map(|x| (x, 0.0)).collect()),
+        Value::Cell(elems) => elems
+            .iter()
+            .enumerate()
+            .map(|(i, e)| match e {
+                Value::Complex(re, im) => Ok((*re, *im)),
+                Value::Scalar(s) => Ok((*s, 0.0)),
+                _ => Err(format!(
+                    "{name}: cell element {} must be a complex or real number",
+                    i + 1
+                )),
+            })
+            .collect(),
+        _ => Err(format!(
+            "{name}: input must be a cell array or numeric vector"
+        )),
+    }
+}
+
+#[cfg(feature = "fft")]
+fn fft_call(v: &Value, n_opt: Option<usize>) -> Result<Value, String> {
+    let real = extract_real_vec(v, "fft")?;
+    let n = n_opt.unwrap_or(real.len());
+    if n == 0 {
+        return Err("fft: length must be positive".to_string());
+    }
+    let out = crate::fft::fft_forward(&real, n);
+    Ok(complex_pairs_to_cell(out))
+}
+
+#[cfg(not(feature = "fft"))]
+fn fft_call(_v: &Value, _n_opt: Option<usize>) -> Result<Value, String> {
+    Err("fft: not available — rebuild with --features fft".to_string())
+}
+
+#[cfg(feature = "fft")]
+fn ifft_call(v: &Value) -> Result<Value, String> {
+    let complex = extract_complex_vec(v, "ifft")?;
+    if complex.is_empty() {
+        return Ok(Value::Matrix(ndarray::Array2::zeros((1, 0))));
+    }
+    let out = crate::fft::fft_inverse(&complex);
+    if out.iter().all(|(_, im)| im.abs() < 1e-12) {
+        let real: Vec<f64> = out.iter().map(|(re, _)| *re).collect();
+        let n = real.len();
+        Ok(Value::Matrix(
+            ndarray::Array2::from_shape_vec((1, n), real).unwrap(),
+        ))
+    } else {
+        Ok(complex_pairs_to_cell(out))
+    }
+}
+
+#[cfg(not(feature = "fft"))]
+fn ifft_call(_v: &Value) -> Result<Value, String> {
+    Err("ifft: not available — rebuild with --features fft".to_string())
 }
 
 // --- JSON built-in helpers ---

@@ -1798,7 +1798,7 @@ fn exec_index_set(
                 Some(_) => {
                     return Err(format!(
                         "'{name}' is not a matrix; cannot use () indexed assignment"
-                    ))
+                    ));
                 }
             };
 
@@ -1912,7 +1912,7 @@ fn exec_index_set(
                 Some(_) => {
                     return Err(format!(
                         "'{name}' is not a matrix; cannot use () indexed assignment"
-                    ))
+                    ));
                 }
             };
 

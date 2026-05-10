@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-05-10
+
+### Added
+
+- **Phase 26 — FFT and signal processing** (`--features fft`):
+  - `fft(x)` — forward DFT of a real vector via `rustfft`; returns a cell array
+    of complex numbers.
+  - `fft(x, n)` — zero-padded (or truncated) FFT to length `n`.
+  - `ifft(X)` — inverse DFT, normalised by 1/N; returns a real matrix when all
+    imaginary parts are < 1e-12, otherwise a cell array of complex numbers.
+  - `fftshift(x)` — circular shift by `floor(N/2)` to centre the DC component;
+    works on row vectors, column vectors, and 2-D matrices. No feature flag.
+  - `ifftshift(x)` — inverse shift (`ceil(N/2)`); undoes `fftshift`. No feature flag.
+  - `fftfreq(n, d)` — DFT sample-frequency axis for `n` points with sample
+    spacing `d`; matches NumPy/MATLAB formula. No feature flag.
+  - All five names always present in `builtin_names()` for tab completion.
+  - 14 regression tests; FFT benchmark (`bench_fft`) added to the criterion suite.
+
 ## [0.30.0+005] - 2026-05-08
 
 ### Fixed

@@ -176,6 +176,36 @@ end";
     });
 }
 
+// ── 7: FFT throughput ────────────────────────────────────────────────────────
+
+/// fft(x) for x = 1:N at N ∈ {256, 1024, 4096}.
+///
+/// Enabled only when built with `--features fft`; otherwise this is a no-op
+/// so it doesn't pollute results for the default build.
+#[cfg(feature = "fft")]
+fn bench_fft(c: &mut Criterion) {
+    let mut group = c.benchmark_group("fft");
+    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(50);
+
+    for &n in &[256usize, 1024, 4096] {
+        let mut env = new_env();
+        let mut io = IoContext::new();
+        run(&format!("x = 1:{n};"), &mut env);
+
+        let stmts = parse_stmts("fft(x)").expect("parse");
+
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| exec_checked(black_box(&stmts), &mut env, &mut io))
+        });
+    }
+
+    group.finish();
+}
+
+#[cfg(not(feature = "fft"))]
+fn bench_fft(_c: &mut Criterion) {}
+
 // ── Criterion entry points ────────────────────────────────────────────────────
 
 criterion_group!(
@@ -186,5 +216,6 @@ criterion_group!(
     bench_matmul,
     bench_inv,
     bench_fn_calls,
+    bench_fft,
 );
 criterion_main!(benches);

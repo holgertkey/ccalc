@@ -34,6 +34,7 @@
 - [Datetime & Duration](./guide/datetime.md)
 - [Matrix Utilities & Set Operations](./guide/set-operations.md)
 - [Polynomial Operations & Interpolation](./guide/polynomials.md)
+- [FFT & Signal Processing](./guide/fft.md)
 - [Dynamic Evaluation & Timing](./guide/eval.md)
 
 # Architecture

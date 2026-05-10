@@ -43,6 +43,12 @@ mat = ["dep:matrw"]
 # Build: cargo build --features regex
 regex = ["dep:regex"]
 
+# FFT / signal processing: fft(), ifft() built-ins.
+# Adds the rustfft crate; omitted from the default build to keep the binary lean.
+# fftshift(), ifftshift(), fftfreq() are always available (pure real-matrix ops).
+# Build: cargo build --features fft
+fft = ["dep:rustfft"]
+
 [dependencies]
 dirs = "5"
 indexmap = "2"
@@ -54,6 +60,7 @@ openblas-src = { version = "0.10", optional = true, features = ["static"] }
 serde_json = { version = "1", optional = true }
 matrw = { version = "=0.1.4", optional = true }
 regex = { version = "1", optional = true }
+rustfft = { version = "6", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

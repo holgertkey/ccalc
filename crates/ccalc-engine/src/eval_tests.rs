@@ -6436,8 +6436,15 @@ mod loop_performance_regression_tests {
         let mut env = crate::env::Env::new();
         env.insert("ans".to_string(), Value::Scalar(0.0));
         let mut io = IoContext::new();
-        crate::exec::exec_stmts(&stmts, &mut env, &mut io, &FormatMode::Short, Base::Dec, true)
-            .expect("exec failed");
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .expect("exec failed");
         env
     }
 
@@ -6459,13 +6466,11 @@ mod loop_performance_regression_tests {
     #[test]
     fn indexed_write_loop_n1000() {
         // y(k) = k in a 1000-iteration loop — would be quadratic before the fix.
-        let env = run(
-            "n = 1000;\n\
+        let env = run("n = 1000;\n\
              y = zeros(1, n);\n\
              for k = 1:n\n\
                y(k) = k;\n\
-             end",
-        );
+             end");
         let y = row_vec(&env, "y");
         assert_eq!(y.len(), 1000);
         assert_eq!(y[0], 1.0);
@@ -6477,14 +6482,12 @@ mod loop_performance_regression_tests {
     fn indexed_read_write_loop_n1000() {
         // Reads x(k) and writes y(k) inside a 1000-iteration loop.
         // Both x(k) reads and y(k) writes were O(n) per iteration before the fix.
-        let env = run(
-            "n = 1000;\n\
+        let env = run("n = 1000;\n\
              x = linspace(0, 1, n);\n\
              y = zeros(1, n);\n\
              for k = 1:n\n\
                y(k) = x(k) * 2;\n\
-             end",
-        );
+             end");
         let y = row_vec(&env, "y");
         assert_eq!(y.len(), 1000);
         assert!((y[0] - 0.0).abs() < 1e-10);
@@ -6497,14 +6500,12 @@ mod loop_performance_regression_tests {
     fn lambda_call_loop_n1000() {
         // Calls an anonymous function 1000 times inside a loop.
         // The autoload miss-cache prevents O(n) filesystem stat() calls per iteration.
-        let env = run(
-            "n = 1000;\n\
+        let env = run("n = 1000;\n\
              f = @(x) x * x;\n\
              s = 0;\n\
              for k = 1:n\n\
                s = s + f(k);\n\
-             end",
-        );
+             end");
         // sum of k^2 for k=1..1000 = n*(n+1)*(2n+1)/6
         let expected = 1000.0 * 1001.0 * 2001.0 / 6.0;
         assert!((sc(&env, "s") - expected).abs() < 1e-6);
@@ -6513,18 +6514,215 @@ mod loop_performance_regression_tests {
     #[test]
     fn lambda_with_indexed_read_loop_n500() {
         // Combines lambda call + indexed read — the pattern in trapz_rule.
-        let env = run(
-            "n = 500;\n\
+        let env = run("n = 500;\n\
              f = @(x) x * x;\n\
              x = linspace(1, 2, n);\n\
              y = zeros(1, n);\n\
              for k = 1:n\n\
                y(k) = f(x(k));\n\
-             end",
-        );
+             end");
         let y = row_vec(&env, "y");
         assert_eq!(y.len(), 500);
         assert!((y[0] - 1.0).abs() < 1e-10);
         assert!((y[499] - 4.0).abs() < 1e-6);
+    }
+}
+
+// ============================================================================
+// Phase 26 — FFT and signal processing
+// ============================================================================
+
+mod phase26_tests {
+    use super::*;
+
+    fn run_code(src: &str) -> crate::env::Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            true,
+        )
+        .expect("exec failed");
+        env
+    }
+
+    fn row_vec(env: &crate::env::Env, name: &str) -> Vec<f64> {
+        match env.get(name) {
+            Some(Value::Matrix(m)) => m.iter().copied().collect(),
+            Some(Value::Scalar(x)) => vec![*x],
+            other => panic!("{name} not numeric: {other:?}"),
+        }
+    }
+
+    // ── builtin_names() coverage ──────────────────────────────────────────────
+
+    #[test]
+    fn fft_names_in_builtin_names() {
+        let names = builtin_names();
+        for &n in &["fft", "ifft", "fftshift", "ifftshift", "fftfreq"] {
+            assert!(names.contains(&n), "{n} missing from builtin_names");
+        }
+    }
+
+    // ── fftshift ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn fftshift_even_row_vector() {
+        assert_eq!(
+            row_vec(&run_code("r = fftshift([1 2 3 4 5 6])"), "r"),
+            vec![4.0, 5.0, 6.0, 1.0, 2.0, 3.0]
+        );
+    }
+
+    #[test]
+    fn fftshift_odd_row_vector() {
+        assert_eq!(
+            row_vec(&run_code("r = fftshift([1 2 3 4 5])"), "r"),
+            vec![4.0, 5.0, 1.0, 2.0, 3.0]
+        );
+    }
+
+    #[test]
+    fn fftshift_scalar_is_identity() {
+        let env = run_code("r = fftshift(7)");
+        assert_eq!(
+            match env.get("r") {
+                Some(Value::Scalar(x)) => *x,
+                other => panic!("{other:?}"),
+            },
+            7.0
+        );
+    }
+
+    // ── ifftshift ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn ifftshift_even_is_inverse_of_fftshift() {
+        assert_eq!(
+            row_vec(&run_code("r = ifftshift([4 5 6 1 2 3])"), "r"),
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+        );
+    }
+
+    #[test]
+    fn ifftshift_odd_is_inverse_of_fftshift() {
+        assert_eq!(
+            row_vec(&run_code("r = ifftshift(fftshift([1 2 3 4 5]))"), "r"),
+            vec![1.0, 2.0, 3.0, 4.0, 5.0]
+        );
+    }
+
+    // ── fftfreq ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn fftfreq_n8_fs1000() {
+        let expected = [0.0, 125.0, 250.0, 375.0, -500.0, -375.0, -250.0, -125.0];
+        let got = row_vec(&run_code("r = fftfreq(8, 1/1000)"), "r");
+        assert_eq!(got.len(), 8);
+        for (a, b) in got.iter().zip(expected.iter()) {
+            assert!((a - b).abs() < 1e-9, "got {a}, expected {b}");
+        }
+    }
+
+    #[test]
+    fn fftfreq_n1() {
+        let got = row_vec(&run_code("r = fftfreq(1, 1)"), "r");
+        assert_eq!(got, vec![0.0]);
+    }
+
+    #[test]
+    fn fftfreq_n2() {
+        let got = row_vec(&run_code("r = fftfreq(2, 1)"), "r");
+        assert_eq!(got.len(), 2);
+        assert!((got[0] - 0.0).abs() < 1e-12);
+        assert!((got[1] - (-0.5)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn fftfreq_n5() {
+        let got = row_vec(&run_code("r = fftfreq(5, 1)"), "r");
+        assert_eq!(got.len(), 5);
+        let expected = [0.0, 0.2, 0.4, -0.4, -0.2];
+        for (a, b) in got.iter().zip(expected.iter()) {
+            assert!((a - b).abs() < 1e-12, "got {a}, expected {b}");
+        }
+    }
+
+    // ── fft / ifft (require --features fft) ─────────────────────────────────
+
+    #[cfg(feature = "fft")]
+    mod fft_tests {
+        use super::*;
+
+        fn fft_of(src: &str) -> Vec<(f64, f64)> {
+            let env = run_code(src);
+            match env.get("r").unwrap() {
+                Value::Cell(v) => v
+                    .iter()
+                    .map(|e| match e {
+                        Value::Complex(re, im) => (*re, *im),
+                        Value::Scalar(s) => (*s, 0.0),
+                        other => panic!("expected complex, got {other:?}"),
+                    })
+                    .collect(),
+                other => panic!("expected cell, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn fft_known_values() {
+            let out = fft_of("r = fft([1 2 3 4])");
+            assert_eq!(out.len(), 4);
+            let tol = 1e-10;
+            assert!((out[0].0 - 10.0).abs() < tol, "X[0].re = {}", out[0].0);
+            assert!(out[0].1.abs() < tol, "X[0].im = {}", out[0].1);
+            assert!((out[1].0 - (-2.0)).abs() < tol, "X[1].re = {}", out[1].0);
+            assert!((out[1].1 - 2.0).abs() < tol, "X[1].im = {}", out[1].1);
+            assert!((out[2].0 - (-2.0)).abs() < tol, "X[2].re = {}", out[2].0);
+            assert!(out[2].1.abs() < tol, "X[2].im = {}", out[2].1);
+            assert!((out[3].0 - (-2.0)).abs() < tol, "X[3].re = {}", out[3].0);
+            assert!((out[3].1 - (-2.0)).abs() < tol, "X[3].im = {}", out[3].1);
+        }
+
+        #[test]
+        fn fft_zero_padded() {
+            let out = fft_of("r = fft([1 2 3 4], 8)");
+            assert_eq!(out.len(), 8);
+            // DC bin is always sum of input = 10
+            assert!((out[0].0 - 10.0).abs() < 1e-10);
+        }
+
+        #[test]
+        fn ifft_roundtrip_real() {
+            // ifft(fft(x)) ≈ x for a real vector; imaginary parts < 1e-12 → real Matrix
+            let env = run_code("r = ifft(fft([1 2 3 4]))");
+            match env.get("r").unwrap() {
+                Value::Matrix(m) => {
+                    let v: Vec<f64> = m.iter().copied().collect();
+                    assert_eq!(v.len(), 4);
+                    for (got, exp) in v.iter().zip([1.0, 2.0, 3.0, 4.0].iter()) {
+                        assert!((got - exp).abs() < 1e-10, "got {got}, expected {exp}");
+                    }
+                }
+                other => panic!("expected Matrix from ifft roundtrip, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn fft_error_without_feature_is_not_triggered() {
+            // If we got here, the fft feature is enabled — just sanity-check
+            let out = fft_of("r = fft([0 1 0 0])");
+            assert_eq!(out.len(), 4);
+        }
     }
 }
