@@ -731,6 +731,43 @@ See `examples/polynomials.m` and `help poly` for full documentation.
 
 ---
 
+## FFT & Signal Processing
+
+> **Requires the `fft` feature flag:**
+> ```bash
+> cargo build --release --features fft
+> ```
+> `fftshift`, `ifftshift`, and `fftfreq` are always available.
+
+| Function | Args | Description |
+|---|---|---|
+| `fft(x)` | real vector | Forward DFT; returns cell array of complex numbers |
+| `fft(x, n)` | real vector, length | Zero-padded FFT to length `n` |
+| `ifft(X)` | cell of complex | Inverse DFT, normalised by 1/N; real matrix when imaginary parts < 1e-12 |
+| `fftshift(x)` | real matrix | Circular shift by `floor(N/2)` — moves DC to centre |
+| `ifftshift(x)` | real matrix | Inverse shift by `ceil(N/2)` — undoes `fftshift` |
+| `fftfreq(n, d)` | count, spacing | DFT frequency axis matching NumPy/MATLAB convention |
+
+```matlab
+x = [1 2 3 4];
+X = fft(x);
+% X{1} = 10       (DC = sum of all samples)
+% X{2} = -2 + 2i
+% X{3} = -2
+% X{4} = -2 - 2i
+
+y = ifft(X)        % → [1 2 3 4]  (real matrix; roundtrip)
+
+fftshift([1 2 3 4 5 6])   % → [4 5 6 1 2 3]
+
+n = 8; fs = 1000;
+f = fftfreq(n, 1/fs)      % → [0 125 250 375 -500 -375 -250 -125]
+```
+
+See `examples/fft.m` and `help fft` for a full worked example.
+
+---
+
 ## Bitwise Functions
 
 All require **non-negative integer** arguments — combine naturally with `0xFF`, `0b1010`, `0o17` literals.
@@ -1884,6 +1921,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `datetime.calc`         | Phase 22: `datetime`/`duration` constructors, arithmetic, component extractors, predicates, formatting (`datestr`/`datevec`/`datenum`/`posixtime`), array operations, project-timeline example |
 | `set_operations.m`      | Phase 23: `triu`/`tril`, `repmat`, `kron`, `cross`, `dot`, `intersect`/`union`/`setdiff`/`ismember`, `sub2ind`/`ind2sub`, `repelem`; voter-overlap analysis example |
 | `polynomials.m`         | Phase 24: `polyval`, `polyfit`, `roots`, `poly`, `conv`, `deconv`, `interp1`; curve fitting and interpolation examples |
+| `fft.m`                 | Phase 26: `fft`, `ifft`, zero-padded FFT, `fftshift`/`ifftshift`, `fftfreq`, two-tone power spectrum — requires `--features fft` for `fft`/`ifft` |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
@@ -1918,9 +1956,10 @@ Optional features:
 
 ```bash
 cargo build --release --features json         # enable jsondecode / jsonencode (serde_json)
+cargo build --release --features fft          # enable fft / ifft (rustfft)
 cargo build --release --features blas         # link system OpenBLAS — faster A*B, inv, \, svd, …
 cargo build --release --features blas-static  # same, but statically linked (no runtime dep)
-cargo build --release --features json,blas    # combine features
+cargo build --release --features json,fft,blas  # combine features
 ```
 
 **BLAS** accelerates all matrix multiply and solve operations (pure-Rust is
@@ -1946,7 +1985,7 @@ crates/
     io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd
     parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum (incl. If/For/While/FunctionDef/Return/MultiAssign)
   ccalc-engine/benches/
-    engine.rs    — Criterion benchmark suite (scalar ops, fib, loop, matmul, inv, fn calls)
+    engine.rs    — Criterion benchmark suite (scalar ops, fib, loop, matmul, inv, fn calls, fft)
 Cargo.toml       — workspace manifest (single source of truth for version)
 CHANGELOG.md     — version history
 ```

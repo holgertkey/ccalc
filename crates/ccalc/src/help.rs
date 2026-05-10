@@ -71,10 +71,14 @@ pub fn print(topic: Option<&str>) {
             | "polynomials" | "interpolation",
         ) => print_poly(),
         Some("eval" | "tic" | "toc" | "dynamic" | "timing" | "metaprogramming") => print_eval(),
+        Some(
+            "fft" | "ifft" | "fftshift" | "ifftshift" | "fftfreq" | "signal" | "spectrum"
+            | "spectral",
+        ) => print_fft(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  examples"
             );
         }
     }
@@ -173,6 +177,8 @@ Set ops triu(A[,k])  tril(A[,k])  repmat(A,m,n)  kron(A,B)
         cross(a,b)  dot(a,b)
         intersect  union  setdiff  ismember
         sub2ind([r c],r,c)  ind2sub([r c],idx)  repelem(v,n)
+FFT     fft(x)  fft(x,n)  ifft(X)              (requires --features fft)
+        fftshift(x)  ifftshift(x)  fftfreq(n,d)  (always available)
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -280,6 +286,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help path        addpath/rmpath/path()/genpath() — session search path
   help setops      triu/tril/repmat/kron/cross/dot, set ops, sub2ind/ind2sub/repelem
   help poly        polyval/polyfit/roots/poly, conv/deconv, interp1
+  help fft         fft/ifft, fftshift/ifftshift, fftfreq — FFT & signal processing
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -3320,5 +3327,86 @@ Notes:
   - Both tic and toc can be written without parentheses: tic  toc
 
 See also: help control  help script  help errors"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help fft
+// ---------------------------------------------------------------------------
+
+fn print_fft() {
+    println!(
+        "\
+FFT & SIGNAL PROCESSING  (help fft)
+
+fft and ifft require the fft feature flag at build time:
+    cargo build --release --features fft
+fftshift, ifftshift, and fftfreq are always available.
+
+── Forward FFT ───────────────────────────────────────────────────────────────
+    fft(x)      Discrete Fourier Transform of real vector x.
+                Returns a cell array where each element is a complex number.
+                X{{1}} is the DC component (= sum of all input samples).
+
+    fft(x, n)   Zero-pad x to length n before transform (or truncate if n <
+                length(x)). Use to control frequency resolution.
+
+    x = [1 2 3 4];
+    X = fft(x)
+    % X{{1}} = 10         (DC: sum of all samples)
+    % X{{2}} = -2 + 2i
+    % X{{3}} = -2
+    % X{{4}} = -2 - 2i
+
+    % Access real and imaginary parts of a bin:
+    re = real(X{{2}});   im = imag(X{{2}})
+
+── Inverse FFT ───────────────────────────────────────────────────────────────
+    ifft(X)     Inverse DFT, normalised by 1/N. When all imaginary parts are
+                < 1e-12, returns a real matrix; otherwise a cell of complex.
+
+    y = ifft(fft([1 2 3 4]))   % → [1 2 3 4]  (real matrix)
+
+── DC shift ──────────────────────────────────────────────────────────────────
+    fftshift(x)    Circular shift by floor(N/2) so the DC bin moves to the
+                   centre. Works on row vectors, column vectors, and 2-D matrices.
+    ifftshift(x)   Inverse: shift by ceil(N/2). Undoes fftshift.
+
+    fftshift([1 2 3 4 5 6])      % → [4 5 6 1 2 3]
+    ifftshift([4 5 6 1 2 3])     % → [1 2 3 4 5 6]
+    fftshift([1 2 3 4 5])        % → [4 5 1 2 3]   (odd length)
+
+── Frequency axis ────────────────────────────────────────────────────────────
+    fftfreq(n, d)   1×n row vector of DFT sample frequencies for n points
+                    with sample spacing d seconds (d = 1/fs).
+                    Matches NumPy / MATLAB convention.
+
+    n = 8; fs = 1000;
+    f = fftfreq(n, 1/fs)
+    % → [0 125 250 375 -500 -375 -250 -125]  Hz
+
+    fftshift(f)
+    % → [-500 -375 -250 -125 0 125 250 375]  Hz  (centred spectrum)
+
+── Power spectrum example ────────────────────────────────────────────────────
+    % Two-tone signal: 10 Hz + 25 Hz, fs = 100 Hz, n = 100 samples.
+    % Both tones land on exact bins (resolution = 1 Hz).
+
+    n = 100; fs = 100;
+    t = (0:n-1) / fs;
+    s = sin(2*pi*10*t) + 0.5*sin(2*pi*25*t);
+    S = fft(s);
+
+    % Compute magnitude for each bin
+    mag = zeros(1, n);
+    for k = 1:n
+      mag(k) = sqrt(real(S{{k}})^2 + imag(S{{k}})^2);
+    end
+
+    % 10 Hz → bin 11, 25 Hz → bin 26  (1-based; |FFT| = amplitude * n/2)
+    fprintf('10 Hz: |S| = %.2f  (expect %.2f)\\n', mag(11), n/2)
+    fprintf('25 Hz: |S| = %.2f  (expect %.2f)\\n', mag(26), 0.5*n/2)
+
+See also: help complex  help vectors  examples/fft.m"
     );
 }

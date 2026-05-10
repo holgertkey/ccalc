@@ -96,18 +96,35 @@ f = [0, 1, ..., floor((n-1)/2), -floor(n/2), ..., -1] / (n·d)
 
 ## Worked example — power spectrum
 
-```matlab
-fs = 1000;                      % sampling rate  (Hz)
-t  = 0:1/fs:1-1/fs;            % 1 s of samples
-x  = sin(2*pi*50*t) + 0.5*sin(2*pi*120*t);  % 50 Hz + 120 Hz signal
+Two-tone signal: 10 Hz (amplitude 1.0) and 25 Hz (amplitude 0.5), sampled at
+100 Hz for 100 points (1 second). Both tones land exactly on FFT bins
+(frequency resolution = 1 Hz), so there is no spectral leakage.
 
-X  = fft(x);
-n  = length(t);
+For a real sine of amplitude A, the one-sided magnitude is `A × n/2`.
+
+```matlab
+n  = 100;
+fs = 100;
+t  = (0:n-1) / fs;                        % 0, 0.01, …, 0.99 s
+s  = sin(2*pi*10*t) + 0.5*sin(2*pi*25*t);
+S  = fft(s);
 f  = fftfreq(n, 1/fs);
 
-% Compute one-sided power spectrum amplitude:
-% (element-wise abs of each cell element requires a loop for now)
-% See: abs of complex result after Phase 27 introduces ComplexMatrix.
+% Compute magnitude for each bin using a loop over the cell array
+mag = zeros(1, n);
+for k = 1:n
+  mag(k) = sqrt(real(S{k})^2 + imag(S{k})^2);
+end
+
+% Bins: 10 Hz → bin 11, 25 Hz → bin 26  (1-based; resolution = 1 Hz)
+fprintf('Bin 11 @ 10 Hz :  |S| = %.2f   (expected %.2f)\n', mag(11), 1.0 * n/2)
+fprintf('Bin 26 @ 25 Hz :  |S| = %.2f   (expected %.2f)\n', mag(26), 0.5 * n/2)
+% Bin 11 @ 10 Hz :  |S| = 50.00   (expected 50.00)
+% Bin 26 @ 25 Hz :  |S| = 25.00   (expected 25.00)
+
+% Centred spectrum view using fftshift
+f_centred   = fftshift(f);
+mag_centred = fftshift(mag);
 ```
 
 ---
