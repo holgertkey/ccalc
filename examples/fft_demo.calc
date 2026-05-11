@@ -6,23 +6,26 @@
 %   cargo build --release --features fft
 %
 % fftshift, ifftshift, and fftfreq are always available.
+%
+% Since Phase 27, fft() returns a ComplexMatrix (1×N) rather than a Cell.
+% Access individual bins with A(k), extract parts with real(A) / imag(A).
 
 % --- 1. Forward FFT ---
 %
-% fft(x) returns a cell array of complex numbers.
-% X{1} is the DC component, equal to the sum of all input samples.
+% fft(x) returns a ComplexMatrix (1×N row vector).
+% A(1) is the DC component, equal to the sum of all input samples.
 
 x = [1 2 3 4];
 X = fft(x);
 fprintf('fft([1 2 3 4]):\n')
 for k = 1:4
-  fprintf('  X{%d} = ', k)
-  disp(X{k})
+  fprintf('  X(%d) = ', k)
+  disp(X(k))
 end
-% X{1} = 10       (DC component: sum of all samples)
-% X{2} = -2 + 2i
-% X{3} = -2
-% X{4} = -2 - 2i
+% X(1) = 10 + 0i   (DC component: sum of all samples)
+% X(2) = -2 + 2i
+% X(3) = -2 + 0i
+% X(4) = -2 - 2i
 
 % --- 2. Inverse FFT roundtrip ---
 %
@@ -40,8 +43,8 @@ disp(y)   % [1 2 3 4]
 X8 = fft(x, 8);
 fprintf('fft([1 2 3 4], 8) — 8-point zero-padded:\n')
 for k = 1:8
-  fprintf('  X8{%d} = ', k)
-  disp(X8{k})
+  fprintf('  X8(%d) = ', k)
+  disp(X8(k))
 end
 
 % --- 4. fftshift / ifftshift ---
@@ -87,11 +90,8 @@ t  = (0:n-1) / fs;                            % time axis: 0, 0.01, ..., 0.99 s
 s  = sin(2*pi*10*t) + 0.5*sin(2*pi*25*t);     % two-tone signal
 S  = fft(s);
 
-% Compute magnitude for each bin
-mag = zeros(1, n);
-for k = 1:n
-  mag(k) = sqrt(real(S{k})^2 + imag(S{k})^2);
-end
+% abs() on a ComplexMatrix returns a real Matrix of element-wise magnitudes.
+mag = abs(S);
 
 % Bin mapping (1-based, frequency resolution = 1 Hz):
 %   10 Hz → bin 11,   25 Hz → bin 26
