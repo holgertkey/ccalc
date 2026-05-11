@@ -17,7 +17,6 @@ A = [1+2i, 3-4i; 5, 6+1i];
 fprintf('A = [1+2i, 3-4i; 5, 6+1i]:\n')
 disp(A)
 
-% A 1x3 row vector
 v = [1+i, 2-i, 3];
 fprintf('v = [1+i, 2-i, 3]:\n')
 disp(v)
@@ -41,7 +40,7 @@ disp(A + B)
 fprintf('A .* B  (element-wise multiply):\n')
 disp(A .* B)
 
-% Matrix multiply: ComplexMatrix * ComplexMatrix
+% Matrix multiply: row * column → scalar
 P = [1+i, 1-i] * [1-i; 1+i];
 fprintf('[1+i, 1-i] * [1-i; 1+i]  (dot product):\n')
 disp(P)
@@ -73,7 +72,7 @@ Mt = M.';
 fprintf("M.' (plain transpose):\n")
 disp(Mt)
 
-% M * M' should be Hermitian (imaginary part should be zero on diagonal)
+% M * M' is Hermitian — its diagonal is real
 MMh = M * Mh;
 fprintf('real(M * M'')  (diagonal should be real):\n')
 disp(real(MMh))
@@ -93,13 +92,13 @@ fprintf('imag(Z):\n')
 disp(imag(Z))
 
 fprintf('abs(Z)  (element-wise modulus):\n')
-disp(abs(Z))
+disp(round(abs(Z) * 1e4) / 1e4)
 
 fprintf('conj(Z):\n')
 disp(conj(Z))
 
 fprintf('angle(Z)  (argument in radians):\n')
-disp(angle(Z))
+disp(round(angle(Z) * 1e4) / 1e4)
 
 % --- 5. Indexing ---
 %
@@ -141,6 +140,9 @@ fprintf('norm(C)  (Frobenius):  %.4f\n\n', norm(C))
 %
 % Built using vectorized outer product — no element-by-element loop needed.
 % Property: W * W' = N * I  (columns are mutually orthogonal).
+%
+% Values are rounded to 4 decimal places; floating-point noise near zero
+% (|x| < 1e-12) would otherwise appear as tiny non-zero entries.
 
 fprintf('=== 7. DFT matrix (N=4) ===\n')
 
@@ -149,22 +151,22 @@ mn = (0:N-1)' * (0:N-1);          % N×N real outer-product matrix of indices
 W  = cos(-2*pi/N * mn) + i * sin(-2*pi/N * mn);
 
 fprintf('real(W):\n')
-disp(real(W))
+disp(round(real(W) * 1e4) / 1e4)
 
 fprintf('imag(W):\n')
-disp(imag(W))
+disp(round(imag(W) * 1e4) / 1e4)
 
 % Verify orthogonality: real(W * W') should equal N * eye(N)
 WWh = W * W';
-fprintf('real(W * conj(W).transpose)  (should be %d * I):\n', N)
-disp(real(WWh))
+fprintf('real(W * W'')  (should be %d * I):\n', N)
+disp(round(real(WWh) * 1e4) / 1e4)
 
 % Apply DFT matrix to [1 2 3 4]' and compare expected result
 x   = [1; 2; 3; 4];
 X   = W * x;
 fprintf('DFT of [1 2 3 4] via matrix multiply:\n')
 fprintf('  real part:  ')
-disp(real(X)')
+disp(round(real(X)' * 1e4) / 1e4)
 fprintf('  imag part:  ')
-disp(imag(X)')
+disp(round(imag(X)' * 1e4) / 1e4)
 % Expected: real = [10, -2, -2, -2], imag = [0, 2, 0, -2]

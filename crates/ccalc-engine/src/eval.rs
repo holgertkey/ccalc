@@ -8532,7 +8532,7 @@ fn format_duration_array(v: &[f64]) -> String {
 fn format_complex_cell(re: f64, im: f64, mode: &FormatMode) -> String {
     let re_str = format_decimal(re, mode);
     let im_abs_str = format_decimal(im.abs(), mode);
-    if im < 0.0 || im.is_sign_negative() {
+    if im < 0.0 {
         format!("{re_str} - {im_abs_str}i")
     } else {
         format!("{re_str} + {im_abs_str}i")
