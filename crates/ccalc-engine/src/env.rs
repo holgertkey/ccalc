@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use indexmap::IndexMap;
 use ndarray::Array2;
+use num_complex::Complex;
 
 use crate::io::IoContext;
 
@@ -43,6 +44,11 @@ pub enum Value {
     /// A 2-D real matrix (row-major). Scalars are represented as 1×1 matrices
     /// only when produced by matrix operations; standalone numbers use `Scalar`.
     Matrix(Array2<f64>),
+    /// A 2-D complex matrix (row-major). Used when any element has a non-zero imaginary part.
+    ///
+    /// Produced by complex matrix literals, FFT output, or mixed real/complex arithmetic.
+    /// Workspace save skips this type (same policy as all non-scalar types).
+    ComplexMatrix(Array2<Complex<f64>>),
     /// Complex number `re + im*i`.
     Complex(f64, f64),
     /// Character array (single-quoted string). Represents a 1×N row of char values.
@@ -123,6 +129,7 @@ impl Value {
             Value::Scalar(n) => Some(*n),
             Value::Void
             | Value::Matrix(_)
+            | Value::ComplexMatrix(_)
             | Value::Complex(_, _)
             | Value::Str(_)
             | Value::StringObj(_)

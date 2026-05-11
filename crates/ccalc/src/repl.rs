@@ -284,6 +284,7 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
         Some(Value::Void) | None => "0".to_string(),
         Some(Value::Scalar(n)) => format_scalar(*n, base, fmt),
         Some(Value::Matrix(m)) => format!("[{}×{}]", m.nrows(), m.ncols()),
+        Some(Value::ComplexMatrix(m)) => format!("[{}×{} complex]", m.nrows(), m.ncols()),
         Some(Value::Complex(re, im)) => format_complex(*re, *im, fmt),
         Some(Value::Str(s)) => {
             let display: String = s.chars().take(15).collect();
@@ -766,7 +767,7 @@ pub fn run() {
                         match result {
                             EvalResult::Assigned(name, val) => match &val {
                                 Value::Void => {}
-                                Value::Matrix(_) => {
+                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
@@ -836,7 +837,7 @@ pub fn run() {
                             },
                             EvalResult::Value(val) => match &val {
                                 Value::Void => {}
-                                Value::Matrix(_) => {
+                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&val, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
@@ -937,7 +938,7 @@ pub fn run_expr(expr: &str) {
         Ok(result) => match result {
             EvalResult::Assigned(name, v) => match &v {
                 Value::Void => {}
-                Value::Matrix(_) => {
+                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                     if let Some(full) = format_value_full(&v, &fmt) {
                         println!("{name} =");
                         println!("{full}");
@@ -985,7 +986,7 @@ pub fn run_expr(expr: &str) {
             },
             EvalResult::Value(v) => match &v {
                 Value::Void => {}
-                Value::Matrix(_) => {
+                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                     if let Some(full) = format_value_full(&v, &fmt) {
                         println!("ans =");
                         println!("{full}");
@@ -1498,7 +1499,7 @@ pub fn run_pipe(reader: impl BufRead) {
                         match result {
                             EvalResult::Assigned(name, v) => match &v {
                                 Value::Void => {}
-                                Value::Matrix(_) => {
+                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("{name} =");
                                         println!("{full}");
@@ -1561,7 +1562,7 @@ pub fn run_pipe(reader: impl BufRead) {
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
-                                Value::Matrix(_) => {
+                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         println!("ans =");
                                         println!("{full}");
@@ -1687,6 +1688,7 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Void => {}
             Value::Scalar(n) => println!("ans = {}", format_scalar(*n, base, fmt)),
             Value::Matrix(m) => println!("ans = [{}×{} double]", m.nrows(), m.ncols()),
+            Value::ComplexMatrix(m) => println!("ans = [{}×{} complex]", m.nrows(), m.ncols()),
             Value::Complex(re, im) => println!("ans = {}", format_complex(*re, *im, fmt)),
             Value::Str(s) => println!("ans = {s}"),
             Value::StringObj(s) => println!("ans = {s}"),
@@ -1724,6 +1726,9 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             }
             Value::Matrix(m) => {
                 matrices.push(format!("{} = [{}×{} double]", name, m.nrows(), m.ncols()));
+            }
+            Value::ComplexMatrix(m) => {
+                matrices.push(format!("{} = [{}×{} complex]", name, m.nrows(), m.ncols()));
             }
             Value::Str(s) => {
                 let n = s.chars().count();
@@ -2053,7 +2058,7 @@ fn handle_disp(arg: &str, env: &Env, base: Base, fmt: &FormatMode) {
     match result {
         Ok(v) => match &v {
             Value::Void => {}
-            Value::Matrix(_) => {
+            Value::Matrix(_) | Value::ComplexMatrix(_) => {
                 if let Some(full) = format_value_full(&v, fmt) {
                     println!("{full}");
                 }

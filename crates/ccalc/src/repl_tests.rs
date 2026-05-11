@@ -502,7 +502,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                 match result {
                     Ok(v) => match &v {
                         Value::Void => {}
-                        Value::Matrix(_) => {
+                        Value::Matrix(_) | Value::ComplexMatrix(_) => {
                             if let Some(full) = format_value_full(&v, &fmt) {
                                 output.push(full);
                             }
@@ -545,7 +545,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                         match result {
                             EvalResult::Assigned(name, v) => match &v {
                                 Value::Void => {}
-                                Value::Matrix(_) => {
+                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push(format!("{name} ="));
                                         output.push(full);
@@ -599,7 +599,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                             },
                             EvalResult::Value(v) => match &v {
                                 Value::Void => {}
-                                Value::Matrix(_) => {
+                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push("ans =".to_string());
                                         output.push(full);

@@ -674,6 +674,7 @@ fn is_truthy(val: &Value) -> bool {
         Value::Scalar(n) => *n != 0.0 && !n.is_nan(),
         Value::Matrix(m) => m.iter().all(|&x| x != 0.0 && !x.is_nan()),
         Value::Complex(re, im) => *re != 0.0 || *im != 0.0,
+        Value::ComplexMatrix(m) => m.iter().all(|c| c.re != 0.0 || c.im != 0.0),
         Value::Str(s) | Value::StringObj(s) => !s.is_empty(),
         Value::Void => false,
         // Functions are truthy (they exist), but comparing them to 0 makes no sense.
@@ -756,6 +757,16 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
             for (i, v) in vals.iter().enumerate() {
                 print_value(label.map(|_| "ans").or(Some("ans")), v, fmt, base, compact);
                 let _ = i;
+            }
+        }
+        Value::ComplexMatrix(_) => {
+            if let Some(full) = format_value_full(val, fmt) {
+                let prefix = label.unwrap_or("ans");
+                println!("{prefix} =");
+                println!("{full}");
+                if !compact {
+                    println!();
+                }
             }
         }
         Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {

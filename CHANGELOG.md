@@ -6,16 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-05-11
+
+### Added
+
+- **Phase 27 — Complex matrices** (`Value::ComplexMatrix(Array2<Complex<f64>>)`):
+  - **Literals**: `[1+2i, 3; 4, 5-1i]` now produces a `ComplexMatrix` instead of
+    erroring; any row with at least one non-zero imaginary element promotes the
+    entire matrix to complex.
+  - **Arithmetic** (all combinations of `ComplexMatrix × ComplexMatrix`,
+    `ComplexMatrix × Matrix`, `ComplexMatrix × Scalar`, `ComplexMatrix × Complex`
+    and their reverses): `+`, `-`, `*` (matrix multiply via `.dot()`), `.*`, `./`,
+    `.^`, `==`, `~=`.
+  - **Conjugate transpose** `A'`: returns `ComplexMatrix` with conjugated elements.
+  - **Plain transpose** `A.'`: returns `ComplexMatrix` without conjugating.
+  - **Unary negation** `-A`: element-wise negation.
+  - **Element-wise built-ins**: `real(A)` → `Matrix`, `imag(A)` → `Matrix`,
+    `abs(A)` → `Matrix` (element-wise modulus), `conj(A)` → `ComplexMatrix`,
+    `angle(A)` → `Matrix`, `isreal(A)` → `0`.
+  - **Shape built-ins**: `size(A)`, `size(A,1)`, `size(A,2)`, `length(A)`,
+    `numel(A)` all work on `ComplexMatrix`.
+  - **Indexing**: `A(i)`, `A(i:j)`, `A(i,j)`, `A(:,j)`, `A(i,:)`, etc. — same
+    column-major 1-based conventions as `Matrix`.
+  - **`norm(A)`**: Frobenius norm (sqrt of sum of squared moduli).
+  - **FFT output changed**: `fft()` / `ifft()` (when result has non-zero imaginary
+    parts) now return `ComplexMatrix` instead of `Cell` of `Complex` scalars.
+  - **REPL display**: `ComplexMatrix` prints as a formatted table; `who` shows
+    `[M×N complex]`.
+  - 16 regression tests in `phase27_tests`.
+
 ## [0.31.0] - 2026-05-10
 
 ### Added
 
 - **Phase 26 — FFT and signal processing** (`--features fft`):
-  - `fft(x)` — forward DFT of a real vector via `rustfft`; returns a cell array
-    of complex numbers.
+  - `fft(x)` — forward DFT of a real vector via `rustfft`; returns a
+    `ComplexMatrix` (1×N) of complex values (changed to `ComplexMatrix` in 0.32.0).
   - `fft(x, n)` — zero-padded (or truncated) FFT to length `n`.
-  - `ifft(X)` — inverse DFT, normalised by 1/N; returns a real matrix when all
-    imaginary parts are < 1e-12, otherwise a cell array of complex numbers.
+  - `ifft(X)` — inverse DFT, normalised by 1/N; returns a real `Matrix` when all
+    imaginary parts are < 1e-12, otherwise a `ComplexMatrix`.
   - `fftshift(x)` — circular shift by `floor(N/2)` to centre the DC component;
     works on row vectors, column vectors, and 2-D matrices. No feature flag.
   - `ifftshift(x)` — inverse shift (`ceil(N/2)`); undoes `fftshift`. No feature flag.
