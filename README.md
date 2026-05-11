@@ -741,9 +741,9 @@ See `examples/polynomials.m` and `help poly` for full documentation.
 
 | Function | Args | Description |
 |---|---|---|
-| `fft(x)` | real vector | Forward DFT; returns cell array of complex numbers |
+| `fft(x)` | real vector | Forward DFT; returns ComplexMatrix (1×N row vector) |
 | `fft(x, n)` | real vector, length | Zero-padded FFT to length `n` |
-| `ifft(X)` | cell of complex | Inverse DFT, normalised by 1/N; real matrix when imaginary parts < 1e-12 |
+| `ifft(X)` | ComplexMatrix | Inverse DFT, normalised by 1/N; real matrix when imaginary parts < 1e-12 |
 | `fftshift(x)` | real matrix | Circular shift by `floor(N/2)` — moves DC to centre |
 | `ifftshift(x)` | real matrix | Inverse shift by `ceil(N/2)` — undoes `fftshift` |
 | `fftfreq(n, d)` | count, spacing | DFT frequency axis matching NumPy/MATLAB convention |
@@ -751,12 +751,13 @@ See `examples/polynomials.m` and `help poly` for full documentation.
 ```matlab
 x = [1 2 3 4];
 X = fft(x);
-% X{1} = 10       (DC = sum of all samples)
-% X{2} = -2 + 2i
-% X{3} = -2
-% X{4} = -2 - 2i
+% X(1) = 10 + 0i  (DC = sum of all samples)
+% X(2) = -2 + 2i
+% X(3) = -2 + 0i
+% X(4) = -2 - 2i
 
-y = ifft(X)        % → [1 2 3 4]  (real matrix; roundtrip)
+mag = abs(X)       % → real Matrix of bin magnitudes
+y   = ifft(X)      % → [1 2 3 4]  (real matrix; roundtrip)
 
 fftshift([1 2 3 4 5 6])   % → [4 5 6 1 2 3]
 
@@ -1030,7 +1031,24 @@ i^4                       %  1
 | `complex(re, im)` | Construct from two real scalars |
 | `isreal(z)` | `1` if `im == 0`, else `0` |
 
-> **Note:** Complex matrices (`[1+2i, 3]`) are not yet supported.
+### Complex matrices
+
+Any matrix literal with at least one complex element becomes a `ComplexMatrix`.
+Real elements are promoted automatically. Full arithmetic, Hermitian transpose
+(`A'`), plain transpose (`A.'`), and element-wise built-ins (`real`, `imag`,
+`abs`, `conj`, `angle`, `isreal`) all work on `ComplexMatrix`.
+
+```matlab
+A = [1+2i, 3-4i; 5, 6+1i]    % 2×2 ComplexMatrix
+A'                              % conjugate transpose
+abs(A)                          % real Matrix of element-wise moduli
+isreal(A)                       % 0
+```
+
+Since Phase 27, `fft()` returns a `ComplexMatrix` instead of a Cell array.
+Access bins with `X(k)` and get the magnitude spectrum with `abs(X)`.
+
+See `examples/complex_matrix.m` and `help complex` for more details.
 
 ---
 
@@ -1922,6 +1940,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `set_operations.m`      | Phase 23: `triu`/`tril`, `repmat`, `kron`, `cross`, `dot`, `intersect`/`union`/`setdiff`/`ismember`, `sub2ind`/`ind2sub`, `repelem`; voter-overlap analysis example |
 | `polynomials.m`         | Phase 24: `polyval`, `polyfit`, `roots`, `poly`, `conv`, `deconv`, `interp1`; curve fitting and interpolation examples |
 | `fft_demo.calc`            | Phase 26: `fft`, `ifft`, zero-padded FFT, `fftshift`/`ifftshift`, `fftfreq`, two-tone power spectrum — requires `--features fft` for `fft`/`ifft` |
+| `complex_matrix.m`         | Phase 27: complex matrix literals, arithmetic, conjugate transpose, `real`/`imag`/`abs`/`conj`/`angle`/`isreal`, indexing, shape functions, DFT matrix example |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |

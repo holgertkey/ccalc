@@ -151,10 +151,102 @@ numbers — ordering is not defined for the complex plane.
 (e.g. `i = 5` for a loop counter), in which case the original value is
 no longer available until you restart ccalc.
 
-## Limitations
+## Complex Matrices
 
-Complex matrices (`[1+2i, 3+4i]`) are not yet supported and return an error.
-Use scalar complex variables until matrix complex support is added (a future phase).
+Any matrix literal that contains at least one complex element becomes a
+`ComplexMatrix`. Real elements are promoted automatically.
+
+```
+A = [1+2i, 3-4i; 5, 6+1i]   % 2×2 complex matrix
+v = [1+i, 2-i, 3]            % 1×3 complex row vector
+```
+
+`isreal` distinguishes the two kinds:
+
+```
+isreal([1 2; 3 4])   % 1   (real matrix — no imaginary parts)
+isreal(A)            % 0   (complex matrix)
+```
+
+### Display
+
+Every cell always shows both parts:
+
+```
+A(1,1)   % 1 + 2i   (not just "1+2i")
+A(2,1)   % 5 + 0i   (imaginary part printed even when zero)
+```
+
+### Arithmetic
+
+`+`, `-`, `.*`, `./`, `.^` work element-wise.
+`*` performs matrix multiplication. Scalar / complex scalar broadcast
+applies to both operands:
+
+```
+A + B         % element-wise addition
+A .* B        % element-wise multiply
+A * B         % matrix multiply
+2 * A         % scalar broadcast
+A + [10, 20; 30, 40]   % mixed real + complex matrix
+```
+
+### Transpose
+
+```
+M = [1+2i, 3+4i; 5+6i, 7+8i]
+M'            % conjugate transpose (Hermitian adjoint)
+M.'           % plain transpose (no conjugation)
+```
+
+`M * M'` is Hermitian — its diagonal is always real.
+
+### Element-wise built-ins on matrices
+
+All of the scalar complex built-ins work element-wise on `ComplexMatrix`:
+
+| Function | Input | Output |
+|----------|-------|--------|
+| `real(A)` | ComplexMatrix | real Matrix (one real part per element) |
+| `imag(A)` | ComplexMatrix | real Matrix (one imaginary part per element) |
+| `abs(A)` | ComplexMatrix | real Matrix (element-wise modulus) |
+| `conj(A)` | ComplexMatrix | ComplexMatrix (element-wise conjugate) |
+| `angle(A)` | ComplexMatrix | real Matrix (argument in radians) |
+| `isreal(A)` | ComplexMatrix | 0 (always) |
+
+### Shape functions
+
+`size`, `numel`, `length`, and `norm` (Frobenius) all work:
+
+```
+C = [1+1i, 2-1i, 3; 4, 5+2i, 6-3i]
+size(C)           % [2  3]
+numel(C)          % 6
+norm(C)           % Frobenius norm
+```
+
+### Indexing
+
+1-based, column-major — the same conventions as real matrices:
+
+```
+w = [10+1i, 20+2i, 30+3i, 40+4i]
+w(2)          % 20 + 2i
+w(2:3)        % [20+2i, 30+3i]
+G(1,:)        % first row
+G(:,2)        % second column
+```
+
+### FFT output
+
+Since Phase 27, `fft()` returns a `ComplexMatrix` (1×N row vector) rather
+than a cell array. Access individual bins with `X(k)`:
+
+```
+X = fft([1 2 3 4])
+X(1)          % 10 + 0i  (DC component)
+abs(X)        % real Matrix of bin magnitudes
+```
 
 ## Example
 

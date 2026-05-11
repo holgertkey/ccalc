@@ -17,15 +17,16 @@ ccalc provides FFT-based frequency analysis through five built-in functions.
 ## Forward FFT — `fft`
 
 `fft(x)` computes the Discrete Fourier Transform (DFT) of real vector `x`.
-Returns a cell array where each element is a complex number `re+im·i`.
+Returns a **ComplexMatrix** (1×N row vector) where each element is a
+complex number `re+im·i`. Access individual bins with `X(k)`.
 
 ```matlab
 x = [1 2 3 4];
 X = fft(x)
-% X{1} = 10+0i   (DC component: sum of all samples)
-% X{2} = -2+2i
-% X{3} = -2+0i
-% X{4} = -2-2i
+% X(1) = 10 + 0i   (DC component: sum of all samples)
+% X(2) = -2 + 2i
+% X(3) = -2 + 0i
+% X(4) = -2 - 2i
 ```
 
 ### Zero-padded FFT
@@ -42,8 +43,8 @@ X = fft([1 2 3 4], 8)   % 8-point FFT of a 4-sample signal
 ## Inverse FFT — `ifft`
 
 `ifft(X)` computes the inverse DFT, normalised by 1/N.
-When all imaginary parts are negligibly small (< 1e-12), returns a real matrix
-instead of a cell array:
+Accepts a `ComplexMatrix` (as returned by `fft`).
+When all imaginary parts are negligibly small (< 1e-12), returns a real matrix:
 
 ```matlab
 x = [1 2 3 4];
@@ -102,6 +103,9 @@ Two-tone signal: 10 Hz (amplitude 1.0) and 25 Hz (amplitude 0.5), sampled at
 
 For a real sine of amplitude A, the one-sided magnitude is `A × n/2`.
 
+`fft` returns a `ComplexMatrix`, so `abs(S)` gives a real matrix of
+element-wise magnitudes directly — no loop needed:
+
 ```matlab
 n  = 100;
 fs = 100;
@@ -110,11 +114,8 @@ s  = sin(2*pi*10*t) + 0.5*sin(2*pi*25*t);
 S  = fft(s);
 f  = fftfreq(n, 1/fs);
 
-% Compute magnitude for each bin using a loop over the cell array
-mag = zeros(1, n);
-for k = 1:n
-  mag(k) = sqrt(real(S{k})^2 + imag(S{k})^2);
-end
+% abs() on a ComplexMatrix returns a real Matrix of element-wise magnitudes.
+mag = abs(S);
 
 % Bins: 10 Hz → bin 11, 25 Hz → bin 26  (1-based; resolution = 1 Hz)
 fprintf('Bin 11 @ 10 Hz :  |S| = %.2f   (expected %.2f)\n', mag(11), 1.0 * n/2)
@@ -135,7 +136,7 @@ mag_centred = fftshift(mag);
 |----------|------|--------------|
 | `fft(x)` | real vector | `fft` |
 | `fft(x, n)` | real vector, length | `fft` |
-| `ifft(X)` | cell of complex | `fft` |
-| `fftshift(x)` | real matrix | always |
-| `ifftshift(x)` | real matrix | always |
+| `ifft(X)` | ComplexMatrix | `fft` |
+| `fftshift(x)` | real or complex matrix | always |
+| `ifftshift(x)` | real or complex matrix | always |
 | `fftfreq(n, d)` | count, spacing | always |

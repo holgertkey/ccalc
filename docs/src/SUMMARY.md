@@ -82,3 +82,5 @@
 - [Phase 23 — Matrix Utilities & Set Operations](./ccalc/phase23-set-operations.md)
 - [Phase 24 — Polynomial Operations & Interpolation](./ccalc/phase24-polynomials.md)
 - [Phase 25 — Dynamic Evaluation & Timing](./ccalc/phase25-eval.md)
+- [Phase 26 — FFT & Signal Processing](./ccalc/phase26-fft.md)
+- [Phase 27 — Complex Matrices](./ccalc/phase27-complex-matrices.md)

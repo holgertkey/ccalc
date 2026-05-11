@@ -1357,11 +1357,37 @@ Variables i and j
     You can reassign them:  i = 5   (shadows the imaginary unit)
     Restart ccalc or use complex(0,1) to restore the imaginary unit.
 
-Limitations
-    Complex matrices [1+2i, 3] are not yet supported (returns an error).
-    ws/wl do not persist complex variables (same policy as matrices).
+Complex matrices
+    Any matrix literal with at least one complex element becomes a ComplexMatrix.
+    A = [1+2i, 3-4i; 5, 6+1i]    % 2×2 ComplexMatrix
+    v = [1+i, 2-i, 3]             % 1×3 ComplexMatrix
+    isreal(A)  →  0               % always false for ComplexMatrix
 
-Example: ccalc examples/complex_numbers.calc"
+    Display: every cell shows both parts  →  5 + 0i,  1 + 1i,  0 + 2i
+
+    Arithmetic: +, -, .*, ./, .^ element-wise;  * is matrix multiply.
+    A'     conjugate transpose (Hermitian adjoint)
+    A.'    plain transpose (no conjugation)
+
+    Element-wise built-ins on ComplexMatrix:
+    real(A)    → real Matrix of real parts
+    imag(A)    → real Matrix of imaginary parts
+    abs(A)     → real Matrix of element-wise moduli
+    conj(A)    → ComplexMatrix of element-wise conjugates
+    angle(A)   → real Matrix of arguments (radians)
+    norm(A)    → Frobenius norm (scalar)
+
+    Indexing: 1-based column-major, same as real matrices
+    X(2)       → second element of a row vector
+    A(1,:)     → first row
+    A(:,2)     → second column
+
+    FFT output: since Phase 27, fft() returns a ComplexMatrix (1×N).
+    Access bins with X(k); use abs(X) for magnitude spectrum.
+
+    ws/wl do not persist ComplexMatrix (same policy as all matrix types).
+
+Example: ccalc examples/complex_matrix.m"
     );
 }
 
@@ -3345,25 +3371,26 @@ fftshift, ifftshift, and fftfreq are always available.
 
 ── Forward FFT ───────────────────────────────────────────────────────────────
     fft(x)      Discrete Fourier Transform of real vector x.
-                Returns a cell array where each element is a complex number.
-                X{{1}} is the DC component (= sum of all input samples).
+                Returns a ComplexMatrix (1×N row vector).
+                X(1) is the DC component (= sum of all input samples).
 
     fft(x, n)   Zero-pad x to length n before transform (or truncate if n <
                 length(x)). Use to control frequency resolution.
 
     x = [1 2 3 4];
     X = fft(x)
-    % X{{1}} = 10         (DC: sum of all samples)
-    % X{{2}} = -2 + 2i
-    % X{{3}} = -2
-    % X{{4}} = -2 - 2i
+    % X(1) = 10 + 0i     (DC: sum of all samples)
+    % X(2) = -2 + 2i
+    % X(3) = -2 + 0i
+    % X(4) = -2 - 2i
 
     % Access real and imaginary parts of a bin:
-    re = real(X{{2}});   im = imag(X{{2}})
+    re = real(X(2));   im = imag(X(2))
+    % Element-wise magnitude: abs(X)  →  real Matrix
 
 ── Inverse FFT ───────────────────────────────────────────────────────────────
-    ifft(X)     Inverse DFT, normalised by 1/N. When all imaginary parts are
-                < 1e-12, returns a real matrix; otherwise a cell of complex.
+    ifft(X)     Inverse DFT, normalised by 1/N. Accepts a ComplexMatrix.
+                When all imaginary parts < 1e-12, returns a real matrix.
 
     y = ifft(fft([1 2 3 4]))   % → [1 2 3 4]  (real matrix)
 
@@ -3397,11 +3424,8 @@ fftshift, ifftshift, and fftfreq are always available.
     s = sin(2*pi*10*t) + 0.5*sin(2*pi*25*t);
     S = fft(s);
 
-    % Compute magnitude for each bin
-    mag = zeros(1, n);
-    for k = 1:n
-      mag(k) = sqrt(real(S{{k}})^2 + imag(S{{k}})^2);
-    end
+    % abs() on ComplexMatrix returns a real Matrix of element-wise magnitudes
+    mag = abs(S);
 
     % 10 Hz → bin 11, 25 Hz → bin 26  (1-based; |FFT| = amplitude * n/2)
     fprintf('10 Hz: |S| = %.2f  (expect %.2f)\\n', mag(11), n/2)
