@@ -651,9 +651,11 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             } else {
                 0.0
             })),
-            Value::ComplexMatrix(m) => Ok(Value::Matrix(m.mapv(|c| {
-                if c.re == 0.0 && c.im == 0.0 { 1.0 } else { 0.0 }
-            }))),
+            Value::ComplexMatrix(m) => {
+                Ok(Value::Matrix(m.mapv(|c| {
+                    if c.re == 0.0 && c.im == 0.0 { 1.0 } else { 0.0 }
+                })))
+            }
             Value::Str(s) => match str_to_numeric(&s) {
                 Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
                 Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
@@ -1066,9 +1068,10 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             }
 
             // Pass 2: detect if any element is complex (scan the entire evaluated grid).
-            let has_complex = evaluated.iter().flat_map(|row| row.iter()).any(|v| {
-                matches!(v, Value::Complex(_, _) | Value::ComplexMatrix(_))
-            });
+            let has_complex = evaluated
+                .iter()
+                .flat_map(|row| row.iter())
+                .any(|v| matches!(v, Value::Complex(_, _) | Value::ComplexMatrix(_)));
 
             // Dispatch on element kind (complex takes priority over numeric).
             enum MatKind {
@@ -1135,7 +1138,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                             if m.nrows() != nrows {
                                 return Err(format!(
                                     "Matrix row height mismatch: expected {} rows, element {} has {} rows",
-                                    nrows, i + 1, m.nrows()
+                                    nrows,
+                                    i + 1,
+                                    m.nrows()
                                 ));
                             }
                         }
@@ -1159,13 +1164,14 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         if blk.ncols() != ncols {
                             return Err(format!(
                                 "Matrix column count mismatch: expected {} columns, row {} has {} columns",
-                                ncols, i + 1, blk.ncols()
+                                ncols,
+                                i + 1,
+                                blk.ncols()
                             ));
                         }
                     }
                     let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
-                    let mut flat: Vec<Complex<f64>> =
-                        Vec::with_capacity(total_rows * ncols);
+                    let mut flat: Vec<Complex<f64>> = Vec::with_capacity(total_rows * ncols);
                     for blk in &row_blocks {
                         flat.extend(blk.iter().copied());
                     }
@@ -1531,9 +1537,7 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             cm_binop_complex(cm_from_real(&m), op, re, im)
         }
         // ComplexMatrix combinations
-        (Value::ComplexMatrix(a), Value::ComplexMatrix(b)) => {
-            complex_matrix_binop(a, op, b)
-        }
+        (Value::ComplexMatrix(a), Value::ComplexMatrix(b)) => complex_matrix_binop(a, op, b),
         (Value::ComplexMatrix(cm), Value::Matrix(m)) => {
             complex_matrix_binop(cm, op, cm_from_real(&m))
         }
@@ -1848,7 +1852,9 @@ fn complex_matrix_binop(
         Op::ElemPow => {
             same_shape()?;
             Ok(Value::ComplexMatrix(
-                ndarray::Zip::from(&a).and(&b).map_collect(|x, y| x.powc(*y)),
+                ndarray::Zip::from(&a)
+                    .and(&b)
+                    .map_collect(|x, y| x.powc(*y)),
             ))
         }
         Op::Pow => Err(
@@ -1893,11 +1899,7 @@ fn complex_matrix_binop(
 }
 
 /// Broadcasts a scalar to every element of a complex matrix.
-fn cm_binop_scalar(
-    cm: Array2<Complex<f64>>,
-    op: &Op,
-    s: f64,
-) -> Result<Value, String> {
+fn cm_binop_scalar(cm: Array2<Complex<f64>>, op: &Op, s: f64) -> Result<Value, String> {
     let c = Complex::new(s, 0.0);
     match op {
         Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| x + c))),
@@ -1912,11 +1914,7 @@ fn cm_binop_scalar(
 }
 
 /// Broadcasts a scalar to every element of a complex matrix (scalar on the left).
-fn scalar_binop_cm(
-    s: f64,
-    op: &Op,
-    cm: Array2<Complex<f64>>,
-) -> Result<Value, String> {
+fn scalar_binop_cm(s: f64, op: &Op, cm: Array2<Complex<f64>>) -> Result<Value, String> {
     let c = Complex::new(s, 0.0);
     match op {
         Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| c + x))),
@@ -1930,12 +1928,7 @@ fn scalar_binop_cm(
 }
 
 /// Broadcasts a complex scalar to every element of a complex matrix.
-fn cm_binop_complex(
-    cm: Array2<Complex<f64>>,
-    op: &Op,
-    re: f64,
-    im: f64,
-) -> Result<Value, String> {
+fn cm_binop_complex(cm: Array2<Complex<f64>>, op: &Op, re: f64, im: f64) -> Result<Value, String> {
     let c = Complex::new(re, im);
     match op {
         Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| x + c))),
@@ -1950,12 +1943,7 @@ fn cm_binop_complex(
 }
 
 /// Broadcasts a complex scalar (on the left) to every element of a complex matrix.
-fn complex_binop_cm(
-    re: f64,
-    im: f64,
-    op: &Op,
-    cm: Array2<Complex<f64>>,
-) -> Result<Value, String> {
+fn complex_binop_cm(re: f64, im: f64, op: &Op, cm: Array2<Complex<f64>>) -> Result<Value, String> {
     let c = Complex::new(re, im);
     match op {
         Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| c + x))),
@@ -2183,9 +2171,7 @@ where
         Value::Void => Err("Reduction not applicable to void".to_string()),
         Value::Scalar(n) => Ok(Value::Scalar(f(&[*n]))),
         Value::Complex(_, _) => Err("Reduction not applicable to complex values".to_string()),
-        Value::ComplexMatrix(_) => {
-            Err("Reduction not applicable to complex matrices".to_string())
-        }
+        Value::ComplexMatrix(_) => Err("Reduction not applicable to complex matrices".to_string()),
         Value::Str(_) | Value::StringObj(_) => {
             Err("Reduction not applicable to strings".to_string())
         }
@@ -2537,7 +2523,9 @@ fn printf_string(v: &Value) -> Result<String, String> {
         Value::Complex(re, im) => Ok(format_complex(*re, *im, &FormatMode::Custom(6))),
         Value::Void => Err("fprintf: cannot format void as string".to_string()),
         Value::Matrix(_) => Err("fprintf: cannot format matrix as string".to_string()),
-        Value::ComplexMatrix(_) => Err("fprintf: cannot format complex matrix as string".to_string()),
+        Value::ComplexMatrix(_) => {
+            Err("fprintf: cannot format complex matrix as string".to_string())
+        }
         Value::DateTime(ts) => Ok(crate::datetime::format_datetime(*ts)),
         Value::Duration(s) => Ok(crate::datetime::format_duration(*s)),
         Value::Lambda(_)
@@ -3520,9 +3508,9 @@ fn call_builtin(
                     Ok(Value::Scalar(s.first().copied().unwrap_or(0.0)))
                 }
             }
-            Value::ComplexMatrix(m) => {
-                Ok(Value::Scalar(m.iter().map(|c| c.norm_sqr()).sum::<f64>().sqrt()))
-            }
+            Value::ComplexMatrix(m) => Ok(Value::Scalar(
+                m.iter().map(|c| c.norm_sqr()).sum::<f64>().sqrt(),
+            )),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
@@ -3786,9 +3774,7 @@ fn call_builtin(
                 ))
             }
             Value::Complex(_, _) => Err("unique: not applicable to complex values".to_string()),
-            Value::ComplexMatrix(_) => {
-                Err("unique: not applicable to complex values".to_string())
-            }
+            Value::ComplexMatrix(_) => Err("unique: not applicable to complex values".to_string()),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
@@ -4213,7 +4199,11 @@ fn call_builtin(
                 std::f64::consts::PI
             })),
             Value::Complex(re, im) => Ok(Value::Scalar(im.atan2(*re))),
-            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x >= 0.0 { 0.0 } else { std::f64::consts::PI }))),
+            Value::Matrix(m) => {
+                Ok(Value::Matrix(m.mapv(|x| {
+                    if x >= 0.0 { 0.0 } else { std::f64::consts::PI }
+                })))
+            }
             Value::ComplexMatrix(m) => Ok(Value::Matrix(m.mapv(|c| c.im.atan2(c.re)))),
             Value::Str(_)
             | Value::StringObj(_)
@@ -4294,7 +4284,9 @@ fn call_builtin(
                     .join("  ");
                 Ok(Value::Str(s))
             }
-            Value::ComplexMatrix(_) => Err("num2str: not supported for complex matrices".to_string()),
+            Value::ComplexMatrix(_) => {
+                Err("num2str: not supported for complex matrices".to_string())
+            }
             Value::Lambda(_)
             | Value::Function { .. }
             | Value::Tuple(_)
@@ -7808,11 +7800,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                     let row = i % nrows;
                                     let col = i / nrows;
                                     if col >= ncols_m {
-                                        Err(format!(
-                                            "Index {} out of range (1..{})",
-                                            i + 1,
-                                            total
-                                        ))
+                                        Err(format!("Index {} out of range (1..{})", i + 1, total))
                                     } else {
                                         Ok(m[[row, col]])
                                     }
@@ -8889,7 +8877,10 @@ fn complex_pairs_to_complex_matrix(data: Vec<(f64, f64)>) -> Value {
     if n == 0 {
         return Value::ComplexMatrix(Array2::zeros((1, 0)));
     }
-    let elems: Vec<Complex<f64>> = data.into_iter().map(|(re, im)| Complex::new(re, im)).collect();
+    let elems: Vec<Complex<f64>> = data
+        .into_iter()
+        .map(|(re, im)| Complex::new(re, im))
+        .collect();
     Value::ComplexMatrix(Array2::from_shape_vec((1, n), elems).unwrap())
 }
 
