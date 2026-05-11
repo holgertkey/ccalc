@@ -8525,6 +8525,20 @@ fn format_duration_array(v: &[f64]) -> String {
 /// Formats a complex matrix with right-aligned columns, 3-space indent, 3 spaces between columns.
 ///
 /// Each element is formatted using [`format_complex`]; columns are aligned to the widest entry.
+/// Formats one element of a `ComplexMatrix` for tabular display.
+///
+/// Unlike [`format_complex`], this always emits both parts so columns align cleanly:
+/// `5` → `5 + 0i`, `1 + i` → `1 + 1i`, `2i` → `0 + 2i`.
+fn format_complex_cell(re: f64, im: f64, mode: &FormatMode) -> String {
+    let re_str = format_decimal(re, mode);
+    let im_abs_str = format_decimal(im.abs(), mode);
+    if im < 0.0 || im.is_sign_negative() {
+        format!("{re_str} - {im_abs_str}i")
+    } else {
+        format!("{re_str} + {im_abs_str}i")
+    }
+}
+
 fn format_complex_matrix(m: &Array2<Complex<f64>>, mode: &FormatMode) -> String {
     if m.nrows() == 0 || m.ncols() == 0 {
         return "   []".to_string();
@@ -8535,7 +8549,7 @@ fn format_complex_matrix(m: &Array2<Complex<f64>>, mode: &FormatMode) -> String 
         .into_iter()
         .map(|row| {
             row.iter()
-                .map(|c| format_complex(c.re, c.im, mode))
+                .map(|c| format_complex_cell(c.re, c.im, mode))
                 .collect()
         })
         .collect();
