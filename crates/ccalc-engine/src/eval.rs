@@ -8674,49 +8674,60 @@ fn format_duration_array(v: &[f64]) -> String {
 /// Formats a complex matrix with right-aligned columns, 3-space indent, 3 spaces between columns.
 ///
 /// Each element is formatted using [`format_complex`]; columns are aligned to the widest entry.
-/// Formats one element of a `ComplexMatrix` for tabular display.
-///
-/// Unlike [`format_complex`], this always emits both parts so columns align cleanly:
-/// `5` → `5 + 0i`, `1 + i` → `1 + 1i`, `2i` → `0 + 2i`.
-fn format_complex_cell(re: f64, im: f64, mode: &FormatMode) -> String {
-    let re_str = format_decimal(re, mode);
-    let im_abs_str = format_decimal(im.abs(), mode);
-    if im < 0.0 {
-        format!("{re_str} - {im_abs_str}i")
-    } else {
-        format!("{re_str} + {im_abs_str}i")
-    }
-}
 
 fn format_complex_matrix(m: &Array2<Complex<f64>>, mode: &FormatMode) -> String {
     if m.nrows() == 0 || m.ncols() == 0 {
         return "   []".to_string();
     }
     let ncols = m.ncols();
-    let cells: Vec<Vec<String>> = m
+
+    // Split each cell into (re_str, sign " + "/" - ", im_abs_str) so that the
+    // real and imaginary parts can be right-aligned independently.  This keeps
+    // the leading indent uniform regardless of how many digits each part needs.
+    let parts: Vec<Vec<(String, &'static str, String)>> = m
         .rows()
         .into_iter()
         .map(|row| {
             row.iter()
-                .map(|c| format_complex_cell(c.re, c.im, mode))
+                .map(|c| {
+                    let re_str = format_decimal(c.re, mode);
+                    let im_abs = format_decimal(c.im.abs(), mode);
+                    let sign = if c.im < 0.0 { " - " } else { " + " };
+                    (re_str, sign, im_abs)
+                })
                 .collect()
         })
         .collect();
-    let col_widths: Vec<usize> = (0..ncols)
-        .map(|c| cells.iter().map(|row| row[c].len()).max().unwrap_or(0))
+
+    // Per-column max widths for re and im parts independently.
+    let re_widths: Vec<usize> = (0..ncols)
+        .map(|c| parts.iter().map(|row| row[c].0.len()).max().unwrap_or(0))
         .collect();
+    let im_widths: Vec<usize> = (0..ncols)
+        .map(|c| parts.iter().map(|row| row[c].2.len()).max().unwrap_or(0))
+        .collect();
+
     let mut lines = Vec::new();
-    for row in &cells {
+    for row in &parts {
         let mut line = String::from("   ");
-        for (c, cell) in row.iter().enumerate() {
+        for (c, (re_str, sign, im_str)) in row.iter().enumerate() {
             if c > 0 {
+                // Pad the previous column's im part so column boundaries stay fixed.
+                // Inter-column gap is 3 spaces past the widest im in this column.
+                let prev_im_pad = im_widths[c - 1].saturating_sub(row[c - 1].2.len());
+                for _ in 0..prev_im_pad {
+                    line.push(' ');
+                }
                 line.push_str("   ");
             }
-            let pad = col_widths[c].saturating_sub(cell.len());
-            for _ in 0..pad {
+            let re_pad = re_widths[c].saturating_sub(re_str.len());
+            for _ in 0..re_pad {
                 line.push(' ');
             }
-            line.push_str(cell);
+            line.push_str(re_str);
+            line.push_str(sign);
+            line.push_str(im_str);
+            line.push('i');
         }
         lines.push(line);
     }
