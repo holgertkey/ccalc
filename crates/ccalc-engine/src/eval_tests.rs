@@ -7187,8 +7187,12 @@ mod phase27_5_tests {
         assert_eq!(m.nrows(), 2);
         assert_eq!(m.ncols(), 1);
         let eigs: Vec<Complex<f64>> = vec![m[[0, 0]], m[[1, 0]]];
-        let has_pos_i = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im - 1.0).abs() < 1e-6);
-        let has_neg_i = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im + 1.0).abs() < 1e-6);
+        let has_pos_i = eigs
+            .iter()
+            .any(|c| c.re.abs() < 1e-6 && (c.im - 1.0).abs() < 1e-6);
+        let has_neg_i = eigs
+            .iter()
+            .any(|c| c.re.abs() < 1e-6 && (c.im + 1.0).abs() < 1e-6);
         assert!(has_pos_i, "expected +i eigenvalue, got {eigs:?}");
         assert!(has_neg_i, "expected -i eigenvalue, got {eigs:?}");
     }
@@ -7199,8 +7203,12 @@ mod phase27_5_tests {
         let env = run("e = eig([2,1;-1,2])");
         let m = get_cm(&env, "e");
         let eigs: Vec<Complex<f64>> = vec![m[[0, 0]], m[[1, 0]]];
-        let has_plus = eigs.iter().any(|c| (c.re - 2.0).abs() < 1e-6 && (c.im - 1.0).abs() < 1e-6);
-        let has_minus = eigs.iter().any(|c| (c.re - 2.0).abs() < 1e-6 && (c.im + 1.0).abs() < 1e-6);
+        let has_plus = eigs
+            .iter()
+            .any(|c| (c.re - 2.0).abs() < 1e-6 && (c.im - 1.0).abs() < 1e-6);
+        let has_minus = eigs
+            .iter()
+            .any(|c| (c.re - 2.0).abs() < 1e-6 && (c.im + 1.0).abs() < 1e-6);
         assert!(has_plus, "expected 2+i, got {eigs:?}");
         assert!(has_minus, "expected 2-i, got {eigs:?}");
     }
@@ -7211,8 +7219,12 @@ mod phase27_5_tests {
         let env = run("e = eig([0,2;-2,0])");
         let m = get_cm(&env, "e");
         let eigs: Vec<Complex<f64>> = vec![m[[0, 0]], m[[1, 0]]];
-        let has_pos = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im - 2.0).abs() < 1e-6);
-        let has_neg = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im + 2.0).abs() < 1e-6);
+        let has_pos = eigs
+            .iter()
+            .any(|c| c.re.abs() < 1e-6 && (c.im - 2.0).abs() < 1e-6);
+        let has_neg = eigs
+            .iter()
+            .any(|c| c.re.abs() < 1e-6 && (c.im + 2.0).abs() < 1e-6);
         assert!(has_pos, "expected +2i, got {eigs:?}");
         assert!(has_neg, "expected -2i, got {eigs:?}");
     }
@@ -7243,8 +7255,8 @@ mod phase27_5_tests {
     fn eig_two_output_real_ok() {
         // [V,D] = eig on symmetric matrix should still work.
         let env = run("[V,D] = eig([1,0;0,2])");
-        assert!(env.get("V").is_some());
-        assert!(env.get("D").is_some());
+        assert!(env.contains_key("V"));
+        assert!(env.contains_key("D"));
     }
 
     // --- Additional: trace, diag, sum, prod, mean on ComplexMatrix ---

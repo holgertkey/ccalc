@@ -2225,8 +2225,7 @@ where
         Value::Complex(re, im) => Ok(make_scalar(f(&[Complex::new(*re, *im)]))),
         Value::Matrix(m) => {
             if m.nrows() == 1 || m.ncols() == 1 {
-                let vals: Vec<Complex<f64>> =
-                    m.iter().map(|&x| Complex::new(x, 0.0)).collect();
+                let vals: Vec<Complex<f64>> = m.iter().map(|&x| Complex::new(x, 0.0)).collect();
                 Ok(make_scalar(f(&vals)))
             } else {
                 let ncols = m.ncols();
@@ -5235,7 +5234,9 @@ fn call_builtin(
                         ))
                     } else {
                         let reals: Vec<f64> = evals.iter().map(|c| c.re).collect();
-                        Ok(Value::Matrix(Array2::from_shape_vec((nn, 1), reals).unwrap()))
+                        Ok(Value::Matrix(
+                            Array2::from_shape_vec((nn, 1), reals).unwrap(),
+                        ))
                     }
                 } else if has_imag {
                     Err("eig: [V,D] form not supported when eigenvalues are complex".to_string())
@@ -7783,7 +7784,12 @@ fn eig_compute(a: &Array2<f64>) -> Result<(Vec<Complex<f64>>, Array2<f64>), Stri
     let mut i = 0;
     while i < n {
         if i + 1 < n && ak[[i + 1, i]].abs() > EPS_BLOCK {
-            let (a_ii, b, c, d_ii) = (ak[[i, i]], ak[[i, i + 1]], ak[[i + 1, i]], ak[[i + 1, i + 1]]);
+            let (a_ii, b, c, d_ii) = (
+                ak[[i, i]],
+                ak[[i, i + 1]],
+                ak[[i + 1, i]],
+                ak[[i + 1, i + 1]],
+            );
             let p = (a_ii + d_ii) / 2.0;
             let disc = ((a_ii - d_ii) / 2.0).powi(2) + b * c;
             if disc < 0.0 {
@@ -8672,9 +8678,7 @@ fn format_duration_array(v: &[f64]) -> String {
 }
 
 /// Formats a complex matrix with right-aligned columns, 3-space indent, 3 spaces between columns.
-///
 /// Each element is formatted using [`format_complex`]; columns are aligned to the widest entry.
-
 fn format_complex_matrix(m: &Array2<Complex<f64>>, mode: &FormatMode) -> String {
     if m.nrows() == 0 || m.ncols() == 0 {
         return "   []".to_string();

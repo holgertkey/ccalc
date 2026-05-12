@@ -2068,8 +2068,7 @@ fn exec_index_set_complex(
             Value::Scalar(n) => Ok(vec![Complex::new(*n, 0.0); n_slots]),
             Value::Complex(re, im) => Ok(vec![Complex::new(*re, *im); n_slots]),
             Value::Matrix(m) => {
-                let flat: Vec<Complex<f64>> =
-                    m.iter().map(|&x| Complex::new(x, 0.0)).collect();
+                let flat: Vec<Complex<f64>> = m.iter().map(|&x| Complex::new(x, 0.0)).collect();
                 if flat.len() != n_slots {
                     return Err(format!(
                         "Assignment dimension mismatch: {} positions but {} values",
@@ -2095,16 +2094,11 @@ fn exec_index_set_complex(
     }
 
     /// Takes LHS from `env`, upcasting real types to `Array2<Complex<f64>>`.
-    fn take_as_complex(
-        name: &str,
-        env: &mut Env,
-    ) -> Result<Array2<Complex<f64>>, String> {
+    fn take_as_complex(name: &str, env: &mut Env) -> Result<Array2<Complex<f64>>, String> {
         match env.remove(name) {
             Some(Value::ComplexMatrix(m)) => Ok(m),
             Some(Value::Matrix(m)) => Ok(m.mapv(|x| Complex::new(x, 0.0))),
-            Some(Value::Scalar(n)) => {
-                Ok(Array2::from_elem((1, 1), Complex::new(n, 0.0)))
-            }
+            Some(Value::Scalar(n)) => Ok(Array2::from_elem((1, 1), Complex::new(n, 0.0))),
             None | Some(Value::Void) => Ok(Array2::zeros((0, 0))),
             Some(other) => {
                 env.insert(name.to_string(), other);
@@ -2118,9 +2112,7 @@ fn exec_index_set_complex(
     match indices.len() {
         1 => {
             let (total, nrows_hint, ncols_hint) = match env.get(name) {
-                Some(Value::ComplexMatrix(m)) => {
-                    (m.nrows() * m.ncols(), m.nrows(), m.ncols())
-                }
+                Some(Value::ComplexMatrix(m)) => (m.nrows() * m.ncols(), m.nrows(), m.ncols()),
                 Some(Value::Matrix(m)) => (m.nrows() * m.ncols(), m.nrows(), m.ncols()),
                 Some(Value::Scalar(_)) => (1, 1, 1),
                 None | Some(Value::Void) => (0, 0, 0),
@@ -2152,9 +2144,7 @@ fn exec_index_set_complex(
             let required = positions.iter().copied().max().map(|m| m + 1).unwrap_or(0);
             let required = required.max(total);
 
-            let (out_rows, out_cols) = if nrows_hint == 0 || ncols_hint == 0 {
-                (1, required)
-            } else if nrows_hint == 1 {
+            let (out_rows, out_cols) = if nrows_hint == 0 || ncols_hint == 0 || nrows_hint == 1 {
                 (1, required)
             } else if ncols_hint == 1 {
                 (required, 1)
