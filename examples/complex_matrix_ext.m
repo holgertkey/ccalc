@@ -160,7 +160,13 @@ disp(C)
 roots_p = eig(C);
 fprintf('Roots of x^4 + 2x^3 + 4x^2 + 3x + 1:\n')
 disp(roots_p)
+% Note: eigenvalue ordering depends on which QR block converges first.
+% The values are correct; the sequence may differ from Octave or MATLAB.
 
-% Verify: sum of roots = -c3 (Vieta's formula)
+% Verify with Vieta's formulas (order-independent):
+%   sum of roots  = -c3 = -2
+%   prod of roots =  c0 =  1
 sr = sum(roots_p);
-fprintf('Sum of roots = %.4f + %.4fi  (should equal -2)\n', real(sr), imag(sr))
+pr = prod(roots_p);
+fprintf('Sum of roots  = %.4f + %.4fi  (should equal -2)\n', real(sr), imag(sr))
+fprintf('Prod of roots = %.4f + %.4fi  (should equal  1)\n', real(pr), imag(pr))
