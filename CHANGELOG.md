@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-05-12
+
+### Added
+
+- **Phase 27.5 — ComplexMatrix gaps**:
+  - **Indexed assignment with auto-upcast**: `A(i,j) = z` where `z` is `Complex` or
+    `ComplexMatrix` now automatically promotes a real `Matrix`/`Scalar`/`None` LHS to
+    `ComplexMatrix` (MATLAB/Octave semantics). In-place assignment into an existing
+    `ComplexMatrix` also works. Range assignment (`A(1,:) = [3-1i, 0, 2i]`) supported.
+  - **`eig` complex eigenvalues**: Non-symmetric real matrices with complex conjugate
+    eigenvalue pairs now return a `ComplexMatrix` N×1 column vector. A
+    post-convergence scan of the quasi-triangular Schur form identifies 2×2 diagonal
+    blocks with significant sub-diagonal entries (`> 1e-8`) and extracts the complex
+    conjugate pair `λ = p ± i·√(-disc)`. The `[V,D] = eig(A)` two-output form returns
+    an error when complex pairs are present.
+  - **`trace(A)`** extended to `ComplexMatrix`: returns `Complex` (or `Scalar` when the
+    imaginary part is zero).
+  - **`diag(A)`** extended to `ComplexMatrix`: extracts the diagonal as a `ComplexMatrix`
+    N×1 column vector, or constructs a diagonal matrix from a complex vector.
+  - **`sum(A)`**, **`prod(A)`**, **`mean(A)`** extended to `ComplexMatrix`: column-wise
+    reduction for matrices (returns `ComplexMatrix` 1×N), total reduction for vectors
+    (returns `Complex`/`Scalar`).
+  - **Block concatenation** (`[CM, M]`, `[M, CM]`, `[CM; M]`, `[M; CM]`) confirmed
+    working; 6 regression tests added.
+  - 27 regression tests in `phase27_5_tests`.
+  - New example: `examples/complex_matrix_ext.m` — indexed assignment, block concat,
+    reductions, stability analysis via eigenvalues, and polynomial roots via companion
+    matrix.
+
+### Fixed
+
+- **`ComplexMatrix` display alignment**: column entries with shorter imaginary values no
+  longer receive extra leading whitespace; the real part is right-aligned per column and
+  the imaginary sign/magnitude trails without padding.
+
 ## [0.32.0] - 2026-05-11
 
 ### Added

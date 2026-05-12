@@ -97,8 +97,7 @@ C1 = S(1,1) * (U(:,1) * V(:,1)');
 
 ## Eigendecomposition
 
-`eig(A)` returns eigenvalues and eigenvectors. Best results for symmetric
-(Hermitian) matrices, which guarantee real eigenvalues.
+`eig(A)` returns eigenvalues and eigenvectors.
 
 ```
 d = eig(A)           % eigenvalues as a column vector
@@ -117,6 +116,47 @@ for k = 1:3
   r = norm(S * V(:,k) - D(k,k) * V(:,k));
   fprintf('residual %d: %.2e\n', k, r)
 end
+```
+
+### Complex eigenvalues
+
+Non-symmetric real matrices can have complex conjugate eigenvalue pairs.
+`eig(A)` detects these automatically and returns a `ComplexMatrix` N×1
+column vector. Use `real()` and `imag()` to inspect the parts, and
+`all(real(d) < 0)` for continuous-time stability checks.
+
+```
+% Rotation matrix — eigenvalues are exactly ±i
+Rot = [0, -1; 1, 0];
+d = eig(Rot)             % ComplexMatrix [0+1i; 0-1i]
+
+% Damped oscillator (omega=2, zeta=0.3) — stable complex pair
+A = [0, 1; -4, -1.2];
+d = eig(A)
+fprintf('stable: %d\n', all(real(d) < 0))   % 1
+
+% Unstable system (trace > 0 → at least one Re(λ) > 0)
+U = [0.5, 1; -1, 0.3];
+d = eig(U)
+fprintf('stable: %d\n', all(real(d) < 0))   % 0
+```
+
+When all eigenvalues are real (e.g. for symmetric matrices), `eig` returns
+a plain real `Matrix` column vector as before. The `[V, D] = eig(A)`
+two-output form is available for real eigenvalues only; it returns an error
+when complex pairs are detected.
+
+```
+% Polynomial roots via companion matrix
+% p(x) = x^4 + 2x^3 + 4x^2 + 3x + 1  →  coefficients [c0,c1,c2,c3] = [1,3,4,2]
+c = [1, 3, 4, 2];
+n = length(c);
+C = zeros(n, n);
+for k = 1:n-1
+    C(k+1, k) = 1;
+end
+C(:, n) = -c';
+roots_p = eig(C)    % ComplexMatrix — roots of the polynomial
 ```
 
 ## Matrix properties

@@ -1377,17 +1377,35 @@ Complex matrices
     angle(A)   → real Matrix of arguments (radians)
     norm(A)    → Frobenius norm (scalar)
 
-    Indexing: 1-based column-major, same as real matrices
-    X(2)       → second element of a row vector
-    A(1,:)     → first row
-    A(:,2)     → second column
+    Reduction built-ins on ComplexMatrix:
+    trace(A)   → Complex scalar (sum of diagonal)
+    diag(A)    → ComplexMatrix N×1 column vector of diagonal elements
+    diag(v)    → ComplexMatrix diagonal matrix built from a complex vector
+    sum(A)     → column sums: ComplexMatrix 1×N; vector → Complex scalar
+    prod(A)    → column products: ComplexMatrix 1×N; vector → Complex scalar
+    mean(A)    → column means: ComplexMatrix 1×N; vector → Complex scalar
 
-    FFT output: since Phase 27, fft() returns a ComplexMatrix (1×N).
+    Indexing and assignment: 1-based column-major, same as real matrices
+    X(2)           → second element of a row vector
+    A(1,:)         → first row
+    A(:,2)         → second column
+    A(i,j) = z    → in-place assignment (ComplexMatrix stays ComplexMatrix)
+    B(i,j) = z    → auto-upcast: real Matrix → ComplexMatrix when z is complex
+
+    Block concatenation: ComplexMatrix mixes freely with real Matrix blocks
+    [CM, M]  /  [M, CM]  /  [CM; M]  /  [M; CM]  all produce ComplexMatrix.
+
+    FFT output: fft() returns a ComplexMatrix (1×N row vector).
     Access bins with X(k); use abs(X) for magnitude spectrum.
+
+    Complex eigenvalues: eig(A) returns a ComplexMatrix column vector when
+    A is non-symmetric and has complex conjugate eigenvalue pairs.
+    Use real(d) and imag(d) to access parts; all(real(d) < 0) for stability.
 
     ws/wl do not persist ComplexMatrix (same policy as all matrix types).
 
-Example: ccalc examples/complex_matrix.m"
+Example: ccalc examples/complex_matrix.m
+         ccalc examples/complex_matrix_ext.m"
     );
 }
 
@@ -2697,13 +2715,20 @@ Performance — optional BLAS build
   [V, D] = eig(A)        V: eigenvectors (columns), D: diagonal eigenvalue matrix
                          A * V = V * D  (so A * V(:,k) = D(k,k) * V(:,k))
 
-  Best results for symmetric matrices (guaranteed real eigenvalues).
-  Non-symmetric input: eigenvalues may be approximate.
+  Symmetric matrices always yield real eigenvalues (returned as a Matrix).
+  Non-symmetric matrices may have complex conjugate pairs: eig(A) then
+  returns a ComplexMatrix N×1 column vector.
+  [V,D] = eig(A) is available for real eigenvalues only.
 
-  Example:
+  Example (real):
     [V, D] = eig([4 1; 1 3])
     % D(1,1) = 2.382..., D(2,2) = 4.618...
     % V columns are the corresponding eigenvectors
+
+  Example (complex — stability check):
+    d = eig([0, -1; 1, 0])       % rotation matrix → [0+1i; 0-1i]
+    d = eig([0, 1; -4, -1.2])    % damped oscillator → complex pair
+    fprintf('stable: %d\n', all(real(d) < 0))
 
 ─── Matrix properties ─────────────────────────────────────────────────────────
 

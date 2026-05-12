@@ -1035,20 +1035,33 @@ i^4                       %  1
 
 Any matrix literal with at least one complex element becomes a `ComplexMatrix`.
 Real elements are promoted automatically. Full arithmetic, Hermitian transpose
-(`A'`), plain transpose (`A.'`), and element-wise built-ins (`real`, `imag`,
-`abs`, `conj`, `angle`, `isreal`) all work on `ComplexMatrix`.
+(`A'`), plain transpose (`A.'`), element-wise built-ins (`real`, `imag`,
+`abs`, `conj`, `angle`, `isreal`), and reductions (`trace`, `diag`, `sum`,
+`prod`, `mean`) all work on `ComplexMatrix`.
 
 ```matlab
 A = [1+2i, 3-4i; 5, 6+1i]    % 2×2 ComplexMatrix
 A'                              % conjugate transpose
 abs(A)                          % real Matrix of element-wise moduli
-isreal(A)                       % 0
+trace(A)                        % Complex scalar (sum of diagonal)
+
+% Indexed assignment: real Matrix auto-upcasts to ComplexMatrix
+B = zeros(3, 3)
+B(2, 2) = 1 + 2i               % B is now ComplexMatrix
+```
+
+`eig(A)` returns a `ComplexMatrix` column vector when a real non-symmetric
+matrix has complex conjugate eigenvalue pairs, enabling stability analysis:
+
+```matlab
+d = eig([0, 1; -4, -1.2])      % ComplexMatrix [complex pair]
+fprintf('stable: %d\n', all(real(d) < 0))
 ```
 
 Since Phase 27, `fft()` returns a `ComplexMatrix` instead of a Cell array.
 Access bins with `X(k)` and get the magnitude spectrum with `abs(X)`.
 
-See `examples/complex_matrix.m` and `help complex` for more details.
+See `examples/complex_matrix.m`, `examples/complex_matrix_ext.m`, and `help complex` for more details.
 
 ---
 
@@ -1941,6 +1954,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `polynomials.m`         | Phase 24: `polyval`, `polyfit`, `roots`, `poly`, `conv`, `deconv`, `interp1`; curve fitting and interpolation examples |
 | `fft_demo.calc`            | Phase 26: `fft`, `ifft`, zero-padded FFT, `fftshift`/`ifftshift`, `fftfreq`, two-tone power spectrum — requires `--features fft` for `fft`/`ifft` |
 | `complex_matrix.m`         | Phase 27: complex matrix literals, arithmetic, conjugate transpose, `real`/`imag`/`abs`/`conj`/`angle`/`isreal`, indexing, shape functions, DFT matrix example |
+| `complex_matrix_ext.m`     | Phase 27.5: indexed assignment / auto-upcast, block concatenation, `trace`/`diag`/`sum`/`prod`/`mean` on `ComplexMatrix`, complex eigenvalues for stability analysis, polynomial roots via companion matrix |
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |

@@ -237,6 +237,75 @@ G(1,:)        % first row
 G(:,2)        % second column
 ```
 
+### Indexed assignment and auto-upcast
+
+You can assign into an existing `ComplexMatrix` with any index expression:
+
+```
+A = [1+2i, 3-4i; 5, 6+1i]
+A(1,1) = 0             % write a real scalar — stays ComplexMatrix
+A(2,2) = 7 - 3i        % write a complex scalar
+A(1,:) = [2+i, -1+0i]  % range assignment with a complex row vector
+```
+
+Assigning a complex value into a **real** matrix automatically promotes it
+to `ComplexMatrix` (MATLAB/Octave auto-upcast semantics). Existing real
+entries are preserved as `x + 0i`:
+
+```
+B = zeros(3, 3)          % real Matrix
+B(2, 2) = 1 + 2i         % → B is now a ComplexMatrix; B(2,2) = 1 + 2i
+B(1, :) = [3-1i, 0, 2i]  % range assignment; all other entries are x + 0i
+```
+
+Once a variable has been promoted to `ComplexMatrix`, assigning a real
+scalar back into an element leaves it as `ComplexMatrix`:
+
+```
+B(2, 2) = 9              % stays ComplexMatrix; B(2,2) = 9 + 0i
+```
+
+### Reduction functions
+
+`trace`, `diag`, `sum`, `prod`, and `mean` all work on `ComplexMatrix`,
+following the same conventions as for real matrices.
+
+| Function | On vector | On M×N matrix |
+|----------|-----------|---------------|
+| `sum(A)` | single `Complex` scalar | `ComplexMatrix` 1×N of column sums |
+| `prod(A)` | single `Complex` scalar | `ComplexMatrix` 1×N of column products |
+| `mean(A)` | single `Complex` scalar | `ComplexMatrix` 1×N of column means |
+| `trace(A)` | (N/A) | `Complex` scalar (sum of diagonal) |
+| `diag(A)` | diagonal matrix | `ComplexMatrix` N×1 column vector of diagonal |
+
+```
+M = [1+2i, 3+4i; 5+6i, 7+8i]
+
+trace(M)          % 8 + 10i  (sum of diagonal: (1+2i) + (7+8i))
+diag(M)           % [1+2i; 7+8i]  — diagonal as a column vector
+diag(diag(M))     % 2×2 diagonal ComplexMatrix
+
+sum(M)            % [6+8i, 10+12i]  — column sums
+prod(M)           % [(1+2i)*(5+6i), (3+4i)*(7+8i)]
+mean(M)           % [3+4i, 5+6i]
+
+sum([1+2i, 3+4i, 5+6i])   % 9 + 12i  — vector collapses to scalar
+```
+
+### Block concatenation
+
+`ComplexMatrix` blocks mix freely with real `Matrix` blocks in horizontal
+and vertical concatenation:
+
+```
+Z = [1+2i, 3-4i; 5, 6+1i]   % 2×2 ComplexMatrix
+O = ones(2, 2)
+
+[Z, O]    % 2×4 ComplexMatrix — horizontal
+[Z; O]    % 4×2 ComplexMatrix — vertical
+[Z, Z; O, O]  % 4×4 block matrix
+```
+
 ### FFT output
 
 Since Phase 27, `fft()` returns a `ComplexMatrix` (1×N row vector) rather
