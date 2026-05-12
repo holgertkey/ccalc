@@ -27,7 +27,7 @@ fft = ["ccalc-engine/fft"]
 
 [dependencies]
 rustyline = "14"
-ccalc-engine = { path = "../ccalc-engine", version = "0.32.0" }
+ccalc-engine = { path = "../ccalc-engine", version = "0.33.0" }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 

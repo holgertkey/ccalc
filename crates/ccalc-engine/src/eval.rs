@@ -2205,6 +2205,78 @@ where
     }
 }
 
+/// Column-wise reduction over a `ComplexMatrix` (or any numeric value treated as complex).
+///
+/// For vectors (1×N or N×1) returns a `Complex`/`Scalar`; for M×N matrices returns a
+/// `ComplexMatrix` 1×N row vector.
+fn apply_cm_reduction<F>(v: &Value, f: F) -> Result<Value, String>
+where
+    F: Fn(&[Complex<f64>]) -> Complex<f64>,
+{
+    let make_scalar = |c: Complex<f64>| -> Value {
+        if c.im == 0.0 {
+            Value::Scalar(c.re)
+        } else {
+            Value::Complex(c.re, c.im)
+        }
+    };
+    match v {
+        Value::Scalar(n) => Ok(make_scalar(f(&[Complex::new(*n, 0.0)]))),
+        Value::Complex(re, im) => Ok(make_scalar(f(&[Complex::new(*re, *im)]))),
+        Value::Matrix(m) => {
+            if m.nrows() == 1 || m.ncols() == 1 {
+                let vals: Vec<Complex<f64>> =
+                    m.iter().map(|&x| Complex::new(x, 0.0)).collect();
+                Ok(make_scalar(f(&vals)))
+            } else {
+                let ncols = m.ncols();
+                let result: Vec<Complex<f64>> = (0..ncols)
+                    .map(|c| {
+                        let col: Vec<Complex<f64>> =
+                            m.column(c).iter().map(|&x| Complex::new(x, 0.0)).collect();
+                        f(&col)
+                    })
+                    .collect();
+                if result.iter().all(|c| c.im == 0.0) {
+                    let reals: Vec<f64> = result.iter().map(|c| c.re).collect();
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, ncols), reals).unwrap(),
+                    ))
+                } else {
+                    Ok(Value::ComplexMatrix(
+                        Array2::from_shape_vec((1, ncols), result).unwrap(),
+                    ))
+                }
+            }
+        }
+        Value::ComplexMatrix(m) => {
+            if m.nrows() == 1 || m.ncols() == 1 {
+                let vals: Vec<Complex<f64>> = m.iter().copied().collect();
+                Ok(make_scalar(f(&vals)))
+            } else {
+                let ncols = m.ncols();
+                let result: Vec<Complex<f64>> = (0..ncols)
+                    .map(|c| {
+                        let col: Vec<Complex<f64>> = m.column(c).iter().copied().collect();
+                        f(&col)
+                    })
+                    .collect();
+                if result.iter().all(|c| c.im == 0.0) {
+                    let reals: Vec<f64> = result.iter().map(|c| c.re).collect();
+                    Ok(Value::Matrix(
+                        Array2::from_shape_vec((1, ncols), reals).unwrap(),
+                    ))
+                } else {
+                    Ok(Value::ComplexMatrix(
+                        Array2::from_shape_vec((1, ncols), result).unwrap(),
+                    ))
+                }
+            }
+        }
+        _ => Err("Reduction not applicable to this type".to_string()),
+    }
+}
+
 /// Computes a cumulative scan (cumsum / cumprod) along a vector or column-wise on a matrix.
 ///
 /// `combine(accumulator, element) -> new_accumulator` — e.g. `|a, x| a + x` for cumsum.
@@ -3243,7 +3315,15 @@ fn call_builtin(
                 let n = m.nrows().min(m.ncols());
                 Ok(Value::Scalar((0..n).map(|i| m[[i, i]]).sum()))
             }
-            Value::ComplexMatrix(_) => Err("trace: not supported for complex matrices".to_string()),
+            Value::ComplexMatrix(m) => {
+                let n = m.nrows().min(m.ncols());
+                let s: Complex<f64> = (0..n).map(|i| m[[i, i]]).sum();
+                Ok(if s.im == 0.0 {
+                    Value::Scalar(s.re)
+                } else {
+                    Value::Complex(s.re, s.im)
+                })
+            }
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
@@ -3462,8 +3542,20 @@ fn call_builtin(
         // --- Vector reductions ---
         // For vectors (1×N or N×1): reduce all elements to scalar.
         // For M×N matrices (M>1, N>1): reduce column-wise, return 1×N row vector.
-        ("sum", 1) => apply_reduction(&args[0], |v| v.iter().copied().sum()),
-        ("prod", 1) => apply_reduction(&args[0], |v| v.iter().copied().product()),
+        ("sum", 1) => {
+            if matches!(&args[0], Value::Complex(_, _) | Value::ComplexMatrix(_)) {
+                apply_cm_reduction(&args[0], |v| v.iter().copied().sum())
+            } else {
+                apply_reduction(&args[0], |v| v.iter().copied().sum())
+            }
+        }
+        ("prod", 1) => {
+            if matches!(&args[0], Value::Complex(_, _) | Value::ComplexMatrix(_)) {
+                apply_cm_reduction(&args[0], |v| v.iter().copied().product())
+            } else {
+                apply_reduction(&args[0], |v| v.iter().copied().product())
+            }
+        }
         ("any", 1) => apply_reduction(&args[0], |v| {
             if v.iter().any(|&x| x != 0.0) {
                 1.0
@@ -3478,13 +3570,25 @@ fn call_builtin(
                 0.0
             }
         }),
-        ("mean", 1) => apply_reduction(&args[0], |v| {
-            if v.is_empty() {
-                f64::NAN
+        ("mean", 1) => {
+            if matches!(&args[0], Value::Complex(_, _) | Value::ComplexMatrix(_)) {
+                apply_cm_reduction(&args[0], |v| {
+                    if v.is_empty() {
+                        Complex::new(f64::NAN, 0.0)
+                    } else {
+                        v.iter().copied().sum::<Complex<f64>>() / v.len() as f64
+                    }
+                })
             } else {
-                v.iter().copied().sum::<f64>() / v.len() as f64
+                apply_reduction(&args[0], |v| {
+                    if v.is_empty() {
+                        f64::NAN
+                    } else {
+                        v.iter().copied().sum::<f64>() / v.len() as f64
+                    }
+                })
             }
-        }),
+        }
         // 1-arg min/max: reduce to scalar for vectors, column-wise for matrices.
         // 2-arg forms (element-wise scalar min/max) are already handled above.
         ("min", 1) => apply_reduction(&args[0], |v| {
@@ -4105,8 +4209,29 @@ fn call_builtin(
                 }
             }
             Value::Void => Err("diag: not applicable to void".to_string()),
-            Value::Complex(_, _) => Err("diag: not applicable to complex values".to_string()),
-            Value::ComplexMatrix(_) => Err("diag: not supported for complex matrices".to_string()),
+            Value::Complex(re, im) => {
+                let mut result = Array2::<Complex<f64>>::zeros((1, 1));
+                result[[0, 0]] = Complex::new(*re, *im);
+                Ok(Value::ComplexMatrix(result))
+            }
+            Value::ComplexMatrix(m) => {
+                let (rows, cols) = (m.nrows(), m.ncols());
+                if rows == 1 || cols == 1 {
+                    let v: Vec<Complex<f64>> = m.iter().copied().collect();
+                    let n = v.len();
+                    let mut result = Array2::<Complex<f64>>::zeros((n, n));
+                    for (i, &val) in v.iter().enumerate() {
+                        result[[i, i]] = val;
+                    }
+                    Ok(Value::ComplexMatrix(result))
+                } else {
+                    let n = rows.min(cols);
+                    let d: Vec<Complex<f64>> = (0..n).map(|i| m[[i, i]]).collect();
+                    Ok(Value::ComplexMatrix(
+                        Array2::from_shape_vec((n, 1), d).unwrap(),
+                    ))
+                }
+            }
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
@@ -5102,12 +5227,22 @@ fn call_builtin(
             Value::Matrix(m) => {
                 let (evals, evecs) = eig_compute(m)?;
                 let nn = evals.len();
+                let has_imag = evals.iter().any(|c| c.im.abs() > 1e-14);
                 if get_nargout() <= 1 {
-                    let col: Vec<f64> = evals;
-                    Ok(Value::Matrix(Array2::from_shape_vec((nn, 1), col).unwrap()))
+                    if has_imag {
+                        Ok(Value::ComplexMatrix(
+                            Array2::from_shape_vec((nn, 1), evals).unwrap(),
+                        ))
+                    } else {
+                        let reals: Vec<f64> = evals.iter().map(|c| c.re).collect();
+                        Ok(Value::Matrix(Array2::from_shape_vec((nn, 1), reals).unwrap()))
+                    }
+                } else if has_imag {
+                    Err("eig: [V,D] form not supported when eigenvalues are complex".to_string())
                 } else {
+                    let reals: Vec<f64> = evals.iter().map(|c| c.re).collect();
                     let mut d = Array2::<f64>::zeros((nn, nn));
-                    for (i, &e) in evals.iter().enumerate() {
+                    for (i, &e) in reals.iter().enumerate() {
                         d[[i, i]] = e;
                     }
                     Ok(Value::Tuple(vec![Value::Matrix(evecs), Value::Matrix(d)]))
@@ -7586,7 +7721,7 @@ fn complete_orthonormal_basis(u: &Array2<f64>) -> Array2<f64> {
 /// Uses the basic QR iteration with a simple diagonal shift (Wilkinson-style).
 /// Convergence is reliable for symmetric matrices; general matrices converge for
 /// most well-conditioned inputs within `MAX_ITER` steps.
-fn eig_compute(a: &Array2<f64>) -> Result<(Vec<f64>, Array2<f64>), String> {
+fn eig_compute(a: &Array2<f64>) -> Result<(Vec<Complex<f64>>, Array2<f64>), String> {
     let n = a.nrows();
     if a.ncols() != n {
         return Err("eig: matrix must be square".to_string());
@@ -7595,7 +7730,7 @@ fn eig_compute(a: &Array2<f64>) -> Result<(Vec<f64>, Array2<f64>), String> {
         return Ok((vec![], Array2::zeros((0, 0))));
     }
     if n == 1 {
-        return Ok((vec![a[[0, 0]]], Array2::eye(1)));
+        return Ok((vec![Complex::new(a[[0, 0]], 0.0)], Array2::eye(1)));
     }
 
     let mut ak = a.clone();
@@ -7632,6 +7767,7 @@ fn eig_compute(a: &Array2<f64>) -> Result<(Vec<f64>, Array2<f64>), String> {
         }
         evecs = evecs.dot(&q);
 
+        // Convergence check: all sub-diagonals small (real eigenvalues only).
         let max_sub = (0..(n - 1))
             .map(|i| ak[[i + 1, i]].abs())
             .fold(0.0_f64, f64::max);
@@ -7640,7 +7776,32 @@ fn eig_compute(a: &Array2<f64>) -> Result<(Vec<f64>, Array2<f64>), String> {
         }
     }
 
-    let evals: Vec<f64> = (0..n).map(|i| ak[[i, i]]).collect();
+    // Post-convergence scan: extract complex conjugate pairs from 2×2 quasi-triangular blocks.
+    // A sub-diagonal entry larger than EPS_BLOCK indicates a complex eigenvalue pair.
+    const EPS_BLOCK: f64 = 1e-8;
+    let mut evals: Vec<Complex<f64>> = Vec::with_capacity(n);
+    let mut i = 0;
+    while i < n {
+        if i + 1 < n && ak[[i + 1, i]].abs() > EPS_BLOCK {
+            let (a_ii, b, c, d_ii) = (ak[[i, i]], ak[[i, i + 1]], ak[[i + 1, i]], ak[[i + 1, i + 1]]);
+            let p = (a_ii + d_ii) / 2.0;
+            let disc = ((a_ii - d_ii) / 2.0).powi(2) + b * c;
+            if disc < 0.0 {
+                let q = (-disc).sqrt();
+                evals.push(Complex::new(p, q));
+                evals.push(Complex::new(p, -q));
+            } else {
+                let q = disc.sqrt();
+                evals.push(Complex::new(p + q, 0.0));
+                evals.push(Complex::new(p - q, 0.0));
+            }
+            i += 2;
+        } else {
+            evals.push(Complex::new(ak[[i, i]], 0.0));
+            i += 1;
+        }
+    }
+
     Ok((evals, evecs))
 }
 

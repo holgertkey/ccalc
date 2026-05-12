@@ -28,6 +28,7 @@ fn expand_tilde(path: &str) -> String {
 
 use indexmap::IndexMap;
 use ndarray::Array2;
+use num_complex::Complex;
 
 use crate::env::{Env, Value};
 use crate::env::{load_workspace, save_workspace, save_workspace_vars};
@@ -1799,6 +1800,14 @@ fn exec_index_set(
     env: &mut Env,
     io: &mut IoContext,
 ) -> Result<(), String> {
+    // If LHS is already ComplexMatrix or RHS introduces complex values, use the complex path.
+    let needs_complex = matches!(env.get(name), Some(Value::ComplexMatrix(_)))
+        || matches!(&rhs, Value::Complex(_, _) | Value::ComplexMatrix(_));
+
+    if needs_complex {
+        return exec_index_set_complex(name, indices, rhs, env, io);
+    }
+
     match indices.len() {
         1 => {
             // Borrow env read-only to get matrix dimensions — no clone.
@@ -2036,6 +2045,233 @@ fn exec_index_set(
                 Value::Matrix(mat)
             };
             env.insert(name.to_string(), result);
+        }
+        _ => return Err("Indexed assignment supports at most 2 indices".to_string()),
+    }
+    Ok(())
+}
+
+/// Complex-path indexed assignment: LHS is `ComplexMatrix` or RHS is `Complex`/`ComplexMatrix`.
+///
+/// A real `Matrix`/`Scalar` LHS is automatically upcast to `ComplexMatrix` when the RHS
+/// introduces complex values (MATLAB/Octave semantics).
+fn exec_index_set_complex(
+    name: &str,
+    indices: &[crate::eval::Expr],
+    rhs: Value,
+    env: &mut Env,
+    io: &mut IoContext,
+) -> Result<(), String> {
+    /// Converts an RHS `Value` into a `Vec<Complex<f64>>` with `n_slots` elements.
+    fn rhs_to_complex(rhs: &Value, n_slots: usize) -> Result<Vec<Complex<f64>>, String> {
+        match rhs {
+            Value::Scalar(n) => Ok(vec![Complex::new(*n, 0.0); n_slots]),
+            Value::Complex(re, im) => Ok(vec![Complex::new(*re, *im); n_slots]),
+            Value::Matrix(m) => {
+                let flat: Vec<Complex<f64>> =
+                    m.iter().map(|&x| Complex::new(x, 0.0)).collect();
+                if flat.len() != n_slots {
+                    return Err(format!(
+                        "Assignment dimension mismatch: {} positions but {} values",
+                        n_slots,
+                        flat.len()
+                    ));
+                }
+                Ok(flat)
+            }
+            Value::ComplexMatrix(m) => {
+                let flat: Vec<Complex<f64>> = m.iter().copied().collect();
+                if flat.len() != n_slots {
+                    return Err(format!(
+                        "Assignment dimension mismatch: {} positions but {} values",
+                        n_slots,
+                        flat.len()
+                    ));
+                }
+                Ok(flat)
+            }
+            _ => Err("Indexed assignment: RHS must be a numeric value".to_string()),
+        }
+    }
+
+    /// Takes LHS from `env`, upcasting real types to `Array2<Complex<f64>>`.
+    fn take_as_complex(
+        name: &str,
+        env: &mut Env,
+    ) -> Result<Array2<Complex<f64>>, String> {
+        match env.remove(name) {
+            Some(Value::ComplexMatrix(m)) => Ok(m),
+            Some(Value::Matrix(m)) => Ok(m.mapv(|x| Complex::new(x, 0.0))),
+            Some(Value::Scalar(n)) => {
+                Ok(Array2::from_elem((1, 1), Complex::new(n, 0.0)))
+            }
+            None | Some(Value::Void) => Ok(Array2::zeros((0, 0))),
+            Some(other) => {
+                env.insert(name.to_string(), other);
+                Err(format!(
+                    "'{name}' is not a matrix; cannot use () indexed assignment"
+                ))
+            }
+        }
+    }
+
+    match indices.len() {
+        1 => {
+            let (total, nrows_hint, ncols_hint) = match env.get(name) {
+                Some(Value::ComplexMatrix(m)) => {
+                    (m.nrows() * m.ncols(), m.nrows(), m.ncols())
+                }
+                Some(Value::Matrix(m)) => (m.nrows() * m.ncols(), m.nrows(), m.ncols()),
+                Some(Value::Scalar(_)) => (1, 1, 1),
+                None | Some(Value::Void) => (0, 0, 0),
+                Some(_) => {
+                    return Err(format!(
+                        "'{name}' is not a matrix; cannot use () indexed assignment"
+                    ));
+                }
+            };
+
+            let widx = {
+                let _owned_end;
+                let env_end: &Env = if crate::eval::contains_end(&indices[0]) {
+                    _owned_end = write_env_with_end(env, total);
+                    &_owned_end
+                } else {
+                    env
+                };
+                resolve_write_dim(&indices[0], total, env_end, io)?
+            };
+
+            let positions: Vec<usize> = match widx {
+                WriteIdx::All => (0..total).collect(),
+                WriteIdx::Positions(p) => p,
+            };
+
+            let rhs_vals = rhs_to_complex(&rhs, positions.len())?;
+
+            let required = positions.iter().copied().max().map(|m| m + 1).unwrap_or(0);
+            let required = required.max(total);
+
+            let (out_rows, out_cols) = if nrows_hint == 0 || ncols_hint == 0 {
+                (1, required)
+            } else if nrows_hint == 1 {
+                (1, required)
+            } else if ncols_hint == 1 {
+                (required, 1)
+            } else if required > total {
+                return Err("Cannot grow a 2-D matrix with linear indexing".to_string());
+            } else {
+                (nrows_hint, ncols_hint)
+            };
+
+            let mut mat = take_as_complex(name, env)?;
+
+            if required > total || out_rows != mat.nrows() || out_cols != mat.ncols() {
+                let mut new_mat = Array2::<Complex<f64>>::zeros((out_rows, out_cols));
+                for old_p in 0..total {
+                    let old_row = old_p % mat.nrows().max(1);
+                    let old_col = old_p / mat.nrows().max(1);
+                    let new_row = old_p % out_rows;
+                    let new_col = old_p / out_rows;
+                    if old_row < mat.nrows() && old_col < mat.ncols() {
+                        new_mat[[new_row, new_col]] = mat[[old_row, old_col]];
+                    }
+                }
+                mat = new_mat;
+            }
+
+            for (&pos, &val) in positions.iter().zip(rhs_vals.iter()) {
+                let row = pos % mat.nrows();
+                let col = pos / mat.nrows();
+                mat[[row, col]] = val;
+            }
+
+            env.insert(name.to_string(), Value::ComplexMatrix(mat));
+        }
+        2 => {
+            let (nrows, ncols) = match env.get(name) {
+                Some(Value::ComplexMatrix(m)) => (m.nrows(), m.ncols()),
+                Some(Value::Matrix(m)) => (m.nrows(), m.ncols()),
+                Some(Value::Scalar(_)) => (1, 1),
+                None | Some(Value::Void) => (0, 0),
+                Some(_) => {
+                    return Err(format!(
+                        "'{name}' is not a matrix; cannot use () indexed assignment"
+                    ));
+                }
+            };
+
+            let (ridx, cidx) = {
+                let _owned_r;
+                let env_r: &Env = if crate::eval::contains_end(&indices[0]) {
+                    _owned_r = write_env_with_end(env, nrows);
+                    &_owned_r
+                } else {
+                    env
+                };
+                let _owned_c;
+                let env_c: &Env = if crate::eval::contains_end(&indices[1]) {
+                    _owned_c = write_env_with_end(env, ncols);
+                    &_owned_c
+                } else {
+                    env
+                };
+                (
+                    resolve_write_dim(&indices[0], nrows, env_r, io)?,
+                    resolve_write_dim(&indices[1], ncols, env_c, io)?,
+                )
+            };
+
+            let rows: Vec<usize> = match ridx {
+                WriteIdx::All => (0..nrows.max(1)).collect(),
+                WriteIdx::Positions(p) => p,
+            };
+            let cols: Vec<usize> = match cidx {
+                WriteIdx::All => (0..ncols.max(1)).collect(),
+                WriteIdx::Positions(p) => p,
+            };
+
+            let req_rows = rows
+                .iter()
+                .copied()
+                .max()
+                .map(|m| m + 1)
+                .unwrap_or(0)
+                .max(nrows);
+            let req_cols = cols
+                .iter()
+                .copied()
+                .max()
+                .map(|m| m + 1)
+                .unwrap_or(0)
+                .max(ncols);
+
+            let n_sel = rows.len() * cols.len();
+            let rhs_vals = rhs_to_complex(&rhs, n_sel)?;
+
+            let mut mat = take_as_complex(name, env)?;
+
+            if req_rows != nrows || req_cols != ncols {
+                let mut new_mat = Array2::<Complex<f64>>::zeros((req_rows, req_cols));
+                for r in 0..nrows {
+                    for c in 0..ncols {
+                        if r < mat.nrows() && c < mat.ncols() {
+                            new_mat[[r, c]] = mat[[r, c]];
+                        }
+                    }
+                }
+                mat = new_mat;
+            }
+
+            let mut k = 0;
+            for &r in &rows {
+                for &c in &cols {
+                    mat[[r, c]] = rhs_vals[k];
+                    k += 1;
+                }
+            }
+
+            env.insert(name.to_string(), Value::ComplexMatrix(mat));
         }
         _ => return Err("Indexed assignment supports at most 2 indices".to_string()),
     }

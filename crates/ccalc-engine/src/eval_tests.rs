@@ -6945,3 +6945,381 @@ mod phase27_tests {
         assert!((m[[0, 1]].im - 4.0).abs() < 1e-14);
     }
 }
+
+mod phase27_5_tests {
+    use super::*;
+    use num_complex::Complex;
+
+    fn run_code(src: &str) -> crate::env::Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+        env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            false,
+        )
+        .ok();
+        env
+    }
+
+    fn run(src: &str) -> Env {
+        run_code(src)
+    }
+
+    fn get_cm(env: &Env, name: &str) -> ndarray::Array2<Complex<f64>> {
+        match env.get(name).unwrap() {
+            Value::ComplexMatrix(m) => m.clone(),
+            other => panic!("expected ComplexMatrix for '{name}', got {other:?}"),
+        }
+    }
+
+    fn get_scalar(env: &Env, name: &str) -> f64 {
+        match env.get(name).unwrap() {
+            Value::Scalar(n) => *n,
+            other => panic!("expected Scalar for '{name}', got {other:?}"),
+        }
+    }
+
+    fn get_complex(env: &Env, name: &str) -> (f64, f64) {
+        match env.get(name).unwrap() {
+            Value::Complex(re, im) => (*re, *im),
+            other => panic!("expected Complex for '{name}', got {other:?}"),
+        }
+    }
+
+    fn run_err(src: &str) -> String {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+        env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+        let mut io = IoContext::new();
+        match crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            false,
+        ) {
+            Ok(_) => String::new(),
+            Err(e) => e,
+        }
+    }
+
+    // --- 27.5a: Indexed assignment into ComplexMatrix ---
+
+    #[test]
+    fn ia_upcast_scalar_complex_rhs() {
+        // Real matrix + complex scalar RHS → auto-upcast to ComplexMatrix.
+        let env = run("A = zeros(3,3); A(2,2) = 1+2i");
+        let m = get_cm(&env, "A");
+        assert_eq!(m.nrows(), 3);
+        assert_eq!(m.ncols(), 3);
+        assert!((m[[1, 1]].re - 1.0).abs() < 1e-14);
+        assert!((m[[1, 1]].im - 2.0).abs() < 1e-14);
+        assert!(m[[0, 0]].re.abs() < 1e-14);
+        assert!(m[[0, 0]].im.abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_in_place_complex_matrix() {
+        // Assign into existing ComplexMatrix stays ComplexMatrix.
+        let env = run("A = [1+1i, 0; 0, 1+1i]; A(1,2) = 3-2i");
+        let m = get_cm(&env, "A");
+        assert!((m[[0, 1]].re - 3.0).abs() < 1e-14);
+        assert!((m[[0, 1]].im - (-2.0)).abs() < 1e-14);
+        assert!((m[[0, 0]].re - 1.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_range_assign_complex_row() {
+        // Assign a ComplexMatrix row into a real matrix row → upcast.
+        let env = run("A = zeros(2,3); A(1,:) = [3-1i, 0, 2+0i]");
+        let m = get_cm(&env, "A");
+        assert!((m[[0, 0]].re - 3.0).abs() < 1e-14);
+        assert!((m[[0, 0]].im - (-1.0)).abs() < 1e-14);
+        assert!(m[[0, 1]].re.abs() < 1e-14);
+        assert!((m[[0, 2]].re - 2.0).abs() < 1e-14);
+        assert!(m[[1, 0]].re.abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_linear_index_complex_rhs() {
+        // Linear indexing with complex RHS.
+        let env = run("v = zeros(1,4); v(3) = 5+7i");
+        let m = get_cm(&env, "v");
+        assert_eq!(m.nrows(), 1);
+        assert_eq!(m.ncols(), 4);
+        assert!((m[[0, 2]].re - 5.0).abs() < 1e-14);
+        assert!((m[[0, 2]].im - 7.0).abs() < 1e-14);
+        assert!(m[[0, 0]].re.abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_cm_lhs_scalar_real_rhs() {
+        // ComplexMatrix LHS with real scalar RHS (no upcast needed, stays ComplexMatrix).
+        let env = run("A = [1+2i, 3+4i]; A(1,1) = 9");
+        let m = get_cm(&env, "A");
+        assert!((m[[0, 0]].re - 9.0).abs() < 1e-14);
+        assert!(m[[0, 0]].im.abs() < 1e-14);
+        assert!((m[[0, 1]].re - 3.0).abs() < 1e-14);
+        assert!((m[[0, 1]].im - 4.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_upcast_then_assign_second_element() {
+        // Multi-step: upcast on first assignment, in-place on second.
+        let env = run("v = [1, 2, 3]; v(1) = 10i; v(3) = -5i");
+        let m = get_cm(&env, "v");
+        assert!((m[[0, 0]].im - 10.0).abs() < 1e-14);
+        assert!((m[[0, 1]].re - 2.0).abs() < 1e-14);
+        assert!((m[[0, 2]].im - (-5.0)).abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_colon_all_complex() {
+        // A(:) = complex vector assigns to all positions.
+        let env = run("A = zeros(2,2); A(:) = [1+1i; 2+2i; 3+3i; 4+4i]");
+        let m = get_cm(&env, "A");
+        assert!((m[[0, 0]].re - 1.0).abs() < 1e-14);
+        assert!((m[[1, 0]].re - 2.0).abs() < 1e-14);
+        assert!((m[[0, 1]].re - 3.0).abs() < 1e-14);
+        assert!((m[[1, 1]].re - 4.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn ia_linear_index_cannot_grow_2d() {
+        // Linear indexing cannot grow a 2-D ComplexMatrix — must produce an error.
+        let e = run_err("A = [1+2i, 3+4i; 5+6i, 7+8i]; A(7) = 0");
+        assert!(
+            e.contains("grow") || e.contains("linear") || e.contains("2-D"),
+            "unexpected error: {e}"
+        );
+    }
+
+    // --- 27.5b: ComplexMatrix sub-blocks in matrix literals ---
+
+    #[test]
+    fn cm_concat_hori_cm_cm() {
+        let env = run("A = [1+2i, 3-4i; 5, 6+1i]; B = [A, A]");
+        let m = get_cm(&env, "B");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 4);
+        assert!((m[[0, 0]].re - 1.0).abs() < 1e-14);
+        assert!((m[[0, 2]].re - 1.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn cm_concat_hori_cm_m() {
+        let env = run("A = [1+2i, 3-4i]; B = [A, [10, 20]]");
+        let m = get_cm(&env, "B");
+        assert_eq!(m.nrows(), 1);
+        assert_eq!(m.ncols(), 4);
+        assert!((m[[0, 2]].re - 10.0).abs() < 1e-14);
+        assert!(m[[0, 2]].im.abs() < 1e-14);
+    }
+
+    #[test]
+    fn cm_concat_hori_m_cm() {
+        let env = run("A = [1+2i, 3-4i]; B = [[10, 20], A]");
+        let m = get_cm(&env, "B");
+        assert_eq!(m.nrows(), 1);
+        assert_eq!(m.ncols(), 4);
+        assert!((m[[0, 0]].re - 10.0).abs() < 1e-14);
+        assert!((m[[0, 2]].re - 1.0).abs() < 1e-14);
+        assert!((m[[0, 2]].im - 2.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn cm_concat_vert_cm_cm() {
+        let env = run("A = [1+2i, 3-4i]; B = [A; A]");
+        let m = get_cm(&env, "B");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 2);
+        assert!((m[[1, 0]].re - 1.0).abs() < 1e-14);
+        assert!((m[[1, 0]].im - 2.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn cm_concat_vert_cm_m() {
+        let env = run("A = [1+2i, 3-4i]; B = [A; [10, 20]]");
+        let m = get_cm(&env, "B");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 2);
+        assert!((m[[1, 0]].re - 10.0).abs() < 1e-14);
+        assert!(m[[1, 0]].im.abs() < 1e-14);
+    }
+
+    #[test]
+    fn cm_concat_vert_m_cm() {
+        let env = run("A = [1+2i, 3-4i]; B = [[10, 20]; A]");
+        let m = get_cm(&env, "B");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 2);
+        assert!((m[[0, 0]].re - 10.0).abs() < 1e-14);
+        assert!((m[[1, 0]].re - 1.0).abs() < 1e-14);
+        assert!((m[[1, 0]].im - 2.0).abs() < 1e-14);
+    }
+
+    // --- 27.5c: Complex eigenvalues ---
+
+    #[test]
+    fn eig_rotation_matrix() {
+        // [0,-1;1,0] has eigenvalues ±i.
+        let env = run("e = eig([0,-1;1,0])");
+        let m = get_cm(&env, "e");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 1);
+        let eigs: Vec<Complex<f64>> = vec![m[[0, 0]], m[[1, 0]]];
+        let has_pos_i = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im - 1.0).abs() < 1e-6);
+        let has_neg_i = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im + 1.0).abs() < 1e-6);
+        assert!(has_pos_i, "expected +i eigenvalue, got {eigs:?}");
+        assert!(has_neg_i, "expected -i eigenvalue, got {eigs:?}");
+    }
+
+    #[test]
+    fn eig_companion_matrix() {
+        // [2,1;-1,2] has eigenvalues 2±i.
+        let env = run("e = eig([2,1;-1,2])");
+        let m = get_cm(&env, "e");
+        let eigs: Vec<Complex<f64>> = vec![m[[0, 0]], m[[1, 0]]];
+        let has_plus = eigs.iter().any(|c| (c.re - 2.0).abs() < 1e-6 && (c.im - 1.0).abs() < 1e-6);
+        let has_minus = eigs.iter().any(|c| (c.re - 2.0).abs() < 1e-6 && (c.im + 1.0).abs() < 1e-6);
+        assert!(has_plus, "expected 2+i, got {eigs:?}");
+        assert!(has_minus, "expected 2-i, got {eigs:?}");
+    }
+
+    #[test]
+    fn eig_anti_symmetric() {
+        // [0,2;-2,0] has eigenvalues ±2i.
+        let env = run("e = eig([0,2;-2,0])");
+        let m = get_cm(&env, "e");
+        let eigs: Vec<Complex<f64>> = vec![m[[0, 0]], m[[1, 0]]];
+        let has_pos = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im - 2.0).abs() < 1e-6);
+        let has_neg = eigs.iter().any(|c| c.re.abs() < 1e-6 && (c.im + 2.0).abs() < 1e-6);
+        assert!(has_pos, "expected +2i, got {eigs:?}");
+        assert!(has_neg, "expected -2i, got {eigs:?}");
+    }
+
+    #[test]
+    fn eig_symmetric_stays_matrix() {
+        // Symmetric real matrix → eigenvalues should stay as real Matrix.
+        let env = run("e = eig([4,2;2,1])");
+        match env.get("e").unwrap() {
+            Value::Matrix(m) => {
+                assert_eq!(m.nrows(), 2);
+                assert_eq!(m.ncols(), 1);
+            }
+            other => panic!("expected real Matrix for symmetric eig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn eig_two_output_complex_errors() {
+        let e = run_err("[V,D] = eig([0,-1;1,0])");
+        assert!(
+            e.contains("not supported") || e.contains("complex"),
+            "expected error about complex eigenvectors, got: {e}"
+        );
+    }
+
+    #[test]
+    fn eig_two_output_real_ok() {
+        // [V,D] = eig on symmetric matrix should still work.
+        let env = run("[V,D] = eig([1,0;0,2])");
+        assert!(env.get("V").is_some());
+        assert!(env.get("D").is_some());
+    }
+
+    // --- Additional: trace, diag, sum, prod, mean on ComplexMatrix ---
+
+    #[test]
+    fn trace_complex_matrix() {
+        // trace([1+2i, 3+4i; 5+6i, 7+8i]) = (1+2i) + (7+8i) = 8+10i
+        let env = run("t = trace([1+2i, 3+4i; 5+6i, 7+8i])");
+        let (re, im) = get_complex(&env, "t");
+        assert!((re - 8.0).abs() < 1e-14);
+        assert!((im - 10.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn trace_complex_matrix_real_result() {
+        // trace([1+2i, 0; 0, -1-2i]) = 0 → real scalar
+        let env = run("t = trace([1+2i, 0; 0, -1-2i])");
+        let t = get_scalar(&env, "t");
+        assert!(t.abs() < 1e-14);
+    }
+
+    #[test]
+    fn diag_extract_complex_matrix() {
+        // Extract diagonal from 2×2 ComplexMatrix.
+        let env = run("d = diag([1+2i, 3+4i; 5+6i, 7+8i])");
+        let m = get_cm(&env, "d");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 1);
+        assert!((m[[0, 0]].re - 1.0).abs() < 1e-14);
+        assert!((m[[0, 0]].im - 2.0).abs() < 1e-14);
+        assert!((m[[1, 0]].re - 7.0).abs() < 1e-14);
+        assert!((m[[1, 0]].im - 8.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn diag_build_complex_matrix() {
+        // Build diagonal matrix from a complex vector.
+        let env = run("D = diag([1+2i; 3+4i])");
+        let m = get_cm(&env, "D");
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 2);
+        assert!((m[[0, 0]].re - 1.0).abs() < 1e-14);
+        assert!((m[[0, 0]].im - 2.0).abs() < 1e-14);
+        assert!((m[[1, 1]].re - 3.0).abs() < 1e-14);
+        assert!(m[[0, 1]].re.abs() < 1e-14);
+    }
+
+    #[test]
+    fn sum_complex_vector() {
+        // sum([1+2i, 3+4i]) = 4+6i
+        let env = run("s = sum([1+2i, 3+4i])");
+        let (re, im) = get_complex(&env, "s");
+        assert!((re - 4.0).abs() < 1e-14);
+        assert!((im - 6.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn sum_complex_matrix_col_wise() {
+        // sum([1+2i, 3+4i; 5+6i, 7+8i]) → [6+8i, 10+12i]
+        let env = run("s = sum([1+2i, 3+4i; 5+6i, 7+8i])");
+        let m = get_cm(&env, "s");
+        assert_eq!(m.nrows(), 1);
+        assert_eq!(m.ncols(), 2);
+        assert!((m[[0, 0]].re - 6.0).abs() < 1e-14);
+        assert!((m[[0, 0]].im - 8.0).abs() < 1e-14);
+        assert!((m[[0, 1]].re - 10.0).abs() < 1e-14);
+        assert!((m[[0, 1]].im - 12.0).abs() < 1e-14);
+    }
+
+    #[test]
+    fn mean_complex_vector() {
+        // mean([2+4i, 4+8i]) = 3+6i
+        let env = run("m = mean([2+4i, 4+8i])");
+        let (re, im) = get_complex(&env, "m");
+        assert!((re - 3.0).abs() < 1e-14);
+        assert!((im - 6.0).abs() < 1e-14);
+    }
+}
