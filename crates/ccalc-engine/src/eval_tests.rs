@@ -85,12 +85,13 @@ fn test_eval_div() {
 
 #[test]
 fn test_eval_div_by_zero() {
+    // IEEE 754: 1.0/0.0 = Inf, not an error.
     let expr = Expr::BinOp(
         Box::new(Expr::Number(1.0)),
         Op::Div,
         Box::new(Expr::Number(0.0)),
     );
-    assert!(eval(&expr, &empty_env()).is_err());
+    assert_eq!(eval(&expr, &empty_env()), Ok(Value::Scalar(f64::INFINITY)));
 }
 
 #[test]
@@ -933,6 +934,79 @@ fn test_complex_div() {
 }
 
 #[test]
+fn test_div_by_zero_gives_inf() {
+    let result = eval_parse("1 / 0", &empty_env()).unwrap();
+    assert_eq!(result, Value::Scalar(f64::INFINITY));
+}
+
+#[test]
+fn test_zero_div_zero_gives_nan() {
+    let result = eval_parse("0 / 0", &empty_env()).unwrap();
+    match result {
+        Value::Scalar(n) => assert!(n.is_nan()),
+        other => panic!("expected Scalar(NaN), got {other:?}"),
+    }
+}
+
+#[test]
+fn test_neg_div_by_zero_gives_neg_inf() {
+    let result = eval_parse("-1 / 0", &empty_env()).unwrap();
+    assert_eq!(result, Value::Scalar(f64::NEG_INFINITY));
+}
+
+#[test]
+fn test_ldiv_by_zero_gives_inf() {
+    // 0 \ 1  means 1/0 = Inf
+    let result = eval_parse("0 \\ 1", &empty_env()).unwrap();
+    assert_eq!(result, Value::Scalar(f64::INFINITY));
+}
+
+#[test]
+fn test_complex_div_by_zero_gives_inf() {
+    // (3+4i)/0 — both components divide by zero → Inf+Inf*i
+    let mut env = env_with_ij();
+    env.insert("z".to_string(), Value::Complex(3.0, 4.0));
+    let result = eval_parse("z / 0", &env).unwrap();
+    match result {
+        Value::Complex(re, im) => {
+            assert!(re.is_infinite() && re > 0.0);
+            assert!(im.is_infinite() && im > 0.0);
+        }
+        other => panic!("expected Complex(Inf, Inf), got {other:?}"),
+    }
+}
+
+#[test]
+fn test_exp_complex() {
+    // exp(i*pi) = cos(pi) + i*sin(pi) = -1 + ~0i
+    let env = env_with_ij();
+    let result = eval_parse("exp(1i * pi)", &env).unwrap();
+    match result {
+        Value::Scalar(n) => assert!((n + 1.0).abs() < 1e-12),
+        Value::Complex(re, im) => {
+            assert!((re + 1.0).abs() < 1e-12);
+            assert!(im.abs() < 1e-12);
+        }
+        other => panic!("expected ~Scalar(-1) or Complex(-1,~0), got {other:?}"),
+    }
+}
+
+#[test]
+fn test_exp_complex_quarter_turn() {
+    // exp(i*pi/2) = i  → Complex(0, 1)
+    let env = env_with_ij();
+    let result = eval_parse("exp(1i * pi / 2)", &env).unwrap();
+    match result {
+        Value::Complex(re, im) => {
+            assert!(re.abs() < 1e-12);
+            assert!((im - 1.0).abs() < 1e-12);
+        }
+        Value::Scalar(n) => panic!("expected Complex, got Scalar({n})"),
+        other => panic!("expected Complex, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_complex_plus_scalar() {
     let mut env = empty_env();
     env.insert("z".to_string(), Value::Complex(1.0, 2.0));
@@ -1589,6 +1663,24 @@ fn test_printf_mixed_types() {
 fn test_printf_s_precision_truncate() {
     let args = vec![Value::Str("hello".to_string())];
     assert_eq!(format_printf("%.3s", &args).unwrap(), "hel");
+}
+
+#[test]
+fn test_printf_hex_lower() {
+    let args = vec![Value::Scalar(255.0)];
+    assert_eq!(format_printf("%x", &args).unwrap(), "ff");
+}
+
+#[test]
+fn test_printf_hex_upper() {
+    let args = vec![Value::Scalar(255.0)];
+    assert_eq!(format_printf("%X", &args).unwrap(), "FF");
+}
+
+#[test]
+fn test_printf_hex_zero_pad() {
+    let args = vec![Value::Scalar(255.0)];
+    assert_eq!(format_printf("%04X", &args).unwrap(), "00FF");
 }
 
 #[test]

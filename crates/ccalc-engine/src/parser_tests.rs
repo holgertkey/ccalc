@@ -3522,12 +3522,13 @@ fn test_ldiv_scalar_precedence() {
 
 #[test]
 fn test_ldiv_zero_divisor() {
+    // 0\5 = 5/0 — IEEE 754 gives Inf, not an error.
     let env = Env::new();
     let result = parse(r"0 \ 5").and_then(|s| match s {
         Stmt::Expr(e) => eval(&e, &env),
         _ => Err("unexpected".to_string()),
     });
-    assert!(result.is_err(), "0 \\ 5 should be an error");
+    assert_eq!(result, Ok(Value::Scalar(f64::INFINITY)));
 }
 
 #[test]

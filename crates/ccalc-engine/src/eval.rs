@@ -1553,18 +1553,8 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                 Op::Add => lv + rv,
                 Op::Sub => lv - rv,
                 Op::Mul | Op::ElemMul => lv * rv,
-                Op::Div | Op::ElemDiv => {
-                    if rv == 0.0 {
-                        return Err("Division by zero".to_string());
-                    }
-                    lv / rv
-                }
-                Op::LDiv => {
-                    if lv == 0.0 {
-                        return Err("Left division by zero (a \\ b requires a ≠ 0)".to_string());
-                    }
-                    rv / lv
-                }
+                Op::Div | Op::ElemDiv => lv / rv,
+                Op::LDiv => rv / lv,
                 Op::Pow | Op::ElemPow => lv.powf(rv),
                 Op::Eq => bool_to_f64(lv == rv),
                 Op::NotEq => bool_to_f64(lv != rv),
@@ -1713,9 +1703,10 @@ fn complex_binop(re1: f64, im1: f64, op: &Op, re2: f64, im2: f64) -> Result<Valu
         }
         Op::Div | Op::ElemDiv => {
             // (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c²+d²)
+            // When denom == 0 let IEEE 754 produce Inf/NaN naturally.
             let denom = re2 * re2 + im2 * im2;
             if denom == 0.0 {
-                return Err("Division by zero (complex)".to_string());
+                return Ok(make_complex(re1 / 0.0_f64, im1 / 0.0_f64));
             }
             Ok(make_complex(
                 (re1 * re2 + im1 * im2) / denom,
@@ -2549,6 +2540,16 @@ pub fn format_printf(fmt: &str, args: &[Value]) -> Result<String, String> {
                     let s = printf_format_g(n, prec, flag_plus, flag_space, spec == 'G');
                     printf_pad(s, width, flag_minus, flag_zero)
                 }
+                'x' | 'X' => {
+                    let n = printf_scalar(arg, spec)?;
+                    let i = n.trunc() as u64;
+                    let hex = if spec == 'X' {
+                        format!("{:X}", i)
+                    } else {
+                        format!("{:x}", i)
+                    };
+                    printf_pad(hex, width, flag_minus, flag_zero)
+                }
                 's' => {
                     let s = printf_string(arg)?;
                     let s = if let Some(max_len) = precision {
@@ -3117,7 +3118,13 @@ fn call_builtin(
         ("log", 1) => apply_elem(&args[0], |x| x.ln()),
         ("log2", 1) => apply_elem(&args[0], |x| x.log2()),
         ("log10", 1) => apply_elem(&args[0], |x| x.log10()),
-        ("exp", 1) => apply_elem(&args[0], |x| x.exp()),
+        ("exp", 1) => match &args[0] {
+            Value::Complex(re, im) => {
+                let e = re.exp();
+                Ok(make_complex(e * im.cos(), e * im.sin()))
+            }
+            _ => apply_elem(&args[0], |x| x.exp()),
+        },
         ("sin", 1) => apply_elem(&args[0], |x| x.sin()),
         ("cos", 1) => apply_elem(&args[0], |x| x.cos()),
         ("tan", 1) => apply_elem(&args[0], |x| x.tan()),

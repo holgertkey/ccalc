@@ -709,9 +709,10 @@ fn test_pipe_inline_comments_stripped() {
 }
 
 #[test]
-fn test_pipe_error_reported() {
+fn test_pipe_div_by_zero_gives_inf() {
+    // IEEE 754: 1/0 = Inf, not an error.
     let out = pipe_output("1 / 0");
-    assert!(out[0].starts_with("Error:"));
+    assert_eq!(out, vec!["Inf"]);
 }
 
 #[test]
