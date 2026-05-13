@@ -39,6 +39,8 @@ disp(label)      % R = 47.5 Ohm
 | `%f`       | Fixed-point decimal, default 6 places            |
 | `%e`       | Scientific notation (`1.23e+04`)                |
 | `%g`       | Shorter of `%f` and `%e`                        |
+| `%x`       | Hexadecimal, lowercase (`ff`)                    |
+| `%X`       | Hexadecimal, uppercase (`FF`)                    |
 | `%s`       | String (char array or string object)             |
 | `%%`       | Literal `%`                                      |
 
@@ -65,6 +67,8 @@ fprintf('%-10s|\n', 'hi')    % hi        |
 fprintf('%+.4e\n', 1000)     % +1.0000e+03
 fprintf('%05d\n',    42)     % 00042
 fprintf('% d\n',      5)     %  5
+fprintf('%x\n',     255)     % ff
+fprintf('%04X\n',   255)     % 00FF
 ```
 
 ## Escape sequences

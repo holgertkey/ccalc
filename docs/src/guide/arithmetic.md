@@ -70,6 +70,28 @@ See [Comparison & Logical Operators](./logic.md) for full details.
 
 Use parentheses to override: `(2 + 3) * 4` → `20`.
 
+## Special values: `Inf`, `NaN`, and division by zero
+
+Division by zero follows IEEE 754 — it produces `Inf` or `NaN` rather than an
+error:
+
+```
+1 / 0      % Inf
+-1 / 0     % -Inf
+0 / 0      % NaN
+0 \ 1      % Inf  (left division: 1/0)
+```
+
+These values propagate through arithmetic in the expected way:
+
+```
+Inf + 1    % Inf
+Inf - Inf  % NaN
+1 / Inf    % 0
+isnan(NaN) % 1
+isinf(Inf) % 1
+```
+
 ## Partial expressions
 
 An expression starting with an operator uses `ans` as the left operand:

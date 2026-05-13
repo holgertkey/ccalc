@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.34.0+001] - 2026-05-13
+
+### Added
+- `%x` and `%X` format specifiers in `fprintf`/`sprintf` — hexadecimal output
+  with full width/zero-pad support (e.g. `fprintf('%04X\n', 255)` → `00FF`).
+- `exp(z)` now accepts complex arguments — computes Euler's formula
+  `e^a·(cos b + i·sin b)` where `z = a + bi`. Enables natural polar-form
+  reconstruction: `r * exp(1i * theta)`.
+
+### Fixed
+- Division by zero now follows IEEE 754 semantics: `1/0` → `Inf`, `-1/0` → `-Inf`,
+  `0/0` → `NaN`. Previously threw an error. Applies to scalar `/`, scalar `\`
+  (left-division), and complex `z/0`.
+
 ## [0.34.0] - 2026-05-13
 
 ### Added

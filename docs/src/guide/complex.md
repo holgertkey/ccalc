@@ -80,12 +80,19 @@ angle(z)         % 0.9272...  (argument in radians)
 angle(z) * 180/pi  % 53.13°  (in degrees)
 ```
 
-Reconstruct from polar:
+Reconstruct from polar using `exp`:
 
 ```
 r = abs(z);
 t = angle(z);
-complex(r*cos(t), r*sin(t))   % 3 + 4i
+r * exp(1i * t)               % 3 + 4i   (Euler's formula: e^(it) = cos t + i·sin t)
+complex(r*cos(t), r*sin(t))   % 3 + 4i   (equivalent, without exp)
+```
+
+Euler's identity:
+
+```
+exp(1i * pi) + 1              % ≈ 0   (≈ 0 + 1.22e-16i — floating-point rounding)
 ```
 
 ## Built-in functions
@@ -99,6 +106,7 @@ complex(r*cos(t), r*sin(t))   % 3 + 4i
 | `conj(z)` | Complex conjugate: `re - im*i` |
 | `complex(re, im)` | Construct from two real scalars |
 | `isreal(z)` | `1` if imaginary part is zero, else `0` |
+| `exp(z)` | Complex exponential: `e^a·(cos b + i·sin b)` where `z = a + bi` |
 
 ```
 z = 3 + 4*i

@@ -236,7 +236,7 @@ Vars    x = expr              shows: x = <val>  (ans unchanged)
 Output  disp(expr)
         fprintf('fmt', v1, v2, ...)   print formatted  (C printf)
         sprintf('fmt', v1, v2, ...)   return formatted string
-        Specifiers: %d %i %f %e %g %s %%   Width/prec: %8.3f %-10s
+        Specifiers: %d %i %f %e %g %x %X %s %%   Width/prec: %8.3f %-10s %04X
 Files   fd = fopen('f.txt','w')   fclose(fd)   fclose('all')
         fprintf(fd,'fmt',v1,...)  fgetl(fd)  fgets(fd)
         dlmwrite('f.csv',A)  dlmwrite('f.tsv',A,'\t')
@@ -741,9 +741,11 @@ Format specifiers
     %.Nf      fixed with N decimal places
     %e        scientific  1.23e+04
     %g        shorter of %%f and %%e  (trailing zeros trimmed)
+    %x        hexadecimal lowercase  (ff)
+    %X        hexadecimal uppercase  (FF)
     %s        string
     %%        literal percent sign
-    Width/flags:  %8.3f   %-10s   %+.4e   %05d
+    Width/flags:  %8.3f   %-10s   %+.4e   %05d   %04X
 
 Escape sequences inside strings
     \\n   newline
