@@ -836,16 +836,59 @@ fn set_nested(
     Ok(map)
 }
 
-/// Executes a sequence of parsed statements, handling flow control signals.
+/// Pre-register all top-level [`Stmt::FunctionDef`] nodes into `env`.
 ///
-/// Returns:
-/// - `Ok(None)` — normal completion
-/// - `Ok(Some(Signal::Break))` — `break` statement executed
-/// - `Ok(Some(Signal::Continue))` — `continue` statement executed
-/// - `Err(e)` — runtime error
+/// Implements MATLAB/Octave script hoisting semantics: called before execution
+/// begins so helper functions defined anywhere in a script file are visible to
+/// code that appears before them textually.  Only the immediate `stmts`
+/// slice is scanned — function bodies are not descended into.
+fn hoist_functions(stmts: &[StmtEntry], env: &mut Env) {
+    for (stmt, _, _) in stmts {
+        if let Stmt::FunctionDef {
+            name,
+            outputs,
+            params,
+            body_source,
+            doc,
+        } = stmt
+        {
+            env.insert(
+                name.clone(),
+                Value::Function {
+                    outputs: outputs.clone(),
+                    params: params.clone(),
+                    body_source: body_source.clone(),
+                    locals: IndexMap::new(),
+                    doc: doc.clone(),
+                },
+            );
+        }
+    }
+}
+
+/// Execute a top-level script block (REPL input, pipe/script mode, `eval()`).
 ///
-/// Loop implementations (`For`, `While`) catch `Break`/`Continue` internally.
-/// A signal that escapes to the top-level caller should be reported as an error.
+/// Identical to [`exec_stmts`] but first calls [`hoist_functions`] so that
+/// helper functions defined at the bottom of the script are visible to code
+/// above them — matching MATLAB/Octave script semantics.
+pub fn exec_script(
+    stmts: &[StmtEntry],
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> Result<Option<Signal>, String> {
+    hoist_functions(stmts, env);
+    exec_stmts(stmts, env, io, fmt, base, compact)
+}
+
+/// Execute a sequence of parsed statements, handling flow control signals.
+///
+/// Returns `Ok(None)` on normal completion, `Ok(Some(Signal::Break/Continue))`
+/// when those flow-control statements escape a loop, or `Err(e)` on runtime error.
+/// Loop implementations (`For`, `While`) catch `Break`/`Continue` internally;
+/// a signal that reaches the top-level caller should be reported as an error.
 pub fn exec_stmts(
     stmts: &[StmtEntry],
     env: &mut Env,
@@ -1144,7 +1187,7 @@ pub fn exec_stmts(
                     let run_result = (|| -> Result<Option<Signal>, String> {
                         let stmts = parse_stmts(&code_str)
                             .map_err(|e| format!("eval: parse error: {e}"))?;
-                        exec_stmts(&stmts, env, io, fmt, base, compact)
+                        exec_script(&stmts, env, io, fmt, base, compact)
                     })();
                     RUN_DEPTH.with(|d| d.set(depth));
                     match run_result {

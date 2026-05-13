@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.34.0+002] - 2026-05-13
+
+### Added
+- **Function hoisting** — helper functions defined at the bottom of a script
+  file are now visible to code above them, matching MATLAB/Octave script
+  semantics.  `exec_script()` pre-registers all top-level `FunctionDef` nodes
+  before execution begins.  Applied to: file execution (`ccalc script.m`),
+  REPL multi-line blocks, and `eval()` string execution.  Internal recursive
+  calls (loop bodies, if branches, function bodies) are unaffected.
+
 ## [0.34.0+001] - 2026-05-13
 
 ### Added

@@ -13,8 +13,9 @@ end
 ```
 
 Define a function at the top level in the REPL or in a `.calc` / `.m` script
-file. Once defined, the function is stored in the workspace and can be called
-like any built-in.
+file. The function is stored in the workspace and can be called like any built-in.
+In script files, functions may appear **anywhere** — before or after the code
+that calls them (see [Function hoisting in scripts](#function-hoisting-in-scripts)).
 
 ### Single return value
 
@@ -206,6 +207,32 @@ Example:
 - `#`-style comments work the same way.
 - `help <name>` works for autoloaded functions on the path **before** the first
   call — ccalc loads the file on demand to extract the doc.
+
+---
+
+## Function hoisting in scripts
+
+In a **script file** (one that does not begin with a `function` definition), helper
+functions may be placed **anywhere** in the file — including after the code that calls them.
+ccalc pre-registers all top-level function definitions before executing the script body,
+matching MATLAB/Octave script semantics:
+
+```matlab
+% main code at the top — calls a helper defined further down
+result = double_it(7);
+fprintf("double_it(7) = %d\n", result);   % prints: double_it(7) = 14
+
+% helper function at the bottom
+function y = double_it(x)
+  y = x * 2;
+end
+```
+
+This is the standard layout for MATLAB/Octave scripts: keep the main logic at
+the top and put helper functions at the bottom, where they are out of the way.
+
+> **REPL difference:** In the interactive REPL, functions take effect immediately when
+> entered — a function must be defined before its first call.
 
 ---
 

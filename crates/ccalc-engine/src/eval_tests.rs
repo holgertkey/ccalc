@@ -3412,7 +3412,7 @@ fn run_script_src(src: &str) -> crate::env::Env {
     let mut env = crate::env::Env::new();
     env.insert("ans".to_string(), Value::Scalar(0.0));
     let mut io = IoContext::new();
-    crate::exec::exec_stmts(
+    crate::exec::exec_script(
         &stmts,
         &mut env,
         &mut io,
@@ -3420,7 +3420,7 @@ fn run_script_src(src: &str) -> crate::env::Env {
         Base::Dec,
         true,
     )
-    .expect("exec_stmts failed");
+    .expect("exec_script failed");
     env
 }
 
@@ -3486,6 +3486,59 @@ fn test_mixed_function_script_file_runs_body() {
         Some(&Value::Scalar(42.0)),
         "script body must execute even when the file starts with function defs"
     );
+}
+
+// ── Function hoisting (MATLAB/Octave script semantics) ───────────────────────
+//
+// In MATLAB/Octave, helper functions at the END of a script file are visible
+// to code that appears before them.  exec_script() implements this by pre-
+// registering all top-level FunctionDef nodes before execution begins.
+
+#[test]
+fn test_hoist_function_defined_after_call() {
+    // Function defined after the call site — must still work.
+    let env = run_script_src(
+        "result = double_it(21);\n\
+         function y = double_it(x)\n\
+           y = x * 2;\n\
+         end\n",
+    );
+    assert_eq!(env.get("result"), Some(&Value::Scalar(42.0)));
+}
+
+#[test]
+fn test_hoist_multiple_functions_after_body() {
+    let env = run_script_src(
+        "a = add_one(5);\n\
+         b = square(4);\n\
+         \n\
+         function y = add_one(x)\n\
+           y = x + 1;\n\
+         end\n\
+         \n\
+         function y = square(x)\n\
+           y = x * x;\n\
+         end\n",
+    );
+    assert_eq!(env.get("a"), Some(&Value::Scalar(6.0)));
+    assert_eq!(env.get("b"), Some(&Value::Scalar(16.0)));
+}
+
+#[test]
+fn test_hoist_function_calls_another_hoisted_function() {
+    // Both caller and callee are defined after the script body.
+    let env = run_script_src(
+        "result = outer(3);\n\
+         \n\
+         function y = outer(x)\n\
+           y = inner(x) + 1;\n\
+         end\n\
+         \n\
+         function y = inner(x)\n\
+           y = x * 10;\n\
+         end\n",
+    );
+    assert_eq!(env.get("result"), Some(&Value::Scalar(31.0)));
 }
 
 // ── Phase 19d: assert built-ins ──────────────────────────────────────────────

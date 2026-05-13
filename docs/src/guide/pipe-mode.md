@@ -26,6 +26,11 @@ Or redirect stdin:
 ccalc < formula.txt
 ```
 
+The entire file is parsed before execution begins, so helper functions may be
+defined **at the bottom** of the script and called from code above them —
+the same layout used by MATLAB/Octave scripts.
+See [Function hoisting](user-functions.md#function-hoisting-in-scripts) for details.
+
 ### Comments
 
 `%` starts a line comment (Octave/MATLAB convention):

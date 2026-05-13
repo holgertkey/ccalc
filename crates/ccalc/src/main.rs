@@ -56,7 +56,7 @@ fn run() {
                     .or_else(|| ccalc_engine::exec::resolve_script_path(arg));
 
                 if let Some(path) = resolved {
-                    let file = std::fs::File::open(&path).unwrap_or_else(|e| {
+                    let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
                         eprintln!("Error opening '{}': {e}", path.display());
                         std::process::exit(1);
                     });
@@ -69,7 +69,7 @@ fn run() {
                     {
                         ccalc_engine::exec::script_dir_push(&dir);
                     }
-                    repl::run_pipe(std::io::BufReader::new(file));
+                    repl::run_file_content(&content);
                 } else {
                     repl::run_expr(arg);
                 }

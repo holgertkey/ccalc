@@ -18,7 +18,7 @@ use ccalc_engine::eval::{
     format_scalar, format_value_full, global_refresh_into_env, global_set, is_global,
     load_mat_file, resolve_autoloaded, set_last_err, set_nargout,
 };
-use ccalc_engine::exec::{Signal, exec_stmts};
+use ccalc_engine::exec::{Signal, exec_script, exec_stmts};
 use ccalc_engine::io::IoContext;
 use ccalc_engine::parser::{
     Stmt, block_depth_delta, is_partial, is_single_line_block, parse, parse_stmts, split_stmts,
@@ -438,7 +438,7 @@ pub fn run() {
         // parent block (e.g. a function body) collects it correctly.
         if block_depth == 0 && is_single_line_block(trimmed) {
             match parse_stmts(trimmed) {
-                Ok(stmts) => match exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                Ok(stmts) => match exec_script(&stmts, &mut env, &mut io, &fmt, base, compact) {
                     Ok(None) => {}
                     Ok(Some(Signal::Break | Signal::Continue)) => {
                         eprintln!("Error: 'break'/'continue' outside a loop");
@@ -470,19 +470,21 @@ pub fn run() {
                 let block_input = block_buf.join("\n");
                 block_buf.clear();
                 match parse_stmts(&block_input) {
-                    Ok(stmts) => match exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
-                        Ok(None) => {}
-                        Ok(Some(Signal::Break | Signal::Continue)) => {
-                            eprintln!("Error: 'break'/'continue' outside a loop");
+                    Ok(stmts) => {
+                        match exec_script(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                            Ok(None) => {}
+                            Ok(Some(Signal::Break | Signal::Continue)) => {
+                                eprintln!("Error: 'break'/'continue' outside a loop");
+                            }
+                            Ok(Some(Signal::Return)) => {
+                                eprintln!("Error: 'return' outside a function");
+                            }
+                            Err(e) => {
+                                set_last_err(&e);
+                                eprintln!("Error: {e}");
+                            }
                         }
-                        Ok(Some(Signal::Return)) => {
-                            eprintln!("Error: 'return' outside a function");
-                        }
-                        Err(e) => {
-                            set_last_err(&e);
-                            eprintln!("Error: {e}");
-                        }
-                    },
+                    }
                     Err(e) => eprintln!("Error: {e}"),
                 }
             }
@@ -1197,6 +1199,36 @@ fn try_path_cmd(
     }
 }
 
+/// Execute a complete script file given its content as a string.
+///
+/// Parses the entire content at once and calls [`exec_script`], which
+/// pre-registers all top-level function definitions before execution
+/// (MATLAB/Octave hoisting semantics).  Use this instead of [`run_pipe`]
+/// when reading a file from disk so that helper functions defined at the
+/// bottom of the file are visible to code above them.
+pub fn run_file_content(content: &str) {
+    let mut env = new_env();
+    let mut io = IoContext::new();
+    let fmt = FormatMode::default();
+    let compact = false;
+    let base = Base::Dec;
+    {
+        let config_path = ccalc_engine::env::config_dir().join("config.toml");
+        if let Ok(cfg) = crate::config::load(&config_path) {
+            ccalc_engine::exec::session_path_init(cfg.search_path());
+        }
+    }
+    match ccalc_engine::parser::parse_stmts(content) {
+        Ok(stmts) => {
+            if let Err(e) = exec_script(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                set_last_err(&e);
+                eprintln!("Error: {e}");
+            }
+        }
+        Err(e) => eprintln!("Error: {e}"),
+    }
+}
+
 /// Process lines from a non-interactive reader (pipe, file redirect).
 /// Prints one result per expression line; no prompts.
 pub fn run_pipe(reader: impl BufRead) {
@@ -1275,7 +1307,7 @@ pub fn run_pipe(reader: impl BufRead) {
         if block_depth == 0 && is_single_line_block(trimmed) {
             match parse_stmts(trimmed) {
                 Ok(stmts) => {
-                    if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                    if let Err(e) = exec_script(&stmts, &mut env, &mut io, &fmt, base, compact) {
                         set_last_err(&e);
                         eprintln!("Error: {e}");
                     }
@@ -1303,7 +1335,8 @@ pub fn run_pipe(reader: impl BufRead) {
                 block_buf.clear();
                 match parse_stmts(&block_input) {
                     Ok(stmts) => {
-                        if let Err(e) = exec_stmts(&stmts, &mut env, &mut io, &fmt, base, compact) {
+                        if let Err(e) = exec_script(&stmts, &mut env, &mut io, &fmt, base, compact)
+                        {
                             set_last_err(&e);
                             eprintln!("Error: {e}");
                         }
