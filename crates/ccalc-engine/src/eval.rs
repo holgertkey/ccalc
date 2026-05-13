@@ -3102,6 +3102,11 @@ fn call_builtin(
     env: &Env,
     mut io: Option<&mut IoContext>,
 ) -> Result<Value, String> {
+    // Plugins are checked first so they can shadow built-ins.
+    if let Some(result) = crate::plugin::call_plugin(name, args, env) {
+        return result;
+    }
+
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
         ("sqrt", 1) => apply_elem(&args[0], |x| x.sqrt()),

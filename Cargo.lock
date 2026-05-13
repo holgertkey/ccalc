@@ -152,9 +152,10 @@ dependencies = [
 
 [[package]]
 name = "ccalc"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "ccalc-engine",
+ "ccalc-plot",
  "rustyline",
  "serde",
  "tempfile",
@@ -163,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc-engine"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "blas-src",
  "criterion",
@@ -179,6 +180,13 @@ dependencies = [
  "rustfft",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "ccalc-plot"
+version = "0.34.0"
+dependencies = [
+ "ccalc-engine",
 ]
 
 [[package]]

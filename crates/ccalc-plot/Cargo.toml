@@ -1,0 +1,11 @@
+[package]
+name = "ccalc-plot"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "Plot plugin for ccalc (ASCII and SVG/PNG output)"
+
+[dependencies]
+ccalc-engine = { path = "../ccalc-engine", version = "0.34.0" }

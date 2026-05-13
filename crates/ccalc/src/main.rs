@@ -25,6 +25,9 @@ fn run() {
     // Register exec-level hooks in eval.rs so user function calls are dispatched correctly.
     ccalc_engine::exec::init();
 
+    // Register built-in plugins.
+    ccalc_engine::plugin::register_plugin(Box::new(ccalc_plot::PlotPlugin));
+
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() > 1 {

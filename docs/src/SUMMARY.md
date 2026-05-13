@@ -36,6 +36,7 @@
 - [Polynomial Operations & Interpolation](./guide/polynomials.md)
 - [FFT & Signal Processing](./guide/fft.md)
 - [Dynamic Evaluation & Timing](./guide/eval.md)
+- [Plugins](./guide/plugins.md)
 
 # Architecture
 
@@ -84,3 +85,4 @@
 - [Phase 25 — Dynamic Evaluation & Timing](./ccalc/phase25-eval.md)
 - [Phase 26 — FFT & Signal Processing](./ccalc/phase26-fft.md)
 - [Phase 27 — Complex Matrices](./ccalc/phase27-complex-matrices.md)
+- [Phase 28 — Plugin Architecture](./ccalc/phase28-plugins.md)

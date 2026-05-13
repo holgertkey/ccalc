@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-05-13
+
+### Added
+
+- **Phase 28 — Plugin architecture**:
+  - **`Plugin` trait** (`ccalc_engine::plugin`) — implement `name()`, optionally
+    `exported_names()`, and `call()` to expose new built-in functions without
+    modifying the engine.
+  - **`PluginRegistry`** — thread-local registry that maps exported names to
+    plugin implementations. Checked before the built-in table so plugins can
+    shadow any existing built-in.
+  - **`register_plugin(p)`** — registers a `Box<dyn Plugin>` in the thread-local
+    registry. Call once at startup before any evaluation.
+  - **`ccalc-plot` crate** — new workspace member; stub `PlotPlugin` registers
+    `plot`, `scatter`, `bar`, `stem`, `xlabel`, `ylabel`, and `title`. Real
+    rendering will be added in Phase 29.
+  - **Tab completion** — plugin exported names are included in the REPL's
+    tab-completion candidates alongside built-ins.
+  - **Documentation** — `docs/src/guide/plugins.md` explains the `Plugin` trait,
+    minimal plugin crate skeleton, and registration steps.
+
 ## [0.33.0] - 2026-05-12
 
 ### Added

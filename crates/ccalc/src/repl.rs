@@ -27,16 +27,23 @@ use ccalc_engine::parser::{
 /// rustyline helper providing tab completion for variable names and built-in functions.
 struct CcalcHelper {
     candidates: Vec<String>,
+    /// Number of fixed entries (builtins + plugins) at the front of `candidates`.
+    fixed_count: usize,
 }
 
 impl CcalcHelper {
     fn new() -> Self {
-        let candidates = builtin_names().iter().map(|s| s.to_string()).collect();
-        Self { candidates }
+        let mut candidates: Vec<String> = builtin_names().iter().map(|s| s.to_string()).collect();
+        candidates.extend(ccalc_engine::plugin::plugin_names());
+        let fixed_count = candidates.len();
+        Self {
+            candidates,
+            fixed_count,
+        }
     }
 
     fn update_env(&mut self, env: &Env) {
-        self.candidates.truncate(builtin_names().len());
+        self.candidates.truncate(self.fixed_count);
         for key in env.keys() {
             if key != "ans" && key != "i" && key != "j" {
                 self.candidates.push(key.clone());

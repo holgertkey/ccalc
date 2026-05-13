@@ -39,6 +39,9 @@ pub mod parser;
 /// Datetime arithmetic helpers: UTC timestamp ↔ civil calendar conversion, formatting, parsing.
 pub mod datetime;
 
+/// Plugin system for extending ccalc with new built-in functions.
+pub mod plugin;
+
 #[cfg(feature = "json")]
 pub(crate) mod json;
 
