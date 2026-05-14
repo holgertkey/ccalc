@@ -7,5 +7,16 @@ repository.workspace = true
 edition.workspace = true
 description = "Plot plugin for ccalc (ASCII and SVG/PNG output)"
 
+[features]
+plot     = ["dep:textplots"]
+plot-svg = ["dep:plotters"]
+plot-all = ["plot", "plot-svg"]
+
 [dependencies]
-ccalc-engine = { path = "../ccalc-engine", version = "0.34.0" }
+ccalc-engine = { path = "../ccalc-engine", version = "0.35.0" }
+textplots = { version = "0.8", optional = true }
+plotters  = { version = "0.3", optional = true, default-features = false,
+              features = ["svg_backend", "bitmap_backend", "bitmap_encoder"] }
+
+[dev-dependencies]
+ndarray = "0.16"

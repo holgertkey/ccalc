@@ -15,7 +15,7 @@
 //! impl Plugin for MyPlugin {
 //!     fn name(&self) -> &str { "myfunc" }
 //!
-//!     fn call(&self, args: &[Value], _env: &Env) -> Result<Value, String> {
+//!     fn call(&self, _name: &str, args: &[Value], _env: &Env) -> Result<Value, String> {
 //!         if args.is_empty() {
 //!             return Err("myfunc: at least one argument required".into());
 //!         }
@@ -29,12 +29,21 @@
 //!
 //! Plugins that expose several names (e.g. a plot plugin with `plot`, `scatter`,
 //! `bar`, …) should also override [`Plugin::exported_names`] and return a
-//! `const`-backed slice:
+//! `const`-backed slice. The `name` argument to `call` identifies which exported
+//! name was invoked, enabling a single plugin to dispatch multiple functions:
 //!
 //! ```rust,ignore
 //! const NAMES: &[&str] = &["plot", "scatter", "bar"];
 //!
 //! fn exported_names(&self) -> &[&str] { NAMES }
+//!
+//! fn call(&self, name: &str, args: &[Value], _env: &Env) -> Result<Value, String> {
+//!     match name {
+//!         "plot"    => { /* ... */ Ok(Value::Void) }
+//!         "scatter" => { /* ... */ Ok(Value::Void) }
+//!         _         => Err(format!("{name}: not implemented"))
+//!     }
+//! }
 //! ```
 
 use std::cell::RefCell;
@@ -71,13 +80,14 @@ pub trait Plugin: Send + Sync {
     ///
     /// # Arguments
     ///
+    /// * `name` — the exact function name that was called (one of [`Plugin::exported_names`])
     /// * `args` — evaluated argument values (already evaluated by the engine)
     /// * `env`  — current variable environment (read-only)
     ///
     /// # Errors
     ///
     /// Return `Err(msg)` to propagate an error to the user.
-    fn call(&self, args: &[Value], env: &Env) -> Result<Value, String>;
+    fn call(&self, name: &str, args: &[Value], env: &Env) -> Result<Value, String>;
 }
 
 /// Registry that maps exported names to their plugin implementations.
@@ -162,7 +172,7 @@ pub fn register_plugin(p: Box<dyn Plugin>) {
 pub(crate) fn call_plugin(name: &str, args: &[Value], env: &Env) -> Option<Result<Value, String>> {
     REGISTRY.with(|r| {
         let reg = r.borrow();
-        reg.get(name).map(|p| p.call(args, env))
+        reg.get(name).map(|p| p.call(name, args, env))
     })
 }
 

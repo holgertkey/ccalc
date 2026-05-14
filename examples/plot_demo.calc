@@ -1,0 +1,73 @@
+% Phase 29a — ASCII plot / scatter demo
+%
+% Covers: plot, scatter, xlabel, ylabel, title
+%
+% Requires the plot feature flag at build time:
+%   cargo build --release --features plot
+%   ccalc examples/plot_demo.calc
+%
+% Without the feature, plot() and scatter() return an informative error.
+% xlabel(), ylabel(), and title() work in every build configuration.
+
+% --- 1. Basic line plot ---
+%
+% plot(x, y) renders a connected Braille-character line chart to the
+% terminal.  x and y must be same-length row or column vectors.
+
+x = linspace(0, 2*pi, 80);
+y = sin(x);
+
+fprintf('--- sin(x)  x in [0, 2*pi] ---\n')
+title('sin(x)')
+xlabel('x (radians)')
+ylabel('amplitude')
+plot(x, y)
+
+% --- 2. Scatter plot ---
+%
+% scatter(x, y) draws individual points rather than connected lines.
+% Useful for data clouds where connecting points would be misleading.
+
+fprintf('\n--- noisy parabola (scatter) ---\n')
+t  = linspace(-3, 3, 60);
+r  = t .^ 2 + 0.4 * randn(1, numel(t));
+
+title('Noisy parabola')
+xlabel('t')
+ylabel('t^2 + noise')
+scatter(t, r)
+
+% --- 3. Multiple curves back-to-back ---
+%
+% Each plot/scatter call resets the annotation state, so you must set
+% title/xlabel/ylabel before every call that needs them.
+
+fprintf('\n--- cos(x)  (no annotations) ---\n')
+plot(x, cos(x))
+
+% --- 4. Polynomial fit visualised ---
+%
+% polyfit + polyval generate smooth curves; plot shows how well the
+% degree-4 polynomial tracks a cubic-with-noise dataset.
+
+fprintf('\n--- degree-4 polynomial fit ---\n')
+xd = linspace(-2, 2, 30);
+yd = xd .^ 3 - xd + 0.3 * randn(1, numel(xd));
+
+p  = polyfit(xd, yd, 4);
+yf = polyval(p, xd);
+
+title('Cubic data + degree-4 fit')
+xlabel('x')
+ylabel('y')
+plot(xd, yf)
+
+% --- 5. Single-point edge case ---
+%
+% A scalar argument is accepted and rendered as a one-point plot.
+% x_bounds pads a single value by ±1 so the chart renders without error.
+
+fprintf('\n--- single-point plot (edge case) ---\n')
+plot([3.0], [7.5])
+
+fprintf('\nDone.\n')

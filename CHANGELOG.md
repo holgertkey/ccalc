@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-05-14
+
+### Added
+
+- **Phase 29a — ASCII plot/scatter rendering**:
+  - `plot(x, y)` — renders a connected line chart to the terminal using Braille
+    characters (via `textplots 0.8`). Requires the `plot` Cargo feature.
+  - `scatter(x, y)` — same as `plot` but renders individual points instead of
+    connected lines.
+  - `xlabel("label")`, `ylabel("label")`, `title("label")` — annotate the next
+    plot; state is consumed and reset after each `plot`/`scatter` call.
+  - Feature flags: `--features plot` enables ASCII terminal rendering;
+    `--features plot-svg` will enable SVG/PNG output (Phase 29b); `--features
+    plot-all` enables both.
+  - `Plugin::call` signature extended with `name: &str` as the first parameter,
+    enabling a single plugin instance to dispatch multiple exported function names.
+  - `ccalc-plot` crate now compiles and links against `textplots 0.8` under the
+    `plot` feature; `plotters 0.3` dependency wired for `plot-svg` (Phase 29b).
+
+### Changed
+
+- `Plugin::call(&self, name: &str, args, env)` — `name` parameter added. All
+  existing plugin implementations must add `_name: &str` (or `name: &str`) as
+  their first argument. The `ccalc-plot` stub and `docs/src/guide/plugins.md`
+  examples have been updated accordingly.
+- `bar` and `stem` (from Phase 28 stub) now return an informative error instead
+  of silently succeeding — they are reserved for Phase 29c.
+
 ## [0.34.0+002] - 2026-05-13
 
 ### Added

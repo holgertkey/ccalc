@@ -37,6 +37,7 @@
 - [FFT & Signal Processing](./guide/fft.md)
 - [Dynamic Evaluation & Timing](./guide/eval.md)
 - [Plugins](./guide/plugins.md)
+- [Plot Functions](./guide/plot.md)
 
 # Architecture
 
@@ -86,3 +87,4 @@
 - [Phase 26 — FFT & Signal Processing](./ccalc/phase26-fft.md)
 - [Phase 27 — Complex Matrices](./ccalc/phase27-complex-matrices.md)
 - [Phase 28 — Plugin Architecture](./ccalc/phase28-plugins.md)
+- [Phase 29 — Plot Engine](./ccalc/phase29-plot.md)

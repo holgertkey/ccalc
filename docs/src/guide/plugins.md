@@ -24,7 +24,7 @@ pub struct MyPlugin;
 impl Plugin for MyPlugin {
     fn name(&self) -> &str { "myfunc" }
 
-    fn call(&self, args: &[Value], _env: &Env) -> Result<Value, String> {
+    fn call(&self, _name: &str, args: &[Value], _env: &Env) -> Result<Value, String> {
         if args.is_empty() {
             return Err("myfunc: at least one argument required".into());
         }
@@ -46,9 +46,13 @@ impl Plugin for MyPlugin {
 
     fn exported_names(&self) -> &[&str] { NAMES }
 
-    fn call(&self, args: &[Value], _env: &Env) -> Result<Value, String> {
-        // dispatch internally based on args or other state
-        Ok(Value::Void)
+    fn call(&self, name: &str, args: &[Value], _env: &Env) -> Result<Value, String> {
+        // dispatch internally based on which name was called
+        match name {
+            "myfunc"  => Ok(Value::Void),
+            "myother" => Ok(Value::Void),
+            _         => Err(format!("{name}: not implemented")),
+        }
     }
 }
 ```
