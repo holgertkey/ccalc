@@ -62,12 +62,18 @@ xlabel('x')
 ylabel('y')
 plot(xd, yf)
 
-% --- 5. Single-point edge case ---
+% --- 5. Scatter: small discrete dataset ---
 %
-% A scalar argument is accepted and rendered as a one-point plot.
-% x_bounds pads a single value by ±1 so the chart renders without error.
+% Measured resistance at five temperatures — textbook scatter use-case
+% where connecting the dots with a line would imply false continuity.
 
-fprintf('\n--- single-point plot (edge case) ---\n')
-plot([3.0], [7.5])
+fprintf('\n--- resistance vs temperature (scatter) ---\n')
+temp = [20  40  60  80  100];
+ohms = [98  102 107 115 124];
+
+title('Resistance vs temperature')
+xlabel('T (C)')
+ylabel('R (ohm)')
+scatter(temp, ohms)
 
 fprintf('\nDone.\n')
