@@ -8,12 +8,11 @@ use ccalc_engine::env::Value;
 /// whose value ends with `.svg`, `.png`, or equals `"ascii"` exactly.
 /// Otherwise returns `(args.to_vec(), None)`.
 pub fn extract_file_arg(args: &[Value]) -> (Vec<Value>, Option<String>) {
-    if let Some(last) = args.last() {
-        if let Some(s) = as_str(last) {
-            if s == "ascii" || s.ends_with(".svg") || s.ends_with(".png") {
-                return (args[..args.len() - 1].to_vec(), Some(s));
-            }
-        }
+    if let Some(last) = args.last()
+        && let Some(s) = as_str(last)
+        && (s == "ascii" || s.ends_with(".svg") || s.ends_with(".png"))
+    {
+        return (args[..args.len() - 1].to_vec(), Some(s));
     }
     (args.to_vec(), None)
 }

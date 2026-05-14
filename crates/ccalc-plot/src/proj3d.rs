@@ -43,9 +43,7 @@ pub fn project_ortho(x: &[f64], y: &[f64], z: &[f64]) -> (Vec<f64>, Vec<f64>) {
         .iter()
         .zip(y.iter())
         .zip(z.iter())
-        .map(|((&xi, &yi), &zi)| {
-            xi * cos_az * sin_el + yi * sin_az * sin_el + zi * cos_el
-        })
+        .map(|((&xi, &yi), &zi)| xi * cos_az * sin_el + yi * sin_az * sin_el + zi * cos_el)
         .collect();
 
     (px, py)

@@ -2527,7 +2527,9 @@ fn test_randn_rect_matrix() {
 fn test_zeros_size_vec() {
     let env = empty_env();
     let v = eval_parse("zeros([2 3])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 3));
     assert!(m.iter().all(|&x| x == 0.0));
 }
@@ -2536,7 +2538,9 @@ fn test_zeros_size_vec() {
 fn test_ones_size_vec() {
     let env = empty_env();
     let v = eval_parse("ones([3 2])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 2));
     assert!(m.iter().all(|&x| x == 1.0));
 }
@@ -2545,7 +2549,9 @@ fn test_ones_size_vec() {
 fn test_rand_size_vec() {
     let env = empty_env();
     let v = eval_parse("rand([2 5])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 5));
 }
 
@@ -2553,7 +2559,9 @@ fn test_rand_size_vec() {
 fn test_randn_size_vec() {
     let env = empty_env();
     let v = eval_parse("randn([1 4])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (1, 4));
 }
 
@@ -2561,7 +2569,9 @@ fn test_randn_size_vec() {
 fn test_nan_size_vec() {
     let env = empty_env();
     let v = eval_parse("nan([2 3])", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 3));
     assert!(m.iter().all(|x| x.is_nan()));
 }
@@ -2574,7 +2584,9 @@ fn test_randn_size_of_matrix() {
     let mut env = empty_env();
     env.insert("A".into(), Value::Matrix(Array2::ones((3, 4))));
     let v = eval_parse("randn(size(A))", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (3, 4));
 }
 
@@ -2584,7 +2596,9 @@ fn test_zeros_size_of_matrix() {
     let mut env = empty_env();
     env.insert("A".into(), Value::Matrix(Array2::ones((2, 5))));
     let v = eval_parse("zeros(size(A))", &env).unwrap();
-    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    let Value::Matrix(m) = v else {
+        panic!("expected matrix")
+    };
     assert_eq!(m.dim(), (2, 5));
     assert!(m.iter().all(|&x| x == 0.0));
 }

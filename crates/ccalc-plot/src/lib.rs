@@ -63,8 +63,7 @@ thread_local! {
 // ── Exported names ─────────────────────────────────────────────────────────
 
 const EXPORTED: &[&str] = &[
-    "plot", "scatter", "bar", "stem",
-    "xlabel", "ylabel", "title",
+    "plot", "scatter", "bar", "stem", "xlabel", "ylabel", "title",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -106,9 +105,7 @@ impl Plugin for PlotPlugin {
             }
 
             // ── Stubs (Phase 29c) ──────────────────────────────────────
-            "bar" | "stem" => Err(format!(
-                "{name}: not yet implemented — coming in Phase 29c"
-            )),
+            "bar" | "stem" => Err(format!("{name}: not yet implemented — coming in Phase 29c")),
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
         }
@@ -342,6 +339,9 @@ mod tests {
         plugin.call("plot", &[y], &env).unwrap();
         // State should be cleared after render.
         let title = FIGURE_STATE.with(|f| f.borrow().title.clone());
-        assert!(title.is_none(), "FigureState should be cleared after plot()");
+        assert!(
+            title.is_none(),
+            "FigureState should be cleared after plot()"
+        );
     }
 }
