@@ -2520,6 +2520,75 @@ fn test_randn_rect_matrix() {
     assert_eq!(m.dim(), (2, 6));
 }
 
+// ---- size-vector argument tests (zeros/ones/rand/randn/nan) ----
+// Octave idiom: f(size(A)) passes a 1×2 row vector to the constructor.
+
+#[test]
+fn test_zeros_size_vec() {
+    let env = empty_env();
+    let v = eval_parse("zeros([2 3])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 3));
+    assert!(m.iter().all(|&x| x == 0.0));
+}
+
+#[test]
+fn test_ones_size_vec() {
+    let env = empty_env();
+    let v = eval_parse("ones([3 2])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (3, 2));
+    assert!(m.iter().all(|&x| x == 1.0));
+}
+
+#[test]
+fn test_rand_size_vec() {
+    let env = empty_env();
+    let v = eval_parse("rand([2 5])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 5));
+}
+
+#[test]
+fn test_randn_size_vec() {
+    let env = empty_env();
+    let v = eval_parse("randn([1 4])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (1, 4));
+}
+
+#[test]
+fn test_nan_size_vec() {
+    let env = empty_env();
+    let v = eval_parse("nan([2 3])", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 3));
+    assert!(m.iter().all(|x| x.is_nan()));
+}
+
+#[test]
+fn test_randn_size_of_matrix() {
+    // randn(size(A)) is the canonical Octave pattern this fix enables.
+    // Build env with A = ones(3,4) then evaluate randn(size(A)).
+    use ndarray::Array2;
+    let mut env = empty_env();
+    env.insert("A".into(), Value::Matrix(Array2::ones((3, 4))));
+    let v = eval_parse("randn(size(A))", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (3, 4));
+}
+
+#[test]
+fn test_zeros_size_of_matrix() {
+    use ndarray::Array2;
+    let mut env = empty_env();
+    env.insert("A".into(), Value::Matrix(Array2::ones((2, 5))));
+    let v = eval_parse("zeros(size(A))", &env).unwrap();
+    let Value::Matrix(m) = v else { panic!("expected matrix") };
+    assert_eq!(m.dim(), (2, 5));
+    assert!(m.iter().all(|&x| x == 0.0));
+}
+
 #[test]
 fn test_randi_scalar_max() {
     // randi(10) → integer in [1, 10]

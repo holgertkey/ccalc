@@ -30,7 +30,7 @@ plot(x, y)
 
 fprintf('\n--- noisy parabola (scatter) ---\n')
 t  = linspace(-3, 3, 60);
-r  = t .^ 2 + 0.4 * randn(1, numel(t));
+r  = t .^ 2 + 0.4 * randn(size(t));
 
 title('Noisy parabola')
 xlabel('t')

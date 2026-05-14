@@ -2016,6 +2016,37 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
     }
 }
 
+/// Interprets a single size argument for matrix constructors like `zeros`, `ones`,
+/// `rand`, `randn`, and `nan`.
+///
+/// Accepts:
+/// - `Scalar(n)` → `(n, n)` square matrix
+/// - 1×1 `Matrix([n])` → `(n, n)` square matrix
+/// - 1×2 or 2×1 `Matrix([r, c])` → `(r, c)` — enables `zeros(size(A))`
+///
+/// Returns `Err` for all other shapes.
+fn size_arg(v: &Value, fname: &str) -> Result<(usize, usize), String> {
+    match v {
+        Value::Scalar(n) => Ok((*n as usize, *n as usize)),
+        Value::Matrix(m) => {
+            let elems: Vec<f64> = m.iter().copied().collect();
+            match elems.as_slice() {
+                [n] => Ok((*n as usize, *n as usize)),
+                [r, c] => Ok((*r as usize, *c as usize)),
+                _ => Err(format!(
+                    "{fname}: size argument must be a scalar or a 1×2 vector, \
+                     got a {}×{} matrix",
+                    m.nrows(),
+                    m.ncols()
+                )),
+            }
+        }
+        _ => Err(format!(
+            "{fname}: size argument must be a scalar or a [rows cols] vector"
+        )),
+    }
+}
+
 /// Applies a scalar function element-wise to a scalar or matrix.
 /// Parses the first argument of `randi` into an inclusive `[lo, hi]` integer range.
 ///
@@ -3189,8 +3220,8 @@ fn call_builtin(
         )),
         // --- Matrix constructors ---
         ("zeros", 1) => {
-            let n = scalar_arg(&args[0], name, 1)? as usize;
-            Ok(Value::Matrix(Array2::zeros((n, n))))
+            let (r, c) = size_arg(&args[0], name)?;
+            Ok(Value::Matrix(Array2::zeros((r, c))))
         }
         ("zeros", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
@@ -3198,8 +3229,8 @@ fn call_builtin(
             Ok(Value::Matrix(Array2::zeros((r, c))))
         }
         ("ones", 1) => {
-            let n = scalar_arg(&args[0], name, 1)? as usize;
-            Ok(Value::Matrix(Array2::ones((n, n))))
+            let (r, c) = size_arg(&args[0], name)?;
+            Ok(Value::Matrix(Array2::ones((r, c))))
         }
         ("ones", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
@@ -3484,8 +3515,8 @@ fn call_builtin(
         ("isfinite", 1) => apply_elem(&args[0], |x| if x.is_finite() { 1.0 } else { 0.0 }),
         // --- NaN matrix constructors ---
         ("nan", 1) => {
-            let n = scalar_arg(&args[0], name, 1)? as usize;
-            Ok(Value::Matrix(Array2::from_elem((n, n), f64::NAN)))
+            let (r, c) = size_arg(&args[0], name)?;
+            Ok(Value::Matrix(Array2::from_elem((r, c), f64::NAN)))
         }
         ("nan", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
@@ -3495,9 +3526,9 @@ fn call_builtin(
         // --- Random number generation ---
         ("rand", 0) => Ok(Value::Scalar(rand_uniform())),
         ("rand", 1) => {
-            let n = scalar_arg(&args[0], name, 1)? as usize;
-            let data: Vec<f64> = (0..n * n).map(|_| rand_uniform()).collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
+            let (r, c) = size_arg(&args[0], name)?;
+            let data: Vec<f64> = (0..r * c).map(|_| rand_uniform()).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
         }
         ("rand", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
@@ -3507,9 +3538,9 @@ fn call_builtin(
         }
         ("randn", 0) => Ok(Value::Scalar(rand_normal())),
         ("randn", 1) => {
-            let n = scalar_arg(&args[0], name, 1)? as usize;
-            let data: Vec<f64> = (0..n * n).map(|_| rand_normal()).collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
+            let (r, c) = size_arg(&args[0], name)?;
+            let data: Vec<f64> = (0..r * c).map(|_| rand_normal()).collect();
+            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
         }
         ("randn", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
