@@ -253,7 +253,10 @@ fn test_sqrt_negative_returns_complex() {
     match env.get("z") {
         Some(Value::Complex(re, im)) => {
             assert!(re.abs() < 1e-15, "real part should be ~0, got {re}");
-            assert!((*im - 1.0).abs() < 1e-15, "imag part should be ~1, got {im}");
+            assert!(
+                (*im - 1.0).abs() < 1e-15,
+                "imag part should be ~1, got {im}"
+            );
         }
         other => panic!("sqrt(-1) should be Complex, got {other:?}"),
     }
@@ -265,7 +268,10 @@ fn test_sqrt_negative_four_returns_complex() {
     match env.get("z") {
         Some(Value::Complex(re, im)) => {
             assert!(re.abs() < 1e-15, "real part should be ~0, got {re}");
-            assert!((*im - 2.0).abs() < 1e-15, "imag part should be ~2, got {im}");
+            assert!(
+                (*im - 2.0).abs() < 1e-15,
+                "imag part should be ~2, got {im}"
+            );
         }
         other => panic!("sqrt(-4) should be Complex(0,2), got {other:?}"),
     }
@@ -4542,10 +4548,7 @@ fn test_lasterr_reflects_sqrt_negative_catch() {
     );
     let env = run_block(code);
     match env.get("caught_msg") {
-        Some(Value::Str(s)) => assert!(
-            s.contains("sqrt of negative"),
-            "caught_msg = {s}"
-        ),
+        Some(Value::Str(s)) => assert!(s.contains("sqrt of negative"), "caught_msg = {s}"),
         other => panic!("expected caught_msg Str, got {other:?}"),
     }
     let lerr = crate::eval::get_last_err();

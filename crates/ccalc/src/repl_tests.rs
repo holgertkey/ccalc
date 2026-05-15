@@ -600,58 +600,61 @@ fn pipe_output(input: &str) -> Vec<String> {
                             EvalResult::Value(label, v) => {
                                 let prefix = label.as_deref().unwrap_or("ans");
                                 match &v {
-                                Value::Void => {}
-                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
-                                    if let Some(full) = format_value_full(&v, &fmt) {
-                                        output.push(format!("{prefix} ="));
-                                        output.push(full);
+                                    Value::Void => {}
+                                    Value::Matrix(_) | Value::ComplexMatrix(_) => {
+                                        if let Some(full) = format_value_full(&v, &fmt) {
+                                            output.push(format!("{prefix} ="));
+                                            output.push(full);
+                                        }
                                     }
-                                }
-                                Value::Scalar(n) => {
-                                    if let Some(ref name) = label {
-                                        output.push(format!("{name} = {}", format_scalar(*n, base, &fmt)));
-                                    } else if show_all {
-                                        let i = n.round() as i64;
-                                        let u = i.unsigned_abs();
-                                        let sign = if i < 0 { "-" } else { "" };
-                                        output.push(format!("2  - {}0b{:b}", sign, u));
-                                        output.push(format!("8  - {}0o{:o}", sign, u));
-                                        output.push(format!(
-                                            "10 - {}",
-                                            format_scalar(*n, Base::Dec, &fmt)
-                                        ));
-                                        output.push(format!("16 - {}0x{:X}", sign, u));
-                                    } else {
-                                        output.push(format_scalar(*n, base, &fmt));
+                                    Value::Scalar(n) => {
+                                        if let Some(ref name) = label {
+                                            output.push(format!(
+                                                "{name} = {}",
+                                                format_scalar(*n, base, &fmt)
+                                            ));
+                                        } else if show_all {
+                                            let i = n.round() as i64;
+                                            let u = i.unsigned_abs();
+                                            let sign = if i < 0 { "-" } else { "" };
+                                            output.push(format!("2  - {}0b{:b}", sign, u));
+                                            output.push(format!("8  - {}0o{:o}", sign, u));
+                                            output.push(format!(
+                                                "10 - {}",
+                                                format_scalar(*n, Base::Dec, &fmt)
+                                            ));
+                                            output.push(format!("16 - {}0x{:X}", sign, u));
+                                        } else {
+                                            output.push(format_scalar(*n, base, &fmt));
+                                        }
                                     }
-                                }
-                                Value::Complex(re, im) => {
-                                    output.push(format_complex(*re, *im, &fmt));
-                                }
-                                Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
-                                Value::Lambda(_) => output.push("@<lambda>".to_string()),
-                                Value::Function { .. } => output.push("@function".to_string()),
-                                Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
-                                    if let Some(full) = format_value_full(&v, &fmt) {
-                                        output.push(format!("{prefix} ="));
-                                        output.push(full);
+                                    Value::Complex(re, im) => {
+                                        output.push(format_complex(*re, *im, &fmt));
                                     }
-                                }
-                                Value::DateTime(ts) => {
-                                    output.push(ccalc_engine::datetime::format_datetime(*ts));
-                                }
-                                Value::Duration(s) => {
-                                    output.push(ccalc_engine::datetime::format_duration(*s));
-                                }
-                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
-                                    if let Some(full) = format_value_full(&v, &fmt) {
-                                        output.push(format!("{prefix} ="));
-                                        output.push(full);
+                                    Value::Str(s) | Value::StringObj(s) => output.push(s.clone()),
+                                    Value::Lambda(_) => output.push("@<lambda>".to_string()),
+                                    Value::Function { .. } => output.push("@function".to_string()),
+                                    Value::Tuple(_) => {}
+                                    Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                                        if let Some(full) = format_value_full(&v, &fmt) {
+                                            output.push(format!("{prefix} ="));
+                                            output.push(full);
+                                        }
                                     }
-                                }
-                            } // match &v
-                            }, // EvalResult::Value
+                                    Value::DateTime(ts) => {
+                                        output.push(ccalc_engine::datetime::format_datetime(*ts));
+                                    }
+                                    Value::Duration(s) => {
+                                        output.push(ccalc_engine::datetime::format_duration(*s));
+                                    }
+                                    Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                        if let Some(full) = format_value_full(&v, &fmt) {
+                                            output.push(format!("{prefix} ="));
+                                            output.push(full);
+                                        }
+                                    }
+                                } // match &v
+                            } // EvalResult::Value
                         }
                     }
                 }

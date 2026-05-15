@@ -854,94 +854,107 @@ pub fn run() {
                             EvalResult::Value(label, val) => {
                                 let prefix = label.as_deref().unwrap_or("ans");
                                 match &val {
-                                Value::Void => {}
-                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
-                                    if let Some(full) = format_value_full(&val, &fmt) {
-                                        println!("{prefix} =");
-                                        println!("{full}");
-                                        if !compact {
-                                            println!();
+                                    Value::Void => {}
+                                    Value::Matrix(_) | Value::ComplexMatrix(_) => {
+                                        if let Some(full) = format_value_full(&val, &fmt) {
+                                            println!("{prefix} =");
+                                            println!("{full}");
+                                            if !compact {
+                                                println!();
+                                            }
                                         }
                                     }
-                                }
-                                Value::Scalar(v) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", format_scalar(*v, base, &fmt));
-                                    } else {
-                                        let to_show: Option<&str> = if let Some(ref s) = base_display {
-                                            Some(s.as_str())
+                                    Value::Scalar(v) => {
+                                        if let Some(ref name) = label {
+                                            println!("{name} = {}", format_scalar(*v, base, &fmt));
                                         } else {
-                                            expanded.as_deref()
+                                            let to_show: Option<&str> =
+                                                if let Some(ref s) = base_display {
+                                                    Some(s.as_str())
+                                                } else {
+                                                    expanded.as_deref()
+                                                };
+                                            if let Some(display) = to_show {
+                                                println!("{display}");
+                                            }
+                                            if show_all_bases {
+                                                print_all_bases(*v, &fmt);
+                                            }
+                                        }
+                                    }
+                                    Value::Complex(re, im) => {
+                                        if let Some(ref name) = label {
+                                            println!("{name} = {}", format_complex(*re, *im, &fmt));
+                                        } else {
+                                            println!("{}", format_complex(*re, *im, &fmt));
+                                        }
+                                    }
+                                    Value::Str(s) | Value::StringObj(s) => {
+                                        if let Some(ref name) = label {
+                                            println!("{name} = {s}");
+                                        } else {
+                                            println!("{s}");
+                                        }
+                                    }
+                                    Value::Lambda(lf) => println!("{}", lf.1),
+                                    Value::Function {
+                                        params, outputs, ..
+                                    } => {
+                                        let p = params.join(", ");
+                                        let out = match outputs.len() {
+                                            0 => String::new(),
+                                            1 => format!("{} = ", outputs[0]),
+                                            _ => format!("[{}] = ", outputs.join(", ")),
                                         };
-                                        if let Some(display) = to_show {
-                                            println!("{display}");
-                                        }
-                                        if show_all_bases {
-                                            print_all_bases(*v, &fmt);
-                                        }
+                                        println!("@function {out}f({p})");
                                     }
-                                }
-                                Value::Complex(re, im) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", format_complex(*re, *im, &fmt));
-                                    } else {
-                                        println!("{}", format_complex(*re, *im, &fmt));
-                                    }
-                                }
-                                Value::Str(s) | Value::StringObj(s) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {s}");
-                                    } else {
-                                        println!("{s}");
-                                    }
-                                }
-                                Value::Lambda(lf) => println!("{}", lf.1),
-                                Value::Function {
-                                    params, outputs, ..
-                                } => {
-                                    let p = params.join(", ");
-                                    let out = match outputs.len() {
-                                        0 => String::new(),
-                                        1 => format!("{} = ", outputs[0]),
-                                        _ => format!("[{}] = ", outputs.join(", ")),
-                                    };
-                                    println!("@function {out}f({p})");
-                                }
-                                Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
-                                    if let Some(full) = format_value_full(&val, &fmt) {
-                                        println!("{prefix} =");
-                                        println!("{full}");
-                                        if !compact {
-                                            println!();
+                                    Value::Tuple(_) => {}
+                                    Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                                        if let Some(full) = format_value_full(&val, &fmt) {
+                                            println!("{prefix} =");
+                                            println!("{full}");
+                                            if !compact {
+                                                println!();
+                                            }
                                         }
                                     }
-                                }
-                                Value::DateTime(ts) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", ccalc_engine::datetime::format_datetime(*ts));
-                                    } else {
-                                        println!("{}", ccalc_engine::datetime::format_datetime(*ts));
-                                    }
-                                }
-                                Value::Duration(s) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", ccalc_engine::datetime::format_duration(*s));
-                                    } else {
-                                        println!("{}", ccalc_engine::datetime::format_duration(*s));
-                                    }
-                                }
-                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
-                                    if let Some(full) = format_value_full(&val, &fmt) {
-                                        println!("{prefix} =");
-                                        println!("{full}");
-                                        if !compact {
-                                            println!();
+                                    Value::DateTime(ts) => {
+                                        if let Some(ref name) = label {
+                                            println!(
+                                                "{name} = {}",
+                                                ccalc_engine::datetime::format_datetime(*ts)
+                                            );
+                                        } else {
+                                            println!(
+                                                "{}",
+                                                ccalc_engine::datetime::format_datetime(*ts)
+                                            );
                                         }
                                     }
-                                }
-                            } // match &val
-                            }, // EvalResult::Value
+                                    Value::Duration(s) => {
+                                        if let Some(ref name) = label {
+                                            println!(
+                                                "{name} = {}",
+                                                ccalc_engine::datetime::format_duration(*s)
+                                            );
+                                        } else {
+                                            println!(
+                                                "{}",
+                                                ccalc_engine::datetime::format_duration(*s)
+                                            );
+                                        }
+                                    }
+                                    Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                        if let Some(full) = format_value_full(&val, &fmt) {
+                                            println!("{prefix} =");
+                                            println!("{full}");
+                                            if !compact {
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                } // match &val
+                            } // EvalResult::Value
                         }
                     }
                 }
@@ -1028,77 +1041,77 @@ pub fn run_expr(expr: &str) {
             EvalResult::Value(label, v) => {
                 let prefix = label.as_deref().unwrap_or("ans");
                 match &v {
-                Value::Void => {}
-                Value::Matrix(_) | Value::ComplexMatrix(_) => {
-                    if let Some(full) = format_value_full(&v, &fmt) {
-                        println!("{prefix} =");
-                        println!("{full}");
+                    Value::Void => {}
+                    Value::Matrix(_) | Value::ComplexMatrix(_) => {
+                        if let Some(full) = format_value_full(&v, &fmt) {
+                            println!("{prefix} =");
+                            println!("{full}");
+                        }
                     }
-                }
-                Value::Scalar(n) => {
-                    if let Some(ref name) = label {
-                        println!("{name} = {}", format_scalar(*n, base, &fmt));
-                    } else if show_all {
-                        print_all_bases(*n, &fmt);
-                    } else {
-                        println!("{}", format_scalar(*n, base, &fmt));
+                    Value::Scalar(n) => {
+                        if let Some(ref name) = label {
+                            println!("{name} = {}", format_scalar(*n, base, &fmt));
+                        } else if show_all {
+                            print_all_bases(*n, &fmt);
+                        } else {
+                            println!("{}", format_scalar(*n, base, &fmt));
+                        }
                     }
-                }
-                Value::Complex(re, im) => {
-                    if let Some(ref name) = label {
-                        println!("{name} = {}", format_complex(*re, *im, &fmt));
-                    } else {
-                        println!("{}", format_complex(*re, *im, &fmt));
+                    Value::Complex(re, im) => {
+                        if let Some(ref name) = label {
+                            println!("{name} = {}", format_complex(*re, *im, &fmt));
+                        } else {
+                            println!("{}", format_complex(*re, *im, &fmt));
+                        }
                     }
-                }
-                Value::Str(s) | Value::StringObj(s) => {
-                    if let Some(ref name) = label {
-                        println!("{name} = {s}");
-                    } else {
-                        println!("{s}");
+                    Value::Str(s) | Value::StringObj(s) => {
+                        if let Some(ref name) = label {
+                            println!("{name} = {s}");
+                        } else {
+                            println!("{s}");
+                        }
                     }
-                }
-                Value::Lambda(lf) => println!("{}", lf.1),
-                Value::Function {
-                    params, outputs, ..
-                } => {
-                    let p = params.join(", ");
-                    let out = match outputs.len() {
-                        0 => String::new(),
-                        1 => format!("{} = ", outputs[0]),
-                        _ => format!("[{}] = ", outputs.join(", ")),
-                    };
-                    println!("@function {out}f({p})");
-                }
-                Value::Tuple(_) => {}
-                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
-                    if let Some(full) = format_value_full(&v, &fmt) {
-                        println!("{prefix} =");
-                        println!("{full}");
+                    Value::Lambda(lf) => println!("{}", lf.1),
+                    Value::Function {
+                        params, outputs, ..
+                    } => {
+                        let p = params.join(", ");
+                        let out = match outputs.len() {
+                            0 => String::new(),
+                            1 => format!("{} = ", outputs[0]),
+                            _ => format!("[{}] = ", outputs.join(", ")),
+                        };
+                        println!("@function {out}f({p})");
                     }
-                }
-                Value::DateTime(ts) => {
-                    if let Some(ref name) = label {
-                        println!("{name} = {}", ccalc_engine::datetime::format_datetime(*ts));
-                    } else {
-                        println!("{}", ccalc_engine::datetime::format_datetime(*ts));
+                    Value::Tuple(_) => {}
+                    Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                        if let Some(full) = format_value_full(&v, &fmt) {
+                            println!("{prefix} =");
+                            println!("{full}");
+                        }
                     }
-                }
-                Value::Duration(s) => {
-                    if let Some(ref name) = label {
-                        println!("{name} = {}", ccalc_engine::datetime::format_duration(*s));
-                    } else {
-                        println!("{}", ccalc_engine::datetime::format_duration(*s));
+                    Value::DateTime(ts) => {
+                        if let Some(ref name) = label {
+                            println!("{name} = {}", ccalc_engine::datetime::format_datetime(*ts));
+                        } else {
+                            println!("{}", ccalc_engine::datetime::format_datetime(*ts));
+                        }
                     }
-                }
-                Value::DateTimeArray(_) | Value::DurationArray(_) => {
-                    if let Some(full) = format_value_full(&v, &fmt) {
-                        println!("{prefix} =");
-                        println!("{full}");
+                    Value::Duration(s) => {
+                        if let Some(ref name) = label {
+                            println!("{name} = {}", ccalc_engine::datetime::format_duration(*s));
+                        } else {
+                            println!("{}", ccalc_engine::datetime::format_duration(*s));
+                        }
                     }
-                }
-            } // match &v
-            }, // EvalResult::Value
+                    Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                        if let Some(full) = format_value_full(&v, &fmt) {
+                            println!("{prefix} =");
+                            println!("{full}");
+                        }
+                    }
+                } // match &v
+            } // EvalResult::Value
         },
         Err(e) => {
             eprintln!("Error: {e}");
@@ -1658,92 +1671,104 @@ pub fn run_pipe(reader: impl BufRead) {
                             EvalResult::Value(label, v) => {
                                 let prefix = label.as_deref().unwrap_or("ans");
                                 match &v {
-                                Value::Void => {}
-                                Value::Matrix(_) | Value::ComplexMatrix(_) => {
-                                    if let Some(full) = format_value_full(&v, &fmt) {
-                                        println!("{prefix} =");
-                                        println!("{full}");
-                                        if !compact {
-                                            println!();
+                                    Value::Void => {}
+                                    Value::Matrix(_) | Value::ComplexMatrix(_) => {
+                                        if let Some(full) = format_value_full(&v, &fmt) {
+                                            println!("{prefix} =");
+                                            println!("{full}");
+                                            if !compact {
+                                                println!();
+                                            }
                                         }
                                     }
-                                }
-                                Value::Scalar(n) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", format_scalar(*n, base, &fmt));
-                                    } else if show_all {
-                                        let i = n.round() as i64;
-                                        let u = i.unsigned_abs();
-                                        let sign = if i < 0 { "-" } else { "" };
-                                        println!("2  - {}0b{:b}", sign, u);
-                                        println!("8  - {}0o{:o}", sign, u);
-                                        println!("10 - {}", format_scalar(*n, Base::Dec, &fmt));
-                                        println!("16 - {}0x{:X}", sign, u);
-                                    } else {
-                                        println!("{}", format_scalar(*n, base, &fmt));
-                                    }
-                                }
-                                Value::Complex(re, im) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", format_complex(*re, *im, &fmt));
-                                    } else {
-                                        println!("{}", format_complex(*re, *im, &fmt));
-                                    }
-                                }
-                                Value::Str(s) | Value::StringObj(s) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {s}");
-                                    } else {
-                                        println!("{s}");
-                                    }
-                                }
-                                Value::Lambda(lf) => println!("{}", lf.1),
-                                Value::Function {
-                                    params, outputs, ..
-                                } => {
-                                    let p = params.join(", ");
-                                    let out = match outputs.len() {
-                                        0 => String::new(),
-                                        1 => format!("{} = ", outputs[0]),
-                                        _ => format!("[{}] = ", outputs.join(", ")),
-                                    };
-                                    println!("@function {out}f({p})");
-                                }
-                                Value::Tuple(_) => {}
-                                Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
-                                    if let Some(full) = format_value_full(&v, &fmt) {
-                                        println!("{prefix} =");
-                                        println!("{full}");
-                                        if !compact {
-                                            println!();
+                                    Value::Scalar(n) => {
+                                        if let Some(ref name) = label {
+                                            println!("{name} = {}", format_scalar(*n, base, &fmt));
+                                        } else if show_all {
+                                            let i = n.round() as i64;
+                                            let u = i.unsigned_abs();
+                                            let sign = if i < 0 { "-" } else { "" };
+                                            println!("2  - {}0b{:b}", sign, u);
+                                            println!("8  - {}0o{:o}", sign, u);
+                                            println!("10 - {}", format_scalar(*n, Base::Dec, &fmt));
+                                            println!("16 - {}0x{:X}", sign, u);
+                                        } else {
+                                            println!("{}", format_scalar(*n, base, &fmt));
                                         }
                                     }
-                                }
-                                Value::DateTime(ts) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", ccalc_engine::datetime::format_datetime(*ts));
-                                    } else {
-                                        println!("{}", ccalc_engine::datetime::format_datetime(*ts));
-                                    }
-                                }
-                                Value::Duration(s) => {
-                                    if let Some(ref name) = label {
-                                        println!("{name} = {}", ccalc_engine::datetime::format_duration(*s));
-                                    } else {
-                                        println!("{}", ccalc_engine::datetime::format_duration(*s));
-                                    }
-                                }
-                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
-                                    if let Some(full) = format_value_full(&v, &fmt) {
-                                        println!("{prefix} =");
-                                        println!("{full}");
-                                        if !compact {
-                                            println!();
+                                    Value::Complex(re, im) => {
+                                        if let Some(ref name) = label {
+                                            println!("{name} = {}", format_complex(*re, *im, &fmt));
+                                        } else {
+                                            println!("{}", format_complex(*re, *im, &fmt));
                                         }
                                     }
-                                }
-                            } // match &v
-                            }, // EvalResult::Value
+                                    Value::Str(s) | Value::StringObj(s) => {
+                                        if let Some(ref name) = label {
+                                            println!("{name} = {s}");
+                                        } else {
+                                            println!("{s}");
+                                        }
+                                    }
+                                    Value::Lambda(lf) => println!("{}", lf.1),
+                                    Value::Function {
+                                        params, outputs, ..
+                                    } => {
+                                        let p = params.join(", ");
+                                        let out = match outputs.len() {
+                                            0 => String::new(),
+                                            1 => format!("{} = ", outputs[0]),
+                                            _ => format!("[{}] = ", outputs.join(", ")),
+                                        };
+                                        println!("@function {out}f({p})");
+                                    }
+                                    Value::Tuple(_) => {}
+                                    Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
+                                        if let Some(full) = format_value_full(&v, &fmt) {
+                                            println!("{prefix} =");
+                                            println!("{full}");
+                                            if !compact {
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                    Value::DateTime(ts) => {
+                                        if let Some(ref name) = label {
+                                            println!(
+                                                "{name} = {}",
+                                                ccalc_engine::datetime::format_datetime(*ts)
+                                            );
+                                        } else {
+                                            println!(
+                                                "{}",
+                                                ccalc_engine::datetime::format_datetime(*ts)
+                                            );
+                                        }
+                                    }
+                                    Value::Duration(s) => {
+                                        if let Some(ref name) = label {
+                                            println!(
+                                                "{name} = {}",
+                                                ccalc_engine::datetime::format_duration(*s)
+                                            );
+                                        } else {
+                                            println!(
+                                                "{}",
+                                                ccalc_engine::datetime::format_duration(*s)
+                                            );
+                                        }
+                                    }
+                                    Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                        if let Some(full) = format_value_full(&v, &fmt) {
+                                            println!("{prefix} =");
+                                            println!("{full}");
+                                            if !compact {
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                } // match &v
+                            } // EvalResult::Value
                         }
                     }
                 }
