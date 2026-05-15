@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-05-15
+
+### Added
+
+- **Phase 29b — SVG/PNG file export via `plotters`**:
+  - `plot(x, y, 'file.svg')` — saves a line plot as an SVG vector graphic.
+  - `plot(x, y, 'file.png')` — saves a line plot as an 800×600 PNG raster image.
+  - `scatter(x, y, 'file.svg')` / `scatter(x, y, 'file.png')` — same for scatter
+    (point cloud) charts.
+  - 1-arg forms (`plot(y, 'file.svg')`) infer x = 1:numel(y) as in ASCII mode.
+  - `xlabel`, `ylabel`, `title` annotations are embedded in the exported file and
+    then cleared, matching MATLAB semantics.
+  - Auto-range with 5 % margin applied to both axes; both axes are drawn and
+    labelled.
+  - Requires `--features plot-svg` (or `--features plot-all`). Without the
+    feature, a helpful build-instruction error is returned instead of a panic.
+  - `plotters` dependency extended with the `ttf` and `line_series` features for
+    text rendering and line series support in the bitmap backend.
+  - 9 new integration tests in `crates/ccalc-plot/tests/svg_png_tests.rs`.
+
 ## [0.35.0] - 2026-05-14
 
 ### Added

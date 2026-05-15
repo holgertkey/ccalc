@@ -13,10 +13,10 @@ plot-svg = ["dep:plotters"]
 plot-all = ["plot", "plot-svg"]
 
 [dependencies]
-ccalc-engine = { path = "../ccalc-engine", version = "0.35.0" }
+ccalc-engine = { path = "../ccalc-engine", version = "0.36.0" }
 textplots = { version = "0.8", optional = true }
 plotters  = { version = "0.3", optional = true, default-features = false,
-              features = ["svg_backend", "bitmap_backend", "bitmap_encoder"] }
+              features = ["svg_backend", "bitmap_backend", "bitmap_encoder", "line_series", "ttf"] }
 
 [dev-dependencies]
 ndarray = "0.16"

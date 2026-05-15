@@ -20,6 +20,9 @@ pub mod proj3d;
 #[cfg(feature = "plot")]
 mod ascii;
 
+#[cfg(feature = "plot-svg")]
+mod file;
+
 use std::cell::RefCell;
 
 use ccalc_engine::env::{Env, Value};
@@ -121,14 +124,42 @@ fn render_ascii_or_file(
     state: FigureState,
 ) -> Result<Value, String> {
     match path {
-        // No path or explicit 'ascii' → terminal rendering
         None | Some("ascii") => render_ascii(name, data_args, state),
-        // SVG / PNG → file export (Phase 29b)
-        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => Err(format!(
-            "{name}: SVG/PNG export requires the 'plot-svg' feature (Phase 29b)"
-        )),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_file(name, data_args, p, state)
+        }
         Some(p) => Err(format!("{name}: unknown output target '{p}'")),
     }
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_file(
+    name: &str,
+    data_args: &[Value],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    let (x, y) = extract_xy(name, data_args)?;
+    let result = match name {
+        "plot" => file::render_line(&x, &y, path, state),
+        "scatter" => file::render_scatter(&x, &y, path, state),
+        _ => unreachable!(),
+    };
+    result.map_err(|e| format!("{name}: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_file(
+    name: &str,
+    _data_args: &[Value],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err(format!(
+        "{name}: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+    ))
 }
 
 #[cfg(feature = "plot")]
@@ -160,7 +191,7 @@ fn require_string(name: &str, args: &[Value]) -> Result<String, String> {
     }
 }
 
-#[cfg_attr(not(feature = "plot"), allow(dead_code))]
+#[cfg_attr(not(any(feature = "plot", feature = "plot-svg")), allow(dead_code))]
 fn extract_xy(name: &str, args: &[Value]) -> Result<(Vec<f64>, Vec<f64>), String> {
     match args.len() {
         0 => Err(format!("{name}: at least one argument required")),
@@ -297,6 +328,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "plot-svg"))]
     fn test_svg_without_feature() {
         let plugin = PlotPlugin;
         let env = Env::new();
