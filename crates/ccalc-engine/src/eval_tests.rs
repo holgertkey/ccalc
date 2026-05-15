@@ -2166,18 +2166,20 @@ fn test_exist_one_arg_checks_var_then_file() {
 #[test]
 fn test_genpath_includes_root() {
     let env = empty_env();
-    let tmp = std::env::temp_dir();
+    // Use a dedicated empty dir so genpath does not walk the entire system temp tree.
+    let root = std::env::temp_dir().join("ccalc_genpath_root_test");
+    std::fs::create_dir_all(&root).unwrap();
     let expr = Expr::Call(
         "genpath".to_string(),
-        vec![Expr::StrLiteral(tmp.to_string_lossy().to_string())],
+        vec![Expr::StrLiteral(root.to_string_lossy().to_string())],
     );
     let result = eval(&expr, &env).unwrap();
     match result {
         Value::Str(s) => {
             let sep = if cfg!(windows) { ';' } else { ':' };
-            let parts: Vec<&str> = s.split(sep).collect();
+            let parts: Vec<&str> = s.split(sep).filter(|p| !p.is_empty()).collect();
             assert!(
-                parts[0] == tmp.to_string_lossy().as_ref(),
+                parts[0] == root.to_string_lossy().as_ref(),
                 "root dir must be first entry"
             );
         }
