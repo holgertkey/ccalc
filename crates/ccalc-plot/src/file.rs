@@ -97,9 +97,11 @@ where
         }
         ChartKind::Scatter => {
             chart
-                .draw_series(points.iter().map(|&(xi, yi)| {
-                    Circle::new((xi, yi), 3, BLUE.filled())
-                }))
+                .draw_series(
+                    points
+                        .iter()
+                        .map(|&(xi, yi)| Circle::new((xi, yi), 3, BLUE.filled())),
+                )
                 .map_err(|e| e.to_string())?;
         }
     }

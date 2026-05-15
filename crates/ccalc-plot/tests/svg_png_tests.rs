@@ -4,8 +4,8 @@
 #![cfg(feature = "plot-svg")]
 
 use ccalc_engine::env::{Env, Value};
-use ccalc_plot::PlotPlugin;
 use ccalc_engine::plugin::Plugin;
+use ccalc_plot::PlotPlugin;
 use ndarray::Array2;
 
 fn row_vec(vals: &[f64]) -> Value {
@@ -13,10 +13,7 @@ fn row_vec(vals: &[f64]) -> Value {
 }
 
 fn svg_path(name: &str) -> String {
-    let dir = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../.debug/TESTS"
-    );
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../.debug/TESTS");
     format!("{dir}/{name}")
 }
 
@@ -59,7 +56,11 @@ fn test_plot_writes_png_file() {
     let file_arg = Value::Str(path.clone());
     plugin.call("plot", &[x, y, file_arg], &env).unwrap();
     let bytes = std::fs::read(&path).unwrap();
-    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n", "file should start with PNG magic bytes");
+    assert_eq!(
+        &bytes[..8],
+        b"\x89PNG\r\n\x1a\n",
+        "file should start with PNG magic bytes"
+    );
 }
 
 // ── scatter → SVG ────────────────────────────────────────────────────────────
@@ -99,12 +100,20 @@ fn test_labels_and_title_in_svg() {
     let path = svg_path("test_labels.svg");
     let plugin = PlotPlugin;
     let env = Env::new();
-    plugin.call("title",  &[Value::Str("My Chart".into())], &env).unwrap();
-    plugin.call("xlabel", &[Value::Str("time (s)".into())], &env).unwrap();
-    plugin.call("ylabel", &[Value::Str("amplitude".into())], &env).unwrap();
+    plugin
+        .call("title", &[Value::Str("My Chart".into())], &env)
+        .unwrap();
+    plugin
+        .call("xlabel", &[Value::Str("time (s)".into())], &env)
+        .unwrap();
+    plugin
+        .call("ylabel", &[Value::Str("amplitude".into())], &env)
+        .unwrap();
     let x = row_vec(&[1.0, 2.0, 3.0]);
     let y = row_vec(&[1.0, 0.0, 1.0]);
-    plugin.call("plot", &[x, y, Value::Str(path.clone())], &env).unwrap();
+    plugin
+        .call("plot", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("My Chart"), "title should appear in SVG");
     assert!(content.contains("time (s)"), "xlabel should appear in SVG");
@@ -123,11 +132,17 @@ fn test_figure_state_cleared_after_file_render() {
     let plugin = PlotPlugin;
     let env = Env::new();
     // Set a unique title, render once — title consumed.
-    plugin.call("title", &[Value::Str("UniqueTitle42".into())], &env).unwrap();
+    plugin
+        .call("title", &[Value::Str("UniqueTitle42".into())], &env)
+        .unwrap();
     let y = row_vec(&[1.0, 2.0]);
-    plugin.call("plot", &[y.clone(), Value::Str(path1.clone())], &env).unwrap();
+    plugin
+        .call("plot", &[y.clone(), Value::Str(path1.clone())], &env)
+        .unwrap();
     // Second render without setting title — should not contain it.
-    plugin.call("plot", &[y, Value::Str(path2.clone())], &env).unwrap();
+    plugin
+        .call("plot", &[y, Value::Str(path2.clone())], &env)
+        .unwrap();
     let content2 = std::fs::read_to_string(&path2).unwrap();
     assert!(
         !content2.contains("UniqueTitle42"),
@@ -156,7 +171,9 @@ fn test_single_point_svg() {
     let plugin = PlotPlugin;
     let env = Env::new();
     let y = Value::Scalar(42.0);
-    plugin.call("plot", &[y, Value::Str(path.clone())], &env).unwrap();
+    plugin
+        .call("plot", &[y, Value::Str(path.clone())], &env)
+        .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("<svg"));
 }
