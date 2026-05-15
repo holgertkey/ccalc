@@ -1,0 +1,100 @@
+% Phase 29b — SVG/PNG file export demo
+%
+% Covers: plot(..., 'file.svg'), plot(..., 'file.png'),
+%         scatter(..., 'file.svg'), scatter(..., 'file.png'),
+%         xlabel, ylabel, title annotations in exported files.
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/plot_file/plot_file.calc
+%
+% Output files are written to examples/plot_file/tmp/.
+% Open the SVG files in any web browser; PNG files in any image viewer.
+
+out = 'examples/plot_file/tmp/';
+
+% --- 1. Line plot to SVG ---
+%
+% plot(x, y, path) saves a connected line chart when path ends in .svg or .png.
+% Annotations set before the call are embedded and then cleared.
+
+fprintf('Writing sin(x) line plot -> %ssin.svg\n', out)
+
+x = linspace(0, 2*pi, 200);
+y = sin(x);
+
+title('sin(x) over [0, 2pi]')
+xlabel('x (radians)')
+ylabel('amplitude')
+plot(x, y, strcat(out, 'sin.svg'))
+
+% --- 2. Line plot to PNG ---
+%
+% PNG uses the same chart builder with a bitmap backend (800x600 px).
+
+fprintf('Writing cos(x) line plot -> %scos.png\n', out)
+
+title('cos(x) over [0, 2pi]')
+xlabel('x (radians)')
+ylabel('amplitude')
+plot(x, cos(x), strcat(out, 'cos.png'))
+
+% --- 3. Scatter plot to SVG ---
+%
+% scatter(x, y, path) draws individual circles instead of connected lines.
+% Ideal for measured data where interpolation between points is misleading.
+
+fprintf('Writing noisy scatter -> %snoisy.svg\n', out)
+
+t = linspace(-3, 3, 80);
+r = t .^ 2 + 0.5 * randn(size(t));
+
+title('Noisy parabola')
+xlabel('t')
+ylabel('t^2 + noise')
+scatter(t, r, strcat(out, 'noisy.svg'))
+
+% --- 4. Scatter plot to PNG ---
+
+fprintf('Writing temperature/resistance scatter -> %sresist.png\n', out)
+
+temp = [20 40 60 80 100 120];
+ohms = [98 102 107 115 124 136];
+
+title('Resistance vs temperature')
+xlabel('T (degrees C)')
+ylabel('R (ohms)')
+scatter(temp, ohms, strcat(out, 'resist.png'))
+
+% --- 5. Practical example: polynomial fit saved to file ---
+%
+% polyfit + polyval produce a smooth fit curve.  Saving to SVG gives a
+% publication-quality vector image without any GUI dependency.
+
+fprintf('Writing polynomial fit -> %spolyfit.svg\n', out)
+
+xd = linspace(-2, 2, 40);
+yd = xd .^ 3 - xd + 0.25 * randn(1, numel(xd));
+
+p  = polyfit(xd, yd, 4);
+yf = polyval(p, xd);
+
+title('Cubic data with degree-4 polynomial fit')
+xlabel('x')
+ylabel('y')
+plot(xd, yf, strcat(out, 'polyfit.svg'))
+
+% --- 6. Inferred x (1-arg form) ---
+%
+% When only y is provided, x is inferred as 1:numel(y).
+% The file-export form supports the same shorthand.
+
+fprintf('Writing exponential decay (inferred x) -> %sdecay.svg\n', out)
+
+decay = exp(-linspace(0, 4, 60));
+
+title('Exponential decay')
+ylabel('amplitude')
+plot(decay, strcat(out, 'decay.svg'))
+
+fprintf('\nDone. Files written to %s\n', out)
