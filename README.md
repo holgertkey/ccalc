@@ -769,6 +769,53 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 
 ---
 
+## Plot Functions
+
+> **Feature flags — at least one is required for rendering:**
+> ```bash
+> cargo build --release --features plot          # ASCII terminal charts
+> cargo build --release --features plot-svg      # SVG + PNG file export
+> cargo build --release --features plot-all      # both
+> ```
+> Annotation functions (`title`, `xlabel`, `ylabel`) work without any feature.
+
+| Call | Requires | Output |
+|---|---|---|
+| `plot(y)` | `plot` | ASCII line chart; x inferred as `1:numel(y)` |
+| `plot(x, y)` | `plot` | ASCII line chart with explicit x |
+| `scatter(x, y)` | `plot` | ASCII point cloud |
+| `plot(x, y, 'f.svg')` | `plot-svg` | SVG vector graphic (800 × 600) |
+| `plot(x, y, 'f.png')` | `plot-svg` | PNG raster image (800 × 600) |
+| `scatter(x, y, 'f.svg')` | `plot-svg` | SVG scatter chart |
+| `plot(x, y, 'ascii')` | `plot` | Force ASCII even when `plot-svg` is active |
+
+Annotations apply to the **next** render call and are cleared afterwards:
+
+```matlab
+x = linspace(0, 2*pi, 200);
+y = sin(x);
+
+% --- Terminal ---
+title('sin(x)')
+xlabel('x (radians)')
+plot(x, y)
+
+% --- SVG file ---
+title('sin(x)')
+xlabel('x (radians)')
+ylabel('amplitude')
+plot(x, y, 'wave.svg')
+
+% --- Scatter to PNG ---
+scatter(x, y, 'dots.png')
+```
+
+See `examples/plot_demo.calc` (terminal) and `examples/plot_file/plot_file.calc`
+(file export) for full worked examples. Run `help plot` in the REPL for a
+quick reference.
+
+---
+
 ## Bitwise Functions
 
 All require **non-negative integer** arguments — combine naturally with `0xFF`, `0b1010`, `0o17` literals.
@@ -1968,6 +2015,8 @@ The `examples/` directory contains annotated formula files ready to run:
 | `struct_arrays.calc`         | Struct arrays: indexed creation, element access, field collection → matrix/cell, loop building, `fieldnames`/`isfield`, nested fields, inventory ledger |
 | `error_handling.calc`        | Error handling: `error`/`warning`, `lasterr`, `try/catch`, `try(expr,default)`, `pcall`, nested and loop-safe error recovery |
 | `indexed_assignment.calc`    | Indexed assignment: element/slice/submatrix write, growing vectors with `end+1`, cell array growth, logical mask read/write |
+| `plot_demo.calc`             | Phase 29a: `plot`/`scatter` ASCII terminal charts, `title`/`xlabel`/`ylabel` annotations, polynomial-fit visualisation — requires `--features plot` |
+| `plot_file/plot_file.calc`   | Phase 29b: `plot`/`scatter` to SVG and PNG files, inferred-x form, practical polynomial-fit export — requires `--features plot-svg` |
 
 ```bash
 ccalc < examples/mortgage.calc
@@ -1990,9 +2039,12 @@ Optional features:
 ```bash
 cargo build --release --features json         # enable jsondecode / jsonencode (serde_json)
 cargo build --release --features fft          # enable fft / ifft (rustfft)
+cargo build --release --features plot         # enable ASCII terminal plots (textplots)
+cargo build --release --features plot-svg     # enable SVG + PNG file export (plotters)
+cargo build --release --features plot-all     # both plot tiers
 cargo build --release --features blas         # link system OpenBLAS — faster A*B, inv, \, svd, …
 cargo build --release --features blas-static  # same, but statically linked (no runtime dep)
-cargo build --release --features json,fft,blas  # combine features
+cargo build --release --features json,fft,plot-all  # combine features
 ```
 
 **BLAS** accelerates all matrix multiply and solve operations (pure-Rust is

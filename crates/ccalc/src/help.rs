@@ -75,10 +75,14 @@ pub fn print(topic: Option<&str>) {
             "fft" | "ifft" | "fftshift" | "ifftshift" | "fftfreq" | "signal" | "spectrum"
             | "spectral",
         ) => print_fft(),
+        Some(
+            "plot" | "scatter" | "bar" | "stem" | "xlabel" | "ylabel" | "title" | "figurestate"
+            | "plotting" | "charts" | "svg" | "png",
+        ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  examples"
             );
         }
     }
@@ -179,6 +183,9 @@ Set ops triu(A[,k])  tril(A[,k])  repmat(A,m,n)  kron(A,B)
         sub2ind([r c],r,c)  ind2sub([r c],idx)  repelem(v,n)
 FFT     fft(x)  fft(x,n)  ifft(X)              (requires --features fft)
         fftshift(x)  ifftshift(x)  fftfreq(n,d)  (always available)
+Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features plot)
+        plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
+        title('t')  xlabel('x')  ylabel('y')  set annotations for next render
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -287,6 +294,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help setops      triu/tril/repmat/kron/cross/dot, set ops, sub2ind/ind2sub/repelem
   help poly        polyval/polyfit/roots/poly, conv/deconv, interp1
   help fft         fft/ifft, fftshift/ifftshift, fftfreq — FFT & signal processing
+  help plot        plot/scatter, file export (SVG/PNG), annotations
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -3459,5 +3467,70 @@ fftshift, ifftshift, and fftfreq are always available.
     fprintf('25 Hz: |S| = %.2f  (expect %.2f)\\n', mag(26), 0.5*n/2)
 
 See also: help complex  help vectors  examples/fft_demo.calc"
+    );
+}
+
+fn print_plot() {
+    println!(
+        "\
+PLOT  (help plot)
+
+Two rendering tiers; both use the same annotation API.
+
+── Feature flags ─────────────────────────────────────────────────────────────
+    --features plot       ASCII Braille chart printed to terminal (textplots)
+    --features plot-svg   SVG + PNG file export (plotters)
+    --features plot-all   both tiers
+
+── Terminal rendering  (requires --features plot) ────────────────────────────
+    plot(y)               line chart; x inferred as 1:numel(y)
+    plot(x, y)            line chart with explicit x-axis vector
+    scatter(y)            point cloud; x inferred
+    scatter(x, y)         point cloud with explicit x
+
+    x = linspace(0, 2*pi, 80);
+    plot(x, sin(x))
+
+    t = linspace(-2, 2, 50);
+    scatter(t, t.^2 + 0.3*randn(size(t)))
+
+── File export  (requires --features plot-svg) ───────────────────────────────
+    Append a file-path string as the last argument.
+    Extension determines format:
+
+    plot(x, y, 'out.svg')     SVG vector graphic (opens in any browser)
+    plot(x, y, 'out.png')     PNG raster image, 800x600 px
+    scatter(x, y, 'out.svg')
+    scatter(x, y, 'out.png')
+
+    plot(y, 'decay.svg')      1-arg inferred-x form also works for file export
+    plot(x, y, 'ascii')       force terminal output even with plot-svg active
+
+    x = linspace(0, 2*pi, 200);
+    title('sin(x)')
+    xlabel('x (radians)')
+    ylabel('amplitude')
+    plot(x, sin(x), 'wave.svg')
+
+── Annotations ───────────────────────────────────────────────────────────────
+    title('text')     chart title (above ASCII chart; embedded in SVG/PNG)
+    xlabel('text')    x-axis label
+    ylabel('text')    y-axis label
+
+    Annotations are stored in a thread-local FigureState and consumed by the
+    next plot or scatter call, then cleared.  Set them immediately before the
+    render call.
+
+    title('First')
+    plot(x, y1, 'a.svg')   % title applied and cleared
+    plot(x, y2, 'b.svg')   % no title — must set again before this call
+
+── Error messages ─────────────────────────────────────────────────────────────
+    Without the required feature, a helpful error is returned:
+      'plot: ASCII rendering requires the plot feature flag.
+       Rebuild with: cargo build --features plot'
+
+See also: examples/plot_demo.calc   (ASCII demo)
+          examples/plot_file/plot_file.calc  (SVG/PNG demo)"
     );
 }
