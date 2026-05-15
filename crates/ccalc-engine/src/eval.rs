@@ -3141,7 +3141,16 @@ fn call_builtin(
 
     match (name, args.len()) {
         // --- 1-argument scalar functions ---
-        ("sqrt", 1) => apply_elem(&args[0], |x| x.sqrt()),
+        ("sqrt", 1) => match &args[0] {
+            Value::Scalar(x) if *x < 0.0 => Ok(make_complex(0.0, (-x).sqrt())),
+            Value::Complex(re, im) => {
+                let mag = (*re * *re + *im * *im).sqrt();
+                let sqrt_mag = mag.sqrt();
+                let arg = (*im).atan2(*re) / 2.0;
+                Ok(make_complex(sqrt_mag * arg.cos(), sqrt_mag * arg.sin()))
+            }
+            _ => apply_elem(&args[0], |x| x.sqrt()),
+        },
         ("floor", 1) => apply_elem(&args[0], |x| x.floor()),
         ("ceil", 1) => apply_elem(&args[0], |x| x.ceil()),
         ("round", 1) => apply_elem(&args[0], |x| x.round()),

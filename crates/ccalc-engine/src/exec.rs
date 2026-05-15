@@ -1533,10 +1533,11 @@ pub fn exec_stmts(
                 Ok(None) => {}
                 Ok(Some(sig)) => return Ok(Some(sig)),
                 Err(msg) => {
-                    set_last_err(&msg);
+                    let clean = strip_near_line(msg);
+                    set_last_err(&clean);
                     if let Some(var) = catch_var {
                         let mut map = IndexMap::new();
-                        map.insert("message".to_string(), Value::Str(strip_near_line(msg)));
+                        map.insert("message".to_string(), Value::Str(clean));
                         env.insert(var.clone(), Value::Struct(map));
                     }
                     if let Some(sig) = exec_stmts(catch_body, env, io, fmt, base, compact)? {

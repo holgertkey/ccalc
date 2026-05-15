@@ -248,6 +248,44 @@ fn test_fn_in_expr() {
 }
 
 #[test]
+fn test_sqrt_negative_returns_complex() {
+    let env = run_block("z = sqrt(-1);");
+    match env.get("z") {
+        Some(Value::Complex(re, im)) => {
+            assert!(re.abs() < 1e-15, "real part should be ~0, got {re}");
+            assert!((*im - 1.0).abs() < 1e-15, "imag part should be ~1, got {im}");
+        }
+        other => panic!("sqrt(-1) should be Complex, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_sqrt_negative_four_returns_complex() {
+    let env = run_block("z = sqrt(-4);");
+    match env.get("z") {
+        Some(Value::Complex(re, im)) => {
+            assert!(re.abs() < 1e-15, "real part should be ~0, got {re}");
+            assert!((*im - 2.0).abs() < 1e-15, "imag part should be ~2, got {im}");
+        }
+        other => panic!("sqrt(-4) should be Complex(0,2), got {other:?}"),
+    }
+}
+
+#[test]
+fn test_sqrt_complex_input() {
+    // sqrt(0+1i) = (1/√2) + (1/√2)i
+    let env = run_block("z = sqrt(0 + 1i);");
+    match env.get("z") {
+        Some(Value::Complex(re, im)) => {
+            let expected = std::f64::consts::FRAC_1_SQRT_2;
+            assert!((*re - expected).abs() < 1e-14, "re = {re}");
+            assert!((*im - expected).abs() < 1e-14, "im = {im}");
+        }
+        other => panic!("sqrt(i) should be Complex, got {other:?}"),
+    }
+}
+
+#[test]
 fn test_hex_literal() {
     assert_eq!(calc("0xFF"), 255.0);
     assert_eq!(calc("0x10"), 16.0);
@@ -4469,6 +4507,52 @@ fn test_try_catch_message_no_line_annotation() {
         }
         other => panic!("expected Str, got {other:?}"),
     }
+}
+
+#[test]
+fn test_lasterr_updated_by_trycatch() {
+    // lasterr() after a try/catch should return the caught error message (without "near line").
+    crate::eval::set_last_err("");
+    let env = run_block("try\n  error('test failure')\ncatch e\nend");
+    let msg = crate::eval::get_last_err();
+    assert!(
+        msg.contains("test failure"),
+        "lasterr should contain 'test failure', got: {msg}"
+    );
+    assert!(
+        !msg.contains("near line"),
+        "lasterr should not contain 'near line', got: {msg}"
+    );
+    let _ = env;
+}
+
+#[test]
+fn test_lasterr_reflects_sqrt_negative_catch() {
+    // The error_handling.m pattern: sqrt(-1) returns complex, check imag, error(), catch, lasterr.
+    crate::eval::set_last_err("");
+    let code = concat!(
+        "try\n",
+        "  bad = sqrt(-1);\n",
+        "  if imag(bad) ~= 0\n",
+        "    error('sqrt of negative produced complex result')\n",
+        "  end\n",
+        "catch e\n",
+        "  caught_msg = e.message;\n",
+        "end"
+    );
+    let env = run_block(code);
+    match env.get("caught_msg") {
+        Some(Value::Str(s)) => assert!(
+            s.contains("sqrt of negative"),
+            "caught_msg = {s}"
+        ),
+        other => panic!("expected caught_msg Str, got {other:?}"),
+    }
+    let lerr = crate::eval::get_last_err();
+    assert!(
+        lerr.contains("sqrt of negative"),
+        "lasterr should contain the caught message, got: {lerr}"
+    );
 }
 
 #[test]

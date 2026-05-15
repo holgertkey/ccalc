@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0+001] - 2026-05-15
+
+### Fixed
+
+- **`sqrt` of negative real now returns complex** (`eval.rs`): `sqrt(-x)` (where x > 0)
+  now returns `Complex(0, √x)` instead of `NaN`, matching MATLAB/Octave semantics.
+  Complex inputs use the full formula `√|z| · e^(i·arg(z)/2)`.
+- **`lasterr()` no longer includes "near line N"** (`exec.rs`): `lasterr()` now stores
+  the stripped error message, consistent with `e.message` in a `catch` variable.
+  Previously, `lasterr()` retained the internal location annotation while `e.message`
+  did not, causing the two to diverge.
+- 5 new regression tests: `test_sqrt_negative_returns_complex`,
+  `test_sqrt_negative_four_returns_complex`, `test_sqrt_complex_input`,
+  `test_lasterr_updated_by_trycatch`, `test_lasterr_reflects_sqrt_negative_catch`.
+
 ## [0.36.0] - 2026-05-15
 
 ### Added
