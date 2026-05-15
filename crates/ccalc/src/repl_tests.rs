@@ -365,7 +365,7 @@ fn test_expand_vars_matrix_not_expanded() {
 fn test_evaluate_simple() {
     let mut env = Env::new();
     let result = evaluate("3 * 4", &mut env, &mut test_io()).unwrap();
-    assert!(matches!(result, EvalResult::Value(Value::Scalar(12.0))));
+    assert!(matches!(result, EvalResult::Value(_, Value::Scalar(12.0))));
     assert_eq!(ans(&env), 12.0);
 }
 
@@ -374,7 +374,7 @@ fn test_evaluate_partial_adds_to_ans() {
     let mut env = Env::new();
     env.insert("ans".to_string(), Value::Scalar(10.0));
     let result = evaluate("+ 5", &mut env, &mut test_io()).unwrap();
-    assert!(matches!(result, EvalResult::Value(Value::Scalar(15.0))));
+    assert!(matches!(result, EvalResult::Value(_, Value::Scalar(15.0))));
     assert_eq!(ans(&env), 15.0);
 }
 
@@ -390,7 +390,7 @@ fn test_evaluate_assignment() {
 fn test_evaluate_expression_always_updates_ans() {
     let mut env = new_env();
     let result = evaluate("3 * 4", &mut env, &mut test_io()).unwrap();
-    assert!(matches!(result, EvalResult::Value(Value::Scalar(12.0))));
+    assert!(matches!(result, EvalResult::Value(_, Value::Scalar(12.0))));
     assert_eq!(ans(&env), 12.0);
 }
 
@@ -597,16 +597,20 @@ fn pipe_output(input: &str) -> Vec<String> {
                                     }
                                 }
                             },
-                            EvalResult::Value(v) => match &v {
+                            EvalResult::Value(label, v) => {
+                                let prefix = label.as_deref().unwrap_or("ans");
+                                match &v {
                                 Value::Void => {}
                                 Value::Matrix(_) | Value::ComplexMatrix(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
-                                        output.push("ans =".to_string());
+                                        output.push(format!("{prefix} ="));
                                         output.push(full);
                                     }
                                 }
                                 Value::Scalar(n) => {
-                                    if show_all {
+                                    if let Some(ref name) = label {
+                                        output.push(format!("{name} = {}", format_scalar(*n, base, &fmt)));
+                                    } else if show_all {
                                         let i = n.round() as i64;
                                         let u = i.unsigned_abs();
                                         let sign = if i < 0 { "-" } else { "" };
@@ -630,7 +634,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 Value::Tuple(_) => {}
                                 Value::Cell(_) | Value::Struct(_) | Value::StructArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
-                                        output.push("ans =".to_string());
+                                        output.push(format!("{prefix} ="));
                                         output.push(full);
                                     }
                                 }
@@ -642,11 +646,12 @@ fn pipe_output(input: &str) -> Vec<String> {
                                 }
                                 Value::DateTimeArray(_) | Value::DurationArray(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
-                                        output.push("ans =".to_string());
+                                        output.push(format!("{prefix} ="));
                                         output.push(full);
                                     }
                                 }
-                            },
+                            } // match &v
+                            }, // EvalResult::Value
                         }
                     }
                 }
@@ -907,9 +912,10 @@ fn test_pipe_sprintf_format_arg() {
 
 #[test]
 fn test_pipe_base_suffix_accumulator_set_uses_ans() {
-    // Verify partial expression uses ans, not a stale accumulator
+    // Verify partial expression uses ans, not a stale accumulator.
+    // Bare `ans` now shows "ans = 0" (variable name label, MATLAB semantics).
     let out = pipe_output("ans\n+ 5");
-    assert_eq!(out, vec!["0", "5"]);
+    assert_eq!(out, vec!["ans = 0", "5"]);
 }
 
 // --- Matrix pipe tests ---

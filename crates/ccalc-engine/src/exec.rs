@@ -1348,10 +1348,15 @@ pub fn exec_stmts(
                     continue;
                 }
 
+                let expr_label = if let Expr::Var(name) = expr {
+                    Some(name.as_str())
+                } else {
+                    None
+                };
                 let val = eval_with_io(expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 env.insert("ans".to_string(), val.clone());
                 if !silent && !matches!(val, Value::Void) {
-                    print_value(None, &val, fmt, base, compact);
+                    print_value(expr_label, &val, fmt, base, compact);
                 }
             }
 

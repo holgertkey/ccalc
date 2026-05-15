@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0+002] - 2026-05-15
+
+### Fixed
+
+- **Bare variable expression shows variable name, not `ans`** (`exec.rs`, `repl.rs`):
+  Typing a bare variable name as an expression (e.g. `p`) now displays `p = <value>`
+  instead of `ans = <value>`, matching MATLAB/Octave semantics. Applies to all value
+  types: scalars, structs, cell arrays, matrices, complex, strings, datetimes.
+  `EvalResult::Value` now carries `Option<String>` label; `Expr::Var` triggers it.
+
 ## [0.36.0+001] - 2026-05-15
 
 ### Fixed
