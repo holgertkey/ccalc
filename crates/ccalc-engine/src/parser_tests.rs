@@ -4564,3 +4564,41 @@ fn test_parse_stmts_line_numbers() {
     assert_eq!(stmts[1].2, 2);
     assert_eq!(stmts[2].2, 3);
 }
+
+// ── StringObj length/numel/size regression tests ─────────────────────────────
+
+#[test]
+fn test_length_string_obj() {
+    let env = run_block(r#"x = length("Hello again");"#);
+    assert_eq!(env["x"], Value::Scalar(11.0));
+}
+
+#[test]
+fn test_numel_string_obj() {
+    let env = run_block(r#"x = numel("Hello again");"#);
+    assert_eq!(env["x"], Value::Scalar(11.0));
+}
+
+#[test]
+fn test_size_string_obj_no_dim() {
+    let env = run_block(r#"x = size("Hello again");"#);
+    match &env["x"] {
+        Value::Matrix(m) => {
+            assert_eq!(m[[0, 0]], 1.0);
+            assert_eq!(m[[0, 1]], 11.0);
+        }
+        other => panic!("expected Matrix [1, 11], got {other:?}"),
+    }
+}
+
+#[test]
+fn test_size_string_obj_dim1() {
+    let env = run_block(r#"x = size("Hello again", 1);"#);
+    assert_eq!(env["x"], Value::Scalar(1.0));
+}
+
+#[test]
+fn test_size_string_obj_dim2() {
+    let env = run_block(r#"x = size("Hello again", 2);"#);
+    assert_eq!(env["x"], Value::Scalar(11.0));
+}

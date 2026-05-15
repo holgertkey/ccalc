@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0+003] - 2026-05-15
+
+### Fixed
+
+- **`length`/`numel`/`size` of double-quoted strings now correct** (`eval.rs`):
+  `length("Hello again")` returned `1` instead of `11`. All three functions
+  (`length`, `numel`, `size`) now return the character count for `StringObj`
+  (double-quoted strings), matching Octave semantics.
+  5 new regression tests: `test_length_string_obj`, `test_numel_string_obj`,
+  `test_size_string_obj_no_dim`, `test_size_string_obj_dim1`, `test_size_string_obj_dim2`.
+
 ## [0.36.0+002] - 2026-05-15
 
 ### Fixed

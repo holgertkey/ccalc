@@ -3269,8 +3269,8 @@ fn call_builtin(
             Value::Str(s) => Ok(Value::Matrix(
                 Array2::from_shape_vec((1, 2), vec![1.0, s.chars().count() as f64]).unwrap(),
             )),
-            Value::StringObj(_) => Ok(Value::Matrix(
-                Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
+            Value::StringObj(s) => Ok(Value::Matrix(
+                Array2::from_shape_vec((1, 2), vec![1.0, s.chars().count() as f64]).unwrap(),
             )),
             Value::Cell(v) => Ok(Value::Matrix(
                 Array2::from_shape_vec((1, 2), vec![1.0, v.len() as f64]).unwrap(),
@@ -3308,7 +3308,11 @@ fn call_builtin(
                     2 => Ok(Value::Scalar(s.chars().count() as f64)),
                     _ => Err(format!("size: invalid dimension {dim}")),
                 },
-                Value::StringObj(_) => Ok(Value::Scalar(1.0)),
+                Value::StringObj(s) => match dim {
+                    1 => Ok(Value::Scalar(1.0)),
+                    2 => Ok(Value::Scalar(s.chars().count() as f64)),
+                    _ => Err(format!("size: invalid dimension {dim}")),
+                },
                 Value::Cell(v) => match dim {
                     1 => Ok(Value::Scalar(1.0)),
                     2 => Ok(Value::Scalar(v.len() as f64)),
@@ -3334,7 +3338,7 @@ fn call_builtin(
             Value::Matrix(m) => Ok(Value::Scalar(m.nrows().max(m.ncols()) as f64)),
             Value::ComplexMatrix(m) => Ok(Value::Scalar(m.nrows().max(m.ncols()) as f64)),
             Value::Str(s) => Ok(Value::Scalar(s.chars().count() as f64)),
-            Value::StringObj(_) => Ok(Value::Scalar(1.0)),
+            Value::StringObj(s) => Ok(Value::Scalar(s.chars().count() as f64)),
             Value::Cell(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::StructArray(arr) => Ok(Value::Scalar(arr.len() as f64)),
             Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
@@ -3349,7 +3353,7 @@ fn call_builtin(
             Value::Matrix(m) => Ok(Value::Scalar(m.len() as f64)),
             Value::ComplexMatrix(m) => Ok(Value::Scalar(m.len() as f64)),
             Value::Str(s) => Ok(Value::Scalar(s.chars().count() as f64)),
-            Value::StringObj(_) => Ok(Value::Scalar(1.0)),
+            Value::StringObj(s) => Ok(Value::Scalar(s.chars().count() as f64)),
             Value::Cell(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::StructArray(arr) => Ok(Value::Scalar(arr.len() as f64)),
             Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
