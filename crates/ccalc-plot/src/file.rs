@@ -116,11 +116,24 @@ where
     }
 
     let has_legend = !state.legend.is_empty();
+    let clip_x = state.xlim.is_some();
+    let clip_y = state.ylim.is_some();
 
     for (i, y_series) in ys.iter().enumerate() {
         let color = SERIES_COLORS[i % SERIES_COLORS.len()];
-        let points: Vec<(f64, f64)> =
-            x.iter().zip(y_series).map(|(&xi, &yi)| (xi, yi)).collect();
+        let points: Vec<(f64, f64)> = x
+            .iter()
+            .zip(y_series)
+            .filter_map(|(&xi, &yi)| {
+                if clip_x && (xi < x_min || xi > x_max) {
+                    return None;
+                }
+                if clip_y && (yi < y_min || yi > y_max) {
+                    return None;
+                }
+                Some((xi, yi))
+            })
+            .collect();
         let series_ref = chart
             .draw_series(LineSeries::new(points, &color))
             .map_err(|e| e.to_string())?;
@@ -323,7 +336,24 @@ where
             .map_err(|e| e.to_string())?;
     }
 
-    let points: Vec<(f64, f64)> = x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+    // When xlim/ylim is set explicitly, clip data to the visible range so
+    // that no segment is drawn through the chart boundary (which would create
+    // a visible hard cut-off artefact at the edge).
+    let clip_x = state.xlim.is_some();
+    let clip_y = state.ylim.is_some() && !zero_baseline;
+    let points: Vec<(f64, f64)> = x
+        .iter()
+        .zip(y.iter())
+        .filter_map(|(&xi, &yi)| {
+            if clip_x && (xi < x_min || xi > x_max) {
+                return None;
+            }
+            if clip_y && (yi < y_min || yi > y_max) {
+                return None;
+            }
+            Some((xi, yi))
+        })
+        .collect();
 
     match kind {
         ChartKind::Line => {
