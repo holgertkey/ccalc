@@ -1,0 +1,201 @@
+% Phase 29c — Extended plot surface, SVG/PNG file export demo
+%
+% Covers: bar, stem, stairs, hist, loglog, semilogx, semilogy,
+%         multi-series plot(x, M), xlim, ylim, legend, grid — all
+%         saved to SVG or PNG files via the plotters backend.
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/plot_extended_file/plot_extended_file.calc
+%
+% To combine with ASCII terminal output, build with:
+%   cargo build --release --features plot-all
+%
+% Output files are written to examples/plot_extended_file/tmp/.
+% Open SVG files in any web browser; PNG files in any image viewer.
+
+out = 'examples/plot_extended_file/tmp/';
+
+% ------------------------------------------------------------------ %
+% 1. Bar chart — SVG                                                   %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing bar chart -> %srain.svg\n', out)
+
+months = 1:12;
+rain   = [42 38 55 61 72 80 95 90 73 58 44 40];
+
+title('Monthly rainfall')
+xlabel('month')
+ylabel('mm')
+bar(months, rain, strcat(out, 'rain.svg'))
+
+% ------------------------------------------------------------------ %
+% 2. Bar chart — negative values, PNG                                  %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing signed P&L bar chart -> %spnl.png\n', out)
+
+qtr = [1, 2, 3, 4];
+pnl = [12.5, -4.2, 8.8, -1.6];
+
+title('Quarterly profit / loss')
+xlabel('quarter')
+ylabel('USD k')
+bar(qtr, pnl, strcat(out, 'pnl.png'))
+
+% ------------------------------------------------------------------ %
+% 3. Stem plot — SVG                                                   %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing stem plot -> %simpulse.svg\n', out)
+
+n = 0:15;
+h = 0.75 .^ n;
+
+title('Impulse response h[n]')
+xlabel('n (samples)')
+ylabel('amplitude')
+stem(n, h, strcat(out, 'impulse.svg'))
+
+% ------------------------------------------------------------------ %
+% 4. Staircase plot — SVG                                              %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing stairs plot -> %sstep.svg\n', out)
+
+t = 0:0.5:4.5;
+v = [0 0 1 1 2 2 1 1 0 0];
+
+title('Piecewise-constant voltage')
+xlabel('time (s)')
+ylabel('V')
+stairs(t, v, strcat(out, 'step.svg'))
+
+% ------------------------------------------------------------------ %
+% 5. Histogram — auto bins, SVG                                        %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing histogram (auto bins) -> %sgauss.svg\n', out)
+
+rng(42);
+data = randn(1, 300);
+
+title('Gaussian samples — auto bins')
+xlabel('value')
+ylabel('count')
+hist(data, strcat(out, 'gauss.svg'))
+
+% ------------------------------------------------------------------ %
+% 6. Histogram — explicit bin count, PNG                               %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing histogram (20 bins) -> %sgauss20.png\n', out)
+
+title('Gaussian samples — 20 bins')
+xlabel('value')
+ylabel('count')
+hist(data, 20, strcat(out, 'gauss20.png'))
+
+% ------------------------------------------------------------------ %
+% 7. Histogram — explicit edges, SVG                                   %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing histogram (explicit edges) -> %sgauss_edges.svg\n', out)
+
+edges = -3:0.5:3;
+
+title('Gaussian samples — explicit edges')
+xlabel('value')
+ylabel('count')
+hist(data, edges, strcat(out, 'gauss_edges.svg'))
+
+% ------------------------------------------------------------------ %
+% 8. loglog — power-law filter response, SVG                           %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing loglog plot -> %sfilter.svg\n', out)
+
+f = 10 .^ linspace(1, 5, 80);   % 10 Hz – 100 kHz
+G = 1e6 * f .^ (-2);            % -40 dB/decade roll-off
+
+title('Low-pass filter gain')
+xlabel('frequency (Hz)')
+ylabel('gain')
+loglog(f, G, strcat(out, 'filter.svg'))
+
+% ------------------------------------------------------------------ %
+% 9. semilogy — population growth model, SVG                           %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing semilogy plot -> %spopulation.svg\n', out)
+
+year = 1800:10:2020;
+pop  = 978 * exp(0.0138 * (year - 1800));
+
+title('World population (model)')
+xlabel('year')
+ylabel('population (M)')
+semilogy(year, pop, strcat(out, 'population.svg'))
+
+% ------------------------------------------------------------------ %
+% 10. semilogx — Beer-Lambert saturation, SVG                          %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing semilogx plot -> %sabsorption.svg\n', out)
+
+conc = 10 .^ linspace(-3, 1, 50);
+abs_ = 1 - exp(-2 * conc);
+
+title('Absorption saturation')
+xlabel('concentration (mol/L)')
+ylabel('absorbance')
+semilogx(conc, abs_, strcat(out, 'absorption.svg'))
+
+% ------------------------------------------------------------------ %
+% 11. Multi-series — three trig functions, SVG                         %
+%     legend labels the series; grid adds the background mesh          %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing multi-series plot -> %strig.svg\n', out)
+
+x3 = linspace(0, 2*pi, 120);
+M  = [sin(x3); cos(x3); 0.5 * sin(2*x3)];
+
+title('Trig functions')
+xlabel('x (radians)')
+ylabel('amplitude')
+legend('sin(x)', 'cos(x)', '0.5 sin(2x)')
+grid('on')
+plot(x3, M, strcat(out, 'trig.svg'))
+
+% ------------------------------------------------------------------ %
+% 12. Multi-series — PNG variant                                        %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing multi-series plot -> %strig.png\n', out)
+
+title('Trig functions')
+xlabel('x (radians)')
+ylabel('amplitude')
+legend('sin(x)', 'cos(x)', '0.5 sin(2x)')
+plot(x3, M, strcat(out, 'trig.png'))
+
+% ------------------------------------------------------------------ %
+% 13. xlim / ylim / grid — damped oscillation, SVG                     %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing damped oscillation (zoomed) -> %sdamped.svg\n', out)
+
+x7 = linspace(0, 4*pi, 200);
+y7 = exp(-0.15 * x7) .* sin(x7);
+
+title('Damped oscillation (zoomed)')
+xlabel('t')
+ylabel('y(t)')
+xlim([0, 3*pi])
+ylim([-0.6, 1.0])
+grid('on')
+plot(x7, y7, strcat(out, 'damped.svg'))
+
+fprintf('\nDone. Files written to %s\n', out)

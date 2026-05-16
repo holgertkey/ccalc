@@ -1,12 +1,12 @@
 # Plot Functions
 
 ccalc supports terminal and file-based plotting via the `ccalc-plot` plugin crate.
-Two feature tiers are available:
+Two rendering tiers are available:
 
 | Feature flag | Backend | Enables |
 |---|---|---|
 | `plot` | `textplots` | ASCII Braille chart printed to terminal |
-| `plot-svg` | `plotters` | SVG and PNG file export |
+| `plot-svg` | `plotters` | SVG and PNG file export (800 × 600 px) |
 | `plot-all` | both | terminal + file export |
 
 Build with the desired tier:
@@ -17,96 +17,169 @@ cargo build --release --features plot-svg      # file export only
 cargo build --release --features plot-all      # both
 ```
 
-Without a feature, calling a render function returns an informative error
-suggesting the rebuild command. Annotation functions (`xlabel`, `ylabel`,
-`title`) work in every build configuration.
+Without a feature flag, calling a render function returns a helpful error suggesting
+the rebuild command. Annotation functions (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`,
+`legend`, `grid`) always succeed in every build configuration.
 
 ---
 
-## Terminal rendering (requires `plot`)
+## Chart types
 
-### `plot(y)` / `plot(x, y)`
+All chart functions accept an optional trailing file path. When the last string argument
+ends in `.svg` or `.png` the chart is saved to that file (requires `plot-svg`).
+Without a file path the chart is rendered to the terminal (requires `plot`).
 
-Renders a connected line chart to the terminal using Braille characters.
+### `plot(y)` / `plot(x, y)` / `plot(x, M)`
 
-- `y` — row or column vector of values
-- `x` — optional explicit x-axis vector (same length as `y`); inferred as
-  `1:numel(y)` when omitted
+Connected line chart.
+
+- `y` — row or column vector; `x` inferred as `1:numel(y)` when omitted.
+- `M` — M×N matrix: each **row** is drawn as a separate series. In SVG/PNG mode
+  each series gets a distinct colour from the 7-colour Octave palette; `legend`
+  labels the series.
 
 ```matlab
 x = linspace(0, 2*pi, 80);
 plot(x, sin(x))
+
+% multi-series
+M = [sin(x); cos(x); 0.5*sin(2*x)];
+legend('sin', 'cos', '0.5 sin(2x)')
+plot(x, M)
 ```
 
 ### `scatter(y)` / `scatter(x, y)`
 
-Same as `plot` but draws individual dots instead of connected lines — use
-when connecting the data points would imply false continuity.
+Individual point cloud — use when connecting data points would imply false continuity.
 
 ```matlab
 t = linspace(-2, 2, 50);
 scatter(t, t.^2 + 0.3*randn(size(t)))
 ```
 
+### `bar(y)` / `bar(x, y)`
+
+Vertical bar chart. Bars extend from `y = 0`; negative values drop below the baseline.
+Bar width is 40 % of the minimum x-spacing.
+
+```matlab
+months = 1:12;
+rain   = [42 38 55 61 72 80 95 90 73 58 44 40];
+xlabel('month')
+ylabel('mm')
+bar(months, rain)
+```
+
+### `stem(y)` / `stem(x, y)`
+
+Discrete-sequence plot: a vertical line from `y = 0` to each tip, plus a circle marker.
+Typical use: impulse/frequency responses and sampled signals.
+
+```matlab
+n = 0:15;
+stem(n, 0.8 .^ n)
+```
+
+### `stairs(y)` / `stairs(x, y)`
+
+Piecewise-constant (step-function) chart — each value is held until the next sample.
+Useful for zero-order-hold signals, quantised waveforms, and control outputs.
+
+```matlab
+t = 0:0.5:4.5;
+v = [0 0 1 1 2 2 1 1 0 0];
+stairs(t, v)
+```
+
+### `hist(v)` / `hist(v, n)` / `hist(v, edges)`
+
+Histogram. ASCII output (character bars) requires no feature flag; SVG/PNG requires `plot-svg`.
+
+| Call | Bin specification |
+|---|---|
+| `hist(v)` | Sturges heuristic: `max(1, round(sqrt(numel(v))))` bins |
+| `hist(v, n)` | Exactly `n` uniform bins |
+| `hist(v, edges)` | Caller-supplied edge vector (length k+1 defines k bins) |
+
+```matlab
+data = randn(1, 200);
+hist(data)          % auto bins
+hist(data, 20)      % 20 uniform bins
+hist(data, -3:0.5:3)   % explicit edges
+```
+
+### `loglog(x, y)` / `semilogx(x, y)` / `semilogy(x, y)`
+
+Log-scale plots. Data is transformed with log₁₀ before rendering; non-positive values
+are silently excluded. Axis labels are annotated with `[log₁₀]`.
+
+| Function | X axis | Y axis |
+|---|---|---|
+| `loglog` | log₁₀ | log₁₀ |
+| `semilogx` | log₁₀ | linear |
+| `semilogy` | linear | log₁₀ |
+
+```matlab
+f = 10 .^ linspace(1, 5, 80);   % 10 Hz – 100 kHz
+G = 1e6 * f .^ (-2);
+loglog(f, G)
+```
+
 ---
 
-## File export (requires `plot-svg`)
+## File export
 
-Append a file path as the last argument. The extension determines the format:
+Append a file path as the **last** string argument:
 
-| Last argument | Format | Notes |
+| Extension | Format | Notes |
 |---|---|---|
-| `'name.svg'` | SVG vector graphic | Opens in any browser |
-| `'name.png'` | PNG raster image | 800 × 600 px |
-| `'ascii'` | Terminal chart | Forces ASCII even when `plot-svg` is active |
-
-### `plot(y, 'file.svg')` / `plot(x, y, 'file.svg')`
-
-Saves a connected line chart to an SVG or PNG file.
+| `'.svg'` | SVG vector graphic | Opens in any browser |
+| `'.png'` | PNG raster, 800 × 600 px | |
+| `'ascii'` | Terminal chart | Forces ASCII even with `plot-svg` active |
 
 ```matlab
 x = linspace(0, 2*pi, 200);
-
 title('sin(x)')
 xlabel('x (radians)')
 ylabel('amplitude')
 plot(x, sin(x), 'wave.svg')
-```
 
-### `scatter(y, 'file.svg')` / `scatter(x, y, 'file.svg')`
-
-Saves a scatter (point cloud) chart to file.
-
-```matlab
-scatter(temp, ohms, 'resist.png')
-```
-
-Both `plot` and `scatter` support the 1-arg inferred-x form for file export:
-
-```matlab
-decay = exp(-linspace(0, 4, 60));
-plot(decay, 'decay.svg')    % x inferred as 1:60
+hist(randn(1, 500), 'dist.png')
 ```
 
 ---
 
 ## Annotation functions
 
-Set annotations **before** the render call. Each annotation is stored in a
-thread-local `FigureState` and consumed (reset) by the next render call:
+Set annotations **before** the render call. All annotations are stored in a thread-local
+`FigureState` and consumed (cleared) by the next render call.
 
 ```matlab
-title('My Chart')    % set title
-xlabel('time (s)')   % set x-axis label
-ylabel('amplitude')  % set y-axis label
-plot(t, y)           % annotations applied here, then cleared
+title('My Chart')
+xlabel('time (s)')
+ylabel('amplitude')
+xlim([0, 10])
+ylim([-1.2, 1.2])
+grid('on')
+plot(t, y)       % all annotations applied here, then cleared
 ```
 
-| Function | Effect |
-|---|---|
-| `title('text')` | Chart title — printed above (ASCII) or embedded (SVG/PNG) |
-| `xlabel('text')` | X-axis label |
-| `ylabel('text')` | Y-axis label |
+| Function | Effect | Works without feature |
+|---|---|---|
+| `title('text')` | Chart title | Yes |
+| `xlabel('text')` | X-axis label | Yes |
+| `ylabel('text')` | Y-axis label | Yes |
+| `zlabel('text')` | Z-axis label (reserved for 3-D, Phase 29d) | Yes |
+| `xlim([lo, hi])` | Override x-axis range | Yes |
+| `ylim([lo, hi])` | Override y-axis range | Yes |
+| `zlim([lo, hi])` | Override z-axis range (3-D) | Yes |
+| `legend(s1, s2, …)` | Series labels — applied in SVG/PNG multi-series charts | Yes |
+| `grid` | Toggle grid on/off | Yes |
+| `grid('on')` | Enable grid | Yes |
+| `grid('off')` | Disable grid | Yes |
+
+Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
+ignore it.
 
 Annotations not consumed before a second render call are **not** carried over:
 
@@ -118,20 +191,34 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 
 ---
 
-## Chart properties (SVG/PNG)
+## SVG/PNG chart properties
 
-- **Size:** 800 × 600 px (fixed in Phase 29b; configurable range planned for 29c)
-- **Axis range:** auto-computed from data with a 5 % margin; single-point data
-  uses ± 1 padding
-- **Line plots:** `LineSeries` (solid blue line)
-- **Scatter plots:** filled circles (3 px radius)
-- Both axes are drawn and labelled
+- **Size:** 800 × 600 px (fixed).
+- **Colours (multi-series):** 7-colour Octave palette — blue, orange, yellow, purple,
+  green, cyan, dark red — cycling as needed.
+- **Line plots:** `LineSeries` (1 px, series colour).
+- **Scatter plots:** filled circles, 3 px radius.
+- **Bar charts:** edge-to-edge `Rectangle` series; negative bars extend below baseline.
+- **Stem plots:** `PathElement` vertical lines + `Circle` tip markers (4 px).
+- **Histograms:** edge-to-edge `Rectangle` bins (blue fill).
+- **Axis range:** auto-computed from data with 5 % margin; single-point data uses ± 1.
+- **Legend:** shown when `legend(...)` is set; drawn in the upper-right corner with
+  a black border.
+
+---
+
+## Examples
+
+- `examples/plot_demo.calc` — Phase 29a: ASCII `plot`/`scatter`, annotations
+- `examples/plot_file/plot_file.calc` — Phase 29b: `plot`/`scatter` to SVG/PNG
+- `examples/plot_extended.calc` — Phase 29c: `bar`, `stem`, `stairs`, `hist`,
+  `loglog`/`semilogx`/`semilogy`, multi-series, `xlim`/`ylim`/`grid` (ASCII)
+- `examples/plot_extended_file/plot_extended_file.calc` — Phase 29c: same chart
+  types exported to SVG/PNG, multi-series with `legend`+`grid`, histogram variants
 
 ---
 
 ## See also
 
 - [Plugins](./plugins.md) — how the `ccalc-plot` plugin is registered
-- [Phase 29 — Plot engine](../ccalc/phase29-plot.md) — implementation notes
-- `examples/plot_demo.calc` — ASCII terminal rendering demo
-- `examples/plot_file/plot_file.calc` — SVG/PNG file export demo
+- Run `help plot` in the REPL for a compact quick reference

@@ -623,9 +623,10 @@ All functions operate **column-wise** on M×N matrices and collapse to a scalar 
 | `prctile(v, p)` | p-th percentile; `p` can be a vector |
 | `iqr(v)` | Interquartile range: prctile(75) − prctile(25) |
 | `zscore(v)` | Standardise: `(v − mean) / std`, same shape |
-| `hist(data)` | ASCII bar chart to stdout (10 bins default) |
-| `hist(data, n)` | ASCII bar chart with n bins |
-| `histc(data, edges)` | Count vector for user-supplied bin edges |
+| `hist(v)` | Histogram to terminal (Sturges default bins) |
+| `hist(v, n)` | Histogram with n uniform bins |
+| `hist(v, edges)` | Histogram with caller-supplied edge vector |
+| `histc(data, edges)` | Count vector for user-supplied bin edges (returns matrix) |
 
 ### Normal distribution
 
@@ -777,42 +778,68 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 > cargo build --release --features plot-svg      # SVG + PNG file export
 > cargo build --release --features plot-all      # both
 > ```
-> Annotation functions (`title`, `xlabel`, `ylabel`) work without any feature.
+> Annotation functions (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`, `legend`, `grid`)
+> work without any feature.
 
-| Call | Requires | Output |
+### Chart types
+
+| Call | Requires | Description |
 |---|---|---|
-| `plot(y)` | `plot` | ASCII line chart; x inferred as `1:numel(y)` |
-| `plot(x, y)` | `plot` | ASCII line chart with explicit x |
+| `plot(y)` / `plot(x, y)` | `plot` | ASCII line chart; x inferred when omitted |
+| `plot(x, M)` | `plot` / `plot-svg` | Multi-series: each row of M is one series |
 | `scatter(x, y)` | `plot` | ASCII point cloud |
+| `bar(y)` / `bar(x, y)` | `plot` | Vertical bar chart; negative bars drop below baseline |
+| `stem(y)` / `stem(x, y)` | `plot` | Discrete-sequence: line from y=0 + tip marker |
+| `stairs(y)` / `stairs(x, y)` | `plot` | Piecewise-constant step function |
+| `hist(v)` | — | Histogram to terminal (Sturges default bins) |
+| `hist(v, n)` | — | Histogram with n uniform bins |
+| `hist(v, edges)` | — | Histogram with caller-supplied edge vector |
+| `loglog(x, y)` | `plot` | Log₁₀ on both axes |
+| `semilogx(x, y)` | `plot` | Log₁₀ x-axis, linear y |
+| `semilogy(x, y)` | `plot` | Linear x-axis, log₁₀ y |
+
+Append a file path to save instead of print to terminal:
+
+| Call | Requires | Description |
+|---|---|---|
 | `plot(x, y, 'f.svg')` | `plot-svg` | SVG vector graphic (800 × 600) |
 | `plot(x, y, 'f.png')` | `plot-svg` | PNG raster image (800 × 600) |
-| `scatter(x, y, 'f.svg')` | `plot-svg` | SVG scatter chart |
 | `plot(x, y, 'ascii')` | `plot` | Force ASCII even when `plot-svg` is active |
+| `hist(v, 20, 'h.svg')` | `plot-svg` | Histogram saved to file |
 
-Annotations apply to the **next** render call and are cleared afterwards:
+### Annotations
+
+Set annotations **before** the render call — they are consumed and cleared by the next render:
+
+| Function | Effect |
+|---|---|
+| `title('text')` | Chart title |
+| `xlabel('text')` / `ylabel('text')` | Axis labels |
+| `xlim([lo, hi])` / `ylim([lo, hi])` | Override axis range |
+| `legend(s1, s2, …)` | Series labels for multi-series SVG/PNG charts |
+| `grid` / `grid('on')` / `grid('off')` | Toggle grid (SVG/PNG only; default off) |
 
 ```matlab
-x = linspace(0, 2*pi, 200);
-y = sin(x);
+x = linspace(0, 2*pi, 80);
 
-% --- Terminal ---
+% ASCII line chart
 title('sin(x)')
 xlabel('x (radians)')
-plot(x, y)
+plot(x, sin(x))
 
-% --- SVG file ---
-title('sin(x)')
-xlabel('x (radians)')
-ylabel('amplitude')
-plot(x, y, 'wave.svg')
+% Multi-series SVG with legend and grid
+M = [sin(x); cos(x)];
+legend('sin', 'cos')
+grid('on')
+plot(x, M, 'trig.svg')
 
-% --- Scatter to PNG ---
-scatter(x, y, 'dots.png')
+% Histogram with explicit edges
+hist(randn(1, 500), -3:0.5:3, 'dist.png')
 ```
 
-See `examples/plot_demo.calc` (terminal) and `examples/plot_file/plot_file.calc`
-(file export) for full worked examples. Run `help plot` in the REPL for a
-quick reference.
+See `examples/plot_demo.calc` (ASCII), `examples/plot_file/plot_file.calc` (file export),
+and `examples/plot_extended.calc` (bar/stem/stairs/hist/loglog) for full worked examples.
+Run `help plot` in the REPL for a quick reference.
 
 ---
 
@@ -2017,6 +2044,8 @@ The `examples/` directory contains annotated formula files ready to run:
 | `indexed_assignment.calc`    | Indexed assignment: element/slice/submatrix write, growing vectors with `end+1`, cell array growth, logical mask read/write |
 | `plot_demo.calc`             | Phase 29a: `plot`/`scatter` ASCII terminal charts, `title`/`xlabel`/`ylabel` annotations, polynomial-fit visualisation — requires `--features plot` |
 | `plot_file/plot_file.calc`   | Phase 29b: `plot`/`scatter` to SVG and PNG files, inferred-x form, practical polynomial-fit export — requires `--features plot-svg` |
+| `plot_extended.calc`         | Phase 29c: `bar`, `stem`, `stairs`, `hist` (auto/manual/edge bins), `loglog`/`semilogx`/`semilogy`, multi-series `plot(x,M)`, `xlim`/`ylim`/`grid` — ASCII, requires `--features plot` |
+| `plot_extended_file/plot_extended_file.calc` | Phase 29c: same chart types saved to SVG/PNG files, multi-series with `legend`+`grid`, histogram variants — requires `--features plot-svg` |
 
 ```bash
 ccalc < examples/mortgage.calc

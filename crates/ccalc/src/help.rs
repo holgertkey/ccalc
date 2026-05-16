@@ -76,8 +76,9 @@ pub fn print(topic: Option<&str>) {
             | "spectral",
         ) => print_fft(),
         Some(
-            "plot" | "scatter" | "bar" | "stem" | "xlabel" | "ylabel" | "title" | "figurestate"
-            | "plotting" | "charts" | "svg" | "png",
+            "plot" | "scatter" | "bar" | "stem" | "stairs" | "hist" | "loglog" | "semilogx"
+            | "semilogy" | "xlabel" | "ylabel" | "title" | "xlim" | "ylim" | "legend" | "grid"
+            | "figurestate" | "plotting" | "charts" | "svg" | "png",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -1258,10 +1259,12 @@ Percentiles and spread
 
     zscore([2 4 6]) → [-1  0  1]   (mean=4, std=2)
 
-Histogram
-    hist(v)             10-bin ASCII bar chart → stdout; returns Void
-    hist(v, n)          n-bin ASCII bar chart
-    histc(v, edges)     bin counts (same length as edges)
+Histogram  (implemented in ccalc-plot plugin — see: help plot)
+    hist(v)             ASCII bar chart, Sturges bins; returns Void
+    hist(v, n)          ASCII bar chart with n uniform bins
+    hist(v, edges)      ASCII bar chart with caller-supplied edge vector
+    hist(v, …, 'f.svg') save to SVG/PNG (requires --features plot-svg)
+    histc(v, edges)     bin counts returned as row vector (engine built-in)
                         bin i: edges(i) <= x < edges(i+1)
                         last bin: x == edges(end) exactly
 
@@ -3479,58 +3482,73 @@ Two rendering tiers; both use the same annotation API.
 
 ── Feature flags ─────────────────────────────────────────────────────────────
     --features plot       ASCII Braille chart printed to terminal (textplots)
-    --features plot-svg   SVG + PNG file export (plotters)
+    --features plot-svg   SVG + PNG file export (plotters, 800×600 px)
     --features plot-all   both tiers
 
-── Terminal rendering  (requires --features plot) ────────────────────────────
+── Chart types ───────────────────────────────────────────────────────────────
     plot(y)               line chart; x inferred as 1:numel(y)
-    plot(x, y)            line chart with explicit x-axis vector
+    plot(x, y)            line chart with explicit x
+    plot(x, M)            multi-series: each row of M is one series (SVG/PNG)
     scatter(y)            point cloud; x inferred
     scatter(x, y)         point cloud with explicit x
+    bar(y)                vertical bar chart; x inferred
+    bar(x, y)             bar chart with explicit x positions
+    stem(y)               discrete sequence: line from y=0 to tip + marker
+    stem(x, y)            stem with explicit x
+    stairs(y)             piecewise-constant step function; x inferred
+    stairs(x, y)          stairs with explicit x
+    hist(v)               histogram, Sturges bins (max(1, round(sqrt(n))))
+    hist(v, n)            histogram with n uniform bins
+    hist(v, edges)        histogram with caller-supplied edge vector
+    loglog(x, y)          log10 on both axes; non-positive values excluded
+    semilogx(x, y)        log10 x-axis, linear y
+    semilogy(x, y)        linear x-axis, log10 y
 
+Append a file path as the last string argument to save instead of print:
+    plot(x, y, 'out.svg')     SVG (requires --features plot-svg)
+    plot(x, y, 'out.png')     PNG (requires --features plot-svg)
+    plot(x, y, 'ascii')       force ASCII even when plot-svg is active
+    hist(v, 20, 'hist.svg')   histogram to file (combined n + path form)
+
+── Annotations ───────────────────────────────────────────────────────────────
+    title('text')       chart title
+    xlabel('text')      x-axis label
+    ylabel('text')      y-axis label
+    xlim([lo, hi])      override x-axis range
+    ylim([lo, hi])      override y-axis range
+    legend(s1, s2, …)   series labels for multi-series SVG/PNG charts
+    grid                toggle grid on/off (default: off)
+    grid('on')          enable grid (SVG/PNG only; ASCII ignored)
+    grid('off')         disable grid
+
+    Annotations are stored in a thread-local FigureState and consumed (cleared)
+    by the next render call.  Set them immediately before the render call:
+
+    title('sin(x)')
+    xlabel('x (radians)')
+    ylim([-1.2, 1.2])
+    grid('on')
+    plot(x, sin(x))        % all annotations applied and cleared here
+
+── Examples ──────────────────────────────────────────────────────────────────
     x = linspace(0, 2*pi, 80);
     plot(x, sin(x))
 
-    t = linspace(-2, 2, 50);
-    scatter(t, t.^2 + 0.3*randn(size(t)))
+    % Multi-series
+    M = [sin(x); cos(x)];
+    legend('sin', 'cos')
+    plot(x, M, 'trig.svg')
 
-── File export  (requires --features plot-svg) ───────────────────────────────
-    Append a file-path string as the last argument.
-    Extension determines format:
+    % Histogram with explicit edges
+    hist(randn(1, 500), -3:0.5:3, 'dist.svg')
 
-    plot(x, y, 'out.svg')     SVG vector graphic (opens in any browser)
-    plot(x, y, 'out.png')     PNG raster image, 800x600 px
-    scatter(x, y, 'out.svg')
-    scatter(x, y, 'out.png')
+    % Log-scale
+    f = 10 .^ linspace(1, 5, 80);
+    G = 1e6 * f .^ (-2);
+    loglog(f, G)
 
-    plot(y, 'decay.svg')      1-arg inferred-x form also works for file export
-    plot(x, y, 'ascii')       force terminal output even with plot-svg active
-
-    x = linspace(0, 2*pi, 200);
-    title('sin(x)')
-    xlabel('x (radians)')
-    ylabel('amplitude')
-    plot(x, sin(x), 'wave.svg')
-
-── Annotations ───────────────────────────────────────────────────────────────
-    title('text')     chart title (above ASCII chart; embedded in SVG/PNG)
-    xlabel('text')    x-axis label
-    ylabel('text')    y-axis label
-
-    Annotations are stored in a thread-local FigureState and consumed by the
-    next plot or scatter call, then cleared.  Set them immediately before the
-    render call.
-
-    title('First')
-    plot(x, y1, 'a.svg')   % title applied and cleared
-    plot(x, y2, 'b.svg')   % no title — must set again before this call
-
-── Error messages ─────────────────────────────────────────────────────────────
-    Without the required feature, a helpful error is returned:
-      'plot: ASCII rendering requires the plot feature flag.
-       Rebuild with: cargo build --features plot'
-
-See also: examples/plot_demo.calc   (ASCII demo)
-          examples/plot_file/plot_file.calc  (SVG/PNG demo)"
+See also: examples/plot_demo.calc          (ASCII demo)
+          examples/plot_file/plot_file.calc (SVG/PNG demo)
+          examples/plot_extended.calc       (bar/stem/stairs/hist/loglog demo)"
     );
 }
