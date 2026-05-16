@@ -1,0 +1,191 @@
+% Phase 29c — Extended plot surface demo
+%
+% Covers: bar, stem, stairs, hist, loglog, semilogx, semilogy,
+%         multi-series plot, and annotation setters
+%         (xlim, ylim, legend, grid).
+%
+% Requires the plot feature flag at build time:
+%   cargo build --release --features plot
+%   ccalc examples/plot_extended.calc
+%
+% To also export SVG/PNG files, build with:
+%   cargo build --release --features plot-all
+%
+% Without the feature flag, render calls return an informative error.
+% Annotation setters (xlabel, ylabel, title, xlim, ylim, legend, grid)
+% always succeed in every build configuration.
+
+% ------------------------------------------------------------------ %
+% 1. Bar chart                                                         %
+%    bar(y)      — x inferred as 1:numel(y)                           %
+%    bar(x, y)   — explicit x positions                               %
+% ------------------------------------------------------------------ %
+
+fprintf('--- 1. Monthly rainfall (bar chart) ---\n')
+
+months = 1:12;
+rain   = [42 38 55 61 72 80 95 90 73 58 44 40];
+
+title('Monthly rainfall')
+xlabel('month')
+ylabel('mm')
+bar(months, rain)
+
+% Negative values extend below the baseline automatically.
+fprintf('\n--- 1b. Signed profit/loss (bar chart, negative values) ---\n')
+
+qtr = [1, 2, 3, 4];
+pnl = [12.5, -4.2, 8.8, -1.6];
+
+title('Quarterly profit/loss')
+xlabel('quarter')
+ylabel('USD k')
+bar(qtr, pnl)
+
+% ------------------------------------------------------------------ %
+% 2. Stem plot                                                         %
+%    stem(y)     — vertical lines from y = 0 to each tip              %
+%    stem(x, y)  — explicit x positions                               %
+% ------------------------------------------------------------------ %
+
+fprintf('\n--- 2. Discrete-time signal (stem plot) ---\n')
+
+n = 0:15;
+h = 0.7 .^ n;        % decaying exponential impulse response
+
+title('Impulse response h[n]')
+xlabel('n (samples)')
+ylabel('amplitude')
+stem(n, h)
+
+% ------------------------------------------------------------------ %
+% 3. Staircase plot                                                    %
+%    stairs(y)   — step function, x inferred as 1:numel(y)           %
+%    stairs(x,y) — explicit x positions                               %
+% ------------------------------------------------------------------ %
+
+fprintf('\n--- 3. Step function (stairs plot) ---\n')
+
+t  = 0:0.5:4.5;
+v  = [0 0 1 1 2 2 1 1 0 0];   % piecewise-constant voltage
+
+title('Piecewise-constant voltage')
+xlabel('time (s)')
+ylabel('V')
+stairs(t, v)
+
+% ------------------------------------------------------------------ %
+% 4. Histogram                                                         %
+%    hist(v)          — Sturges automatic bins (max(1, round(sqrt(n)))%
+%    hist(v, nbins)   — explicit bin count                            %
+%    hist(v, edges)   — explicit bin edges                            %
+% ------------------------------------------------------------------ %
+
+fprintf('\n--- 4a. Gaussian sample histogram (auto bins) ---\n')
+
+rng(42);
+samples = randn(1, 200);
+
+title('Gaussian samples')
+xlabel('value')
+ylabel('count')
+hist(samples)
+
+fprintf('\n--- 4b. Uniform samples, 8 bins ---\n')
+
+u = rand(1, 150) * 10;
+
+title('Uniform samples, 8 bins')
+xlabel('value')
+ylabel('count')
+hist(u, 8)
+
+fprintf('\n--- 4c. Exponential samples, explicit edges ---\n')
+
+e = -log(rand(1, 120));   % exponential distribution via inversion
+
+edges = 0:0.5:4;
+title('Exponential samples')
+xlabel('value')
+ylabel('count')
+hist(e, edges)
+
+% ------------------------------------------------------------------ %
+% 5. Log-scale plots                                                   %
+%    loglog(x, y)   — log10 on both axes                              %
+%    semilogx(x, y) — log10 on x axis only                           %
+%    semilogy(x, y) — log10 on y axis only                           %
+% ------------------------------------------------------------------ %
+
+fprintf('\n--- 5a. Power law (loglog) ---\n')
+
+% 10 Hz – 100 kHz on a logarithmic frequency axis.
+% 10 .^ linspace(a, b, n) is the manual equivalent of logspace(a, b, n).
+f  = 10 .^ linspace(1, 5, 80);
+G  = 1e6 * f .^ (-2);      % roll-off at -40 dB/decade
+
+title('Low-pass filter gain')
+xlabel('frequency (Hz)')
+ylabel('gain')
+loglog(f, G)
+
+fprintf('\n--- 5b. Population growth (semilogy) ---\n')
+
+year = 1800:10:2020;
+pop  = 978 * exp(0.0138 * (year - 1800));   % rough exponential model (millions)
+
+title('World population (model)')
+xlabel('year')
+ylabel('population (M)')
+semilogy(year, pop)
+
+fprintf('\n--- 5c. Absorption vs concentration (semilogx) ---\n')
+
+conc = 10 .^ linspace(-3, 1, 50);   % 0.001 – 10 mol/L
+abs_ = 1 - exp(-2 * conc);          % Beer-Lambert-style saturation
+
+title('Absorption saturation')
+xlabel('concentration (mol/L)')
+ylabel('absorbance')
+semilogx(conc, abs_)
+
+% ------------------------------------------------------------------ %
+% 6. Multi-series plot  (Phase 29c.5)                                  %
+%    plot(x, M)  where M is a matrix — each row is one series         %
+%    legend(...)  labels the series in SVG/PNG output                 %
+% ------------------------------------------------------------------ %
+
+fprintf('\n--- 6. Trig functions — three series on one chart ---\n')
+
+x3 = linspace(0, 2*pi, 80);
+
+% Stack three row vectors into a 3×80 matrix.
+M = [sin(x3); cos(x3); 0.5 * sin(2*x3)];
+
+title('sin, cos, 0.5 sin(2x)')
+xlabel('x (radians)')
+ylabel('amplitude')
+legend('sin(x)', 'cos(x)', '0.5 sin(2x)')
+plot(x3, M)
+
+% ------------------------------------------------------------------ %
+% 7. Annotation setters: xlim, ylim, grid                              %
+%    xlim([lo hi]) and ylim([lo hi]) override the auto-computed range. %
+%    grid on  /  grid off  toggles the background mesh.               %
+%    These are consumed and cleared by the next render call.           %
+% ------------------------------------------------------------------ %
+
+fprintf('\n--- 7. Annotations: xlim / ylim / grid ---\n')
+
+x7 = linspace(0, 4*pi, 120);
+y7 = exp(-0.15 * x7) .* sin(x7);
+
+title('Damped oscillation (zoomed, with grid)')
+xlabel('t')
+ylabel('y(t)')
+xlim([0, 3*pi])
+ylim([-0.6, 1.0])
+grid('on')
+plot(x7, y7)
+
+fprintf('\nDone.\n')

@@ -125,7 +125,15 @@ impl Plugin for PlotPlugin {
                         let mut st = f.borrow_mut();
                         st.grid = !st.grid;
                     }),
-                    _ => return Err("grid: expected no arguments".into()),
+                    [Value::Str(s) | Value::StringObj(s)] => {
+                        let enable = match s.as_str() {
+                            "on" => true,
+                            "off" => false,
+                            other => return Err(format!("grid: expected 'on' or 'off', got '{other}'")),
+                        };
+                        FIGURE_STATE.with(|f| f.borrow_mut().grid = enable);
+                    }
+                    _ => return Err("grid: expected no arguments, 'on', or 'off'".into()),
                 }
                 Ok(Value::Void)
             }
@@ -167,8 +175,7 @@ impl Plugin for PlotPlugin {
             "hist" => {
                 let (data_args, path) = extract_file_arg(args);
                 let state = FIGURE_STATE.with(|f| f.take());
-                let (vals, n_bins) = parse_hist_args(&data_args)?;
-                let (counts, edges) = compute_histogram(&vals, n_bins);
+                let (counts, edges) = parse_and_compute_hist(&data_args)?;
                 match path.as_deref() {
                     None | Some("ascii") => {
                         render_hist_ascii(&counts, &edges, &state);
@@ -382,38 +389,47 @@ fn sturges_bins(n: usize) -> usize {
 }
 
 /// Parses `hist` arguments: `(data_vec, n_bins)`.
+/// Parses hist arguments and returns `(counts, edges)` ready for rendering.
 ///
-/// Accepts `[v]` (Sturges default) or `[v, n]` (explicit bin count).
-fn parse_hist_args(args: &[Value]) -> Result<(Vec<f64>, usize), String> {
+/// Accepts `[v]` (Sturges default), `[v, n]` (explicit bin count), or
+/// `[v, edges]` (explicit bin-edge vector).
+fn parse_and_compute_hist(args: &[Value]) -> Result<(Vec<usize>, Vec<f64>), String> {
     match args.len() {
         0 => Err("hist: at least one argument required".into()),
         1 => {
             let vals = extract_vector(&args[0])
                 .map_err(|_| "hist: first argument must be a numeric vector".to_string())?;
             let n = sturges_bins(vals.len()).max(1);
-            Ok((vals, n))
+            Ok(compute_histogram_uniform(&vals, n))
         }
         2 => {
             let vals = extract_vector(&args[0])
                 .map_err(|_| "hist: first argument must be a numeric vector".to_string())?;
-            let n = match &args[1] {
+            match &args[1] {
                 Value::Scalar(v) => {
                     let n = *v as usize;
                     if n == 0 {
                         return Err("hist: bin count must be positive".into());
                     }
-                    n
+                    Ok(compute_histogram_uniform(&vals, n))
                 }
-                _ => return Err("hist: second argument (bin count) must be a positive integer".into()),
-            };
-            Ok((vals, n))
+                Value::Matrix(_) | Value::ComplexMatrix(_) => {
+                    let edges = extract_vector(&args[1])
+                        .map_err(|_| "hist: edge vector must be numeric".to_string())?;
+                    if edges.len() < 2 {
+                        return Err("hist: edge vector must have at least 2 elements".into());
+                    }
+                    Ok(compute_histogram_edges(&vals, &edges))
+                }
+                _ => Err("hist: second argument must be a bin count or an edge vector".into()),
+            }
         }
         _ => Err("hist: too many arguments".into()),
     }
 }
 
-/// Computes histogram counts and bin edges from `vals` with `n_bins` bins.
-fn compute_histogram(vals: &[f64], n_bins: usize) -> (Vec<usize>, Vec<f64>) {
+/// Computes histogram counts with `n_bins` uniform bins spanning the data range.
+fn compute_histogram_uniform(vals: &[f64], n_bins: usize) -> (Vec<usize>, Vec<f64>) {
     if vals.is_empty() {
         return (vec![0; n_bins], (0..=n_bins).map(|i| i as f64).collect());
     }
@@ -429,6 +445,23 @@ fn compute_histogram(vals: &[f64], n_bins: usize) -> (Vec<usize>, Vec<f64>) {
         .map(|i| min_v + range * (i as f64 / n_bins as f64))
         .collect();
     (counts, edges)
+}
+
+/// Computes histogram counts using caller-supplied bin edges.
+///
+/// Values below `edges[0]` or above `edges[last]` are ignored.
+fn compute_histogram_edges(vals: &[f64], edges: &[f64]) -> (Vec<usize>, Vec<f64>) {
+    let n_bins = edges.len() - 1;
+    let mut counts = vec![0usize; n_bins];
+    for &v in vals {
+        // Binary search for the bin: edges[b] <= v < edges[b+1]
+        match edges.binary_search_by(|e| e.partial_cmp(&v).unwrap_or(std::cmp::Ordering::Less)) {
+            Ok(b) => counts[b.min(n_bins - 1)] += 1,
+            Err(b) if b > 0 && b <= n_bins => counts[b - 1] += 1,
+            _ => {}
+        }
+    }
+    (counts, edges.to_vec())
 }
 
 /// Prints a character-art histogram to stdout (no feature flag required).
@@ -1005,11 +1038,18 @@ mod tests {
     }
 
     #[test]
-    fn test_grid_rejects_args() {
+    fn test_grid_on_off_string_args() {
+        FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let result = plugin.call("grid", &[Value::Str("on".into())], &env);
+        plugin.call("grid", &[Value::Str("on".into())], &env).unwrap();
+        assert!(FIGURE_STATE.with(|f| f.borrow().grid));
+        plugin.call("grid", &[Value::Str("off".into())], &env).unwrap();
+        assert!(!FIGURE_STATE.with(|f| f.borrow().grid));
+        // Invalid string arg should still error.
+        let result = plugin.call("grid", &[Value::Str("maybe".into())], &env);
         assert!(result.is_err());
+        FIGURE_STATE.with(|f| f.take());
     }
 
     #[test]
