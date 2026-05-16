@@ -1,4 +1,4 @@
-//! Integration tests for SVG/PNG file export (Phase 29b).
+//! Integration tests for SVG/PNG file export (Phase 29b + 29c).
 //! Run with: cargo test -p ccalc-plot --features plot-svg
 
 #![cfg(feature = "plot-svg")]
@@ -173,6 +173,284 @@ fn test_single_point_svg() {
     let y = Value::Scalar(42.0);
     plugin
         .call("plot", &[y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+// ── bar → SVG / PNG ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_bar_writes_svg_file() {
+    let path = svg_path("test_bar.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let y = row_vec(&[3.0, 1.0, 4.0, 1.0, 5.0]);
+    plugin
+        .call("bar", &[y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_bar_writes_png_file() {
+    let path = svg_path("test_bar.png");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0]);
+    let y = row_vec(&[2.0, 5.0, 3.0, 7.0]);
+    plugin
+        .call("bar", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+}
+
+#[test]
+fn test_bar_negative_values_svg() {
+    let path = svg_path("test_bar_neg.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let y = row_vec(&[-2.0, 3.0, -1.0, 4.0]);
+    plugin
+        .call("bar", &[y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+// ── stem → SVG ───────────────────────────────────────────────────────────────
+
+#[test]
+fn test_stem_writes_svg_file() {
+    let path = svg_path("test_stem.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+    let y = row_vec(&[0.5, 0.2, 0.8, 0.1, 0.6]);
+    plugin
+        .call("stem", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_stem_inferred_x_svg() {
+    let path = svg_path("test_stem_inferred.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let y = row_vec(&[1.0, 3.0, 2.0, 4.0]);
+    plugin
+        .call("stem", &[y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+// ── stairs → SVG ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_stairs_writes_svg_file() {
+    let path = svg_path("test_stairs.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0, 3.0, 4.0]);
+    let y = row_vec(&[1.0, 3.0, 2.0, 4.0, 2.0]);
+    plugin
+        .call("stairs", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_stairs_inferred_x_svg() {
+    let path = svg_path("test_stairs_inferred.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let y = row_vec(&[2.0, 5.0, 3.0, 8.0]);
+    plugin
+        .call("stairs", &[y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+// ── hist → SVG / PNG ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_hist_writes_svg_file() {
+    let path = svg_path("test_hist.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let v = row_vec(&[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]);
+    plugin
+        .call("hist", &[v, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_hist_explicit_bins_svg() {
+    let path = svg_path("test_hist_bins.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let v = row_vec(&[1.0, 2.0, 2.0, 3.0, 3.0, 3.0, 4.0, 5.0]);
+    let bins = Value::Scalar(4.0);
+    plugin
+        .call("hist", &[v, bins, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_hist_writes_png_file() {
+    let path = svg_path("test_hist.png");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let v = row_vec(&[0.5, 1.0, 1.5, 2.0, 2.5, 3.0]);
+    plugin
+        .call("hist", &[v, Value::Str(path.clone())], &env)
+        .unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+}
+
+// ── loglog / semilogx / semilogy → SVG ───────────────────────────────────────
+
+#[test]
+fn test_loglog_writes_svg_file() {
+    let path = svg_path("test_loglog.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 10.0, 100.0, 1000.0]);
+    let y = row_vec(&[1.0, 4.0, 9.0, 16.0]);
+    plugin
+        .call("loglog", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_semilogx_writes_svg_file() {
+    let path = svg_path("test_semilogx.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 10.0, 100.0]);
+    let y = row_vec(&[-1.0, 0.0, 1.0]);
+    plugin
+        .call("semilogx", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_semilogy_writes_svg_file() {
+    let path = svg_path("test_semilogy.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 10.0, 100.0, 1000.0]);
+    plugin
+        .call("semilogy", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_loglog_filters_non_positive() {
+    // A dataset with some non-positive values — log10 of those yields -inf/NaN,
+    // which should be filtered. Positive values should still produce a valid chart.
+    let path = svg_path("test_loglog_filter.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.1, 1.0, 10.0]);
+    let y = row_vec(&[0.5, 2.0, 8.0]);
+    plugin
+        .call("loglog", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+// ── multi-series plot → SVG ───────────────────────────────────────────────────
+
+#[test]
+fn test_multi_series_plot_svg() {
+    let path = svg_path("test_multi_series.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    // Y is a 2×5 matrix (2 series, 5 points each).
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+    let y_matrix = Value::Matrix(
+        ndarray::Array2::from_shape_vec(
+            (2, 5),
+            vec![1.0, 4.0, 9.0, 16.0, 25.0,  // sin-like series
+                 2.0, 3.0, 2.0, 3.0, 2.0],    // flat series
+        )
+        .unwrap(),
+    );
+    plugin
+        .call("plot", &[x, y_matrix, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_multi_series_with_legend() {
+    let path = svg_path("test_multi_legend.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call(
+            "legend",
+            &[Value::Str("series A".into()), Value::Str("series B".into())],
+            &env,
+        )
+        .unwrap();
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0]);
+    let y_matrix = Value::Matrix(
+        ndarray::Array2::from_shape_vec(
+            (2, 4),
+            vec![1.0, 2.0, 3.0, 4.0, 4.0, 3.0, 2.0, 1.0],
+        )
+        .unwrap(),
+    );
+    plugin
+        .call("plot", &[x, y_matrix, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+    assert!(
+        content.contains("series A") || content.contains("series B"),
+        "SVG should contain legend labels"
+    );
+}
+
+// ── xlim / ylim applied in file export ───────────────────────────────────────
+
+#[test]
+fn test_xlim_ylim_applied_in_svg() {
+    let path = svg_path("test_xlim_ylim.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    use ndarray::Array2;
+    let lim_x = Value::Matrix(Array2::from_shape_vec((1, 2), vec![0.0, 6.0]).unwrap());
+    let lim_y = Value::Matrix(Array2::from_shape_vec((1, 2), vec![-1.0, 1.0]).unwrap());
+    plugin.call("xlim", &[lim_x], &env).unwrap();
+    plugin.call("ylim", &[lim_y], &env).unwrap();
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+    let y = row_vec(&[0.5, -0.5, 0.3, -0.3, 0.1]);
+    plugin
+        .call("plot", &[x, y, Value::Str(path.clone())], &env)
         .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("<svg"));

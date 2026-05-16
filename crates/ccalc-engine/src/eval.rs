@@ -1,6 +1,5 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 
 use indexmap::IndexMap;
 use ndarray::Array2;
@@ -4070,55 +4069,6 @@ fn call_builtin(
             },
             "kurtosis",
         ),
-        ("hist", n) if n == 1 || n == 2 => {
-            let n_bins = if args.len() == 2 {
-                scalar_arg(&args[1], name, 2)? as usize
-            } else {
-                10
-            };
-            if n_bins == 0 {
-                return Err("hist: number of bins must be positive".to_string());
-            }
-            let vals = numeric_vec(&args[0], name)?;
-            if vals.is_empty() {
-                return Ok(Value::Void);
-            }
-            let min_v = vals.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max_v = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let range = if max_v > min_v { max_v - min_v } else { 1.0 };
-            let mut counts = vec![0usize; n_bins];
-            for &v in &vals {
-                let b = ((v - min_v) / range * n_bins as f64) as usize;
-                counts[b.min(n_bins - 1)] += 1;
-            }
-            let bar_cols: usize = std::env::var("COLUMNS")
-                .ok()
-                .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(80)
-                .saturating_sub(26)
-                .max(10);
-            let max_count = *counts.iter().max().unwrap_or(&1).max(&1);
-            let mut output = String::new();
-            for (i, &c) in counts.iter().enumerate() {
-                let lo = min_v + range * (i as f64 / n_bins as f64);
-                let hi = min_v + range * ((i + 1) as f64 / n_bins as f64);
-                let bar_len = c * bar_cols / max_count;
-                output.push_str(&format!(
-                    "{lo:8.4} {hi:8.4} |{bar:<bar_cols$}| {c}\n",
-                    bar = "#".repeat(bar_len),
-                ));
-            }
-            match io.as_deref_mut() {
-                Some(ctx) => ctx.write_to_fd(1, &output)?,
-                None => {
-                    print!("{output}");
-                    if output.contains('\n') {
-                        std::io::stdout().flush().ok();
-                    }
-                }
-            }
-            Ok(Value::Void)
-        }
         ("histc", 2) => {
             let vals = numeric_vec(&args[0], name)?;
             let edges = numeric_vec(&args[1], name)?;

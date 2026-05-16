@@ -2878,22 +2878,6 @@ fn test_histc_out_of_range_not_counted() {
     assert_eq!(m[[0, 2]], 1.0);
 }
 
-// --- hist (returns Void) ---
-
-#[test]
-fn test_hist_returns_void() {
-    let env = empty_env();
-    let v = eval_parse("hist([1 2 3 4 5])", &env).unwrap();
-    assert_eq!(v, Value::Void);
-}
-
-#[test]
-fn test_hist_custom_bins_returns_void() {
-    let env = empty_env();
-    let v = eval_parse("hist([1 2 3 4 5], 5)", &env).unwrap();
-    assert_eq!(v, Value::Void);
-}
-
 // ── Phase 17c — Percentiles and distributions ─────────────────────────────────
 
 // --- prctile ---

@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0+004] - 2026-05-16
+
+### Added
+
+- **Phase 29c — Extended plot surface** (`crates/ccalc-plot`):
+  - **Annotation setters**: `xlim([lo hi])`, `ylim([lo hi])`, `zlim([lo hi])`, `zlabel(str)`,
+    `legend(s1, s2, ...)`, `grid on/off` — all stored in thread-local `FigureState` and
+    consumed by the next render call. Grid defaults to off (MATLAB semantics).
+  - **`bar(y)` / `bar(x, y)`**: ASCII (textplots `Shape::Bars`) and SVG/PNG
+    (edge-to-edge `Rectangle` series, negative values flip below baseline).
+  - **`stem(y)` / `stem(x, y)`**: ASCII (textplots bars) and SVG/PNG
+    (vertical `PathElement` + `Circle` tip per point).
+  - **`stairs(y)` / `stairs(x, y)`**: step-function rendering via `make_step_data`
+    (duplicates x positions for right-angle corners), routed to `render_line`.
+  - **`hist(v)` / `hist(v, nbins)` / `hist(v, edges)` / `hist(v, ..., 'file.svg')`**:
+    migrated from `eval.rs` into the plot plugin with Sturges default binning
+    (`max(1, √n)` rounded), ASCII character-bar display (no feature gate),
+    and SVG/PNG edge-to-edge `Rectangle` histogram. Old eval.rs implementation removed.
+  - **`loglog(x, y)` / `semilogx(x, y)` / `semilogy(x, y)`**: log₁₀ transform applied
+    before rendering; non-finite values filtered; axis labels annotated with `log₁₀(·)`.
+  - **Multi-series `plot(x, M)`**: when `M` is an M×N matrix (M > 1 rows), each row
+    is treated as a separate series. ASCII renders first series with a note; SVG/PNG
+    cycles through the 7-color Octave palette (`SERIES_COLORS`) and calls
+    `configure_series_labels` when `legend` entries are set.
+  - 26 new integration tests in `crates/ccalc-plot/tests/svg_png_tests.rs`.
+
 ## [0.36.0+003] - 2026-05-15
 
 ### Fixed

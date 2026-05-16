@@ -12,13 +12,26 @@ use textplots::{Chart, Plot, Shape};
 
 use crate::FigureState;
 
-/// Renders a connected line plot to stdout.
-pub fn render_line(x: &[f64], y: &[f64], state: FigureState) {
-    let data = to_f32_pairs(x, y);
-    let (x_min, x_max) = x_bounds(x);
+// ── Shared helpers ─────────────────────────────────────────────────────────
+
+fn chart_x_bounds(x: &[f64], state: &FigureState) -> (f32, f32) {
+    state
+        .xlim
+        .map(|(lo, hi)| (lo as f32, hi as f32))
+        .unwrap_or_else(|| x_bounds(x))
+}
+
+fn print_header(state: &FigureState) {
     if let Some(t) = &state.title {
         println!("{t}");
     }
+}
+
+/// Renders a connected line plot to stdout.
+pub fn render_line(x: &[f64], y: &[f64], state: FigureState) {
+    let data = to_f32_pairs(x, y);
+    let (x_min, x_max) = chart_x_bounds(x, &state);
+    print_header(&state);
     Chart::new(100, 30, x_min, x_max)
         .lineplot(&Shape::Lines(&data))
         .display();
@@ -28,12 +41,34 @@ pub fn render_line(x: &[f64], y: &[f64], state: FigureState) {
 /// Renders a scatter (point cloud) plot to stdout.
 pub fn render_scatter(x: &[f64], y: &[f64], state: FigureState) {
     let data = to_f32_pairs(x, y);
-    let (x_min, x_max) = x_bounds(x);
-    if let Some(t) = &state.title {
-        println!("{t}");
-    }
+    let (x_min, x_max) = chart_x_bounds(x, &state);
+    print_header(&state);
     Chart::new(100, 30, x_min, x_max)
         .lineplot(&Shape::Points(&data))
+        .display();
+    print_labels(&state);
+}
+
+/// Renders a bar chart to stdout (vertical bars from baseline).
+pub fn render_bar(x: &[f64], y: &[f64], state: FigureState) {
+    let data = to_f32_pairs(x, y);
+    let (x_min, x_max) = chart_x_bounds(x, &state);
+    print_header(&state);
+    Chart::new(100, 30, x_min, x_max)
+        .lineplot(&Shape::Bars(&data))
+        .display();
+    print_labels(&state);
+}
+
+/// Renders a stem plot to stdout (vertical markers at each data point).
+pub fn render_stem(x: &[f64], y: &[f64], state: FigureState) {
+    let data = to_f32_pairs(x, y);
+    let (x_min, x_max) = chart_x_bounds(x, &state);
+    print_header(&state);
+    // textplots has no native stem shape — use Bars (filled from baseline) as
+    // the closest ASCII approximation; file export produces proper thin stems.
+    Chart::new(100, 30, x_min, x_max)
+        .lineplot(&Shape::Bars(&data))
         .display();
     print_labels(&state);
 }
@@ -46,6 +81,7 @@ fn print_labels(state: &FigureState) {
         println!("y: {yl}");
     }
 }
+
 
 fn to_f32_pairs(x: &[f64], y: &[f64]) -> Vec<(f32, f32)> {
     x.iter()

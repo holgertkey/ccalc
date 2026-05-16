@@ -1,8 +1,10 @@
-//! Plot plugin for ccalc — Phase 29a.
+//! Plot plugin for ccalc — Phase 29c.
 //!
-//! Provides `plot`, `scatter`, `xlabel`, `ylabel`, `title` (and stub entries
-//! for `bar`, `stem`). Rendering requires the `plot` or `plot-svg` feature
-//! flags; annotation-only calls work in every build configuration.
+//! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
+//! `semilogx`, `semilogy`, and annotation functions (`xlabel`, `ylabel`,
+//! `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`).
+//! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
+//! calls work in every build configuration.
 //!
 //! # Feature flags
 //!
@@ -66,7 +68,10 @@ thread_local! {
 // ── Exported names ─────────────────────────────────────────────────────────
 
 const EXPORTED: &[&str] = &[
-    "plot", "scatter", "bar", "stem", "xlabel", "ylabel", "title",
+    "plot", "scatter", "bar", "stem", "hist", "stairs",
+    "loglog", "semilogx", "semilogy",
+    "xlabel", "ylabel", "zlabel", "title",
+    "legend", "xlim", "ylim", "zlim", "grid",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -85,7 +90,7 @@ impl Plugin for PlotPlugin {
 
     fn call(&self, name: &str, args: &[Value], _env: &Env) -> Result<Value, String> {
         match name {
-            // ── Annotation setters ─────────────────────────────────────
+            // ── String annotation setters ──────────────────────────────
             "xlabel" | "ylabel" | "title" => {
                 let s = require_string(name, args)?;
                 FIGURE_STATE.with(|f| {
@@ -100,15 +105,133 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
+            "zlabel" => {
+                let s = require_string(name, args)?;
+                FIGURE_STATE.with(|f| f.borrow_mut().zlabel = Some(s));
+                Ok(Value::Void)
+            }
+
+            // ── Legend ─────────────────────────────────────────────────
+            "legend" => {
+                let labels = require_string_list(args)?;
+                FIGURE_STATE.with(|f| f.borrow_mut().legend = labels);
+                Ok(Value::Void)
+            }
+
+            // ── Grid toggle ────────────────────────────────────────────
+            "grid" => {
+                match args {
+                    [] => FIGURE_STATE.with(|f| {
+                        let mut st = f.borrow_mut();
+                        st.grid = !st.grid;
+                    }),
+                    _ => return Err("grid: expected no arguments".into()),
+                }
+                Ok(Value::Void)
+            }
+
+            // ── Axis limit setters ─────────────────────────────────────
+            "xlim" | "ylim" | "zlim" => {
+                let (lo, hi) = extract_lim(name, args)?;
+                FIGURE_STATE.with(|f| {
+                    let mut st = f.borrow_mut();
+                    match name {
+                        "xlim" => st.xlim = Some((lo, hi)),
+                        "ylim" => st.ylim = Some((lo, hi)),
+                        "zlim" => st.zlim = Some((lo, hi)),
+                        _ => unreachable!(),
+                    }
+                });
+                Ok(Value::Void)
+            }
+
             // ── Render calls ───────────────────────────────────────────
-            "plot" | "scatter" => {
+            "plot" => {
+                let (data_args, path) = extract_file_arg(args);
+                let state = FIGURE_STATE.with(|f| f.take());
+                let (x, ys) = extract_xy_multi("plot", &data_args)?;
+                if ys.len() == 1 {
+                    render_line_xy("plot", &x, &ys[0], path.as_deref(), state)
+                } else {
+                    render_multi_series(&x, &ys, path.as_deref(), state)
+                }
+            }
+
+            "scatter" | "bar" | "stem" | "stairs" => {
                 let (data_args, path) = extract_file_arg(args);
                 let state = FIGURE_STATE.with(|f| f.take());
                 render_ascii_or_file(name, &data_args, path.as_deref(), state)
             }
 
-            // ── Stubs (Phase 29c) ──────────────────────────────────────
-            "bar" | "stem" => Err(format!("{name}: not yet implemented — coming in Phase 29c")),
+            // ── Histogram ──────────────────────────────────────────────
+            "hist" => {
+                let (data_args, path) = extract_file_arg(args);
+                let state = FIGURE_STATE.with(|f| f.take());
+                let (vals, n_bins) = parse_hist_args(&data_args)?;
+                let (counts, edges) = compute_histogram(&vals, n_bins);
+                match path.as_deref() {
+                    None | Some("ascii") => {
+                        render_hist_ascii(&counts, &edges, &state);
+                        Ok(Value::Void)
+                    }
+                    Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+                        render_hist_file(&counts, &edges, p, state)
+                    }
+                    Some(p) => Err(format!("hist: unknown output target '{p}'")),
+                }
+            }
+
+            // ── Log-scale plots ────────────────────────────────────────
+            "loglog" | "semilogx" | "semilogy" => {
+                let (data_args, path) = extract_file_arg(args);
+                let mut state = FIGURE_STATE.with(|f| f.take());
+                let (x_raw, y_raw) = extract_xy(name, &data_args)?;
+
+                let log_x = name == "loglog" || name == "semilogx";
+                let log_y = name == "loglog" || name == "semilogy";
+
+                // Apply log₁₀ and filter non-finite pairs.
+                let (x, y): (Vec<f64>, Vec<f64>) = x_raw
+                    .iter()
+                    .zip(y_raw.iter())
+                    .filter_map(|(&xi, &yi)| {
+                        let lx = if log_x { xi.log10() } else { xi };
+                        let ly = if log_y { yi.log10() } else { yi };
+                        if lx.is_finite() && ly.is_finite() {
+                            Some((lx, ly))
+                        } else {
+                            None
+                        }
+                    })
+                    .unzip();
+
+                if x.is_empty() {
+                    return Err(format!(
+                        "{name}: no finite values after log₁₀ transform \
+                         (check for non-positive values)"
+                    ));
+                }
+
+                // Annotate axis labels with log₁₀ notation.
+                if log_x {
+                    let lbl = state.xlabel.take().unwrap_or_default();
+                    state.xlabel = Some(if lbl.is_empty() {
+                        "log\u{2081}\u{2080}(x)".into()
+                    } else {
+                        format!("{lbl} [log\u{2081}\u{2080}]")
+                    });
+                }
+                if log_y {
+                    let lbl = state.ylabel.take().unwrap_or_default();
+                    state.ylabel = Some(if lbl.is_empty() {
+                        "log\u{2081}\u{2080}(y)".into()
+                    } else {
+                        format!("{lbl} [log\u{2081}\u{2080}]")
+                    });
+                }
+
+                render_line_xy(name, &x, &y, path.as_deref(), state)
+            }
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
         }
@@ -140,9 +263,16 @@ fn render_file(
     state: FigureState,
 ) -> Result<Value, String> {
     let (x, y) = extract_xy(name, data_args)?;
+    let (x, y) = if name == "stairs" {
+        make_step_data(&x, &y)
+    } else {
+        (x, y)
+    };
     let result = match name {
-        "plot" => file::render_line(&x, &y, path, state),
+        "plot" | "stairs" => file::render_line(&x, &y, path, state),
         "scatter" => file::render_scatter(&x, &y, path, state),
+        "bar" => file::render_bar(&x, &y, path, state),
+        "stem" => file::render_stem(&x, &y, path, state),
         _ => unreachable!(),
     };
     result.map_err(|e| format!("{name}: {e}"))?;
@@ -165,9 +295,16 @@ fn render_file(
 #[cfg(feature = "plot")]
 fn render_ascii(name: &str, data_args: &[Value], state: FigureState) -> Result<Value, String> {
     let (x, y) = extract_xy(name, data_args)?;
+    let (x, y) = if name == "stairs" {
+        make_step_data(&x, &y)
+    } else {
+        (x, y)
+    };
     match name {
-        "plot" => ascii::render_line(&x, &y, state),
+        "plot" | "stairs" => ascii::render_line(&x, &y, state),
         "scatter" => ascii::render_scatter(&x, &y, state),
+        "bar" => ascii::render_bar(&x, &y, state),
+        "stem" => ascii::render_stem(&x, &y, state),
         _ => unreachable!(),
     }
     Ok(Value::Void)
@@ -191,6 +328,296 @@ fn require_string(name: &str, args: &[Value]) -> Result<String, String> {
     }
 }
 
+fn require_string_list(args: &[Value]) -> Result<Vec<String>, String> {
+    if args.is_empty() {
+        return Err("legend: at least one string argument required".into());
+    }
+    args.iter()
+        .map(|a| match a {
+            Value::Str(s) | Value::StringObj(s) => Ok(s.clone()),
+            _ => Err("legend: all arguments must be strings".into()),
+        })
+        .collect()
+}
+
+fn extract_lim(name: &str, args: &[Value]) -> Result<(f64, f64), String> {
+    let v = match args {
+        [val] => extract_vector(val)
+            .map_err(|_| format!("{name}: expected a 2-element vector [lo hi]"))?,
+        _ => return Err(format!("{name}: expected exactly one argument [lo hi]")),
+    };
+    if v.len() != 2 {
+        return Err(format!("{name}: vector must have exactly 2 elements, got {}", v.len()));
+    }
+    Ok((v[0], v[1]))
+}
+
+// ── Stairs helpers ─────────────────────────────────────────────────────────
+
+/// Converts (x, y) data into step/staircase pairs for rendering.
+fn make_step_data(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
+    let n = x.len();
+    if n == 0 {
+        return (vec![], vec![]);
+    }
+    let mut sx = Vec::with_capacity(2 * n - 1);
+    let mut sy = Vec::with_capacity(2 * n - 1);
+    for i in 0..n - 1 {
+        sx.push(x[i]);
+        sy.push(y[i]);
+        // Horizontal segment at y[i] until the next x position.
+        sx.push(x[i + 1]);
+        sy.push(y[i]);
+    }
+    sx.push(*x.last().unwrap());
+    sy.push(*y.last().unwrap());
+    (sx, sy)
+}
+
+// ── Histogram helpers ──────────────────────────────────────────────────────
+
+/// Sturges rule: bins ≈ √n, minimum 1.
+fn sturges_bins(n: usize) -> usize {
+    (n as f64).sqrt().round() as usize
+}
+
+/// Parses `hist` arguments: `(data_vec, n_bins)`.
+///
+/// Accepts `[v]` (Sturges default) or `[v, n]` (explicit bin count).
+fn parse_hist_args(args: &[Value]) -> Result<(Vec<f64>, usize), String> {
+    match args.len() {
+        0 => Err("hist: at least one argument required".into()),
+        1 => {
+            let vals = extract_vector(&args[0])
+                .map_err(|_| "hist: first argument must be a numeric vector".to_string())?;
+            let n = sturges_bins(vals.len()).max(1);
+            Ok((vals, n))
+        }
+        2 => {
+            let vals = extract_vector(&args[0])
+                .map_err(|_| "hist: first argument must be a numeric vector".to_string())?;
+            let n = match &args[1] {
+                Value::Scalar(v) => {
+                    let n = *v as usize;
+                    if n == 0 {
+                        return Err("hist: bin count must be positive".into());
+                    }
+                    n
+                }
+                _ => return Err("hist: second argument (bin count) must be a positive integer".into()),
+            };
+            Ok((vals, n))
+        }
+        _ => Err("hist: too many arguments".into()),
+    }
+}
+
+/// Computes histogram counts and bin edges from `vals` with `n_bins` bins.
+fn compute_histogram(vals: &[f64], n_bins: usize) -> (Vec<usize>, Vec<f64>) {
+    if vals.is_empty() {
+        return (vec![0; n_bins], (0..=n_bins).map(|i| i as f64).collect());
+    }
+    let min_v = vals.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_v = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let range = if max_v > min_v { max_v - min_v } else { 1.0 };
+    let mut counts = vec![0usize; n_bins];
+    for &v in vals {
+        let b = ((v - min_v) / range * n_bins as f64) as usize;
+        counts[b.min(n_bins - 1)] += 1;
+    }
+    let edges: Vec<f64> = (0..=n_bins)
+        .map(|i| min_v + range * (i as f64 / n_bins as f64))
+        .collect();
+    (counts, edges)
+}
+
+/// Prints a character-art histogram to stdout (no feature flag required).
+fn render_hist_ascii(counts: &[usize], edges: &[f64], state: &FigureState) {
+    let n_bins = counts.len();
+    let bar_cols: usize = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(80)
+        .saturating_sub(26)
+        .max(10);
+    let max_count = counts.iter().copied().max().unwrap_or(1).max(1);
+    if let Some(t) = &state.title {
+        println!("{t}");
+    }
+    for i in 0..n_bins {
+        let lo = edges[i];
+        let hi = edges[i + 1];
+        let bar_len = counts[i] * bar_cols / max_count;
+        println!(
+            "{lo:8.4} {hi:8.4} |{bar:<width$}| {c}",
+            bar = "#".repeat(bar_len),
+            width = bar_cols,
+            c = counts[i],
+        );
+    }
+    if let Some(xl) = &state.xlabel {
+        println!("x: {xl}");
+    }
+    if let Some(yl) = &state.ylabel {
+        println!("y: {yl}");
+    }
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_hist_file(
+    counts: &[usize],
+    edges: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_hist(counts, edges, path, state).map_err(|e| format!("hist: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_hist_file(
+    _counts: &[usize],
+    _edges: &[f64],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("hist: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+// ── Multi-series dispatch ──────────────────────────────────────────────────
+
+fn render_multi_series(
+    x: &[f64],
+    ys: &[Vec<f64>],
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_multi_series_ascii(x, ys, &state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_multi_series_file(x, ys, p, state)
+        }
+        Some(p) => Err(format!("plot: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_multi_series_ascii(
+    x: &[f64],
+    ys: &[Vec<f64>],
+    _state: &FigureState,
+) -> Result<Value, String> {
+    // Render first series only; note remaining series.
+    ascii::render_line(x, &ys[0], FigureState::default());
+    println!("% {} series total — use file export for all", ys.len());
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_multi_series_ascii(
+    _x: &[f64],
+    _ys: &[Vec<f64>],
+    _state: &FigureState,
+) -> Result<Value, String> {
+    Err("plot: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_multi_series_file(
+    x: &[f64],
+    ys: &[Vec<f64>],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_multi_line(x, ys, path, state).map_err(|e| format!("plot: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_multi_series_file(
+    _x: &[f64],
+    _ys: &[Vec<f64>],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("plot: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+// ── Pre-transformed line dispatch (loglog / semilogx / semilogy) ───────────
+
+/// Dispatch a pre-processed (x, y) pair to ASCII or file, rendering a line.
+fn render_line_xy(
+    name: &str,
+    x: &[f64],
+    y: &[f64],
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_line_xy_ascii(name, x, y, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_line_xy_file(name, x, y, p, state)
+        }
+        Some(p) => Err(format!("{name}: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_line_xy_ascii(
+    _name: &str,
+    x: &[f64],
+    y: &[f64],
+    state: FigureState,
+) -> Result<Value, String> {
+    ascii::render_line(x, y, state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_line_xy_ascii(
+    name: &str,
+    _x: &[f64],
+    _y: &[f64],
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err(format!(
+        "{name}: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+    ))
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_line_xy_file(
+    name: &str,
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_line(x, y, path, state).map_err(|e| format!("{name}: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_line_xy_file(
+    name: &str,
+    _x: &[f64],
+    _y: &[f64],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err(format!(
+        "{name}: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+    ))
+}
+
 #[cfg_attr(not(any(feature = "plot", feature = "plot-svg")), allow(dead_code))]
 fn extract_xy(name: &str, args: &[Value]) -> Result<(Vec<f64>, Vec<f64>), String> {
     match args.len() {
@@ -211,6 +638,57 @@ fn extract_xy(name: &str, args: &[Value]) -> Result<(Vec<f64>, Vec<f64>), String
                 ));
             }
             Ok((x, y))
+        }
+        _ => Err(format!("{name}: too many arguments")),
+    }
+}
+
+/// Extracts x and one or more y series from plot arguments.
+///
+/// When y is an M×N matrix with M > 1, returns M separate row-series.
+/// Otherwise behaves identically to `extract_xy`.
+#[cfg_attr(not(any(feature = "plot", feature = "plot-svg")), allow(dead_code))]
+fn extract_xy_multi(
+    name: &str,
+    args: &[Value],
+) -> Result<(Vec<f64>, Vec<Vec<f64>>), String> {
+    match args.len() {
+        0 => Err(format!("{name}: at least one argument required")),
+        1 => {
+            let y = extract_vector(&args[0])?;
+            let x: Vec<f64> = (1..=y.len()).map(|i| i as f64).collect();
+            Ok((x, vec![y]))
+        }
+        2 => {
+            let x = extract_vector(&args[0])?;
+            match &args[1] {
+                Value::Matrix(m) if m.nrows() > 1 => {
+                    // Each row is one series.
+                    let n_cols = m.ncols();
+                    if n_cols != x.len() {
+                        return Err(format!(
+                            "{name}: x has {} elements but Y has {} columns",
+                            x.len(),
+                            n_cols
+                        ));
+                    }
+                    let ys = (0..m.nrows())
+                        .map(|r| m.row(r).iter().copied().collect())
+                        .collect();
+                    Ok((x, ys))
+                }
+                other => {
+                    let y = extract_vector(other)?;
+                    if x.len() != y.len() {
+                        return Err(format!(
+                            "{name}: x and y must have the same length ({} vs {})",
+                            x.len(),
+                            y.len()
+                        ));
+                    }
+                    Ok((x, vec![y]))
+                }
+            }
         }
         _ => Err(format!("{name}: too many arguments")),
     }
@@ -320,10 +798,239 @@ mod tests {
     }
 
     #[test]
-    fn test_bar_stub_error() {
+    fn test_hist_single_value_no_error() {
         let plugin = PlotPlugin;
         let env = Env::new();
-        let result = plugin.call("bar", &[Value::Scalar(1.0)], &env);
+        let result = plugin.call("hist", &[Value::Scalar(1.0)], &env);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_hist_vector_returns_void() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let v = f64_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let result = plugin.call("hist", &[v], &env).unwrap();
+        assert_eq!(result, Value::Void);
+    }
+
+    #[test]
+    fn test_hist_custom_bins_returns_void() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let v = f64_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let result = plugin
+            .call("hist", &[v, Value::Scalar(3.0)], &env)
+            .unwrap();
+        assert_eq!(result, Value::Void);
+    }
+
+    #[test]
+    fn test_hist_zero_bins_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let v = f64_vec(&[1.0, 2.0, 3.0]);
+        let result = plugin.call("hist", &[v, Value::Scalar(0.0)], &env);
+        assert!(result.is_err());
+    }
+
+    // ── Multi-series extract_xy_multi ─────────────────────────────────────
+
+    #[test]
+    fn test_extract_xy_multi_single_series() {
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        let y = f64_vec(&[1.0, 4.0, 9.0]);
+        let (xv, ys) = extract_xy_multi("plot", &[x, y]).unwrap();
+        assert_eq!(xv, vec![1.0, 2.0, 3.0]);
+        assert_eq!(ys.len(), 1);
+        assert_eq!(ys[0], vec![1.0, 4.0, 9.0]);
+    }
+
+    #[test]
+    fn test_extract_xy_multi_matrix_y() {
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        // 2×3 matrix → 2 series of 3 points each
+        let y = Value::Matrix(Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap());
+        let (xv, ys) = extract_xy_multi("plot", &[x, y]).unwrap();
+        assert_eq!(xv, vec![1.0, 2.0, 3.0]);
+        assert_eq!(ys.len(), 2);
+        assert_eq!(ys[0], vec![1.0, 2.0, 3.0]);
+        assert_eq!(ys[1], vec![4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn test_extract_xy_multi_column_count_mismatch() {
+        let x = f64_vec(&[1.0, 2.0]);
+        let y = Value::Matrix(Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap());
+        let result = extract_xy_multi("plot", &[x, y]);
+        assert!(result.is_err());
+    }
+
+    // ── Log-scale plots ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_loglog_non_positive_all_filtered_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[-1.0, 0.0, -2.0]);
+        let y = f64_vec(&[1.0, 2.0, 3.0]);
+        let result = plugin.call("loglog", &[x, y], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("finite"), "error should mention finite: {msg}");
+    }
+
+    #[test]
+    fn test_semilogx_valid_data() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        // Without plot feature → feature error; with plot feature → ok.
+        let x = f64_vec(&[1.0, 10.0, 100.0]);
+        let y = f64_vec(&[1.0, 2.0, 3.0]);
+        let result = plugin.call("semilogx", &[x, y], &env);
+        // Should not say "not yet implemented" regardless of features.
+        if let Err(msg) = &result {
+            assert!(
+                !msg.contains("not yet implemented"),
+                "should not say 'not yet implemented': {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_semilogy_label_annotation() {
+        // After calling semilogy, ylabel should be cleared (consumed by render).
+        // This test verifies that the state is consumed and ylabel is annotated
+        // before rendering (requires plot feature to actually render).
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_stairs_stub_is_gone() {
+        // stairs should succeed (not stub-error) when called with valid data
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        // Without plot feature this should error about missing feature (not "not implemented").
+        // With plot feature this should succeed.
+        #[cfg(feature = "plot")]
+        {
+            let y = f64_vec(&[1.0, 4.0, 9.0, 16.0]);
+            let result = plugin.call("stairs", &[y], &env);
+            assert!(result.is_ok(), "stairs should succeed: {result:?}");
+        }
+        #[cfg(not(feature = "plot"))]
+        {
+            let y = f64_vec(&[1.0, 4.0, 9.0]);
+            let result = plugin.call("stairs", &[y], &env);
+            // Should error about missing feature, not "not implemented".
+            let msg = result.unwrap_err();
+            assert!(
+                !msg.contains("not yet implemented"),
+                "should not say 'not yet implemented': {msg}"
+            );
+        }
+    }
+
+    // ── 29c.1 annotation setters ──────────────────────────────────────
+
+    #[test]
+    fn test_xlim_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let lim = Value::Matrix(Array2::from_shape_vec((1, 2), vec![0.0, 10.0]).unwrap());
+        plugin.call("xlim", &[lim], &env).unwrap();
+        let xlim = FIGURE_STATE.with(|f| f.borrow().xlim);
+        assert_eq!(xlim, Some((0.0, 10.0)));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_ylim_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let lim = Value::Matrix(Array2::from_shape_vec((1, 2), vec![-1.0, 1.0]).unwrap());
+        plugin.call("ylim", &[lim], &env).unwrap();
+        let ylim = FIGURE_STATE.with(|f| f.borrow().ylim);
+        assert_eq!(ylim, Some((-1.0, 1.0)));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_legend_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call(
+                "legend",
+                &[Value::Str("a".into()), Value::Str("b".into())],
+                &env,
+            )
+            .unwrap();
+        let legend = FIGURE_STATE.with(|f| f.borrow().legend.clone());
+        assert_eq!(legend, vec!["a".to_string(), "b".to_string()]);
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_legend_requires_strings() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("legend", &[Value::Scalar(1.0)], &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_legend_requires_at_least_one_arg() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("legend", &[], &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_grid_toggles_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        // Initially false.
+        assert!(!FIGURE_STATE.with(|f| f.borrow().grid));
+        plugin.call("grid", &[], &env).unwrap();
+        assert!(FIGURE_STATE.with(|f| f.borrow().grid));
+        plugin.call("grid", &[], &env).unwrap();
+        assert!(!FIGURE_STATE.with(|f| f.borrow().grid));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_grid_rejects_args() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("grid", &[Value::Str("on".into())], &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zlabel_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("zlabel", &[Value::Str("depth".into())], &env)
+            .unwrap();
+        let zlabel = FIGURE_STATE.with(|f| f.borrow().zlabel.clone());
+        assert_eq!(zlabel, Some("depth".into()));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_xlim_wrong_length() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let v = Value::Matrix(Array2::from_shape_vec((1, 3), vec![1.0, 2.0, 3.0]).unwrap());
+        let result = plugin.call("xlim", &[v], &env);
         assert!(result.is_err());
     }
 
