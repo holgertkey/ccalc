@@ -12,13 +12,13 @@ const HEIGHT: u32 = 600;
 
 /// Octave-style colour cycle for multi-series plots.
 const SERIES_COLORS: [RGBColor; 7] = [
-    RGBColor(0, 114, 189),   // blue
-    RGBColor(217, 83, 25),   // orange
-    RGBColor(237, 177, 32),  // yellow
-    RGBColor(126, 47, 142),  // purple
-    RGBColor(119, 172, 48),  // green
-    RGBColor(77, 190, 238),  // cyan
-    RGBColor(162, 20, 47),   // dark red
+    RGBColor(0, 114, 189),  // blue
+    RGBColor(217, 83, 25),  // orange
+    RGBColor(237, 177, 32), // yellow
+    RGBColor(126, 47, 142), // purple
+    RGBColor(119, 172, 48), // green
+    RGBColor(77, 190, 238), // cyan
+    RGBColor(162, 20, 47),  // dark red
 ];
 
 enum ChartKind {
@@ -142,9 +142,7 @@ where
             if !label.is_empty() {
                 series_ref
                     .label(label)
-                    .legend(move |(lx, ly)| {
-                        PathElement::new(vec![(lx, ly), (lx + 20, ly)], color)
-                    });
+                    .legend(move |(lx, ly)| PathElement::new(vec![(lx, ly), (lx + 20, ly)], color));
             }
         }
     }
@@ -419,7 +417,11 @@ fn range_with_margin(vals: &[f64]) -> (f64, f64) {
 /// Y range for bar/stem: always includes y = 0 as the baseline.
 fn range_with_zero_baseline(vals: &[f64]) -> (f64, f64) {
     let lo = vals.iter().copied().fold(f64::INFINITY, f64::min).min(0.0);
-    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max).max(0.0);
+    let hi = vals
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max)
+        .max(0.0);
     let span = hi - lo;
     if span.abs() < f64::EPSILON {
         (lo - 1.0, lo + 1.0)

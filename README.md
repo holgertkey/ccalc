@@ -873,7 +873,7 @@ Comparison operators return `1` (true) or `0` (false):
 | Operator      | Meaning           |
 |---------------|-------------------|
 | `==`          | Equal             |
-| `~=` or `!=` | Not equal         |
+| `~=` or `!=`  | Not equal         |
 | `<`           | Less than         |
 | `>`           | Greater than      |
 | `<=`          | Less or equal     |
@@ -881,11 +881,11 @@ Comparison operators return `1` (true) or `0` (false):
 
 Logical operators:
 
-| Operator        | Meaning              |
-|-----------------|----------------------|
+| Operator           | Meaning             |
+|--------------------|---------------------|
 | `~expr` or `!expr` | Logical NOT (unary) |
-| `&&`            | Logical AND          |
-| `\|\|`          | Logical OR           |
+| `&&`               | Logical AND         |
+| `\|\|`             | Logical OR          |
 
 `!` and `!=` are C/shell-style aliases for `~` and `~=`.
 
@@ -1004,13 +1004,13 @@ years(1)              % 365.2425 days
 
 ### Arithmetic
 
-| Expression | Result |
-|---|---|
+| Expression            | Result     |
+|-----------------------|------------|
 | `datetime + duration` | `DateTime` |
 | `datetime - duration` | `DateTime` |
 | `datetime - datetime` | `Duration` |
 | `duration + duration` | `Duration` |
-| `duration * scalar` | `Duration` |
+| `duration * scalar`   | `Duration` |
 
 ```matlab
 t  = datetime(2024, 1, 1);
@@ -1095,15 +1095,15 @@ i^4                       %  1
 
 ### Complex built-ins
 
-| Function | Description |
-|----------|-------------|
-| `real(z)` | Real part (`real(5)` → 5) |
-| `imag(z)` | Imaginary part (`imag(5)` → 0) |
-| `abs(z)` | Modulus `sqrt(re²+im²)` |
-| `angle(z)` | Argument `atan2(im, re)`, radians |
-| `conj(z)` | Complex conjugate `re - im*i` |
-| `complex(re, im)` | Construct from two real scalars |
-| `isreal(z)` | `1` if `im == 0`, else `0` |
+| Function          | Description                       |
+|-------------------|-----------------------------------|
+| `real(z)`         | Real part (`real(5)` → 5)         |
+| `imag(z)`         | Imaginary part (`imag(5)` → 0)    |
+| `abs(z)`          | Modulus `sqrt(re²+im²)`           |
+| `angle(z)`        | Argument `atan2(im, re)`, radians |
+| `conj(z)`         | Complex conjugate `re - im*i`     |
+| `complex(re, im)` | Construct from two real scalars   |
+| `isreal(z)`       | `1` if `im == 0`, else `0`        |
 
 ### Complex matrices
 
@@ -1145,14 +1145,14 @@ See `examples/complex_matrix.m`, `examples/complex_matrix_ext.m`, and `help comp
 
 `fprintf(fmt, v1, v2, ...)` prints formatted output using C-style conversion specifiers:
 
-| Specifier | Meaning                                         |
-|-----------|-------------------------------------------------|
-| `%d`, `%i`| Integer (truncated to whole number)             |
-| `%f`      | Fixed-point decimal                             |
-| `%e`      | Scientific notation (`1.23e+04`)               |
-| `%g`      | Shorter of `%f` and `%e`                       |
-| `%s`      | String (char array or string object)            |
-| `%%`      | Literal `%`                                     |
+| Specifier | Meaning                              |
+|-----------|--------------------------------------|
+| `%d`, `%i`| Integer (truncated to whole number)  |
+| `%f`      | Fixed-point decimal                  |
+| `%e`      | Scientific notation (`1.23e+04`)     |
+| `%g`      | Shorter of `%f` and `%e`             |
+| `%s`      | String (char array or string object) |
+| `%%`      | Literal `%`                          |
 
 Width, precision, and alignment flags follow standard C `printf` conventions:
 
@@ -1295,15 +1295,15 @@ jsonencode(nan)                  % → 'null'
 
 **Type mapping:**
 
-| JSON → ccalc (`jsondecode`) | ccalc → JSON (`jsonencode`) |
-|-----------------------------|------------------------------|
-| object `{…}` → `Struct` | `Struct` → object |
-| all-numeric array → `Matrix` 1×N | `Matrix` 1×N → flat array |
-| mixed array → `Cell` | `Matrix` M×N → array of row arrays |
-| string → `Str` | `Cell` → array |
-| number → `Scalar` | `Scalar(NaN)` → `null` |
-| `true`/`false` → `Scalar` (1/0) | `Str`/`StringObj` → string |
-| `null` → `Scalar(NaN)` | `Inf`/`Complex`/`Function` → error |
+| JSON → ccalc (`jsondecode`)      | ccalc → JSON (`jsonencode`)        |
+|----------------------------------|------------------------------------|
+| object `{…}` → `Struct`          | `Struct` → object                  |
+| all-numeric array → `Matrix` 1×N | `Matrix` 1×N → flat array          |
+| mixed array → `Cell`             | `Matrix` M×N → array of row arrays |
+| string → `Str`                   | `Cell` → array                     |
+| number → `Scalar`                | `Scalar(NaN)` → `null`             |
+| `true`/`false` → `Scalar` (1/0)  | `Str`/`StringObj` → string         |
+| `null` → `Scalar(NaN)`           | `Inf`/`Complex`/`Function` → error |
 
 Reading a JSON file (combine with `fgetl` for single-line JSON):
 
@@ -1339,15 +1339,15 @@ score             % now a workspace variable
 
 **Type mapping:**
 
-| MAT type | ccalc value |
-|----------|-------------|
-| `double` (1×1) | `Scalar` |
-| `double` (M×N) | `Matrix` |
-| `char` array | `Str` |
-| `struct` | `Struct` |
-| struct array | `StructArray` |
-| `cell` array | `Cell` |
-| null / empty | `Scalar(NaN)` |
+| MAT type       | ccalc value   |
+|----------------|---------------|
+| `double` (1×1) | `Scalar`      |
+| `double` (M×N) | `Matrix`      |
+| `char` array   | `Str`         |
+| `struct`       | `Struct`      |
+| struct array   | `StructArray` |
+| `cell` array   | `Cell`        |
+| null / empty   | `Scalar(NaN)` |
 
 Backed by `matrw = "=0.1.4"`. Complex and sparse matrices are not yet supported.
 
@@ -1748,14 +1748,14 @@ lasterr('')                      % clear
 
 | Operator | Meaning         |
 |----------|-----------------|
-| `x += e` | `x = x + e`    |
-| `x -= e` | `x = x - e`    |
-| `x *= e` | `x = x * e`    |
-| `x /= e` | `x = x / e`    |
-| `x++`    | `x = x + 1`    |
-| `x--`    | `x = x - 1`    |
-| `++x`    | `x = x + 1`    |
-| `--x`    | `x = x - 1`    |
+| `x += e` | `x = x + e`     |
+| `x -= e` | `x = x - e`     |
+| `x *= e` | `x = x * e`     |
+| `x /= e` | `x = x / e`     |
+| `x++`    | `x = x + 1`     |
+| `x--`    | `x = x - 1`     |
+| `++x`    | `x = x + 1`     |
+| `--x`    | `x = x - 1`     |
 
 All forms desugar at parse time — no performance penalty.
 
@@ -1763,26 +1763,26 @@ All forms desugar at parse time — no performance penalty.
 
 ## REPL commands
 
-| Command                           | Action                              |
-|-----------------------------------|-------------------------------------|
-| `exit`, `quit`                    | Quit                                |
-| `cls`                             | Clear the screen                    |
-| `help`, `?`                       | Show cheatsheet                     |
-| `help <topic>`                    | Detailed help (see below)           |
-| `who`                             | List all defined variables          |
-| `clear`                           | Clear all variables                 |
-| `clear <name>`                    | Clear a single variable             |
+| Command                           | Action                                  |
+|-----------------------------------|-----------------------------------------|
+| `exit`, `quit`                    | Quit                                    |
+| `cls`                             | Clear the screen                        |
+| `help`, `?`                       | Show cheatsheet                         |
+| `help <topic>`                    | Detailed help (see below)               |
+| `who`                             | List all defined variables              |
+| `clear`                           | Clear all variables                     |
+| `clear <name>`                    | Clear a single variable                 |
 | `format`                          | Reset to `short` (5 significant digits) |
-| `format <mode>`                   | Switch display mode (see below)     |
-| `format <N>`                      | N decimal places (e.g. `format 4`) |
-| `hex` / `dec` / `bin` / `oct`     | Switch display base                 |
-| `base`                            | Show ans in all four bases          |
-| `ws` / `save`                     | Save workspace to disk              |
-| `wl` / `load`                     | Load workspace from disk            |
-| `save('path')`                    | Save to explicit file               |
-| `save('path', 'x', 'y')`         | Save specific variables             |
-| `load('path')`                    | Load from explicit file             |
-| Ctrl+C / Ctrl+D                   | Quit                                |
+| `format <mode>`                   | Switch display mode (see below)         |
+| `format <N>`                      | N decimal places (e.g. `format 4`)      |
+| `hex` / `dec` / `bin` / `oct`     | Switch display base                     |
+| `base`                            | Show ans in all four bases              |
+| `ws` / `save`                     | Save workspace to disk                  |
+| `wl` / `load`                     | Load workspace from disk                |
+| `save('path')`                    | Save to explicit file                   |
+| `save('path', 'x', 'y')`          | Save specific variables                 |
+| `load('path')`                    | Load from explicit file                 |
+| Ctrl+C / Ctrl+D                   | Quit                                    |
 
 Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `examples`
 
@@ -1809,20 +1809,20 @@ Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `
 
 The `format` command controls how numbers are displayed (MATLAB-compatible):
 
-| Command        | Mode       | Example for `pi`           |
-|----------------|------------|----------------------------|
-| `format`       | short      | `3.1416`  (5 sig digits, default) |
-| `format short` | short      | `3.1416`                   |
-| `format long`  | long       | `3.14159265358979`         |
-| `format shortE`| shortE     | `3.1416e+00`               |
-| `format longE` | longE      | `3.14159265358979e+00`     |
-| `format bank`  | bank       | `3.14`  (2 decimal places) |
-| `format rat`   | rat        | `355/113`  (rational approx) |
+| Command        | Mode       | Example for `pi`                    |
+|----------------|------------|-------------------------------------|
+| `format`       | short      | `3.1416`  (5 sig digits, default)   |
+| `format short` | short      | `3.1416`                            |
+| `format long`  | long       | `3.14159265358979`                  |
+| `format shortE`| shortE     | `3.1416e+00`                        |
+| `format longE` | longE      | `3.14159265358979e+00`              |
+| `format bank`  | bank       | `3.14`  (2 decimal places)          |
+| `format rat`   | rat        | `355/113`  (rational approx)        |
 | `format hex`   | hex        | `400921FB54442D18`  (IEEE 754 bits) |
-| `format +`     | +          | `+`  (sign only)           |
-| `format compact` | —        | suppress blank lines       |
-| `format loose` | —          | add blank line after outputs |
-| `format N`     | custom     | `format 4` → `0.3333`      |
+| `format +`     | +          | `+`  (sign only)                    |
+| `format compact` | —        | suppress blank lines                |
+| `format loose` | —          | add blank line after outputs        |
+| `format N`     | custom     | `format 4` → `0.3333`               |
 
 `format` affects `disp()`, assignment output, and the REPL prompt — not `fprintf`/`sprintf` (which use their own specifiers).
 

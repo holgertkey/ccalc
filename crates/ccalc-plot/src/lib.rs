@@ -68,10 +68,8 @@ thread_local! {
 // ── Exported names ─────────────────────────────────────────────────────────
 
 const EXPORTED: &[&str] = &[
-    "plot", "scatter", "bar", "stem", "hist", "stairs",
-    "loglog", "semilogx", "semilogy",
-    "xlabel", "ylabel", "zlabel", "title",
-    "legend", "xlim", "ylim", "zlim", "grid",
+    "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "xlabel",
+    "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -129,7 +127,9 @@ impl Plugin for PlotPlugin {
                         let enable = match s.as_str() {
                             "on" => true,
                             "off" => false,
-                            other => return Err(format!("grid: expected 'on' or 'off', got '{other}'")),
+                            other => {
+                                return Err(format!("grid: expected 'on' or 'off', got '{other}'"));
+                            }
                         };
                         FIGURE_STATE.with(|f| f.borrow_mut().grid = enable);
                     }
@@ -354,7 +354,10 @@ fn extract_lim(name: &str, args: &[Value]) -> Result<(f64, f64), String> {
         _ => return Err(format!("{name}: expected exactly one argument [lo hi]")),
     };
     if v.len() != 2 {
-        return Err(format!("{name}: vector must have exactly 2 elements, got {}", v.len()));
+        return Err(format!(
+            "{name}: vector must have exactly 2 elements, got {}",
+            v.len()
+        ));
     }
     Ok((v[0], v[1]))
 }
@@ -362,6 +365,7 @@ fn extract_lim(name: &str, args: &[Value]) -> Result<(f64, f64), String> {
 // ── Stairs helpers ─────────────────────────────────────────────────────────
 
 /// Converts (x, y) data into step/staircase pairs for rendering.
+#[cfg(any(feature = "plot", feature = "plot-svg"))]
 fn make_step_data(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let n = x.len();
     if n == 0 {
@@ -681,10 +685,7 @@ fn extract_xy(name: &str, args: &[Value]) -> Result<(Vec<f64>, Vec<f64>), String
 /// When y is an M×N matrix with M > 1, returns M separate row-series.
 /// Otherwise behaves identically to `extract_xy`.
 #[cfg_attr(not(any(feature = "plot", feature = "plot-svg")), allow(dead_code))]
-fn extract_xy_multi(
-    name: &str,
-    args: &[Value],
-) -> Result<(Vec<f64>, Vec<Vec<f64>>), String> {
+fn extract_xy_multi(name: &str, args: &[Value]) -> Result<(Vec<f64>, Vec<Vec<f64>>), String> {
     match args.len() {
         0 => Err(format!("{name}: at least one argument required")),
         1 => {
@@ -852,9 +853,7 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         let v = f64_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
-        let result = plugin
-            .call("hist", &[v, Value::Scalar(3.0)], &env)
-            .unwrap();
+        let result = plugin.call("hist", &[v, Value::Scalar(3.0)], &env).unwrap();
         assert_eq!(result, Value::Void);
     }
 
@@ -883,7 +882,9 @@ mod tests {
     fn test_extract_xy_multi_matrix_y() {
         let x = f64_vec(&[1.0, 2.0, 3.0]);
         // 2×3 matrix → 2 series of 3 points each
-        let y = Value::Matrix(Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap());
+        let y = Value::Matrix(
+            Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap(),
+        );
         let (xv, ys) = extract_xy_multi("plot", &[x, y]).unwrap();
         assert_eq!(xv, vec![1.0, 2.0, 3.0]);
         assert_eq!(ys.len(), 2);
@@ -894,7 +895,9 @@ mod tests {
     #[test]
     fn test_extract_xy_multi_column_count_mismatch() {
         let x = f64_vec(&[1.0, 2.0]);
-        let y = Value::Matrix(Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap());
+        let y = Value::Matrix(
+            Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap(),
+        );
         let result = extract_xy_multi("plot", &[x, y]);
         assert!(result.is_err());
     }
@@ -1042,9 +1045,13 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("grid", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("grid", &[Value::Str("on".into())], &env)
+            .unwrap();
         assert!(FIGURE_STATE.with(|f| f.borrow().grid));
-        plugin.call("grid", &[Value::Str("off".into())], &env).unwrap();
+        plugin
+            .call("grid", &[Value::Str("off".into())], &env)
+            .unwrap();
         assert!(!FIGURE_STATE.with(|f| f.borrow().grid));
         // Invalid string arg should still error.
         let result = plugin.call("grid", &[Value::Str("maybe".into())], &env);

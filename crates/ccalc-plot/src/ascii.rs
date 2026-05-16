@@ -82,7 +82,6 @@ fn print_labels(state: &FigureState) {
     }
 }
 
-
 fn to_f32_pairs(x: &[f64], y: &[f64]) -> Vec<(f32, f32)> {
     x.iter()
         .zip(y.iter())

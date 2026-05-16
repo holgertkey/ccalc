@@ -392,8 +392,10 @@ fn test_multi_series_plot_svg() {
     let y_matrix = Value::Matrix(
         ndarray::Array2::from_shape_vec(
             (2, 5),
-            vec![1.0, 4.0, 9.0, 16.0, 25.0,  // sin-like series
-                 2.0, 3.0, 2.0, 3.0, 2.0],    // flat series
+            vec![
+                1.0, 4.0, 9.0, 16.0, 25.0, // sin-like series
+                2.0, 3.0, 2.0, 3.0, 2.0,
+            ], // flat series
         )
         .unwrap(),
     );
@@ -418,11 +420,8 @@ fn test_multi_series_with_legend() {
         .unwrap();
     let x = row_vec(&[1.0, 2.0, 3.0, 4.0]);
     let y_matrix = Value::Matrix(
-        ndarray::Array2::from_shape_vec(
-            (2, 4),
-            vec![1.0, 2.0, 3.0, 4.0, 4.0, 3.0, 2.0, 1.0],
-        )
-        .unwrap(),
+        ndarray::Array2::from_shape_vec((2, 4), vec![1.0, 2.0, 3.0, 4.0, 4.0, 3.0, 2.0, 1.0])
+            .unwrap(),
     );
     plugin
         .call("plot", &[x, y_matrix, Value::Str(path.clone())], &env)
