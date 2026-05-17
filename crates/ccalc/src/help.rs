@@ -77,8 +77,9 @@ pub fn print(topic: Option<&str>) {
         ) => print_fft(),
         Some(
             "plot" | "scatter" | "bar" | "stem" | "stairs" | "hist" | "loglog" | "semilogx"
-            | "semilogy" | "xlabel" | "ylabel" | "title" | "xlim" | "ylim" | "legend" | "grid"
-            | "figurestate" | "plotting" | "charts" | "svg" | "png",
+            | "semilogy" | "plot3" | "scatter3" | "3d" | "xlabel" | "ylabel" | "zlabel" | "title"
+            | "xlim" | "ylim" | "zlim" | "legend" | "grid" | "figurestate" | "plotting" | "charts"
+            | "svg" | "png",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -185,8 +186,10 @@ Set ops triu(A[,k])  tril(A[,k])  repmat(A,m,n)  kron(A,B)
 FFT     fft(x)  fft(x,n)  ifft(X)              (requires --features fft)
         fftshift(x)  ifftshift(x)  fftfreq(n,d)  (always available)
 Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features plot)
+        plot3(x,y,z)  scatter3(x,y,z)       3D line/scatter (orthographic projection)
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
-        title('t')  xlabel('x')  ylabel('y')  set annotations for next render
+        plot3(x,y,z,'f.svg')               3D file export via plotters build_cartesian_3d
+        title('t')  xlabel('x')  ylabel('y')  zlabel('z')  set annotations
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -3485,7 +3488,7 @@ Two rendering tiers; both use the same annotation API.
     --features plot-svg   SVG + PNG file export (plotters, 800×600 px)
     --features plot-all   both tiers
 
-── Chart types ───────────────────────────────────────────────────────────────
+── Chart types ─────────────────────────────────────────────────────────────
     plot(y)               line chart; x inferred as 1:numel(y)
     plot(x, y)            line chart with explicit x
     plot(x, M)            multi-series: each row of M is one series (SVG/PNG)
@@ -3504,18 +3507,30 @@ Two rendering tiers; both use the same annotation API.
     semilogx(x, y)        log10 x-axis, linear y
     semilogy(x, y)        linear x-axis, log10 y
 
-Append a file path as the last string argument to save instead of print:
-    plot(x, y, 'out.svg')     SVG (requires --features plot-svg)
-    plot(x, y, 'out.png')     PNG (requires --features plot-svg)
-    plot(x, y, 'ascii')       force ASCII even when plot-svg is active
-    hist(v, 20, 'hist.svg')   histogram to file (combined n + path form)
+── 3D charts ────────────────────────────────────────────────────────────────
+    plot3(x, y, z)        3D line; ASCII uses orthographic projection
+    scatter3(x, y, z)     3D point cloud; ASCII uses orthographic projection
 
-── Annotations ───────────────────────────────────────────────────────────────
+    ASCII tier:  projects (x,y,z) with az=-37.5°, el=30° (MATLAB defaults),
+                 renders with textplots; x/y/z labels printed as footer lines.
+    File tier:   plotters build_cartesian_3d + LineSeries / Circle elements.
+
+Append a file path as the last string argument to save instead of print:
+    plot(x, y, 'out.svg')          SVG (requires --features plot-svg)
+    plot(x, y, 'out.png')          PNG (requires --features plot-svg)
+    plot(x, y, 'ascii')            force ASCII even when plot-svg is active
+    hist(v, 20, 'hist.svg')        histogram to file (combined n + path form)
+    plot3(x, y, z, 'helix.svg')   3D line to SVG (requires --features plot-svg)
+    scatter3(x, y, z, 'pts.png')  3D scatter to PNG
+
+── Annotations ──────────────────────────────────────────────────────────────
     title('text')       chart title
     xlabel('text')      x-axis label
     ylabel('text')      y-axis label
+    zlabel('text')      z-axis label (plot3/scatter3; footer in ASCII mode)
     xlim([lo, hi])      override x-axis range
     ylim([lo, hi])      override y-axis range
+    zlim([lo, hi])      override z-axis range (plot3/scatter3 file export)
     legend(s1, s2, …)   series labels for multi-series SVG/PNG charts
     grid                toggle grid on/off (default: off)
     grid('on')          enable grid (SVG/PNG only; ASCII ignored)
@@ -3530,7 +3545,7 @@ Append a file path as the last string argument to save instead of print:
     grid('on')
     plot(x, sin(x))        % all annotations applied and cleared here
 
-── Examples ──────────────────────────────────────────────────────────────────
+── Examples ─────────────────────────────────────────────────────────────────
     x = linspace(0, 2*pi, 80);
     plot(x, sin(x))
 
@@ -3547,8 +3562,17 @@ Append a file path as the last string argument to save instead of print:
     G = 1e6 * f .^ (-2);
     loglog(f, G)
 
-See also: examples/plot_demo.calc          (ASCII demo)
-          examples/plot_file/plot_file.calc (SVG/PNG demo)
-          examples/plot_extended.calc       (bar/stem/stairs/hist/loglog demo)"
+    % 3D helix
+    t = linspace(0, 4*pi, 120);
+    plot3(cos(t), sin(t), t/(4*pi))
+
+    % 3D scatter to file
+    scatter3(randn(1,80), randn(1,80), randn(1,80), 'cloud.svg')
+
+See also: examples/plot_demo.calc               (ASCII demo)
+          examples/plot_file/plot_file.calc      (SVG/PNG demo)
+          examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
+          examples/plot3_demo.calc               (3D ASCII demo)
+          examples/plot3_file/plot3_file.calc    (3D SVG/PNG demo)"
     );
 }

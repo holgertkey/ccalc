@@ -778,7 +778,7 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 > cargo build --release --features plot-svg      # SVG + PNG file export
 > cargo build --release --features plot-all      # both
 > ```
-> Annotation functions (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`, `legend`, `grid`)
+> Annotation functions (`title`, `xlabel`, `ylabel`, `zlabel`, `xlim`, `ylim`, `zlim`, `legend`, `grid`)
 > work without any feature.
 
 ### Chart types
@@ -797,6 +797,8 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `loglog(x, y)` | `plot` | Log₁₀ on both axes |
 | `semilogx(x, y)` | `plot` | Log₁₀ x-axis, linear y |
 | `semilogy(x, y)` | `plot` | Linear x-axis, log₁₀ y |
+| `plot3(x, y, z)` | `plot` | 3D line; ASCII uses orthographic projection |
+| `scatter3(x, y, z)` | `plot` | 3D point cloud; ASCII uses orthographic projection |
 
 Append a file path to save instead of print to terminal:
 
@@ -806,6 +808,8 @@ Append a file path to save instead of print to terminal:
 | `plot(x, y, 'f.png')` | `plot-svg` | PNG raster image (800 × 600) |
 | `plot(x, y, 'ascii')` | `plot` | Force ASCII even when `plot-svg` is active |
 | `hist(v, 20, 'h.svg')` | `plot-svg` | Histogram saved to file |
+| `plot3(x, y, z, 'f.svg')` | `plot-svg` | 3D line to file (SVG or PNG) |
+| `scatter3(x, y, z, 'f.png')` | `plot-svg` | 3D scatter to file |
 
 ### Annotations
 
@@ -814,8 +818,8 @@ Set annotations **before** the render call — they are consumed and cleared by 
 | Function | Effect |
 |---|---|
 | `title('text')` | Chart title |
-| `xlabel('text')` / `ylabel('text')` | Axis labels |
-| `xlim([lo, hi])` / `ylim([lo, hi])` | Override axis range |
+| `xlabel('text')` / `ylabel('text')` / `zlabel('text')` | Axis labels (zlabel used by `plot3`/`scatter3`) |
+| `xlim([lo, hi])` / `ylim([lo, hi])` / `zlim([lo, hi])` | Override axis range |
 | `legend(s1, s2, …)` | Series labels for multi-series SVG/PNG charts |
 | `grid` / `grid('on')` / `grid('off')` | Toggle grid (SVG/PNG only; default off) |
 
@@ -835,11 +839,18 @@ plot(x, M, 'trig.svg')
 
 % Histogram with explicit edges
 hist(randn(1, 500), -3:0.5:3, 'dist.png')
+
+% 3D helix to SVG
+t = linspace(0, 4*pi, 120);
+title('3D helix')
+zlabel('z = t/(4π)')
+plot3(cos(t), sin(t), t/(4*pi), 'helix.svg')
 ```
 
 See `examples/plot_demo.calc` (ASCII), `examples/plot_file/plot_file.calc` (file export),
-and `examples/plot_extended.calc` (bar/stem/stairs/hist/loglog) for full worked examples.
-Run `help plot` in the REPL for a quick reference.
+`examples/plot_extended.calc` (bar/stem/stairs/hist/loglog),
+`examples/plot3_demo.calc` (3D ASCII), and `examples/plot3_file/plot3_file.calc` (3D file export)
+for full worked examples. Run `help plot` in the REPL for a quick reference.
 
 ---
 
@@ -2042,10 +2053,12 @@ The `examples/` directory contains annotated formula files ready to run:
 | `struct_arrays.calc`         | Struct arrays: indexed creation, element access, field collection → matrix/cell, loop building, `fieldnames`/`isfield`, nested fields, inventory ledger |
 | `error_handling.calc`        | Error handling: `error`/`warning`, `lasterr`, `try/catch`, `try(expr,default)`, `pcall`, nested and loop-safe error recovery |
 | `indexed_assignment.calc`    | Indexed assignment: element/slice/submatrix write, growing vectors with `end+1`, cell array growth, logical mask read/write |
-| `plot_demo.calc`             | Phase 29a: `plot`/`scatter` ASCII terminal charts, `title`/`xlabel`/`ylabel` annotations, polynomial-fit visualisation — requires `--features plot` |
-| `plot_file/plot_file.calc`   | Phase 29b: `plot`/`scatter` to SVG and PNG files, inferred-x form, practical polynomial-fit export — requires `--features plot-svg` |
-| `plot_extended.calc`         | Phase 29c: `bar`, `stem`, `stairs`, `hist` (auto/manual/edge bins), `loglog`/`semilogx`/`semilogy`, multi-series `plot(x,M)`, `xlim`/`ylim`/`grid` — ASCII, requires `--features plot` |
-| `plot_extended_file/plot_extended_file.calc` | Phase 29c: same chart types saved to SVG/PNG files, multi-series with `legend`+`grid`, histogram variants — requires `--features plot-svg` |
+| `plot_demo.calc`             | `plot`/`scatter` ASCII terminal charts, `title`/`xlabel`/`ylabel` annotations, polynomial-fit visualisation — requires `--features plot` |
+| `plot_file/plot_file.calc`   | `plot`/`scatter` to SVG and PNG files, inferred-x form, practical polynomial-fit export — requires `--features plot-svg` |
+| `plot_extended.calc`         | `bar`, `stem`, `stairs`, `hist` (auto/manual/edge bins), `loglog`/`semilogx`/`semilogy`, multi-series `plot(x,M)`, `xlim`/`ylim`/`grid` — ASCII, requires `--features plot` |
+| `plot_extended_file/plot_extended_file.calc` | Same chart types saved to SVG/PNG files, multi-series with `legend`+`grid`, histogram variants — requires `--features plot-svg` |
+| `plot3_demo.calc`            | `plot3`/`scatter3` 3D ASCII plots via orthographic projection — requires `--features plot` |
+| `plot3_file/plot3_file.calc` | `plot3`/`scatter3` helix, Lissajous, scatter cloud exported to SVG/PNG — requires `--features plot-svg` |
 
 ```bash
 ccalc < examples/mortgage.calc

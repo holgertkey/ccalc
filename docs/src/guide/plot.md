@@ -127,6 +127,41 @@ loglog(f, G)
 
 ---
 
+## 3D plots
+
+### `plot3(x, y, z)` / `scatter3(x, y, z)`
+
+Three-dimensional line and point cloud plots. All three vectors must have the same length.
+
+**ASCII tier** (`--features plot`): projects `(x, y, z)` onto a 2D plane using an
+orthographic projection with MATLAB-compatible default view angles
+(azimuth = −37.5°, elevation = 30°). The projected points are rendered with `textplots`.
+`xlabel` / `ylabel` / `zlabel` appear as labeled footer lines below the chart.
+
+**File tier** (`--features plot-svg`): uses the `plotters` 3D Cartesian chart engine
+(`build_cartesian_3d`). `plot3` draws a connected `LineSeries`; `scatter3` draws
+filled circles at each point.
+
+```matlab
+% 3D helix — ASCII
+t  = linspace(0, 4*pi, 120);
+title('3D helix')
+xlabel('x = cos(t)')
+ylabel('y = sin(t)')
+zlabel('z = t/(4π)')
+plot3(cos(t), sin(t), t/(4*pi))
+
+% Lissajous 3D — save to SVG
+t2 = linspace(0, 2*pi, 200);
+title('Lissajous 3D')
+plot3(sin(3*t2), sin(2*t2), cos(t2), 'lissajous.svg')
+
+% 3D scatter
+scatter3(randn(1,80), randn(1,80), randn(1,80), 'cloud.svg')
+```
+
+---
+
 ## File export
 
 Append a file path as the **last** string argument:
@@ -169,10 +204,10 @@ plot(t, y)       % all annotations applied here, then cleared
 | `title('text')` | Chart title | Yes |
 | `xlabel('text')` | X-axis label | Yes |
 | `ylabel('text')` | Y-axis label | Yes |
-| `zlabel('text')` | Z-axis label (reserved for 3-D, Phase 29d) | Yes |
+| `zlabel('text')` | Z-axis label (consumed by `plot3`/`scatter3`) | Yes |
 | `xlim([lo, hi])` | Override x-axis range | Yes |
 | `ylim([lo, hi])` | Override y-axis range | Yes |
-| `zlim([lo, hi])` | Override z-axis range (3-D) | Yes |
+| `zlim([lo, hi])` | Override z-axis range (3D file export) | Yes |
 | `legend(s1, s2, …)` | Series labels — applied in SVG/PNG multi-series charts | Yes |
 | `grid` | Toggle grid on/off | Yes |
 | `grid('on')` | Enable grid | Yes |
@@ -201,6 +236,9 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **Bar charts:** edge-to-edge `Rectangle` series; negative bars extend below baseline.
 - **Stem plots:** `PathElement` vertical lines + `Circle` tip markers (4 px).
 - **Histograms:** edge-to-edge `Rectangle` bins (blue fill).
+- **3D line plots (`plot3`):** `LineSeries` over `(f64, f64, f64)` tuples via `plotters`
+  3D Cartesian chart (`build_cartesian_3d`).
+- **3D scatter plots (`scatter3`):** `Circle` elements at each 3D coordinate.
 - **Axis range:** auto-computed from data with 5 % margin; single-point data uses ± 1.
 - **Legend:** shown when `legend(...)` is set; drawn in the upper-right corner with
   a black border.
@@ -209,12 +247,14 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 
 ## Examples
 
-- `examples/plot_demo.calc` — Phase 29a: ASCII `plot`/`scatter`, annotations
-- `examples/plot_file/plot_file.calc` — Phase 29b: `plot`/`scatter` to SVG/PNG
-- `examples/plot_extended.calc` — Phase 29c: `bar`, `stem`, `stairs`, `hist`,
+- `examples/plot_demo.calc` — ASCII `plot`/`scatter`, annotations
+- `examples/plot_file/plot_file.calc` — `plot`/`scatter` to SVG/PNG
+- `examples/plot_extended.calc` — `bar`, `stem`, `stairs`, `hist`,
   `loglog`/`semilogx`/`semilogy`, multi-series, `xlim`/`ylim`/`grid` (ASCII)
-- `examples/plot_extended_file/plot_extended_file.calc` — Phase 29c: same chart
+- `examples/plot_extended_file/plot_extended_file.calc` — same chart
   types exported to SVG/PNG, multi-series with `legend`+`grid`, histogram variants
+- `examples/plot3_demo.calc` — `plot3`/`scatter3` ASCII 3D plots
+- `examples/plot3_file/plot3_file.calc` — `plot3`/`scatter3` exported to SVG/PNG
 
 ---
 
