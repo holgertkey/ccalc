@@ -82,7 +82,7 @@ this is suppressed for struct/cell utilities via the `no_ans_inject` list in
 ```
 s =
 
-  struct with fields:
+  scalar structure containing the fields:
 
     x: 1
     y: [1×3 double]
@@ -90,7 +90,7 @@ s =
 ```
 
 - Inline format (`format_value`): `[1×1 struct]`
-- Full format (`format_value_full`): the `struct with fields:` block above
+- Full format (`format_value_full`): the `scalar structure containing the fields:` block above
 - Nested struct fields: always shown inline as `[1×1 struct]`
 
 ### Exhaustive match coverage

@@ -8615,7 +8615,7 @@ fn format_cell(elems: &[Value], mode: &FormatMode) -> String {
 fn format_struct(map: &IndexMap<String, Value>, mode: &FormatMode) -> String {
     let mut lines = vec![
         String::new(),
-        "  struct with fields:".to_string(),
+        "  scalar structure containing the fields:".to_string(),
         String::new(),
     ];
     for (key, val) in map {
@@ -8651,7 +8651,7 @@ fn format_struct_array(arr: &[IndexMap<String, Value>], mode: &FormatMode) -> St
     {
         lines.clear();
         lines.push(String::new());
-        lines.push("  struct with fields:".to_string());
+        lines.push("  scalar structure containing the fields:".to_string());
         lines.push(String::new());
         for (key, val) in first {
             let val_str = match val {

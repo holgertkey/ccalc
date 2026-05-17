@@ -92,7 +92,7 @@ isstruct(42)             % 0
 ```
 s =
 
-  struct with fields:
+  scalar structure containing the fields:
 
     x: 3
     y: 4

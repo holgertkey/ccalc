@@ -1606,7 +1606,7 @@ Structs are displayed MATLAB-style:
 ```
 s =
 
-  struct with fields:
+  scalar structure containing the fields:
 
     x: 3
     y: 4

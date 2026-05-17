@@ -99,7 +99,7 @@ Implemented in `exec.rs`:
 - Inline (`format_value`): `[1×N struct]`
 - Full (`format_value_full`):
   - N > 1: field names list, e.g. `1×3 struct array with fields: x  y`
-  - N = 1: full `struct with fields:` block (same as scalar struct)
+  - N = 1: full `scalar structure containing the fields:` block (same as scalar struct)
 
 ---
 

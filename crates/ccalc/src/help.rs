@@ -2353,7 +2353,7 @@ string, complex, cell, or another struct).  Fields are ordered by insertion.
 
   Scalar struct:
     s =
-      struct with fields:
+      scalar structure containing the fields:
         x: 1
         y: [1×3 double]
 
