@@ -402,6 +402,98 @@ where
     Ok(())
 }
 
+// ── 3D file rendering ──────────────────────────────────────────────────────
+
+/// Writes an SVG or PNG 3D line plot to `path`, routing on the file extension.
+pub(crate) fn render_plot3(
+    x: &[f64],
+    y: &[f64],
+    z: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_3d_chart(false, x, y, z, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_3d_chart(false, x, y, z, &state, root)
+    } else {
+        Err(format!("plot3: unsupported format '{path}'"))
+    }
+}
+
+/// Writes an SVG or PNG 3D scatter plot to `path`, routing on the file extension.
+pub(crate) fn render_scatter3(
+    x: &[f64],
+    y: &[f64],
+    z: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_3d_chart(true, x, y, z, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_3d_chart(true, x, y, z, &state, root)
+    } else {
+        Err(format!("scatter3: unsupported format '{path}'"))
+    }
+}
+
+fn draw_3d_chart<DB: DrawingBackend>(
+    scatter: bool,
+    x: &[f64],
+    y: &[f64],
+    z: &[f64],
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    root.fill(&WHITE).map_err(|e| e.to_string())?;
+
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| range_with_margin(y));
+    let (z_min, z_max) = state.zlim.unwrap_or_else(|| range_with_margin(z));
+
+    let title = state.title.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20))
+        .margin(30)
+        .build_cartesian_3d(x_min..x_max, y_min..y_max, z_min..z_max)
+        .map_err(|e| e.to_string())?;
+
+    chart.configure_axes().draw().map_err(|e| e.to_string())?;
+
+    if scatter {
+        chart
+            .draw_series(
+                x.iter()
+                    .zip(y.iter())
+                    .zip(z.iter())
+                    .map(|((&xi, &yi), &zi)| Circle::new((xi, yi, zi), 3, BLUE.filled())),
+            )
+            .map_err(|e| e.to_string())?;
+    } else {
+        chart
+            .draw_series(LineSeries::new(
+                x.iter()
+                    .zip(y.iter())
+                    .zip(z.iter())
+                    .map(|((&xi, &yi), &zi)| (xi, yi, zi)),
+                &BLUE,
+            ))
+            .map_err(|e| e.to_string())?;
+    }
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn range_with_margin(vals: &[f64]) -> (f64, f64) {
     let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
     let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);

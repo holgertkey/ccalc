@@ -1,4 +1,4 @@
-//! Integration tests for SVG/PNG file export (Phase 29b + 29c).
+//! Integration tests for SVG/PNG file export (Phase 29b + 29c + 29d).
 //! Run with: cargo test -p ccalc-plot --features plot-svg
 
 #![cfg(feature = "plot-svg")]
@@ -431,6 +431,118 @@ fn test_multi_series_with_legend() {
     assert!(
         content.contains("series A") || content.contains("series B"),
         "SVG should contain legend labels"
+    );
+}
+
+// ── plot3 → SVG / PNG ────────────────────────────────────────────────────────
+
+#[test]
+fn test_plot3_writes_svg_file() {
+    let path = svg_path("test_plot3.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0, 3.0, 4.0]);
+    let y = row_vec(&[0.0, 1.0, 0.0, -1.0, 0.0]);
+    let z = row_vec(&[0.0, 0.5, 1.0, 0.5, 0.0]);
+    plugin
+        .call("plot3", &[x, y, z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        content.contains("<svg"),
+        "plot3 SVG file should contain <svg tag"
+    );
+}
+
+#[test]
+fn test_plot3_writes_png_file() {
+    let path = svg_path("test_plot3.png");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0]);
+    let y = row_vec(&[0.0, 1.0, 2.0]);
+    let z = row_vec(&[0.0, 1.0, 4.0]);
+    plugin
+        .call("plot3", &[x, y, z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(
+        &bytes[..8],
+        b"\x89PNG\r\n\x1a\n",
+        "plot3 PNG should start with PNG magic bytes"
+    );
+}
+
+#[test]
+fn test_plot3_with_title_svg() {
+    let path = svg_path("test_plot3_title.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call("title", &[Value::Str("Helix".into())], &env)
+        .unwrap();
+    let x = row_vec(&[1.0, 0.0, -1.0, 0.0, 1.0]);
+    let y = row_vec(&[0.0, 1.0, 0.0, -1.0, 0.0]);
+    let z = row_vec(&[0.0, 0.25, 0.5, 0.75, 1.0]);
+    plugin
+        .call("plot3", &[x, y, z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        content.contains("Helix"),
+        "title should appear in plot3 SVG"
+    );
+}
+
+// ── scatter3 → SVG / PNG ──────────────────────────────────────────────────────
+
+#[test]
+fn test_scatter3_writes_svg_file() {
+    let path = svg_path("test_scatter3.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0, 3.0]);
+    let y = row_vec(&[3.0, 1.0, 4.0, 1.0]);
+    let z = row_vec(&[1.0, 2.0, 1.0, 3.0]);
+    plugin
+        .call("scatter3", &[x, y, z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        content.contains("<svg"),
+        "scatter3 SVG file should contain <svg tag"
+    );
+}
+
+#[test]
+fn test_scatter3_writes_png_file() {
+    let path = svg_path("test_scatter3.png");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 4.0, 9.0]);
+    let z = row_vec(&[1.0, 1.0, 1.0]);
+    plugin
+        .call("scatter3", &[x, y, z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+}
+
+#[test]
+fn test_plot3_xyz_length_mismatch_error() {
+    let path = svg_path("test_plot3_mismatch.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0]);
+    let y = row_vec(&[0.0, 1.0]);
+    let z = row_vec(&[0.0, 0.5, 1.0]);
+    let result = plugin.call("plot3", &[x, y, z, Value::Str(path)], &env);
+    assert!(result.is_err());
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("same length"),
+        "error should mention length mismatch: {msg}"
     );
 }
 

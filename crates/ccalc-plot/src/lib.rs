@@ -1,8 +1,9 @@
-//! Plot plugin for ccalc — Phase 29c.
+//! Plot plugin for ccalc — Phase 29d.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
-//! `semilogx`, `semilogy`, and annotation functions (`xlabel`, `ylabel`,
-//! `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`).
+//! `semilogx`, `semilogy`, `plot3`, `scatter3`, and annotation functions
+//! (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`,
+//! `grid`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -68,8 +69,8 @@ thread_local! {
 // ── Exported names ─────────────────────────────────────────────────────────
 
 const EXPORTED: &[&str] = &[
-    "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "xlabel",
-    "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
+    "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
+    "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -238,6 +239,13 @@ impl Plugin for PlotPlugin {
                 }
 
                 render_line_xy(name, &x, &y, path.as_deref(), state)
+            }
+
+            // ── 3D plots ───────────────────────────────────────────────
+            "plot3" | "scatter3" => {
+                let (data_args, path) = extract_file_arg(args);
+                let state = FIGURE_STATE.with(|f| f.take());
+                render_3d(name, &data_args, path.as_deref(), state)
             }
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
@@ -653,6 +661,119 @@ fn render_line_xy_file(
         "{name}: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
     ))
+}
+
+// ── 3D dispatch ────────────────────────────────────────────────────────────
+
+fn render_3d(
+    name: &str,
+    data_args: &[Value],
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_3d_ascii(name, data_args, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_3d_file(name, data_args, p, state)
+        }
+        Some(p) => Err(format!("{name}: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_3d_ascii(name: &str, data_args: &[Value], state: FigureState) -> Result<Value, String> {
+    let (x, y, z) = extract_xyz(name, data_args)?;
+    let (px, py) = proj3d::project_ortho(&x, &y, &z);
+    // Pass only title and axis limits to the 2D ASCII renderer.
+    // Labels are printed below as a footer to avoid misleading axis descriptions.
+    let state_2d = FigureState {
+        title: state.title.clone(),
+        xlim: state.xlim,
+        ylim: state.ylim,
+        ..FigureState::default()
+    };
+    match name {
+        "plot3" => ascii::render_line(&px, &py, state_2d),
+        "scatter3" => ascii::render_scatter(&px, &py, state_2d),
+        _ => unreachable!(),
+    }
+    if let Some(xl) = &state.xlabel {
+        println!("x: {xl}");
+    }
+    if let Some(yl) = &state.ylabel {
+        println!("y: {yl}");
+    }
+    if let Some(zl) = &state.zlabel {
+        println!("z: {zl}");
+    }
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_3d_ascii(name: &str, _data_args: &[Value], _state: FigureState) -> Result<Value, String> {
+    Err(format!(
+        "{name}: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+    ))
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_3d_file(
+    name: &str,
+    data_args: &[Value],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    let (x, y, z) = extract_xyz(name, data_args)?;
+    let result = match name {
+        "plot3" => file::render_plot3(&x, &y, &z, path, state),
+        "scatter3" => file::render_scatter3(&x, &y, &z, path, state),
+        _ => unreachable!(),
+    };
+    result.map_err(|e| format!("{name}: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_3d_file(
+    name: &str,
+    _data_args: &[Value],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err(format!(
+        "{name}: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+    ))
+}
+
+// ── Argument helpers (continued) ───────────────────────────────────────────
+
+/// Extracts three equal-length numeric vectors from `plot3`/`scatter3` args.
+#[cfg_attr(not(any(feature = "plot", feature = "plot-svg")), allow(dead_code))]
+#[allow(clippy::type_complexity)]
+fn extract_xyz(name: &str, args: &[Value]) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>), String> {
+    match args {
+        [xv, yv, zv] => {
+            let x = extract_vector(xv).map_err(|e| format!("{name}: {e}"))?;
+            let y = extract_vector(yv).map_err(|e| format!("{name}: {e}"))?;
+            let z = extract_vector(zv).map_err(|e| format!("{name}: {e}"))?;
+            if x.len() != y.len() || x.len() != z.len() {
+                return Err(format!(
+                    "{name}: x, y, z must have the same length \
+                     (got {}, {}, {})",
+                    x.len(),
+                    y.len(),
+                    z.len()
+                ));
+            }
+            Ok((x, y, z))
+        }
+        _ => Err(format!(
+            "{name}: expected 3 arguments (x, y, z), got {}",
+            args.len()
+        )),
+    }
 }
 
 #[cfg_attr(not(any(feature = "plot", feature = "plot-svg")), allow(dead_code))]
@@ -1128,6 +1249,102 @@ mod tests {
         assert!(
             title.is_none(),
             "FigureState should be cleared after plot()"
+        );
+    }
+
+    // ── 29d: plot3 / scatter3 ─────────────────────────────────────────
+
+    #[test]
+    fn test_plot3_length_mismatch_error() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        let y = f64_vec(&[1.0, 2.0]);
+        let z = f64_vec(&[0.0, 0.0, 0.0]);
+        let result = plugin.call("plot3", &[x, y, z], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("same length"),
+            "error should mention length: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_scatter3_wrong_arg_count_error() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[1.0, 2.0]);
+        let y = f64_vec(&[1.0, 2.0]);
+        // Only two args — missing z.
+        let result = plugin.call("scatter3", &[x, y], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("3 arguments"),
+            "error should mention 3 args: {msg}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_plot3_ascii_no_error() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[0.0, 1.0, 2.0, 3.0]);
+        let y = f64_vec(&[0.0, 1.0, 0.0, -1.0]);
+        let z = f64_vec(&[0.0, 0.5, 1.0, 0.5]);
+        let result = plugin.call("plot3", &[x, y, z], &env);
+        assert!(result.is_ok(), "plot3 ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_scatter3_ascii_no_error() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[0.0, 1.0, 2.0]);
+        let y = f64_vec(&[0.0, 1.0, 0.0]);
+        let z = f64_vec(&[1.0, 2.0, 3.0]);
+        let result = plugin.call("scatter3", &[x, y, z], &env);
+        assert!(result.is_ok(), "scatter3 ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_plot3_state_cleared_after_render() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("zlabel", &[Value::Str("depth".into())], &env)
+            .unwrap();
+        let x = f64_vec(&[0.0, 1.0, 2.0]);
+        let y = f64_vec(&[0.0, 1.0, 2.0]);
+        let z = f64_vec(&[0.0, 1.0, 2.0]);
+        plugin.call("plot3", &[x, y, z], &env).unwrap();
+        let zlabel = FIGURE_STATE.with(|f| f.borrow().zlabel.clone());
+        assert!(
+            zlabel.is_none(),
+            "FigureState.zlabel should be cleared after plot3()"
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "plot-svg"))]
+    fn test_plot3_svg_without_feature() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[0.0, 1.0]);
+        let y = f64_vec(&[0.0, 1.0]);
+        let z = f64_vec(&[0.0, 1.0]);
+        let path = Value::Str("out.svg".into());
+        let result = plugin.call("plot3", &[x, y, z, path], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("plot-svg"),
+            "error should mention plot-svg feature: {msg}"
         );
     }
 }

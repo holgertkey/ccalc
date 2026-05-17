@@ -1,0 +1,53 @@
+% Phase 29d — 3D plot/scatter ASCII terminal demo
+%
+% Covers: plot3, scatter3, zlabel (footer output), title
+%
+% Requires the plot feature flag at build time:
+%   cargo build --release --features plot
+%   ccalc examples/plot3_demo.calc
+%
+% Optionally combine with file export:
+%   cargo build --release --features plot-all
+%
+% ASCII 3D uses orthographic projection (azimuth -37.5 deg, elevation 30 deg),
+% the same defaults as MATLAB.  The x/y/z labels appear as a footer below
+% the chart so they don't conflict with the projected 2D axes.
+
+% --- 1. Helix ---
+
+t  = linspace(0, 4*pi, 80);
+hx = cos(t);
+hy = sin(t);
+hz = t / (4*pi);
+
+fprintf('--- 3D helix ---\n')
+title('3D helix')
+xlabel('x = cos(t)')
+ylabel('y = sin(t)')
+zlabel('z = t / (4 pi)')
+plot3(hx, hy, hz)
+
+% --- 2. Lissajous 3D ---
+
+t2  = linspace(0, 2*pi, 100);
+lx  = sin(3*t2);
+ly  = sin(2*t2);
+lz  = cos(t2);
+
+fprintf('\n--- Lissajous 3D (scatter) ---\n')
+title('Lissajous 3D')
+xlabel('sin(3t)')
+ylabel('sin(2t)')
+zlabel('cos(t)')
+scatter3(lx, ly, lz)
+
+% --- 3. Rising spiral ---
+
+t3  = linspace(0, 6*pi, 120);
+rx  = t3 .* cos(t3);
+ry  = t3 .* sin(t3);
+rz  = t3;
+
+fprintf('\n--- Rising spiral ---\n')
+title('Rising spiral')
+plot3(rx, ry, rz)

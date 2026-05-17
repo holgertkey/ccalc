@@ -1,0 +1,78 @@
+% Phase 29d — 3D plot/scatter SVG/PNG file export demo
+%
+% Covers: plot3, scatter3, zlabel, zlim
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/plot3_file/plot3_file.calc
+%
+% For ASCII terminal rendering, use --features plot instead.
+%
+% Output files are written to examples/plot3_file/tmp/.
+% Open SVG files in any web browser; PNG files in any image viewer.
+
+out = 'examples/plot3_file/tmp/';
+
+% ------------------------------------------------------------------ %
+% 1. Helix — line plot, SVG                                           %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing 3D helix -> %shelix.svg\n', out)
+
+t  = linspace(0, 4*pi, 120);
+hx = cos(t);
+hy = sin(t);
+hz = t / (4*pi);
+
+title('3D helix')
+xlabel('x = cos(t)')
+ylabel('y = sin(t)')
+zlabel('z = t / (4 pi)')
+plot3(hx, hy, hz, strcat(out, 'helix.svg'))
+
+% ------------------------------------------------------------------ %
+% 2. Helix — PNG variant                                              %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing 3D helix -> %shelix.png\n', out)
+
+title('3D helix')
+plot3(hx, hy, hz, strcat(out, 'helix.png'))
+
+% ------------------------------------------------------------------ %
+% 3. Scatter3 — random 3D point cloud, SVG                            %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing 3D scatter cloud -> %scloud.svg\n', out)
+
+rng(7);
+n  = 80;
+sx = randn(1, n);
+sy = randn(1, n);
+sz = randn(1, n);
+
+title('3D point cloud')
+xlabel('x')
+ylabel('y')
+zlabel('z')
+scatter3(sx, sy, sz, strcat(out, 'cloud.svg'))
+
+% ------------------------------------------------------------------ %
+% 4. Scatter3 — Lissajous 3D curve as dots, SVG                       %
+% ------------------------------------------------------------------ %
+
+fprintf('Writing Lissajous scatter3 -> %slissajous3d.svg\n', out)
+
+t2  = linspace(0, 2*pi, 200);
+lx  = sin(3*t2);
+ly  = sin(2*t2);
+lz  = sin(t2);
+
+title('Lissajous 3D')
+xlabel('sin(3t)')
+ylabel('sin(2t)')
+zlabel('sin(t)')
+zlim([-1.1, 1.1])
+scatter3(lx, ly, lz, strcat(out, 'lissajous3d.svg'))
+
+fprintf('\nDone. Files written to %s\n', out)

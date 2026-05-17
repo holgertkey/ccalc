@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0+005] - 2026-05-17
+
+### Added
+
+- **Phase 29d — 3D plots: `plot3`, `scatter3`** (`crates/ccalc-plot`):
+  - **`plot3(x, y, z)`**: 3D line plot. ASCII tier projects via orthographic
+    projection (azimuth −37.5°, elevation 30°, matching MATLAB defaults) and
+    renders with `textplots`. File tier (`plot3(x,y,z,'f.svg|png')`) uses
+    `plotters` `build_cartesian_3d` + `LineSeries` over `(f64, f64, f64)` tuples.
+  - **`scatter3(x, y, z)`**: 3D point cloud. Same projection model for ASCII;
+    file tier draws `Circle` elements at each 3D coordinate.
+  - **`zlabel`/`zlim`** consumed from `FigureState` by both functions.
+    ASCII: labels printed as `x:` / `y:` / `z:` footer lines below the chart
+    (not passed to textplots axes, which would describe the projected plane).
+    File: state consumed by renderer; title shown via `caption`.
+  - `proj3d::project_ortho` (added in Phase 29a scaffolding) is now exercised
+    by the ASCII render path.
+  - `extract_xyz` helper added to `lib.rs`; `render_3d` dispatch follows the
+    same ASCII/file pattern as `render_ascii_or_file`.
+  - No new Cargo dependencies: `build_cartesian_3d` and `Circle` in 3D context
+    both compile under the existing `line_series` + `svg_backend`/`bitmap_backend` feature set.
+  - 7 new unit tests; 7 new integration tests in `tests/svg_png_tests.rs`.
+  - Example scripts: `examples/plot3_demo.calc` (ASCII) and
+    `examples/plot3_file/plot3_file.calc` (file export).
+
 ## [0.36.0+004] - 2026-05-16
 
 ### Added
