@@ -671,6 +671,7 @@ fn render_3d(
     path: Option<&str>,
     state: FigureState,
 ) -> Result<Value, String> {
+    extract_xyz(name, data_args)?;
     match path {
         None | Some("ascii") => render_3d_ascii(name, data_args, state),
         Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
