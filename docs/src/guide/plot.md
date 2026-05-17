@@ -247,13 +247,13 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 
 ## Examples
 
-- `examples/plot_demo.calc` — ASCII `plot`/`scatter`, annotations
+- `examples/plot_file/plot_demo.calc` — ASCII `plot`/`scatter`, annotations
 - `examples/plot_file/plot_file.calc` — `plot`/`scatter` to SVG/PNG
-- `examples/plot_extended.calc` — `bar`, `stem`, `stairs`, `hist`,
+- `examples/plot_extended_file/plot_extended.calc` — `bar`, `stem`, `stairs`, `hist`,
   `loglog`/`semilogx`/`semilogy`, multi-series, `xlim`/`ylim`/`grid` (ASCII)
 - `examples/plot_extended_file/plot_extended_file.calc` — same chart
   types exported to SVG/PNG, multi-series with `legend`+`grid`, histogram variants
-- `examples/plot3_demo.calc` — `plot3`/`scatter3` ASCII 3D plots
+- `examples/plot3_file/plot3_demo.calc` — `plot3`/`scatter3` ASCII 3D plots
 - `examples/plot3_file/plot3_file.calc` — `plot3`/`scatter3` exported to SVG/PNG
 
 ---
