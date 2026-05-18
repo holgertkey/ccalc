@@ -362,13 +362,19 @@ where
     let n_steps: usize = 64;
     let step_h = (z_max - z_min) / n_steps as f64;
 
+    // Horizontal margins must be small: CB_WIDTH = 80 px, y_label_area = 40 px.
+    // margin_left=0 + margin_right=4 + y_label_area=40 → 36 px for the gradient strip.
     let mut chart = ChartBuilder::on(area)
-        .margin(20)
+        .margin_top(30)
+        .margin_bottom(30)
+        .margin_left(0)
+        .margin_right(4)
         .x_label_area_size(0)
-        .y_label_area_size(45)
+        .y_label_area_size(40)
         .build_cartesian_2d(0.0..1.0, z_min..z_max)
         .map_err(|e| e.to_string())?;
 
+    // Draw the axis ticks / labels first (fills chart area with white background).
     chart
         .configure_mesh()
         .disable_x_mesh()
@@ -376,6 +382,7 @@ where
         .draw()
         .map_err(|e| e.to_string())?;
 
+    // Draw gradient on top of the white background.
     chart
         .draw_series((0..n_steps).map(|i| {
             let t = i as f64 / (n_steps - 1).max(1) as f64;
