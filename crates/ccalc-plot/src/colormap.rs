@@ -234,10 +234,6 @@ pub fn render_imagesc_ascii(z: &[f64], nrows: usize, ncols: usize, state: &Figur
 
 // ── SVG/PNG file renderer ──────────────────────────────────────────────────
 
-#[cfg(feature = "plot-svg")]
-const WIDTH: u32 = 800;
-#[cfg(feature = "plot-svg")]
-const HEIGHT: u32 = 600;
 /// Width reserved for the colorbar strip (pixels).
 #[cfg(feature = "plot-svg")]
 const CB_WIDTH: u32 = 80;
@@ -247,20 +243,23 @@ const CB_WIDTH: u32 = 80;
 /// The active colormap is taken from `state.colormap` (default `"viridis"`).
 /// If `state.colorbar` is `true`, a gradient strip with value labels is
 /// appended on the right side of the image.
+/// `width` and `height` set the canvas size in pixels.
 #[cfg(feature = "plot-svg")]
 pub fn render_imagesc_file(
     z: &[f64],
     nrows: usize,
     ncols: usize,
     path: &str,
+    width: u32,
+    height: u32,
     state: FigureState,
 ) -> Result<(), String> {
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
-        draw_imagesc(z, nrows, ncols, &state, root)
+        let root = SVGBackend::new(path, (width, height)).into_drawing_area();
+        draw_imagesc(z, nrows, ncols, &state, root, width)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
-        draw_imagesc(z, nrows, ncols, &state, root)
+        let root = BitMapBackend::new(path, (width, height)).into_drawing_area();
+        draw_imagesc(z, nrows, ncols, &state, root, width)
     } else {
         Err(format!("imagesc: unsupported format '{path}'"))
     }
@@ -273,6 +272,7 @@ fn draw_imagesc<DB: DrawingBackend>(
     ncols: usize,
     state: &FigureState,
     root: DrawingArea<DB, plotters::coord::Shift>,
+    width: u32,
 ) -> Result<(), String>
 where
     DB::ErrorType: std::fmt::Display,
@@ -288,7 +288,8 @@ where
     let range = z_max - z_min;
 
     if state.colorbar {
-        let (img_area, cb_area) = root.split_horizontally((WIDTH - CB_WIDTH) as i32);
+        let split = (width.saturating_sub(CB_WIDTH)) as i32;
+        let (img_area, cb_area) = root.split_horizontally(split);
         draw_imagesc_cells(&img_area, z, nrows, ncols, state, cmap, z_min, range)?;
         draw_colorbar(&cb_area, z_min, z_max, cmap)?;
     } else {
