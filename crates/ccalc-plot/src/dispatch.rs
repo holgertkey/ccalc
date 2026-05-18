@@ -36,6 +36,28 @@ pub fn extract_vector(v: &Value) -> Result<Vec<f64>, String> {
     }
 }
 
+/// Extracts a 2D matrix from a `Value`, returning flat row-major data and
+/// dimensions `(data, nrows, ncols)`.
+///
+/// A `Scalar` is promoted to a 1×1 matrix.  Any other type returns an error.
+pub fn extract_matrix(v: &Value) -> Result<(Vec<f64>, usize, usize), String> {
+    match v {
+        Value::Matrix(m) => {
+            let nrows = m.nrows();
+            let ncols = m.ncols();
+            let mut data = Vec::with_capacity(nrows * ncols);
+            for r in 0..nrows {
+                for c in 0..ncols {
+                    data.push(m[[r, c]]);
+                }
+            }
+            Ok((data, nrows, ncols))
+        }
+        Value::Scalar(f) => Ok((vec![*f], 1, 1)),
+        _ => Err("imagesc: expected a numeric matrix".into()),
+    }
+}
+
 fn as_str(v: &Value) -> Option<String> {
     match v {
         Value::Str(s) | Value::StringObj(s) => Some(s.clone()),

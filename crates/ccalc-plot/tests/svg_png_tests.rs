@@ -566,3 +566,58 @@ fn test_xlim_ylim_applied_in_svg() {
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("<svg"));
 }
+
+// ── 30a: imagesc ─────────────────────────────────────────────────────────────
+
+fn mat4x4() -> Value {
+    Value::Matrix(
+        Array2::from_shape_vec((4, 4), (0..16).map(|i| i as f64).collect()).unwrap(),
+    )
+}
+
+#[test]
+fn test_imagesc_writes_svg_file() {
+    let path = svg_path("test_imagesc.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call("imagesc", &[mat4x4(), Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "SVG file should contain <svg tag");
+}
+
+#[test]
+fn test_imagesc_writes_png_file() {
+    let path = svg_path("test_imagesc.png");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call("imagesc", &[mat4x4(), Value::Str(path.clone())], &env)
+        .unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(
+        &bytes[..8],
+        b"\x89PNG\r\n\x1a\n",
+        "file should start with PNG magic bytes"
+    );
+}
+
+#[test]
+fn test_imagesc_with_colorbar_svg() {
+    let path = svg_path("test_imagesc_colorbar.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call("colormap", &[Value::Str("jet".into())], &env)
+        .unwrap();
+    plugin.call("colorbar", &[], &env).unwrap();
+    let z = Value::Matrix(
+        Array2::from_shape_vec((8, 8), (0..64).map(|i| i as f64).collect()).unwrap(),
+    );
+    plugin
+        .call("imagesc", &[z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "SVG file should contain <svg tag");
+}

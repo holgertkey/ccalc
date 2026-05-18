@@ -1,0 +1,66 @@
+% Phase 30a — imagesc + colormap + colorbar demo
+%
+% Demonstrates false-colour image rendering with multiple colormaps and an
+% optional colorbar strip.
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/imagesc_demo.calc
+%
+% Output files are written to examples/imagesc_demo_out/
+% Open the SVG files in any web browser.
+
+out = 'examples/imagesc_demo_out/';
+
+% --- 1. Simple rising-gradient matrix ---
+%
+% reshape(1:N, r, c) fills an r×c matrix column-major with values 1..N.
+% imagesc maps the data range to the full colormap span automatically.
+
+fprintf('Writing gradient (viridis) -> %sgradient.svg\n', out)
+
+N = 32;
+Z = reshape(1:N*N, N, N);
+
+colormap('viridis')
+title('Gradient — viridis colormap')
+xlabel('column')
+ylabel('row')
+imagesc(Z, strcat(out, 'gradient.svg'))
+
+% --- 2. Same data, different colormaps ---
+
+colormaps = {'hot', 'cool', 'jet', 'gray', 'plasma', 'magma', 'inferno'};
+for k = 1:numel(colormaps)
+  cname = colormaps{k};
+  fprintf('  colormap %s -> %s%s.svg\n', cname, out, cname)
+  colormap(cname)
+  title(strcat('Gradient — ', cname))
+  imagesc(Z, strcat(out, strcat(cname, '.svg')))
+end
+
+% --- 3. Colorbar strip ---
+%
+% Calling colorbar() before imagesc appends a gradient legend strip on the
+% right side of the exported image.
+
+fprintf('Writing radial distance with colorbar -> %sradial.svg\n', out)
+
+n = 48;
+R = zeros(n, n);
+for r = 1:n
+  for c = 1:n
+    x = (c - n/2 - 0.5) / (n/2);
+    y = (r - n/2 - 0.5) / (n/2);
+    R(r, c) = sqrt(x^2 + y^2);
+  end
+end
+
+colormap('hot')
+colorbar()
+title('Radial distance from centre')
+xlabel('x')
+ylabel('y')
+imagesc(R, strcat(out, 'radial.svg'))
+
+fprintf('\nDone. SVG files written to %s\n', out)

@@ -1,0 +1,55 @@
+% julia.calc — Julia set visualised with imagesc (Phase 30a)
+%
+% Computes the escape-count map for the Julia iteration
+%   z_{n+1} = z_n^2 + c,   z_0 = grid point,   c fixed
+% and renders it as a false-colour SVG using imagesc.
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/julia/julia.calc
+%
+% Output: examples/julia/tmp/julia.svg
+
+out = 'examples/julia/tmp/';
+
+% Seed constant — try c = -0.4 + 0.6i or c = 0.285 + 0.01i for other shapes.
+c_seed = -0.7 + 0.27 * i;
+
+% Grid parameters — increase nx/ny for higher resolution.
+nx       = 100;
+ny       = 70;
+max_iter = 60;
+
+% Coordinate range for z0.
+re_min = -1.5;  re_max = 1.5;
+im_min = -1.0;  im_max = 1.0;
+
+Z = zeros(ny, nx);
+
+for iy = 1:ny
+  for ix = 1:nx
+    z = (re_min + (ix - 1) / (nx - 1) * (re_max - re_min)) ...
+      + (im_min + (iy - 1) / (ny - 1) * (im_max - im_min)) * i;
+
+    n = 0;
+    for k = 1:max_iter
+      z = z^2 + c_seed;
+      if abs(z) > 2
+        break
+      end
+      n = n + 1;
+    end
+    Z(iy, ix) = n;
+  end
+end
+
+fprintf('Rendering %dx%d Julia set (c = -0.7 + 0.27i)...\n', nx, ny)
+
+colormap('magma')
+colorbar()
+title('Julia set: c = -0.7 + 0.27i')
+xlabel('Re(z_0)')
+ylabel('Im(z_0)')
+imagesc(Z, strcat(out, 'julia.svg'))
+
+fprintf('Written to %sjulia.svg\n', out)

@@ -1,0 +1,54 @@
+% mandelbrot.calc — Mandelbrot set visualised with imagesc (Phase 30a)
+%
+% Computes the escape-count map for the Mandelbrot iteration
+%   z_{n+1} = z_n^2 + c,   z_0 = 0
+% and renders it as a false-colour SVG using imagesc.
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/mandelbrot/mandelbrot.calc
+%
+% Output: examples/mandelbrot/tmp/mandelbrot.svg
+
+out = 'examples/mandelbrot/tmp/';
+
+% Grid parameters — increase nx/ny for higher resolution (takes longer).
+nx       = 80;
+ny       = 50;
+max_iter = 50;
+
+% Coordinate ranges covering the classic Mandelbrot view.
+re_min = -2.5;  re_max = 1.0;
+im_min = -1.2;  im_max = 1.2;
+
+Z = zeros(ny, nx);
+
+for iy = 1:ny
+  for ix = 1:nx
+    c_re = re_min + (ix - 1) / (nx - 1) * (re_max - re_min);
+    c_im = im_min + (iy - 1) / (ny - 1) * (im_max - im_min);
+    c    = c_re + c_im * i;
+
+    z = 0;
+    n = 0;
+    for k = 1:max_iter
+      z = z^2 + c;
+      if abs(z) > 2
+        break
+      end
+      n = n + 1;
+    end
+    Z(iy, ix) = n;
+  end
+end
+
+fprintf('Rendering %dx%d Mandelbrot set...\n', nx, ny)
+
+colormap('inferno')
+colorbar()
+title('Mandelbrot set — escape count')
+xlabel('Re(c)')
+ylabel('Im(c)')
+imagesc(Z, strcat(out, 'mandelbrot.svg'))
+
+fprintf('Written to %smandelbrot.svg\n', out)

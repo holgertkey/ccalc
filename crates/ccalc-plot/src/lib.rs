@@ -1,9 +1,9 @@
-//! Plot plugin for ccalc — Phase 29d.
+//! Plot plugin for ccalc — Phase 30a.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
-//! `semilogx`, `semilogy`, `plot3`, `scatter3`, and annotation functions
-//! (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`,
-//! `grid`).
+//! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, and annotation
+//! functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`, `xlim`,
+//! `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -17,6 +17,7 @@
 //!
 //! Build with `--features plot` to enable ASCII rendering.
 
+pub mod colormap;
 pub mod dispatch;
 pub mod proj3d;
 
@@ -31,7 +32,7 @@ use std::cell::RefCell;
 use ccalc_engine::env::{Env, Value};
 use ccalc_engine::plugin::Plugin;
 
-use dispatch::{extract_file_arg, extract_vector};
+use dispatch::{extract_file_arg, extract_matrix, extract_vector};
 
 // ── FigureState ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,10 @@ pub struct FigureState {
     pub zlim: Option<(f64, f64)>,
     /// Whether to draw grid lines (file export only; ASCII ignores).
     pub grid: bool,
+    /// Active colormap name for `imagesc` (default `"viridis"` when `None`).
+    pub colormap: Option<String>,
+    /// Whether to append a colorbar to the next `imagesc` render.
+    pub colorbar: bool,
 }
 
 thread_local! {
@@ -71,6 +76,7 @@ thread_local! {
 const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
+    "colormap", "colorbar", "imagesc",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -248,6 +254,30 @@ impl Plugin for PlotPlugin {
                 render_3d(name, &data_args, path.as_deref(), state)
             }
 
+            // ── Colormap / colorbar setters ────────────────────────────
+            "colormap" => {
+                let cmap = require_string("colormap", args)?;
+                colormap::validate_colormap(&cmap)?;
+                FIGURE_STATE.with(|f| f.borrow_mut().colormap = Some(cmap));
+                Ok(Value::Void)
+            }
+
+            "colorbar" => {
+                FIGURE_STATE.with(|f| f.borrow_mut().colorbar = true);
+                Ok(Value::Void)
+            }
+
+            // ── imagesc ────────────────────────────────────────────────
+            "imagesc" => {
+                let (data_args, path) = extract_file_arg(args);
+                if data_args.is_empty() {
+                    return Err("imagesc: at least one argument required".into());
+                }
+                let state = FIGURE_STATE.with(|f| f.take());
+                let (z, nrows, ncols) = extract_matrix(&data_args[0])?;
+                render_imagesc(&z, nrows, ncols, path.as_deref(), state)
+            }
+
             _ => Err(format!("plot plugin: unknown function '{name}'")),
         }
     }
@@ -331,6 +361,73 @@ fn render_ascii(name: &str, _data_args: &[Value], _state: FigureState) -> Result
         "{name}: ASCII rendering requires the 'plot' feature flag. \
          Rebuild with: cargo build --features plot"
     ))
+}
+
+// ── imagesc dispatch ───────────────────────────────────────────────────────
+
+fn render_imagesc(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_imagesc_ascii_tier(z, nrows, ncols, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_imagesc_file_tier(z, nrows, ncols, p, state)
+        }
+        Some(p) => Err(format!("imagesc: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_imagesc_ascii_tier(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: FigureState,
+) -> Result<Value, String> {
+    colormap::render_imagesc_ascii(z, nrows, ncols, &state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_imagesc_ascii_tier(
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("imagesc: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_imagesc_file_tier(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    colormap::render_imagesc_file(z, nrows, ncols, path, state)
+        .map_err(|e| format!("imagesc: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_imagesc_file_tier(
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("imagesc: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
 }
 
 // ── Argument helpers ───────────────────────────────────────────────────────
@@ -1347,5 +1444,111 @@ mod tests {
             msg.contains("plot-svg"),
             "error should mention plot-svg feature: {msg}"
         );
+    }
+
+    // ── 30a: colormap / colorbar / imagesc ────────────────────────────
+
+    #[test]
+    fn test_colormap_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("colormap", &[Value::Str("hot".into())], &env)
+            .unwrap();
+        let cmap = FIGURE_STATE.with(|f| f.borrow().colormap.clone());
+        assert_eq!(cmap, Some("hot".into()));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_colorbar_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("colorbar", &[], &env).unwrap();
+        let cb = FIGURE_STATE.with(|f| f.borrow().colorbar);
+        assert!(cb, "colorbar should set FigureState.colorbar = true");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_colormap_invalid_name_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("colormap", &[Value::Str("notacolormap".into())], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("colormap"), "error should mention colormap: {msg}");
+    }
+
+    #[test]
+    fn test_apply_colormap_gray_extremes() {
+        let (r, g, b) = colormap::apply_colormap(0.0, "gray");
+        assert_eq!((r, g, b), (0, 0, 0));
+        let (r, g, b) = colormap::apply_colormap(1.0, "gray");
+        assert_eq!((r, g, b), (255, 255, 255));
+    }
+
+    #[test]
+    fn test_imagesc_non_matrix_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("imagesc", &[Value::Str("notamatrix".into())], &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_imagesc_no_args_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("imagesc", &[], &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[cfg(not(feature = "plot-svg"))]
+    fn test_imagesc_svg_without_feature_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let z = Value::Matrix(
+            Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap(),
+        );
+        let path = Value::Str("out.svg".into());
+        let result = plugin.call("imagesc", &[z, path], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("plot-svg"),
+            "error should mention plot-svg feature: {msg}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_imagesc_ascii_no_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let z = Value::Matrix(
+            Array2::from_shape_vec((4, 4), (0..16).map(|i| i as f64).collect()).unwrap(),
+        );
+        let result = plugin.call("imagesc", &[z], &env);
+        assert!(result.is_ok(), "imagesc ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_imagesc_ascii_with_colorbar_no_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("colormap", &[Value::Str("jet".into())], &env).unwrap();
+        plugin.call("colorbar", &[], &env).unwrap();
+        let z = Value::Matrix(
+            Array2::from_shape_vec((3, 3), (0..9).map(|i| i as f64).collect()).unwrap(),
+        );
+        let result = plugin.call("imagesc", &[z], &env);
+        assert!(result.is_ok(), "imagesc with colorbar should succeed: {result:?}");
     }
 }

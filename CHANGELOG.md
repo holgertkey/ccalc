@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.36.0+006] - 2026-05-18
+
+### Added
+
+- **Phase 30a — Colormaps + `imagesc` + `colorbar`** (`crates/ccalc-plot`):
+  - **`colormap(name)`**: sets the active colormap on `FigureState`. Supported
+    names: `viridis`, `inferno`, `magma`, `plasma`, `hot`, `cool`, `jet`, `gray`.
+    Validated immediately; unknown names return a descriptive error listing valid choices.
+  - **`colorbar()`**: enables a gradient legend strip on the next `imagesc` render.
+  - **`imagesc(Z)`** / **`imagesc(Z, 'file.svg'|'file.png')`**: false-colour 2D
+    image of matrix `Z`. ASCII tier renders each cell as a density character
+    (`' .:-=+*#@█'`). File tier (`plot-svg` feature) renders one `Rectangle` per
+    cell coloured via the active colormap LUT, with an optional 80 px colorbar
+    drawn in a right strip via `split_horizontally`.
+  - New module `crates/ccalc-plot/src/colormap.rs`: `VALID_COLORMAPS` constant,
+    `validate_colormap`, `apply_colormap` (8-stop LUT with linear interpolation),
+    `data_range` helper, `render_imagesc_ascii` (feat=`plot`),
+    `render_imagesc_file` + `draw_imagesc` + `draw_imagesc_cells` + `draw_colorbar`
+    (feat=`plot-svg`).
+  - `extract_matrix` helper added to `dispatch.rs`: returns flat row-major data +
+    dimensions from a `Value::Matrix` or `Value::Scalar`.
+  - MATLAB row-order preserved: Z(1,1) maps to the top-left of the rendered image.
+  - No new Cargo dependencies: LUT interpolation replaces plotters' optional
+    `colormaps` feature; `ndarray` remains in `dev-dependencies` only.
+  - 12 new unit tests (5 in `lib.rs`, 8 in `colormap.rs`); 3 new integration
+    tests in `tests/svg_png_tests.rs`.
+  - Example scripts: `examples/imagesc_demo.calc`,
+    `examples/mandelbrot/mandelbrot.calc`, `examples/julia/julia.calc`.
+
 ## [0.36.0+005] - 2026-05-17
 
 ### Added
