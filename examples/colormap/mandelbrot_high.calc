@@ -1,23 +1,24 @@
-% mandelbrot.calc — Mandelbrot set visualised with imagesc (Phase 30a)
+% mandelbrot_high.calc — high-resolution Mandelbrot set (Phase 30a)
 %
 % Computes the escape-count map for the Mandelbrot iteration
 %   z_{n+1} = z_n^2 + c,   z_0 = 0
-% and renders it as a false-colour SVG using imagesc.
+% and renders it as a full-colour PNG using imagesc.
 %
 % Requires the plot-svg feature flag at build time:
 %   cargo build --release --features plot-svg
-%   ccalc examples/colormap/mandelbrot.calc
+%   ccalc examples/colormap/mandelbrot_high.calc
 %
-% Output: examples/colormap/tmp/mandelbrot.svg
+% Output: examples/colormap/tmp/mandelbrot_high.png
 
 out = 'examples/colormap/tmp/';
 
-% Grid parameters — increase nx/ny for higher resolution (takes longer).
+% Grid: 800x600 cells → canvas 1600x1200 px (each cell = 2x2 pixels).
+% Increase nx/ny further for pixel-perfect output (much slower).
 nx       = 800;
 ny       = 600;
-max_iter = 60;
+max_iter = 200;   % higher = richer boundary detail
 
-% Coordinate ranges covering the classic Mandelbrot view.
+% Classic Mandelbrot view.  Aspect: 3.5 / 2.4 ≈ 1.46 (close to 4:3 canvas).
 re_min = -2.5;  re_max = 1.0;
 im_min = -1.2;  im_max = 1.2;
 
@@ -42,13 +43,13 @@ for iy = 1:ny
   end
 end
 
-fprintf('Rendering %dx%d Mandelbrot set...\n', nx, ny)
+fprintf('Rendering %dx%d Mandelbrot set (max_iter=%d)...\n', nx, ny, max_iter)
 
-colormap('inferno')
+colormap('hot')
 colorbar()
 title('Mandelbrot set — escape count')
 xlabel('Re(c)')
 ylabel('Im(c)')
-imagesc(Z, strcat(out, 'mandelbrot.png'), 1600, 1200)
+imagesc(Z, strcat(out, 'mandelbrot_high.png'), 1600, 1200)
 
-fprintf('Written to %smandelbrot.png\n', out)
+fprintf('Written to %smandelbrot_high.png\n', out)

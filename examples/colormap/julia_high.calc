@@ -1,28 +1,28 @@
-% julia.calc — Julia set visualised with imagesc (Phase 30a)
+% julia_high.calc — high-resolution Julia set (Phase 30a)
 %
 % Computes the escape-count map for the Julia iteration
 %   z_{n+1} = z_n^2 + c,   z_0 = grid point,   c fixed
-% and renders it as a false-colour SVG using imagesc.
+% and renders it as a full-colour PNG using imagesc.
 %
 % Requires the plot-svg feature flag at build time:
 %   cargo build --release --features plot-svg
-%   ccalc examples/colormap/julia.calc
+%   ccalc examples/colormap/julia_high.calc
 %
-% Output: examples/colormap/tmp/julia.svg
+% Output: examples/colormap/tmp/julia_high.png
 
 out = 'examples/colormap/tmp/';
 
 % Seed constant — try c = -0.4 + 0.6i or c = 0.285 + 0.01i for other shapes.
 c_seed = -0.7 + 0.27 * i;
 
-% Grid parameters — increase nx/ny for higher resolution.
+% Grid: 800x600 cells → canvas 1600x1200 px (each cell = 2x2 pixels).
 nx       = 800;
 ny       = 600;
-max_iter = 200;
+max_iter = 256;   % higher = smoother gradients at the boundary
 
-% Coordinate range for z0.
-re_min = -1.5;  re_max = 1.5;
-im_min = -1.0;  im_max = 1.0;
+% Domain adjusted to 4:3 aspect ratio to match the canvas exactly.
+re_min = -1.6;  re_max = 1.6;
+im_min = -1.2;  im_max = 1.2;
 
 Z = zeros(ny, nx);
 
@@ -43,13 +43,13 @@ for iy = 1:ny
   end
 end
 
-fprintf('Rendering %dx%d Julia set (c = -0.7 + 0.27i)...\n', nx, ny)
+fprintf('Rendering %dx%d Julia set c=-0.7+0.27i (max_iter=%d)...\n', nx, ny, max_iter)
 
 colormap('magma')
 colorbar()
 title('Julia set: c = -0.7 + 0.27i')
 xlabel('Re(z_0)')
 ylabel('Im(z_0)')
-imagesc(Z, strcat(out, 'julia.png'), 1600, 1200)
+imagesc(Z, strcat(out, 'julia_high.png'), 1600, 1200)
 
-fprintf('Written to %sjulia.png\n', out)
+fprintf('Written to %sjulia_high.png\n', out)
