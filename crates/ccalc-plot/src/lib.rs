@@ -283,7 +283,9 @@ impl Plugin for PlotPlugin {
                     2 => match &args[1] {
                         Value::Str(s) | Value::StringObj(s) => (Some(s.clone()), 800, 600),
                         _ => {
-                            return Err("imagesc: second argument must be a file path string".into());
+                            return Err(
+                                "imagesc: second argument must be a file path string".into()
+                            );
                         }
                     },
                     4 => {
