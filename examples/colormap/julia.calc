@@ -6,11 +6,11 @@
 %
 % Requires the plot-svg feature flag at build time:
 %   cargo build --release --features plot-svg
-%   ccalc examples/julia/julia.calc
+%   ccalc examples/colormap/julia.calc
 %
-% Output: examples/julia/tmp/julia.svg
+% Output: examples/colormap/tmp/julia.svg
 
-out = 'examples/julia/tmp/';
+out = 'examples/colormap/tmp/';
 
 % Seed constant — try c = -0.4 + 0.6i or c = 0.285 + 0.01i for other shapes.
 c_seed = -0.7 + 0.27 * i;

@@ -6,11 +6,11 @@
 %
 % Requires the plot-svg feature flag at build time:
 %   cargo build --release --features plot-svg
-%   ccalc examples/mandelbrot/mandelbrot.calc
+%   ccalc examples/colormap/mandelbrot.calc
 %
-% Output: examples/mandelbrot/tmp/mandelbrot.svg
+% Output: examples/colormap/tmp/mandelbrot.svg
 
-out = 'examples/mandelbrot/tmp/';
+out = 'examples/colormap/tmp/';
 
 % Grid parameters — increase nx/ny for higher resolution (takes longer).
 nx       = 80;

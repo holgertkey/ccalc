@@ -32,8 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `colormaps` feature; `ndarray` remains in `dev-dependencies` only.
   - 12 new unit tests (5 in `lib.rs`, 8 in `colormap.rs`); 3 new integration
     tests in `tests/svg_png_tests.rs`.
-  - Example scripts: `examples/imagesc_demo.calc`,
-    `examples/mandelbrot/mandelbrot.calc`, `examples/julia/julia.calc`.
+  - Example scripts: `examples/colormap/imagesc_demo.calc`,
+    `examples/colormap/mandelbrot.calc`, `examples/colormap/julia.calc`.
+    All output to `examples/colormap/tmp/`.
 
 ## [0.36.0+005] - 2026-05-17
 
