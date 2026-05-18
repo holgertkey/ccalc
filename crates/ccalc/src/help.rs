@@ -79,7 +79,7 @@ pub fn print(topic: Option<&str>) {
             "plot" | "scatter" | "bar" | "stem" | "stairs" | "hist" | "loglog" | "semilogx"
             | "semilogy" | "plot3" | "scatter3" | "3d" | "xlabel" | "ylabel" | "zlabel" | "title"
             | "xlim" | "ylim" | "zlim" | "legend" | "grid" | "figurestate" | "plotting" | "charts"
-            | "svg" | "png",
+            | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -3515,6 +3515,16 @@ Two rendering tiers; both use the same annotation API.
                  renders with textplots; x/y/z labels printed as footer lines.
     File tier:   plotters build_cartesian_3d + LineSeries / Circle elements.
 
+── False-colour images ──────────────────────────────────────────────────────
+    imagesc(Z)            render matrix Z as a false-colour image (ASCII)
+    imagesc(Z, 'f.svg')   save false-colour image to SVG (requires plot-svg)
+    imagesc(Z, 'f.png')   save to PNG
+    colormap('name')      set active colormap (consumed by next imagesc)
+    colorbar()            append colour-scale legend strip (file export only)
+
+    Supported colormaps:  viridis (default)  inferno  magma  plasma
+                          hot  cool  jet  gray
+
 Append a file path as the last string argument to save instead of print:
     plot(x, y, 'out.svg')          SVG (requires --features plot-svg)
     plot(x, y, 'out.png')          PNG (requires --features plot-svg)
@@ -3569,10 +3579,17 @@ Append a file path as the last string argument to save instead of print:
     % 3D scatter to file
     scatter3(randn(1,80), randn(1,80), randn(1,80), 'cloud.svg')
 
+    % False-colour image with colormap and colorbar
+    Z = reshape(1:64, 8, 8);
+    colormap('viridis')
+    colorbar()
+    imagesc(Z, 'heat.svg')
+
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
           examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
           examples/plot3_demo.calc               (3D ASCII demo)
-          examples/plot3_file/plot3_file.calc    (3D SVG/PNG demo)"
+          examples/plot3_file/plot3_file.calc    (3D SVG/PNG demo)
+          examples/colormap/imagesc_demo.calc    (imagesc/colormap demo)"
     );
 }

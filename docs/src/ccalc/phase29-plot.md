@@ -89,21 +89,24 @@ BitMapBackend); the chart-building logic is shared.
 
 ---
 
-## Phase 29c — Bar, stem, log-scale, multi-series (planned)
+## Phase 29c — Bar, stem, log-scale, multi-series (v0.36.0) ✅
 
 `bar(v)`, `stem(x, v)`, `hist(v, n, 'f.svg')`, `stairs`, `loglog`,
 `semilogx`, `semilogy`, multi-series `plot(x, Y)` with colour cycle.
+`xlim`/`ylim`/`legend`/`grid` annotation support added.
 
-## Phase 29d — 3-D plots (planned)
+## Phase 29d — 3-D plots (v0.36.0) ✅
 
 `plot3(x, y, z)` and `scatter3(x, y, z)` using orthographic projection
 (az = −37.5°, el = 30°, matching MATLAB defaults). Infrastructure lives in
 `crates/ccalc-plot/src/proj3d.rs` (no feature gate).
+`zlabel`/`zlim` footer annotations; 7+7 new tests.
 
 ---
 
 ## See also
 
 - [Plot functions guide](../guide/plot.md)
+- [Phase 30 — Colormaps & imagesc](./phase30-colormap.md)
 - [Plugins guide](../guide/plugins.md)
 - [Phase 28 — Plugin Architecture](./phase28-plugins.md)

@@ -162,6 +162,75 @@ scatter3(randn(1,80), randn(1,80), randn(1,80), 'cloud.svg')
 
 ---
 
+## False-colour images (imagesc)
+
+Render a matrix as a heat-map — each cell is coloured according to its value.
+
+### `imagesc(Z)` / `imagesc(Z, path)`
+
+- `Z` — any numeric matrix.
+- Without a path: ASCII tier prints a character-art grid using 10 density
+  characters (`" .:-=+*#@█"`) mapped from `Z_min` to `Z_max`.
+- With a `.svg` or `.png` path: file tier draws one filled `Rectangle` per
+  cell, scaled to the canvas (800 × 600). Requires `--features plot-svg`.
+
+### `colormap('name')`
+
+Set the active colormap for the **next** `imagesc` call (consumed and cleared
+together with other `FigureState` annotations). Case-insensitive.
+
+| Name | Description |
+|---|---|
+| `viridis` | Perceptually uniform, blue → green → yellow (default) |
+| `inferno` | Black → purple → orange → white |
+| `magma` | Black → purple → pink → white |
+| `plasma` | Blue-purple → orange → yellow |
+| `hot` | Black → red → yellow → white |
+| `cool` | Cyan → magenta |
+| `jet` | Classic MATLAB: blue → cyan → green → yellow → red |
+| `gray` | Black → white (monochrome) |
+
+### `colorbar()`
+
+Appends a colour-scale legend strip to the right side of the exported image
+(80 px wide, with 5 tick labels at 0 %, 25 %, 50 %, 75 %, 100 % of the data
+range). Silently ignored in ASCII mode.
+
+```matlab
+% ASCII heat-map
+Z = reshape(1:100, 10, 10);
+imagesc(Z)
+
+% SVG with viridis colormap and colorbar
+colormap('viridis')
+colorbar()
+title('Signal strength')
+imagesc(Z, 'heat.svg')
+
+% Mandelbrot set — colormap changes false-colour appearance
+N = 200; max_iter = 60;
+x = linspace(-2.5, 1.0, N);
+y = linspace(-1.2, 1.2, N);
+Z = zeros(N, N);
+for row = 1:N
+  for col = 1:N
+    c = x(col) + y(row)*1i;
+    z = 0;
+    for k = 1:max_iter
+      if abs(z) > 2, break; end
+      z = z^2 + c;
+    end
+    Z(row, col) = k;
+  end
+end
+colormap('inferno')
+colorbar()
+title('Mandelbrot set')
+imagesc(Z, 'mandelbrot.svg')
+```
+
+---
+
 ## File export
 
 Append a file path as the **last** string argument:
@@ -171,6 +240,9 @@ Append a file path as the **last** string argument:
 | `'.svg'` | SVG vector graphic | Opens in any browser |
 | `'.png'` | PNG raster, 800 × 600 px | |
 | `'ascii'` | Terminal chart | Forces ASCII even with `plot-svg` active |
+
+`imagesc` always writes to a file (never prints a file path to the terminal).
+The `colormap` and `colorbar` annotations apply only to `imagesc`.
 
 ```matlab
 x = linspace(0, 2*pi, 200);
@@ -212,6 +284,8 @@ plot(t, y)       % all annotations applied here, then cleared
 | `grid` | Toggle grid on/off | Yes |
 | `grid('on')` | Enable grid | Yes |
 | `grid('off')` | Disable grid | Yes |
+| `colormap('name')` | Set colormap for next `imagesc` | Yes |
+| `colorbar()` | Append colour-scale strip (file export only) | Yes |
 
 Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
 ignore it.
@@ -239,6 +313,8 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **3D line plots (`plot3`):** `LineSeries` over `(f64, f64, f64)` tuples via `plotters`
   3D Cartesian chart (`build_cartesian_3d`).
 - **3D scatter plots (`scatter3`):** `Circle` elements at each 3D coordinate.
+- **False-colour images (`imagesc`):** one `Rectangle` per matrix cell, RGB colour
+  from the active colormap LUT; optional 80 px colorbar strip on the right.
 - **Axis range:** auto-computed from data with 5 % margin; single-point data uses ± 1.
 - **Legend:** shown when `legend(...)` is set; drawn in the upper-right corner with
   a black border.
@@ -255,6 +331,9 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
   types exported to SVG/PNG, multi-series with `legend`+`grid`, histogram variants
 - `examples/plot3_file/plot3_demo.calc` — `plot3`/`scatter3` ASCII 3D plots
 - `examples/plot3_file/plot3_file.calc` — `plot3`/`scatter3` exported to SVG/PNG
+- `examples/colormap/imagesc_demo.calc` — `imagesc` with all 8 colormaps + colorbar
+- `examples/colormap/mandelbrot.calc` — Mandelbrot set rendered with `colormap('inferno')`
+- `examples/colormap/julia.calc` — Julia set rendered with `colormap('magma')`
 
 ---
 

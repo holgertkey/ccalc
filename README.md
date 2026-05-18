@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.36.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.37.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -799,6 +799,8 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `semilogy(x, y)` | `plot` | Linear x-axis, log₁₀ y |
 | `plot3(x, y, z)` | `plot` | 3D line; ASCII uses orthographic projection |
 | `scatter3(x, y, z)` | `plot` | 3D point cloud; ASCII uses orthographic projection |
+| `imagesc(Z)` | `plot` | False-colour heat-map of matrix Z (ASCII density chars) |
+| `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG file |
 
 Append a file path to save instead of print to terminal:
 
@@ -810,6 +812,8 @@ Append a file path to save instead of print to terminal:
 | `hist(v, 20, 'h.svg')` | `plot-svg` | Histogram saved to file |
 | `plot3(x, y, z, 'f.svg')` | `plot-svg` | 3D line to file (SVG or PNG) |
 | `scatter3(x, y, z, 'f.png')` | `plot-svg` | 3D scatter to file |
+| `colormap('viridis')` | — | Set colormap for next `imagesc` (viridis/inferno/magma/plasma/hot/cool/jet/gray) |
+| `colorbar()` | — | Append colour-scale legend strip to next file export |
 
 ### Annotations
 
@@ -849,7 +853,8 @@ plot3(cos(t), sin(t), t/(4*pi), 'helix.svg')
 
 See `examples/plot_demo.calc` (ASCII), `examples/plot_file/plot_file.calc` (file export),
 `examples/plot_extended.calc` (bar/stem/stairs/hist/loglog),
-`examples/plot3_demo.calc` (3D ASCII), and `examples/plot3_file/plot3_file.calc` (3D file export)
+`examples/plot3_demo.calc` (3D ASCII), `examples/plot3_file/plot3_file.calc` (3D file export),
+and `examples/colormap/imagesc_demo.calc` (imagesc/colormap heat-maps)
 for full worked examples. Run `help plot` in the REPL for a quick reference.
 
 ---
@@ -2059,6 +2064,9 @@ The `examples/` directory contains annotated formula files ready to run:
 | `plot_extended_file/plot_extended_file.calc` | Same chart types saved to SVG/PNG files, multi-series with `legend`+`grid`, histogram variants — requires `--features plot-svg` |
 | `plot3_demo.calc`            | `plot3`/`scatter3` 3D ASCII plots via orthographic projection — requires `--features plot` |
 | `plot3_file/plot3_file.calc` | `plot3`/`scatter3` helix, Lissajous, scatter cloud exported to SVG/PNG — requires `--features plot-svg` |
+| `colormap/imagesc_demo.calc` | `imagesc` with all 8 colormaps, colorbar, gradient/radial/sine-wave matrices — requires `--features plot-svg` |
+| `colormap/mandelbrot.calc`   | Mandelbrot escape-count heat-map with `colormap('inferno')` + colorbar — requires `--features plot-svg` |
+| `colormap/julia.calc`        | Julia set with `colormap('magma')` + colorbar — requires `--features plot-svg` |
 
 ```bash
 ccalc < examples/mortgage.calc
