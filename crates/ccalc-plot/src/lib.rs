@@ -282,34 +282,30 @@ impl Plugin for PlotPlugin {
                     1 => (None, 800, 600),
                     2 => match &args[1] {
                         Value::Str(s) | Value::StringObj(s) => (Some(s.clone()), 800, 600),
-                        _ => return Err(
-                            "imagesc: second argument must be a file path string".into(),
-                        ),
+                        _ => {
+                            return Err("imagesc: second argument must be a file path string".into());
+                        }
                     },
                     4 => {
                         let p = match &args[1] {
                             Value::Str(s) | Value::StringObj(s) => s.clone(),
-                            _ => return Err(
-                                "imagesc: second argument must be a file path string".into(),
-                            ),
+                            _ => {
+                                return Err(
+                                    "imagesc: second argument must be a file path string".into()
+                                );
+                            }
                         };
                         let w = match &args[2] {
                             Value::Scalar(f) if *f >= 1.0 => *f as u32,
-                            _ => return Err(
-                                "imagesc: width must be a positive integer".into(),
-                            ),
+                            _ => return Err("imagesc: width must be a positive integer".into()),
                         };
                         let h = match &args[3] {
                             Value::Scalar(f) if *f >= 1.0 => *f as u32,
-                            _ => return Err(
-                                "imagesc: height must be a positive integer".into(),
-                            ),
+                            _ => return Err("imagesc: height must be a positive integer".into()),
                         };
                         (Some(p), w, h)
                     }
-                    n => return Err(format!(
-                        "imagesc: expected 1, 2, or 4 arguments, got {n}"
-                    )),
+                    n => return Err(format!("imagesc: expected 1, 2, or 4 arguments, got {n}")),
                 };
                 render_imagesc(&z, nrows, ncols, path.as_deref(), width, height, state)
             }

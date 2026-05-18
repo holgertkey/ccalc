@@ -15,11 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     names: `viridis`, `inferno`, `magma`, `plasma`, `hot`, `cool`, `jet`, `gray`.
     Validated immediately; unknown names return a descriptive error listing valid choices.
   - **`colorbar()`**: enables a gradient legend strip on the next `imagesc` render.
-  - **`imagesc(Z)`** / **`imagesc(Z, 'file.svg'|'file.png')`**: false-colour 2D
-    image of matrix `Z`. ASCII tier renders each cell as a density character
-    (`' .:-=+*#@█'`). File tier (`plot-svg` feature) renders one `Rectangle` per
-    cell coloured via the active colormap LUT, with an optional 80 px colorbar
-    drawn in a right strip via `split_horizontally`.
+  - **`imagesc(Z)`** / **`imagesc(Z, path)`** / **`imagesc(Z, path, W, H)`**:
+    false-colour 2D image of matrix `Z`. ASCII tier renders each cell as a
+    density character (`' .:-=+*#@█'`). File tier (`plot-svg` feature) renders
+    one `Rectangle` per cell coloured via the active colormap LUT; default canvas
+    is 800 × 600 px, overridable with explicit `W, H` arguments (e.g.
+    `imagesc(Z, 'f.png', 1920, 1080)`). Optional 80 px colorbar drawn via
+    `split_horizontally`.
   - New module `crates/ccalc-plot/src/colormap.rs`: `VALID_COLORMAPS` constant,
     `validate_colormap`, `apply_colormap` (8-stop LUT with linear interpolation),
     `data_range` helper, `render_imagesc_ascii` (feat=`plot`),

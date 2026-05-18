@@ -800,7 +800,8 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `plot3(x, y, z)` | `plot` | 3D line; ASCII uses orthographic projection |
 | `scatter3(x, y, z)` | `plot` | 3D point cloud; ASCII uses orthographic projection |
 | `imagesc(Z)` | `plot` | False-colour heat-map of matrix Z (ASCII density chars) |
-| `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG file |
+| `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG (800 × 600 px) |
+| `imagesc(Z, 'f.png', W, H)` | `plot-svg` | False-colour image at custom W × H pixels |
 
 Append a file path to save instead of print to terminal:
 

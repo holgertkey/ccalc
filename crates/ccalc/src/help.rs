@@ -3516,11 +3516,12 @@ Two rendering tiers; both use the same annotation API.
     File tier:   plotters build_cartesian_3d + LineSeries / Circle elements.
 
 ── False-colour images ──────────────────────────────────────────────────────
-    imagesc(Z)            render matrix Z as a false-colour image (ASCII)
-    imagesc(Z, 'f.svg')   save false-colour image to SVG (requires plot-svg)
-    imagesc(Z, 'f.png')   save to PNG
-    colormap('name')      set active colormap (consumed by next imagesc)
-    colorbar()            append colour-scale legend strip (file export only)
+    imagesc(Z)               render matrix Z as a false-colour image (ASCII)
+    imagesc(Z, 'f.svg')      save false-colour image to SVG (requires plot-svg)
+    imagesc(Z, 'f.png')      save to PNG
+    imagesc(Z, 'f.png', W, H) save at custom size W×H pixels
+    colormap('name')         set active colormap (consumed by next imagesc)
+    colorbar()               append colour-scale legend strip (file export only)
 
     Supported colormaps:  viridis (default)  inferno  magma  plasma
                           hot  cool  jet  gray
@@ -3584,6 +3585,10 @@ Append a file path as the last string argument to save instead of print:
     colormap('viridis')
     colorbar()
     imagesc(Z, 'heat.svg')
+
+    % Custom canvas size (one matrix cell = one pixel)
+    colormap('inferno')
+    imagesc(Z, 'heat.png', 1200, 900)
 
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
