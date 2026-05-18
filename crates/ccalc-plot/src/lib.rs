@@ -399,9 +399,11 @@ fn render_imagesc_ascii_tier(
     _ncols: usize,
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("imagesc: ASCII rendering requires the 'plot' feature flag — \
+    Err(
+        "imagesc: ASCII rendering requires the 'plot' feature flag — \
          rebuild with: cargo build --features plot"
-        .into())
+            .into(),
+    )
 }
 
 #[cfg(feature = "plot-svg")]
@@ -1479,7 +1481,10 @@ mod tests {
         let result = plugin.call("colormap", &[Value::Str("notacolormap".into())], &env);
         assert!(result.is_err());
         let msg = result.unwrap_err();
-        assert!(msg.contains("colormap"), "error should mention colormap: {msg}");
+        assert!(
+            msg.contains("colormap"),
+            "error should mention colormap: {msg}"
+        );
     }
 
     #[test]
@@ -1511,9 +1516,7 @@ mod tests {
     fn test_imagesc_svg_without_feature_errors() {
         let plugin = PlotPlugin;
         let env = Env::new();
-        let z = Value::Matrix(
-            Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap(),
-        );
+        let z = Value::Matrix(Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap());
         let path = Value::Str("out.svg".into());
         let result = plugin.call("imagesc", &[z, path], &env);
         assert!(result.is_err());
@@ -1543,12 +1546,17 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("colormap", &[Value::Str("jet".into())], &env).unwrap();
+        plugin
+            .call("colormap", &[Value::Str("jet".into())], &env)
+            .unwrap();
         plugin.call("colorbar", &[], &env).unwrap();
         let z = Value::Matrix(
             Array2::from_shape_vec((3, 3), (0..9).map(|i| i as f64).collect()).unwrap(),
         );
         let result = plugin.call("imagesc", &[z], &env);
-        assert!(result.is_ok(), "imagesc with colorbar should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "imagesc with colorbar should succeed: {result:?}"
+        );
     }
 }

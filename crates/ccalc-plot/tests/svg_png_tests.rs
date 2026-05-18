@@ -570,9 +570,7 @@ fn test_xlim_ylim_applied_in_svg() {
 // ── 30a: imagesc ─────────────────────────────────────────────────────────────
 
 fn mat4x4() -> Value {
-    Value::Matrix(
-        Array2::from_shape_vec((4, 4), (0..16).map(|i| i as f64).collect()).unwrap(),
-    )
+    Value::Matrix(Array2::from_shape_vec((4, 4), (0..16).map(|i| i as f64).collect()).unwrap())
 }
 
 #[test]
@@ -612,9 +610,8 @@ fn test_imagesc_with_colorbar_svg() {
         .call("colormap", &[Value::Str("jet".into())], &env)
         .unwrap();
     plugin.call("colorbar", &[], &env).unwrap();
-    let z = Value::Matrix(
-        Array2::from_shape_vec((8, 8), (0..64).map(|i| i as f64).collect()).unwrap(),
-    );
+    let z =
+        Value::Matrix(Array2::from_shape_vec((8, 8), (0..64).map(|i| i as f64).collect()).unwrap());
     plugin
         .call("imagesc", &[z, Value::Str(path.clone())], &env)
         .unwrap();

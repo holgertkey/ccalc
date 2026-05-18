@@ -3,13 +3,15 @@
 #[cfg(feature = "plot-svg")]
 use plotters::prelude::*;
 
+#[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::FigureState;
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /// All supported colormap names.
-pub const VALID_COLORMAPS: &[&str] =
-    &["viridis", "inferno", "magma", "plasma", "hot", "cool", "jet", "gray"];
+pub const VALID_COLORMAPS: &[&str] = &[
+    "viridis", "inferno", "magma", "plasma", "hot", "cool", "jet", "gray",
+];
 
 /// Validates a colormap name.
 ///
@@ -71,7 +73,11 @@ fn lut_lerp(t: f64, lut: &[(u8, u8, u8)]) -> (u8, u8, u8) {
     let hi = lo + 1;
     let f = ts - lo as f64;
     let lerp = |a: u8, b: u8| (a as f64 + f * (b as f64 - a as f64)).round() as u8;
-    (lerp(lut[lo].0, lut[hi].0), lerp(lut[lo].1, lut[hi].1), lerp(lut[lo].2, lut[hi].2))
+    (
+        lerp(lut[lo].0, lut[hi].0),
+        lerp(lut[lo].1, lut[hi].1),
+        lerp(lut[lo].2, lut[hi].2),
+    )
 }
 
 // ── LUT data ───────────────────────────────────────────────────────────────
@@ -151,6 +157,7 @@ const JET: [(u8, u8, u8); 8] = [
 
 /// Returns `(min, max)` of finite values in `z`.  Falls back to `(0, 1)` on
 /// all-NaN input; expands a degenerate range by 1.
+#[cfg(any(feature = "plot", feature = "plot-svg"))]
 pub(crate) fn data_range(z: &[f64]) -> (f64, f64) {
     let mut lo = f64::INFINITY;
     let mut hi = f64::NEG_INFINITY;
@@ -435,9 +442,13 @@ mod tests {
         let result = validate_colormap("rainbow");
         assert!(result.is_err());
         let msg = result.unwrap_err();
-        assert!(msg.contains("colormap"), "error should mention colormap: {msg}");
+        assert!(
+            msg.contains("colormap"),
+            "error should mention colormap: {msg}"
+        );
     }
 
+    #[cfg(any(feature = "plot", feature = "plot-svg"))]
     #[test]
     fn test_data_range_normal() {
         let (lo, hi) = data_range(&[3.0, 1.0, 4.0, 1.5]);
@@ -445,12 +456,14 @@ mod tests {
         assert!((hi - 4.0).abs() < 1e-9);
     }
 
+    #[cfg(any(feature = "plot", feature = "plot-svg"))]
     #[test]
     fn test_data_range_all_nan() {
         let (lo, hi) = data_range(&[f64::NAN]);
         assert_eq!((lo, hi), (0.0, 1.0));
     }
 
+    #[cfg(any(feature = "plot", feature = "plot-svg"))]
     #[test]
     fn test_data_range_constant() {
         // Constant input gets expanded so range > 0.
