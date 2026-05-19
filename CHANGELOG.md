@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.37.0+003] - 2026-05-19
+
+### Fixed
+
+- **Parser precedence bug**: unary minus now binds less tightly than `^` and `.^`, matching
+  MATLAB/Octave semantics. Previously `-x .^ 2` was parsed as `(-x) .^ 2 = x^2` instead of
+  the correct `-(x .^ 2) = -x^2`. This caused contour/contourf plots of expressions like
+  `exp(-X .^ 2 - Y .^ 2)` to display the wrong function (values inverted, so peaks appeared
+  at the edges rather than the center).
+
 ## [0.37.0+001] - 2026-05-19
 
 ### Added

@@ -2302,41 +2302,41 @@ fn parse_expr(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// term = power (('*' | '/' | '.*' | './') power | '(' expr ')' )*
+// term = unary (('*' | '/' | '.*' | './') unary | '(' expr ')' )*
 // '(' without an operator triggers implicit multiplication.
 fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let mut left = parse_power(tokens, pos)?;
+    let mut left = parse_unary(tokens, pos)?;
 
     while *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Star => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_unary(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             Token::Slash => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_unary(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Div, Box::new(right));
             }
             Token::DotStar => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_unary(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::ElemMul, Box::new(right));
             }
             Token::DotSlash => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_unary(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::ElemDiv, Box::new(right));
             }
             Token::Backslash => {
                 *pos += 1;
-                let right = parse_power(tokens, pos)?;
+                let right = parse_unary(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::LDiv, Box::new(right));
             }
             Token::LParen => {
                 // Implicit multiplication: expr(...)
-                let right = parse_power(tokens, pos)?;
+                let right = parse_unary(tokens, pos)?;
                 left = Expr::BinOp(Box::new(left), Op::Mul, Box::new(right));
             }
             _ => break,
@@ -2346,20 +2346,21 @@ fn parse_term(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(left)
 }
 
-// power = unary (('^' | '.^' | '**') power)?   -- right-associative
+// power = primary (('^' | '.^' | '**') unary)?   -- right-associative
 // '**' is an Octave alias for '^'.
+// Unary minus binds less tightly than power: -x^2 = -(x^2), matching MATLAB/Octave.
 fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
-    let base = parse_unary(tokens, pos)?;
+    let base = parse_primary(tokens, pos)?;
     if *pos < tokens.len() {
         match &tokens[*pos] {
             Token::Caret | Token::StarStar => {
                 *pos += 1;
-                let exp = parse_power(tokens, pos)?;
+                let exp = parse_unary(tokens, pos)?;
                 return Ok(Expr::BinOp(Box::new(base), Op::Pow, Box::new(exp)));
             }
             Token::DotCaret => {
                 *pos += 1;
-                let exp = parse_power(tokens, pos)?;
+                let exp = parse_unary(tokens, pos)?;
                 return Ok(Expr::BinOp(Box::new(base), Op::ElemPow, Box::new(exp)));
             }
             _ => {}
@@ -2368,8 +2369,9 @@ fn parse_power(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     Ok(base)
 }
 
-// unary = '+' unary | '-' unary | '~' unary | primary
+// unary = '+' unary | '-' unary | '~' unary | power
 // Unary '+' is a no-op: `+x` = `x`, `+[1 2 3]` = `[1 2 3]`.
+// Power (^, .^) binds more tightly than unary minus (MATLAB/Octave semantics).
 fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
     if *pos < tokens.len() {
         match &tokens[*pos] {
@@ -2390,7 +2392,7 @@ fn parse_unary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
             _ => {}
         }
     }
-    parse_primary(tokens, pos)
+    parse_power(tokens, pos)
 }
 
 // primary = ident '(' expr ')' | ident '(' ')' | '(' expr ')' | '[' matrix ']' | number | ident

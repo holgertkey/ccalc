@@ -90,6 +90,19 @@ fn test_power_precedence() {
 }
 
 #[test]
+fn test_unary_minus_lower_precedence_than_power() {
+    // In MATLAB/Octave: -x^2 = -(x^2), not (-x)^2.
+    // -3^2 = -(3^2) = -9, not (-3)^2 = 9.
+    assert_eq!(calc("-3 ^ 2"), -9.0);
+    // -2^3 = -(2^3) = -8
+    assert_eq!(calc("-2 ^ 3"), -8.0);
+    // -(3^2) remains -9 with explicit parens
+    assert_eq!(calc("-(3 ^ 2)"), -9.0);
+    // (-3)^2 = 9 when parenthesised explicitly
+    assert_eq!(calc("(-3) ^ 2"), 9.0);
+}
+
+#[test]
 fn test_constant_pi() {
     assert!((calc("pi") - std::f64::consts::PI).abs() < 1e-15);
 }
