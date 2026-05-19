@@ -16,7 +16,7 @@ contour(X, Y, Z, 8)
 title('Gaussian bell — contour')
 xlabel('x')
 ylabel('y')
-contour(X, Y, Z, 8, 'contour_gauss.svg')
+contour(X, Y, Z, 8, 'examples/contour_demo/tmp/contour_gauss.svg')
 fprintf('Wrote contour_gauss.svg\n')
 
 % PNG filled contour
@@ -24,7 +24,7 @@ title('Gaussian bell — contourf')
 xlabel('x')
 ylabel('y')
 colormap('viridis')
-contourf(X, Y, Z, 8, 'contourf_gauss.png')
+contourf(X, Y, Z, 8, 'examples/contour_demo/tmp/contourf_gauss.png')
 fprintf('Wrote contourf_gauss.png\n')
 
 % ── Saddle surface (hyperbolic paraboloid) ─────────────────────────────────
@@ -42,7 +42,7 @@ title('Saddle surface — contour')
 xlabel('x')
 ylabel('y')
 colormap('hot')
-contour(X2, Y2, Z2, 10, 'contour_saddle.svg')
+contour(X2, Y2, Z2, 10, 'examples/contour_demo/tmp/contour_saddle.svg')
 fprintf('Wrote contour_saddle.svg\n')
 
 % PNG filled contour
@@ -50,7 +50,7 @@ title('Saddle surface — contourf')
 xlabel('x')
 ylabel('y')
 colormap('plasma')
-contourf(X2, Y2, Z2, 10, 'contourf_saddle.png')
+contourf(X2, Y2, Z2, 10, 'examples/contour_demo/tmp/contourf_saddle.png')
 fprintf('Wrote contourf_saddle.png\n')
 
 fprintf('Done.\n')
