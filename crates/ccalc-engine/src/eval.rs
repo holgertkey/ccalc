@@ -2941,6 +2941,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "max",
         "mean",
         "median",
+        "meshgrid",
         "milliseconds",
         "min",
         "minute",
@@ -6184,6 +6185,32 @@ fn call_builtin(
             (Value::Scalar(a), Value::Scalar(b)) => Ok(Value::Scalar(a * b)),
             _ => Err("kron: arguments must be numeric matrices".to_string()),
         },
+
+        // ── Phase 30b — meshgrid ─────────────────────────────────────────────
+        ("meshgrid", 1) => {
+            let xv = numeric_vec(&args[0], "meshgrid")?;
+            let n = xv.len();
+            let x_mat = Array2::from_shape_fn((n, n), |(_r, c)| xv[c]);
+            let y_mat = Array2::from_shape_fn((n, n), |(r, _c)| xv[r]);
+            if get_nargout() >= 2 {
+                Ok(Value::Tuple(vec![Value::Matrix(x_mat), Value::Matrix(y_mat)]))
+            } else {
+                Ok(Value::Matrix(x_mat))
+            }
+        }
+        ("meshgrid", 2) => {
+            let xv = numeric_vec(&args[0], "meshgrid")?;
+            let yv = numeric_vec(&args[1], "meshgrid")?;
+            let n_rows = yv.len();
+            let n_cols = xv.len();
+            let x_mat = Array2::from_shape_fn((n_rows, n_cols), |(_r, c)| xv[c]);
+            let y_mat = Array2::from_shape_fn((n_rows, n_cols), |(r, _c)| yv[r]);
+            if get_nargout() >= 2 {
+                Ok(Value::Tuple(vec![Value::Matrix(x_mat), Value::Matrix(y_mat)]))
+            } else {
+                Ok(Value::Matrix(x_mat))
+            }
+        }
 
         // ── Phase 23b — Vector products ──────────────────────────────────────
         ("cross", 2) => {

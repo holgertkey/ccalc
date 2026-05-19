@@ -301,6 +301,7 @@ where
 }
 
 #[cfg(feature = "plot-svg")]
+#[allow(clippy::too_many_arguments)]
 fn draw_imagesc_cells<DB: DrawingBackend>(
     area: &DrawingArea<DB, plotters::coord::Shift>,
     z: &[f64],

@@ -7549,3 +7549,93 @@ mod phase27_5_tests {
         assert!((im - 6.0).abs() < 1e-14);
     }
 }
+
+mod phase30b_tests {
+    use super::*;
+
+    fn run(src: &str) -> Env {
+        use crate::eval::{Base, FormatMode};
+        use crate::io::IoContext;
+        use crate::parser::parse_stmts;
+        crate::exec::init();
+        let stmts = parse_stmts(src).expect("parse failed");
+        let mut env = crate::env::Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        let mut io = IoContext::new();
+        crate::exec::exec_stmts(
+            &stmts,
+            &mut env,
+            &mut io,
+            &FormatMode::Short,
+            Base::Dec,
+            false,
+        )
+        .expect("exec failed");
+        env
+    }
+
+    fn mat(env: &Env, name: &str) -> ndarray::Array2<f64> {
+        match env.get(name) {
+            Some(Value::Matrix(m)) => m.clone(),
+            other => panic!("expected Matrix for '{name}', got {other:?}"),
+        }
+    }
+
+    // meshgrid([1,2,3], [4,5]) → X is 2×3 where every row = [1,2,3],
+    //                            Y is 2×3 where every column = [4,5]ᵀ.
+    #[test]
+    fn meshgrid_dimensions() {
+        let env = run("[X, Y] = meshgrid([1,2,3], [4,5])");
+        let x = mat(&env, "X");
+        let y = mat(&env, "Y");
+        assert_eq!((x.nrows(), x.ncols()), (2, 3));
+        assert_eq!((y.nrows(), y.ncols()), (2, 3));
+    }
+
+    #[test]
+    fn meshgrid_x_rows_equal() {
+        let env = run("[X, Y] = meshgrid([1,2,3], [4,5])");
+        let x = mat(&env, "X");
+        // Every row of X must be [1, 2, 3].
+        for r in 0..x.nrows() {
+            assert_eq!(x[[r, 0]], 1.0);
+            assert_eq!(x[[r, 1]], 2.0);
+            assert_eq!(x[[r, 2]], 3.0);
+        }
+    }
+
+    #[test]
+    fn meshgrid_y_cols_equal() {
+        let env = run("[X, Y] = meshgrid([1,2,3], [4,5])");
+        let y = mat(&env, "Y");
+        // Every column of Y must be [4, 5]ᵀ.
+        for c in 0..y.ncols() {
+            assert_eq!(y[[0, c]], 4.0);
+            assert_eq!(y[[1, c]], 5.0);
+        }
+    }
+
+    // Single-output form: X = meshgrid(x, y) returns only the X matrix.
+    #[test]
+    fn meshgrid_single_output() {
+        let env = run("X = meshgrid([1,2,3], [4,5])");
+        let x = mat(&env, "X");
+        assert_eq!((x.nrows(), x.ncols()), (2, 3));
+        assert_eq!(x[[0, 0]], 1.0);
+        assert_eq!(x[[1, 2]], 3.0);
+    }
+
+    // Single-arg form: meshgrid(v) uses v for both axes → square N×N result.
+    #[test]
+    fn meshgrid_single_arg_square() {
+        let env = run("[X, Y] = meshgrid([10, 20])");
+        let x = mat(&env, "X");
+        let y = mat(&env, "Y");
+        assert_eq!((x.nrows(), x.ncols()), (2, 2));
+        assert_eq!((y.nrows(), y.ncols()), (2, 2));
+        assert_eq!(x[[0, 0]], 10.0);
+        assert_eq!(x[[0, 1]], 20.0);
+        assert_eq!(y[[0, 0]], 10.0);
+        assert_eq!(y[[1, 0]], 20.0);
+    }
+}

@@ -16,7 +16,7 @@ plot-all = ["plot", "plot-svg"]
 ccalc-engine = { path = "../ccalc-engine", version = "0.37.0" }
 textplots = { version = "0.8", optional = true }
 plotters  = { version = "0.3", optional = true, default-features = false,
-              features = ["svg_backend", "bitmap_backend", "bitmap_encoder", "line_series", "ttf"] }
+              features = ["svg_backend", "bitmap_backend", "bitmap_encoder", "line_series", "surface_series", "ttf"] }
 
 [dev-dependencies]
 ndarray = "0.16"

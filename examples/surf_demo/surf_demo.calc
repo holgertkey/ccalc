@@ -1,0 +1,24 @@
+% surf_demo.calc — sine wave surface and Gaussian bell (Phase 30b)
+
+% ── Sine wave surface ────────────────────────────────────────────────────────
+[X, Y] = meshgrid(-3:0.2:3, -3:0.2:3);
+Z = sin(sqrt(X.^2 + Y.^2));
+
+title('Sine wave surface')
+xlabel('X')
+ylabel('Y')
+zlabel('sin(r)')
+colormap('viridis')
+surf(X, Y, Z)
+
+% ── Gaussian bell (file export) ──────────────────────────────────────────────
+[X2, Y2] = meshgrid(-2:0.1:2, -2:0.1:2);
+Z2 = exp(-(X2.^2 + Y2.^2));
+
+title('Gaussian bell')
+xlabel('X')
+ylabel('Y')
+zlabel('exp(-r^2)')
+colormap('hot')
+surf(X2, Y2, Z2, 'examples/surf_demo/tmp/gaussian_surf.svg')
+fprintf('Wrote examples/surf_demo/tmp/gaussian_surf.svg\n')

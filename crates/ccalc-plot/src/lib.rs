@@ -1,9 +1,9 @@
-//! Plot plugin for ccalc — Phase 30a.
+//! Plot plugin for ccalc — Phase 30b.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
-//! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, and annotation
-//! functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`, `xlim`,
-//! `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
+//! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
+//! and annotation functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`,
+//! `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -26,6 +26,8 @@ mod ascii;
 
 #[cfg(feature = "plot-svg")]
 mod file;
+
+mod surface;
 
 use std::cell::RefCell;
 
@@ -76,7 +78,7 @@ thread_local! {
 const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
-    "colormap", "colorbar", "imagesc",
+    "colormap", "colorbar", "imagesc", "surf", "mesh",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -312,6 +314,34 @@ impl Plugin for PlotPlugin {
                 render_imagesc(&z, nrows, ncols, path.as_deref(), width, height, state)
             }
 
+            // ── surf / mesh ────────────────────────────────────────────
+            "surf" | "mesh" => {
+                let (data_args, path) = extract_file_arg(args);
+                if data_args.len() < 3 {
+                    return Err(format!(
+                        "{name}: requires (X, Y, Z) matrix arguments, got {}",
+                        data_args.len()
+                    ));
+                }
+                let (x_data, x_rows, x_cols) = extract_matrix(&data_args[0])
+                    .map_err(|_| format!("{name}: X must be a numeric matrix"))?;
+                let (y_data, y_rows, y_cols) = extract_matrix(&data_args[1])
+                    .map_err(|_| format!("{name}: Y must be a numeric matrix"))?;
+                let (z_data, z_rows, z_cols) = extract_matrix(&data_args[2])
+                    .map_err(|_| format!("{name}: Z must be a numeric matrix"))?;
+                if x_rows != y_rows || x_rows != z_rows || x_cols != y_cols || x_cols != z_cols {
+                    return Err(format!(
+                        "{name}: X ({x_rows}×{x_cols}), Y ({y_rows}×{y_cols}) and \
+                         Z ({z_rows}×{z_cols}) must have the same dimensions"
+                    ));
+                }
+                let state = FIGURE_STATE.with(|f| f.take());
+                // Unique x values = first row of X; unique y values = first column of Y.
+                let x_vals: Vec<f64> = (0..x_cols).map(|c| x_data[c]).collect();
+                let y_vals: Vec<f64> = (0..x_rows).map(|r| y_data[r * x_cols]).collect();
+                render_surface(name, &x_vals, &y_vals, &z_data, z_rows, z_cols, path.as_deref(), state)
+            }
+
             _ => Err(format!("plot plugin: unknown function '{name}'")),
         }
     }
@@ -395,6 +425,91 @@ fn render_ascii(name: &str, _data_args: &[Value], _state: FigureState) -> Result
         "{name}: ASCII rendering requires the 'plot' feature flag. \
          Rebuild with: cargo build --features plot"
     ))
+}
+
+// ── surf / mesh dispatch ───────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn render_surface(
+    name: &str,
+    x_vals: &[f64],
+    y_vals: &[f64],
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    let wireframe = name == "mesh";
+    match path {
+        None | Some("ascii") => render_surface_ascii_tier(x_vals, z, nrows, ncols, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_surface_file_tier(wireframe, x_vals, y_vals, z, nrows, ncols, p, state)
+        }
+        Some(p) => Err(format!("{name}: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_surface_ascii_tier(
+    x_vals: &[f64],
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: FigureState,
+) -> Result<Value, String> {
+    surface::render_surf_ascii(x_vals, z, nrows, ncols, &state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_surface_ascii_tier(
+    _x_vals: &[f64],
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("surf/mesh: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+#[allow(clippy::too_many_arguments)]
+fn render_surface_file_tier(
+    wireframe: bool,
+    x_vals: &[f64],
+    y_vals: &[f64],
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    let result = if wireframe {
+        surface::render_mesh_file(x_vals, y_vals, z, nrows, ncols, path, state)
+    } else {
+        surface::render_surf_file(x_vals, y_vals, z, nrows, ncols, path, state)
+    };
+    result.map_err(|e| e.to_string())?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_surface_file_tier(
+    _wireframe: bool,
+    _x_vals: &[f64],
+    _y_vals: &[f64],
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("surf/mesh: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
 }
 
 // ── imagesc dispatch ───────────────────────────────────────────────────────
@@ -1598,5 +1713,110 @@ mod tests {
             result.is_ok(),
             "imagesc with colorbar should succeed: {result:?}"
         );
+    }
+
+    // ── 30b: surf / mesh ───────────────────────────────────────────────────
+
+    fn make_xyz(rows: usize, cols: usize) -> (Value, Value, Value) {
+        // X: each row = 0..cols-1; Y: each col = 0..rows-1; Z = X + Y.
+        let x = Value::Matrix(
+            Array2::from_shape_fn((rows, cols), |(_r, c)| c as f64),
+        );
+        let y = Value::Matrix(
+            Array2::from_shape_fn((rows, cols), |(r, _c)| r as f64),
+        );
+        let z = Value::Matrix(
+            Array2::from_shape_fn((rows, cols), |(r, c)| (r + c) as f64),
+        );
+        (x, y, z)
+    }
+
+    #[test]
+    fn test_surf_dimension_mismatch_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = Value::Matrix(Array2::from_shape_vec((2, 3), vec![1.0; 6]).unwrap());
+        let y = Value::Matrix(Array2::from_shape_vec((3, 2), vec![1.0; 6]).unwrap());
+        let z = Value::Matrix(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap());
+        let err = plugin.call("surf", &[x, y, z], &env).unwrap_err();
+        assert!(err.contains("same dimensions"), "error should mention dimensions: {err}");
+    }
+
+    #[test]
+    fn test_mesh_dimension_mismatch_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = Value::Matrix(Array2::from_shape_vec((2, 3), vec![1.0; 6]).unwrap());
+        let y = Value::Matrix(Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap());
+        let z = Value::Matrix(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap());
+        let err = plugin.call("mesh", &[x, y, z], &env).unwrap_err();
+        assert!(err.contains("same dimensions"), "error should mention dimensions: {err}");
+    }
+
+    #[test]
+    fn test_surf_missing_args_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = Value::Matrix(Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap());
+        let err = plugin.call("surf", &[x], &env).unwrap_err();
+        assert!(err.contains("requires"), "error should mention requires: {err}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_surf_ascii_no_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_xyz(5, 8);
+        let result = plugin.call("surf", &[x, y, z], &env);
+        assert!(result.is_ok(), "surf ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_mesh_ascii_no_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_xyz(5, 8);
+        let result = plugin.call("mesh", &[x, y, z], &env);
+        assert!(result.is_ok(), "mesh ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_surf_svg_creates_file() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_xyz(4, 5);
+        let path = ".debug/test_surf.svg";
+        std::fs::create_dir_all(".debug").ok();
+        let result = plugin.call("surf", &[x, y, z, Value::Str(path.into())], &env);
+        assert!(result.is_ok(), "surf SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("<svg"), "output should be SVG: starts with {}", &content[..50.min(content.len())]);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_mesh_png_creates_file() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_xyz(4, 5);
+        let path = ".debug/test_mesh.png";
+        std::fs::create_dir_all(".debug").ok();
+        let result = plugin.call("mesh", &[x, y, z, Value::Str(path.into())], &env);
+        assert!(result.is_ok(), "mesh PNG should succeed: {result:?}");
+        let bytes = std::fs::read(path).unwrap();
+        // PNG magic bytes: 0x89 P N G
+        assert_eq!(&bytes[0..4], &[0x89, 0x50, 0x4E, 0x47], "output should be PNG");
+        std::fs::remove_file(path).ok();
     }
 }

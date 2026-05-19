@@ -1,0 +1,24 @@
+% mesh_demo.calc — same surfaces as surf_demo but rendered as wireframes (Phase 30b)
+
+% ── Sine wave wireframe ──────────────────────────────────────────────────────
+[X, Y] = meshgrid(-3:0.3:3, -3:0.3:3);
+Z = sin(sqrt(X.^2 + Y.^2));
+
+title('Sine wave wireframe')
+xlabel('X')
+ylabel('Y')
+zlabel('sin(r)')
+colormap('cool')
+mesh(X, Y, Z)
+
+% ── Saddle surface (file export) ─────────────────────────────────────────────
+[X2, Y2] = meshgrid(-2:0.2:2, -2:0.2:2);
+Z2 = X2.^2 - Y2.^2;
+
+title('Saddle surface')
+xlabel('X')
+ylabel('Y')
+zlabel('x^2 - y^2')
+colormap('jet')
+mesh(X2, Y2, Z2, 'examples/surf_demo/tmp/saddle_mesh.svg')
+fprintf('Wrote examples/surf_demo/tmp/saddle_mesh.svg\n')
