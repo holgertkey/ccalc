@@ -3,7 +3,7 @@
 #[cfg(feature = "plot-svg")]
 use plotters::prelude::*;
 #[cfg(feature = "plot-svg")]
-use plotters::series::SurfaceSeries;
+use plotters::series::LineSeries;
 
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::FigureState;
@@ -84,11 +84,14 @@ pub fn render_surf_ascii(
 
 // ── SVG/PNG renderers ──────────────────────────────────────────────────────
 
-/// Writes a `surf` (filled color surface) to an SVG or PNG file.
+/// Writes a `surf` (colored surface) to an SVG or PNG file.
 ///
 /// `x_vals` and `y_vals` are the unique coordinate vectors (first row of X,
 /// first column of Y from the meshgrid call).  `z` is row-major Z data with
 /// `nrows × ncols` elements.
+///
+/// The surface is drawn as a dense colored grid: row lines and column lines
+/// are both rendered, each colored by the local Z value.
 #[cfg(feature = "plot-svg")]
 #[allow(clippy::too_many_arguments)]
 pub fn render_surf_file(
@@ -112,6 +115,9 @@ pub fn render_surf_file(
 }
 
 /// Writes a `mesh` (wireframe surface) to an SVG or PNG file.
+///
+/// Like `surf` but draws only row lines (no column fill lines), giving a
+/// sparser wireframe appearance.
 #[cfg(feature = "plot-svg")]
 #[allow(clippy::too_many_arguments)]
 pub fn render_mesh_file(
@@ -134,10 +140,18 @@ pub fn render_mesh_file(
     }
 }
 
-/// Core 3D surface drawing via `SurfaceSeries::xoy`.
+/// Core 3D surface drawing using colored `LineSeries` grid lines.
 ///
-/// `wireframe = true` → thin colored border strokes only (mesh style).
-/// `wireframe = false` → filled quads colored by the active colormap (surf style).
+/// Axis mapping — chart `(X, Y, Z)` = our `(X, Z_height, Y_depth)`:
+/// - chart first dim  (X)      = our X values (horizontal, left–right)
+/// - chart second dim (Y, up)  = our Z values (height, color axis)
+/// - chart third dim  (Z, back)= our Y values (spatial depth, into the page)
+///
+/// This keeps our Z as the visual height axis and matches the standard
+/// `surf(X, Y, Z)` convention.
+///
+/// `wireframe = true`  → draw only row lines (sparse, mesh style).
+/// `wireframe = false` → draw both row and column lines (denser, surf style).
 #[cfg(feature = "plot-svg")]
 #[allow(clippy::too_many_arguments)]
 fn draw_surface<DB: DrawingBackend>(
@@ -155,6 +169,10 @@ where
 {
     root.fill(&WHITE).map_err(|e| e.to_string())?;
 
+    if nrows == 0 || ncols == 0 {
+        return root.present().map_err(|e| e.to_string());
+    }
+
     let (z_min, z_max) = data_range(z);
 
     let x_lo = x_vals.iter().copied().fold(f64::INFINITY, f64::min);
@@ -170,61 +188,60 @@ where
     let cmap = state.colormap.as_deref().unwrap_or("viridis");
     let z_range = (z_hi - z_lo).max(f64::EPSILON);
 
-    // Build owned copies for the closure.
-    let xv = x_vals.to_vec();
-    let yv = y_vals.to_vec();
-    let zv = z.to_vec();
-    let nc = ncols;
-    let nr = nrows;
-
-    // Z lookup: find nearest grid indices for (xi, yi) and return Z value.
-    let z_lookup = move |xi: f64, yi: f64| -> f64 {
-        let col = xv
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| ((*a - xi).abs()).partial_cmp(&((*b - xi).abs())).unwrap())
-            .map(|(i, _)| i)
-            .unwrap_or(0)
-            .min(nc.saturating_sub(1));
-        let row = yv
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| ((*a - yi).abs()).partial_cmp(&((*b - yi).abs())).unwrap())
-            .map(|(i, _)| i)
-            .unwrap_or(0)
-            .min(nr.saturating_sub(1));
-        zv[row * nc + col]
-    };
-
+    // Chart: X = our X, Y (height) = our Z, Z (depth) = our Y.
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", 20))
         .margin(30)
-        // plotters 3D: x=depth (Y axis in math), y=height (Z), z=horizontal (X).
         .build_cartesian_3d(x_lo..x_hi, z_lo..z_hi, y_lo..y_hi)
         .map_err(|e| e.to_string())?;
 
     chart.configure_axes().draw().map_err(|e| e.to_string())?;
 
-    chart
-        .draw_series(
-            SurfaceSeries::xoy(
-                x_vals.iter().copied(),
-                y_vals.iter().copied(),
-                z_lookup,
-            )
-            .style_func(&|&v| {
-                let t = ((v - z_lo) / z_range).clamp(0.0, 1.0);
-                let (r, g, b) = apply_colormap(t, cmap);
-                let color = RGBColor(r, g, b);
-                if wireframe {
-                    color.stroke_width(1)
-                } else {
-                    color.filled()
-                }
-            }),
-        )
-        .map_err(|e| e.to_string())?;
+    // Row lines: fixed Y (depth), varying X (horizontal) — colored by row mean Z.
+    for r in 0..nrows {
+        let y_val = y_vals[r];
+        let points: Vec<(f64, f64, f64)> = (0..ncols)
+            .map(|c| (x_vals[c], z[r * ncols + c], y_val))
+            .collect();
+        let z_avg = z_row_avg(z, r, ncols);
+        let t = ((z_avg - z_lo) / z_range).clamp(0.0, 1.0);
+        let (rr, gg, bb) = apply_colormap(t, cmap);
+        chart
+            .draw_series(LineSeries::new(points, RGBColor(rr, gg, bb)))
+            .map_err(|e| e.to_string())?;
+    }
+
+    // Column lines: fixed X (horizontal), varying Y (depth) — colored by col mean Z.
+    // Drawn for surf only; mesh shows just the row lines as a wireframe.
+    if !wireframe {
+        for c in 0..ncols {
+            let x_val = x_vals[c];
+            let points: Vec<(f64, f64, f64)> = (0..nrows)
+                .map(|r| (x_val, z[r * ncols + c], y_vals[r]))
+                .collect();
+            let z_avg = z_col_avg(z, c, nrows, ncols);
+            let t = ((z_avg - z_lo) / z_range).clamp(0.0, 1.0);
+            let (rr, gg, bb) = apply_colormap(t, cmap);
+            chart
+                .draw_series(LineSeries::new(points, RGBColor(rr, gg, bb)))
+                .map_err(|e| e.to_string())?;
+        }
+    }
 
     root.present().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Mean Z value across row `r`.
+#[cfg(feature = "plot-svg")]
+fn z_row_avg(z: &[f64], r: usize, ncols: usize) -> f64 {
+    let sum: f64 = (0..ncols).map(|c| z[r * ncols + c]).sum();
+    sum / ncols.max(1) as f64
+}
+
+/// Mean Z value down column `c`.
+#[cfg(feature = "plot-svg")]
+fn z_col_avg(z: &[f64], c: usize, nrows: usize, ncols: usize) -> f64 {
+    let sum: f64 = (0..nrows).map(|r| z[r * ncols + c]).sum();
+    sum / nrows.max(1) as f64
 }
