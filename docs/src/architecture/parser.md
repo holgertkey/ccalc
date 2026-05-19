@@ -34,15 +34,19 @@ an exponent when it appears as a standalone identifier.
 ## Grammar
 
 ```
-expr   = term ( ('+' | '-') term )*
-term   = power ( ('*' | '/' | '%' | implicit_mul) power )*
-power  = unary ('^' power)?          -- right-associative
-unary  = '-' unary | primary
-primary = ident '(' expr? ')'        -- function call (empty args → acc)
+expr    = term ( ('+' | '-') term )*
+term    = unary ( ('*' | '/' | '.*' | './' | implicit_mul) unary )*
+unary   = ('-' | '+' | '~') unary | power     -- unary lower than power
+power   = primary (('^' | '.^' | '**') unary)?  -- right-associative
+primary = ident '(' expr? ')'        -- function call or index
         | '(' expr ')'               -- grouping
-        | number
-        | ident                      -- constant or error
+        | '[' matrix ']'             -- matrix literal
+        | number | ident             -- literal or variable
+        | primary '\''               -- postfix conjugate transpose (highest)
+        | primary '.\'               -- postfix non-conjugate transpose
 ```
+
+Precedence follows MATLAB/Octave: `'` (transpose) > `^`/`.^` > unary `-`/`~` > `*`/`/` > `+`/`-`.
 
 ### Implicit multiplication
 

@@ -223,6 +223,87 @@ Both write output files to `examples/surf_demo/tmp/`.
 
 ---
 
+## Phase 30c — `contour` + `contourf` (v0.37.0+002) ✅
+
+2D contour plots using the marching squares algorithm.
+
+### Functions
+
+| Call | Output |
+|---|---|
+| `contour(X, Y, Z)` | ASCII char-art isolines (requires `plot`) |
+| `contour(X, Y, Z, n)` | ASCII with `n` levels |
+| `contour(X, Y, Z, n, 'f.svg')` | SVG isoline chart (requires `plot-svg`) |
+| `contour(X, Y, Z, n, 'f.png')` | PNG isoline chart |
+| `contourf(X, Y, Z, n, 'f.png')` | PNG filled-contour chart |
+
+X, Y, Z are M×N matrices from `meshgrid`. Default level count is 10.
+
+### Algorithm
+
+**`compute_levels(z_min, z_max, n)`** — returns `n` interior levels evenly spaced
+inside `(z_min, z_max)` at positions `z_min + (z_max − z_min) × k / (n+1)` for
+`k = 1..=n`. Levels never equal the data extrema.
+
+**`marching_squares`** — 16-case lookup table over every 2×2 cell.
+Bit assignment: bit 0 = BL (`z[r][c]`), bit 1 = BR, bit 2 = TR, bit 3 = TL.
+Edge crossings use linear interpolation. Saddle cases 5 and 10 split into two
+separate islands (no centre-value disambiguation).
+
+### ASCII tier
+
+`render_contour_ascii` (gated `#[cfg(feature = "plot")]`):
+80 × 24 char grid. Each character is chosen from `" .:-=+*#"` by the Z band of
+the sampled cell (band 0 = lowest = space, band 7 = highest = `#`).
+
+### File tier
+
+`draw_contour` (gated `#[cfg(feature = "plot-svg")]`), called by both
+`render_contour_file` and `render_contourf_file`:
+
+1. Build a `ChartBuilder` with the actual data coordinate range (`x_lo..x_hi`,
+   `y_lo..y_hi`).
+2. If `filled`: draw one `Rectangle` per grid cell, colored by the cell's mean Z
+   mapped through the active colormap. Band index = count of levels ≤ `z_mean`;
+   normalised `t = band / n_levels`.
+3. Draw one `LineSeries` per marching-squares segment, colored by level index
+   through the colormap.
+
+### Bug fix (v0.37.0+003)
+
+A parser precedence bug caused `-X .^ 2` to be evaluated as `(-X) .^ 2 = X^2`
+instead of `-(X .^ 2) = -X^2`. This made `exp(-X .^ 2 - Y .^ 2)` compute
+`exp(X^2 + Y^2)` — inverted — so contour plots of the Gaussian bell showed peaks
+at the corners rather than the centre.
+
+Fix: reordered the recursive-descent parse chain so unary minus has lower
+precedence than `^`/`.^`, matching MATLAB/Octave semantics.
+
+### Implementation
+
+| Source file | Role |
+|---|---|
+| `crates/ccalc-plot/src/contour.rs` | `compute_levels`, `marching_squares`, ASCII + file renderers |
+| `crates/ccalc-plot/src/lib.rs` | `contour`/`contourf` in `EXPORTED`; dispatch to `render_contour` |
+| `crates/ccalc-engine/src/parser.rs` | Precedence fix: `parse_term → parse_unary → parse_power → parse_primary` |
+| `crates/ccalc-engine/src/parser_tests.rs` | Regression test `test_unary_minus_lower_precedence_than_power` |
+
+### Tests
+
+**Unit tests in `contour.rs`** (4 tests): `compute_levels` zero/one/five counts;
+marching squares case 1, no-crossing, saddle case 5, too-small grid.
+
+**Plot tests in `lib.rs`** (7 tests): missing args, dimension mismatch, wrong
+level type (contour + contourf), ASCII no-error, SVG file creation, PNG magic
+bytes.
+
+### Example
+
+`examples/contour_demo/contour_demo.calc` — Gaussian bell + saddle surface;
+writes four files to `examples/contour_demo/tmp/`.
+
+---
+
 ## See also
 
 - [Plot functions guide](../guide/plot.md)

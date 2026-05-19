@@ -120,6 +120,14 @@ A number, variable, or closing parenthesis immediately before `(` multiplies:
 --5           →   5
 ```
 
+Unary minus has **lower** precedence than `^` and `.^`, matching MATLAB/Octave:
+
+```
+-3 ^ 2        →  -9    % same as -(3^2), not (-3)^2
+-x .^ 2       →  -(x .^ 2)
+(-3) ^ 2      →   9    % use parentheses to negate before raising
+```
+
 ## Matrix operators
 
 When one or both operands are matrices, the same operators apply with

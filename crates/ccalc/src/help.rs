@@ -125,9 +125,9 @@ fn print_cheatsheet() {
         "\
 ccalc v{ver} — terminal calculator with Octave/MATLAB syntax
 
-Operators   + - * / ^ **     ^ and ** are right-associative
-            2(3+1) → 8       implicit multiplication
-            +x               unary + (no-op)   ...  line continuation
+Operators   + - * / ^ .^ **     ^ .^ ** right-assoc; -x^2 = -(x^2)
+            2(3+1) → 8           implicit multiplication
+            +x                   unary + (no-op)   ...  line continuation
 Comparison  ==  ~= (!=)  <  >  <=  >=     return 1 (true) or 0 (false)
 Logical     ~expr (!expr)  &&  ||          NOT, AND, OR (short-circuit)
             &   |                          element-wise AND, OR (matrices)
@@ -323,9 +323,9 @@ Operators
 
     Precedence (high to low):
       postfix '  .'  transpose / plain transpose
-      ^  **       exponentiation (right-associative)
+      ^  .^  **   exponentiation (right-associative; -x^2 = -(x^2))
       unary +  -  ~  no-op, negation, logical NOT
-      *  /  \\  .*  ./  .^  multiply, divide, left-divide, element-wise
+      *  /  \\  .*  ./  multiply, divide, left-divide, element-wise
       +  -        addition, subtraction
       :           range (a:b, a:step:b)
       ==  ~=  <  >  <=  >=   comparison (non-associative)
@@ -339,6 +339,7 @@ Operators
     ~0                 →  1    logical NOT
     v > 3              →  element-wise mask (0/1 matrix)
     +x                 →  x    unary + is a no-op
+    -3 ^ 2             → -9    unary minus lower than ^; same as -(3^2)
 
 Grouping
     (2 + 3) * 4     →  20
