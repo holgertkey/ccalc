@@ -1,9 +1,10 @@
-//! Plot plugin for ccalc — Phase 30b.
+//! Plot plugin for ccalc — Phase 30c.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
-//! and annotation functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`,
-//! `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
+//! `contour`, `contourf`, and annotation functions (`xlabel`, `ylabel`,
+//! `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`,
+//! `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -27,6 +28,7 @@ mod ascii;
 #[cfg(feature = "plot-svg")]
 mod file;
 
+mod contour;
 mod surface;
 
 use std::cell::RefCell;
@@ -78,7 +80,7 @@ thread_local! {
 const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
-    "colormap", "colorbar", "imagesc", "surf", "mesh",
+    "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf",
 ];
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
@@ -351,6 +353,54 @@ impl Plugin for PlotPlugin {
                 )
             }
 
+            // ── contour / contourf ─────────────────────────────────────
+            "contour" | "contourf" => {
+                let (data_args, path) = extract_file_arg(args);
+                if data_args.len() < 3 {
+                    return Err(format!(
+                        "{name}: requires (X, Y, Z) matrix arguments, got {}",
+                        data_args.len()
+                    ));
+                }
+                let (x_data, x_rows, x_cols) = extract_matrix(&data_args[0])
+                    .map_err(|_| format!("{name}: X must be a numeric matrix"))?;
+                let (y_data, y_rows, y_cols) = extract_matrix(&data_args[1])
+                    .map_err(|_| format!("{name}: Y must be a numeric matrix"))?;
+                let (z_data, z_rows, z_cols) = extract_matrix(&data_args[2])
+                    .map_err(|_| format!("{name}: Z must be a numeric matrix"))?;
+                if x_rows != y_rows || x_rows != z_rows || x_cols != y_cols || x_cols != z_cols {
+                    return Err(format!(
+                        "{name}: X ({x_rows}×{x_cols}), Y ({y_rows}×{y_cols}) and \
+                         Z ({z_rows}×{z_cols}) must have the same dimensions"
+                    ));
+                }
+                // Optional 4th arg: number of contour levels (default 10).
+                let n_levels: usize = if data_args.len() >= 4 {
+                    match &data_args[3] {
+                        Value::Scalar(v) if *v >= 1.0 => *v as usize,
+                        _ => return Err(format!("{name}: level count must be a positive integer")),
+                    }
+                } else {
+                    10
+                };
+                let state = FIGURE_STATE.with(|f| f.take());
+                // Unique coordinate vectors from meshgrid output.
+                let x_vals: Vec<f64> = (0..x_cols).map(|c| x_data[c]).collect();
+                let y_vals: Vec<f64> = (0..x_rows).map(|r| y_data[r * x_cols]).collect();
+                let filled = name == "contourf";
+                render_contour(
+                    filled,
+                    &x_vals,
+                    &y_vals,
+                    &z_data,
+                    z_rows,
+                    z_cols,
+                    n_levels,
+                    path.as_deref(),
+                    state,
+                )
+            }
+
             _ => Err(format!("plot plugin: unknown function '{name}'")),
         }
     }
@@ -434,6 +484,100 @@ fn render_ascii(name: &str, _data_args: &[Value], _state: FigureState) -> Result
         "{name}: ASCII rendering requires the 'plot' feature flag. \
          Rebuild with: cargo build --features plot"
     ))
+}
+
+// ── contour / contourf dispatch ────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn render_contour(
+    filled: bool,
+    x_vals: &[f64],
+    y_vals: &[f64],
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    n_levels: usize,
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_contour_ascii_tier(z, nrows, ncols, n_levels, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_contour_file_tier(filled, x_vals, y_vals, z, nrows, ncols, n_levels, p, state)
+        }
+        Some(p) => Err(format!("contour: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_contour_ascii_tier(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    n_levels: usize,
+    state: FigureState,
+) -> Result<Value, String> {
+    let (z_min, z_max) = colormap::data_range(z);
+    let levels = contour::compute_levels(z_min, z_max, n_levels);
+    contour::render_contour_ascii(z, nrows, ncols, &levels, &state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_contour_ascii_tier(
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _n_levels: usize,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err(
+        "contour: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+            .into(),
+    )
+}
+
+#[cfg(feature = "plot-svg")]
+#[allow(clippy::too_many_arguments)]
+fn render_contour_file_tier(
+    filled: bool,
+    x_vals: &[f64],
+    y_vals: &[f64],
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    n_levels: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    let (z_min, z_max) = colormap::data_range(z);
+    let levels = contour::compute_levels(z_min, z_max, n_levels);
+    let result = if filled {
+        contour::render_contourf_file(x_vals, y_vals, z, nrows, ncols, &levels, path, state)
+    } else {
+        contour::render_contour_file(x_vals, y_vals, z, nrows, ncols, &levels, path, state)
+    };
+    result.map_err(|e| e.to_string())?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+#[allow(clippy::too_many_arguments)]
+fn render_contour_file_tier(
+    _filled: bool,
+    _x_vals: &[f64],
+    _y_vals: &[f64],
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _n_levels: usize,
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("contour: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
 }
 
 // ── surf / mesh dispatch ───────────────────────────────────────────────────
@@ -1837,6 +1981,141 @@ mod tests {
         assert!(result.is_ok(), "mesh PNG should succeed: {result:?}");
         let bytes = std::fs::read(path).unwrap();
         // PNG magic bytes: 0x89 P N G
+        assert_eq!(
+            &bytes[0..4],
+            &[0x89, 0x50, 0x4E, 0x47],
+            "output should be PNG"
+        );
+        std::fs::remove_file(path).ok();
+    }
+
+    // ── 30c: contour / contourf ────────────────────────────────────────────
+
+    #[allow(dead_code)]
+    fn make_contour_xyz(rows: usize, cols: usize) -> (Value, Value, Value) {
+        // X, Y from meshgrid; Z = Gaussian bell centred at (0,0)
+        let x = Value::Matrix(Array2::from_shape_fn((rows, cols), |(_r, c)| {
+            -2.0 + 4.0 * c as f64 / (cols - 1).max(1) as f64
+        }));
+        let y = Value::Matrix(Array2::from_shape_fn((rows, cols), |(r, _c)| {
+            -2.0 + 4.0 * r as f64 / (rows - 1).max(1) as f64
+        }));
+        let z = Value::Matrix(Array2::from_shape_fn((rows, cols), |(r, c)| {
+            let xi = -2.0 + 4.0 * c as f64 / (cols - 1).max(1) as f64;
+            let yi = -2.0 + 4.0 * r as f64 / (rows - 1).max(1) as f64;
+            (-xi * xi - yi * yi).exp()
+        }));
+        (x, y, z)
+    }
+
+    #[test]
+    fn test_contour_non_matrix_x_errors() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = Value::Str("notamatrix".into());
+        let y = f64_vec(&[0.0, 1.0]);
+        let z = f64_vec(&[0.0, 1.0]);
+        let result = plugin.call("contour", &[x, y, z], &env);
+        assert!(result.is_err(), "non-matrix X should error");
+        let msg = result.unwrap_err();
+        assert!(msg.contains("X"), "error should mention X: {msg}");
+    }
+
+    #[test]
+    fn test_contour_mismatched_dimensions_errors() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = Value::Matrix(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap());
+        let y = Value::Matrix(Array2::from_shape_vec((3, 2), vec![0.0; 6]).unwrap());
+        let z = Value::Matrix(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap());
+        let result = plugin.call("contour", &[x, y, z], &env);
+        assert!(result.is_err(), "mismatched dimensions should error");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("same dimensions"),
+            "error should mention dimensions: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_contour_missing_args_errors() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = Value::Matrix(Array2::from_shape_vec((2, 2), vec![0.0; 4]).unwrap());
+        let result = plugin.call("contour", &[x], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("requires"),
+            "error should mention requires: {msg}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_contour_ascii_no_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_contour_xyz(10, 12);
+        let result = plugin.call("contour", &[x, y, z, Value::Scalar(5.0)], &env);
+        assert!(result.is_ok(), "contour ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn test_contourf_ascii_no_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_contour_xyz(10, 12);
+        let result = plugin.call("contourf", &[x, y, z, Value::Scalar(5.0)], &env);
+        assert!(result.is_ok(), "contourf ASCII should succeed: {result:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_contour_svg_creates_file() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_contour_xyz(15, 20);
+        let path = ".debug/test_contour.svg";
+        std::fs::create_dir_all(".debug").ok();
+        let result = plugin.call(
+            "contour",
+            &[x, y, z, Value::Scalar(5.0), Value::Str(path.into())],
+            &env,
+        );
+        assert!(result.is_ok(), "contour SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(
+            content.contains("<svg"),
+            "output should be SVG: starts with {}",
+            &content[..50.min(content.len())]
+        );
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_contourf_png_magic_bytes() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_contour_xyz(15, 20);
+        let path = ".debug/test_contourf.png";
+        std::fs::create_dir_all(".debug").ok();
+        let result = plugin.call(
+            "contourf",
+            &[x, y, z, Value::Scalar(5.0), Value::Str(path.into())],
+            &env,
+        );
+        assert!(result.is_ok(), "contourf PNG should succeed: {result:?}");
+        let bytes = std::fs::read(path).unwrap();
         assert_eq!(
             &bytes[0..4],
             &[0x89, 0x50, 0x4E, 0x47],

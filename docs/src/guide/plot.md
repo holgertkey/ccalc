@@ -224,6 +224,64 @@ Both functions accept the same annotations as other plot functions
 
 ---
 
+## Contour plots
+
+Render 2D isolines (contour lines) or filled contour regions for a scalar field
+defined on a meshgrid.
+
+### `contour(X, Y, Z)` / `contour(X, Y, Z, n)` / `contour(X, Y, Z, n, 'file')`
+
+Draws `n` evenly-spaced contour isolines.
+
+- `X`, `Y` — coordinate matrices from `meshgrid`.
+- `Z` — scalar-field matrix, same size as `X` and `Y`.
+- `n` — number of contour levels (default `10`).
+  Levels are placed evenly inside the Z range (never at the exact min/max).
+- Without a path: ASCII tier prints an 80 × 24 character-art density map where
+  each character encodes the Z band of the corresponding sample point
+  (palette: `" .:-=+*#"`).
+- With a `.svg` or `.png` path: file tier draws each isoline as a colored
+  `LineSeries`, with colors cycling through the active colormap.
+
+### `contourf(X, Y, Z)` / `contourf(X, Y, Z, n)` / `contourf(X, Y, Z, n, 'file')`
+
+Filled contour chart. Same API as `contour`.
+
+- ASCII tier: identical to `contour` (character-art density map).
+- File tier: colors each grid cell by its Z band using the active colormap,
+  then draws the contour isolines on top.
+
+**Algorithm:** marching squares (classic isoline extraction per 2×2 cell).
+The saddle-point ambiguity is resolved with the simple split convention.
+
+```matlab
+[X, Y] = meshgrid(-2:0.05:2, -2:0.05:2);
+Z = exp(-X .^ 2 - Y .^ 2);
+
+% ASCII density map (10 levels)
+contour(X, Y, Z)
+
+% SVG with 8 levels
+title('Gaussian bell')
+xlabel('x')
+ylabel('y')
+contour(X, Y, Z, 8, 'gauss.svg')
+
+% PNG filled contour
+colormap('viridis')
+contourf(X, Y, Z, 8, 'gauss_filled.png')
+
+% Saddle function — shows both positive and negative regions
+Z2 = X .* exp(-X .^ 2 - Y .^ 2);
+colormap('hot')
+contour(X, Y, Z2, 12, 'saddle.svg')
+```
+
+Both functions accept `title`, `xlabel`, `ylabel`, `xlim`, `ylim`, and
+`colormap` annotations, which are consumed by the render call.
+
+---
+
 ## False-colour images (imagesc)
 
 Render a matrix as a heat-map — each cell is coloured according to its value.
@@ -408,6 +466,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/colormap/julia.calc` — Julia set rendered with `colormap('magma')`
 - `examples/surf_demo/surf_demo.calc` — sine wave surface + Gaussian bell (`surf`)
 - `examples/surf_demo/mesh_demo.calc` — sine wave wireframe + saddle surface (`mesh`)
+- `examples/contour_demo/contour_demo.calc` — `contour` and `contourf` on Gaussian bell + saddle
 
 ---
 

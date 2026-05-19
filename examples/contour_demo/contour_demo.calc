@@ -1,0 +1,56 @@
+% contour_demo.calc — demonstrates contour and contourf on two surfaces.
+
+% ── 2D Gaussian bell (symmetric) ──────────────────────────────────────────
+
+step = 0.15;
+[X, Y] = meshgrid(-2.5:step:2.5, -2.5:step:2.5);
+Z = exp(-X .^ 2 - Y .^ 2);
+
+% ASCII contour map (8 levels)
+title('Gaussian bell — contour (ASCII)')
+xlabel('x')
+ylabel('y')
+contour(X, Y, Z, 8)
+
+% SVG line contour
+title('Gaussian bell — contour')
+xlabel('x')
+ylabel('y')
+contour(X, Y, Z, 8, 'contour_gauss.svg')
+fprintf('Wrote contour_gauss.svg\n')
+
+% PNG filled contour
+title('Gaussian bell — contourf')
+xlabel('x')
+ylabel('y')
+colormap('viridis')
+contourf(X, Y, Z, 8, 'contourf_gauss.png')
+fprintf('Wrote contourf_gauss.png\n')
+
+% ── Saddle surface (hyperbolic paraboloid) ─────────────────────────────────
+
+step2 = 0.2;
+[X2, Y2] = meshgrid(-2:step2:2, -2:step2:2);
+Z2 = X2 .* exp(-X2 .^ 2 - Y2 .^ 2);
+
+% ASCII density map
+title('Saddle function x*exp(-x^2-y^2) — contour (ASCII)')
+contour(X2, Y2, Z2, 10)
+
+% SVG line contour with hot colormap
+title('Saddle surface — contour')
+xlabel('x')
+ylabel('y')
+colormap('hot')
+contour(X2, Y2, Z2, 10, 'contour_saddle.svg')
+fprintf('Wrote contour_saddle.svg\n')
+
+% PNG filled contour
+title('Saddle surface — contourf')
+xlabel('x')
+ylabel('y')
+colormap('plasma')
+contourf(X2, Y2, Z2, 10, 'contourf_saddle.png')
+fprintf('Wrote contourf_saddle.png\n')
+
+fprintf('Done.\n')
