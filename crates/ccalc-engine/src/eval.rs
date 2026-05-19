@@ -6193,7 +6193,10 @@ fn call_builtin(
             let x_mat = Array2::from_shape_fn((n, n), |(_r, c)| xv[c]);
             let y_mat = Array2::from_shape_fn((n, n), |(r, _c)| xv[r]);
             if get_nargout() >= 2 {
-                Ok(Value::Tuple(vec![Value::Matrix(x_mat), Value::Matrix(y_mat)]))
+                Ok(Value::Tuple(vec![
+                    Value::Matrix(x_mat),
+                    Value::Matrix(y_mat),
+                ]))
             } else {
                 Ok(Value::Matrix(x_mat))
             }
@@ -6206,7 +6209,10 @@ fn call_builtin(
             let x_mat = Array2::from_shape_fn((n_rows, n_cols), |(_r, c)| xv[c]);
             let y_mat = Array2::from_shape_fn((n_rows, n_cols), |(r, _c)| yv[r]);
             if get_nargout() >= 2 {
-                Ok(Value::Tuple(vec![Value::Matrix(x_mat), Value::Matrix(y_mat)]))
+                Ok(Value::Tuple(vec![
+                    Value::Matrix(x_mat),
+                    Value::Matrix(y_mat),
+                ]))
             } else {
                 Ok(Value::Matrix(x_mat))
             }

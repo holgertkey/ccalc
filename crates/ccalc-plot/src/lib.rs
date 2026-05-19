@@ -339,7 +339,16 @@ impl Plugin for PlotPlugin {
                 // Unique x values = first row of X; unique y values = first column of Y.
                 let x_vals: Vec<f64> = (0..x_cols).map(|c| x_data[c]).collect();
                 let y_vals: Vec<f64> = (0..x_rows).map(|r| y_data[r * x_cols]).collect();
-                render_surface(name, &x_vals, &y_vals, &z_data, z_rows, z_cols, path.as_deref(), state)
+                render_surface(
+                    name,
+                    &x_vals,
+                    &y_vals,
+                    &z_data,
+                    z_rows,
+                    z_cols,
+                    path.as_deref(),
+                    state,
+                )
             }
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
@@ -470,9 +479,11 @@ fn render_surface_ascii_tier(
     _ncols: usize,
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("surf/mesh: ASCII rendering requires the 'plot' feature flag — \
+    Err(
+        "surf/mesh: ASCII rendering requires the 'plot' feature flag — \
          rebuild with: cargo build --features plot"
-        .into())
+            .into(),
+    )
 }
 
 #[cfg(feature = "plot-svg")]
@@ -497,6 +508,7 @@ fn render_surface_file_tier(
 }
 
 #[cfg(not(feature = "plot-svg"))]
+#[allow(clippy::too_many_arguments)]
 fn render_surface_file_tier(
     _wireframe: bool,
     _x_vals: &[f64],
@@ -507,9 +519,11 @@ fn render_surface_file_tier(
     _path: &str,
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("surf/mesh: SVG/PNG export requires the 'plot-svg' feature — \
+    Err(
+        "surf/mesh: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
-        .into())
+            .into(),
+    )
 }
 
 // ── imagesc dispatch ───────────────────────────────────────────────────────
@@ -1717,17 +1731,11 @@ mod tests {
 
     // ── 30b: surf / mesh ───────────────────────────────────────────────────
 
+    #[allow(dead_code)]
     fn make_xyz(rows: usize, cols: usize) -> (Value, Value, Value) {
-        // X: each row = 0..cols-1; Y: each col = 0..rows-1; Z = X + Y.
-        let x = Value::Matrix(
-            Array2::from_shape_fn((rows, cols), |(_r, c)| c as f64),
-        );
-        let y = Value::Matrix(
-            Array2::from_shape_fn((rows, cols), |(r, _c)| r as f64),
-        );
-        let z = Value::Matrix(
-            Array2::from_shape_fn((rows, cols), |(r, c)| (r + c) as f64),
-        );
+        let x = Value::Matrix(Array2::from_shape_fn((rows, cols), |(_r, c)| c as f64));
+        let y = Value::Matrix(Array2::from_shape_fn((rows, cols), |(r, _c)| r as f64));
+        let z = Value::Matrix(Array2::from_shape_fn((rows, cols), |(r, c)| (r + c) as f64));
         (x, y, z)
     }
 
@@ -1740,7 +1748,10 @@ mod tests {
         let y = Value::Matrix(Array2::from_shape_vec((3, 2), vec![1.0; 6]).unwrap());
         let z = Value::Matrix(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap());
         let err = plugin.call("surf", &[x, y, z], &env).unwrap_err();
-        assert!(err.contains("same dimensions"), "error should mention dimensions: {err}");
+        assert!(
+            err.contains("same dimensions"),
+            "error should mention dimensions: {err}"
+        );
     }
 
     #[test]
@@ -1752,7 +1763,10 @@ mod tests {
         let y = Value::Matrix(Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap());
         let z = Value::Matrix(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap());
         let err = plugin.call("mesh", &[x, y, z], &env).unwrap_err();
-        assert!(err.contains("same dimensions"), "error should mention dimensions: {err}");
+        assert!(
+            err.contains("same dimensions"),
+            "error should mention dimensions: {err}"
+        );
     }
 
     #[test]
@@ -1762,7 +1776,10 @@ mod tests {
         let env = Env::new();
         let x = Value::Matrix(Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap());
         let err = plugin.call("surf", &[x], &env).unwrap_err();
-        assert!(err.contains("requires"), "error should mention requires: {err}");
+        assert!(
+            err.contains("requires"),
+            "error should mention requires: {err}"
+        );
     }
 
     #[test]
@@ -1799,7 +1816,11 @@ mod tests {
         let result = plugin.call("surf", &[x, y, z, Value::Str(path.into())], &env);
         assert!(result.is_ok(), "surf SVG should succeed: {result:?}");
         let content = std::fs::read_to_string(path).unwrap();
-        assert!(content.contains("<svg"), "output should be SVG: starts with {}", &content[..50.min(content.len())]);
+        assert!(
+            content.contains("<svg"),
+            "output should be SVG: starts with {}",
+            &content[..50.min(content.len())]
+        );
         std::fs::remove_file(path).ok();
     }
 
@@ -1816,7 +1837,11 @@ mod tests {
         assert!(result.is_ok(), "mesh PNG should succeed: {result:?}");
         let bytes = std::fs::read(path).unwrap();
         // PNG magic bytes: 0x89 P N G
-        assert_eq!(&bytes[0..4], &[0x89, 0x50, 0x4E, 0x47], "output should be PNG");
+        assert_eq!(
+            &bytes[0..4],
+            &[0x89, 0x50, 0x4E, 0x47],
+            "output should be PNG"
+        );
         std::fs::remove_file(path).ok();
     }
 }
