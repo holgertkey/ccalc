@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.37.0+001] - 2026-05-19
+
+### Added
+
+- **Phase 30b — `meshgrid` + `surf` + `mesh`** (`crates/ccalc-engine`, `crates/ccalc-plot`):
+  - **`meshgrid(x, y)`** / **`meshgrid(x)`**: new engine built-in generating coordinate
+    matrices for `surf`/`mesh`. `[X, Y] = meshgrid(x, y)` returns `X` (M×N, each row
+    copies `x`) and `Y` (M×N, each column copies `y`). Single-argument form uses `x`
+    for both axes (square N×N grid). Uses `NARGOUT` thread-local for multi-return
+    semantics (same pattern as `eig`). Added to `builtin_names()` for tab completion.
+  - **`surf(X, Y, Z)`** / **`surf(X, Y, Z, 'file.svg|png')`**: colored 3D surface plot.
+    ASCII tier renders a 20-row elevation silhouette (column max Z as `#` bars).
+    File tier draws a dense grid of colored `LineSeries` row and column lines, each
+    segment colored by local Z mean through the active colormap.
+  - **`mesh(X, Y, Z)`** / **`mesh(X, Y, Z, 'file.svg|png')`**: wireframe surface.
+    Identical to `surf` in ASCII mode; file mode draws row lines only (sparser appearance).
+  - X, Y, Z dimension mismatch returns a descriptive error.
+  - Axis mapping: chart `(X, Y_height, Z_depth)` = our `(x_vals, z_values, y_vals)`,
+    keeping function-height as the visual height axis. `SurfaceSeries` was rejected
+    (axis-mapping incompatibility); `LineSeries` with explicit point ordering is used.
+  - New module `crates/ccalc-plot/src/surface.rs`: `render_surf_ascii`,
+    `render_surf_file`, `render_mesh_file`, `draw_surface`, `z_row_avg`, `z_col_avg`.
+  - 5 new engine tests in `eval_tests.rs` (meshgrid dimensions, row/column equality,
+    single-output form, single-argument square form).
+  - 7 new plot tests in `lib.rs` (missing args, dimension mismatch, ASCII no-error,
+    SVG file creation, PNG magic bytes).
+  - Example scripts: `examples/surf_demo/surf_demo.calc` (sine wave surface + Gaussian
+    bell), `examples/surf_demo/mesh_demo.calc` (sine wave wireframe + saddle surface).
+    Both write output to `examples/surf_demo/tmp/`.
+
 ## [0.37.0] - 2026-05-18
 
 ### Added

@@ -162,6 +162,68 @@ scatter3(randn(1,80), randn(1,80), randn(1,80), 'cloud.svg')
 
 ---
 
+## 3D surface plots
+
+### `meshgrid(x)` / `meshgrid(x, y)`
+
+Generates coordinate matrices for evaluating functions on a 2D grid —
+the standard prerequisite for `surf` and `mesh`.
+
+| Call | Result |
+|---|---|
+| `[X, Y] = meshgrid(x, y)` | X is M×N (each row copies `x`); Y is M×N (each column copies `y`) |
+| `[X, Y] = meshgrid(x)` | square N×N grid using `x` for both axes |
+| `X = meshgrid(x, y)` | single-output form — returns only the X matrix |
+
+```matlab
+[X, Y] = meshgrid(-2:0.1:2, -2:0.1:2);
+Z = exp(-(X.^2 + Y.^2));   % Gaussian bell
+```
+
+### `surf(X, Y, Z)` / `surf(X, Y, Z, 'file.svg')`
+
+Colored 3D surface plot. X, Y, Z must all have the same dimensions (M×N
+from `meshgrid`).
+
+**ASCII tier** (`--features plot`): projects each column's maximum Z as a
+vertical bar — an elevation silhouette. Prints `title`, `xlabel`, `ylabel`,
+`zlabel` as header/footer. `colormap` is ignored.
+
+**File tier** (`--features plot-svg`): renders the surface as a colored grid
+of row and column `LineSeries`, each segment colored by local Z value through
+the active colormap. Chart axes: X horizontal, Z (our height) vertical, Y depth.
+
+```matlab
+[X, Y] = meshgrid(-3:0.2:3, -3:0.2:3);
+Z = sin(sqrt(X.^2 + Y.^2));
+
+title('Sine wave surface')
+colormap('viridis')
+surf(X, Y, Z)                          % ASCII preview
+
+surf(X, Y, Z, 'surface.svg')          % SVG file
+```
+
+### `mesh(X, Y, Z)` / `mesh(X, Y, Z, 'file.png')`
+
+Wireframe 3D surface. Same API as `surf`; in ASCII mode the output is
+identical. In file mode only row lines are drawn (no column fill lines),
+giving a sparser wireframe appearance.
+
+```matlab
+[X, Y] = meshgrid(-2:0.2:2, -2:0.2:2);
+Z = X.^2 - Y.^2;            % saddle surface
+
+colormap('jet')
+mesh(X, Y, Z, 'saddle.svg')
+```
+
+Both functions accept the same annotations as other plot functions
+(`title`, `xlabel`, `ylabel`, `zlabel`, `xlim`, `ylim`, `zlim`,
+`colormap`).
+
+---
+
 ## False-colour images (imagesc)
 
 Render a matrix as a heat-map — each cell is coloured according to its value.
@@ -291,8 +353,8 @@ plot(t, y)       % all annotations applied here, then cleared
 | `grid` | Toggle grid on/off | Yes |
 | `grid('on')` | Enable grid | Yes |
 | `grid('off')` | Disable grid | Yes |
-| `colormap('name')` | Set colormap for next `imagesc` | Yes |
-| `colorbar()` | Append colour-scale strip (file export only) | Yes |
+| `colormap('name')` | Set colormap for next `imagesc` / `surf` / `mesh` | Yes |
+| `colorbar()` | Append colour-scale strip (file export only, `imagesc`) | Yes |
 
 Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
 ignore it.
@@ -320,6 +382,9 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **3D line plots (`plot3`):** `LineSeries` over `(f64, f64, f64)` tuples via `plotters`
   3D Cartesian chart (`build_cartesian_3d`).
 - **3D scatter plots (`scatter3`):** `Circle` elements at each 3D coordinate.
+- **3D surface plots (`surf`):** colored row + column `LineSeries` grid on a 3D
+  Cartesian chart; each line colored by local Z mean through the active colormap.
+- **3D wireframe plots (`mesh`):** row-only `LineSeries` grid (sparser than `surf`).
 - **False-colour images (`imagesc`):** one `Rectangle` per matrix cell, RGB colour
   from the active colormap LUT; optional 80 px colorbar strip on the right.
 - **Axis range:** auto-computed from data with 5 % margin; single-point data uses ± 1.
@@ -341,6 +406,8 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/colormap/imagesc_demo.calc` — `imagesc` with all 8 colormaps + colorbar
 - `examples/colormap/mandelbrot.calc` — Mandelbrot set rendered with `colormap('inferno')`
 - `examples/colormap/julia.calc` — Julia set rendered with `colormap('magma')`
+- `examples/surf_demo/surf_demo.calc` — sine wave surface + Gaussian bell (`surf`)
+- `examples/surf_demo/mesh_demo.calc` — sine wave wireframe + saddle surface (`mesh`)
 
 ---
 

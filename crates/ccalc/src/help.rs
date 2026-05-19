@@ -79,7 +79,8 @@ pub fn print(topic: Option<&str>) {
             "plot" | "scatter" | "bar" | "stem" | "stairs" | "hist" | "loglog" | "semilogx"
             | "semilogy" | "plot3" | "scatter3" | "3d" | "xlabel" | "ylabel" | "zlabel" | "title"
             | "xlim" | "ylim" | "zlim" | "legend" | "grid" | "figurestate" | "plotting" | "charts"
-            | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap",
+            | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap" | "surf" | "mesh"
+            | "meshgrid" | "surface" | "wireframe",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -3526,6 +3527,21 @@ Two rendering tiers; both use the same annotation API.
     Supported colormaps:  viridis (default)  inferno  magma  plasma
                           hot  cool  jet  gray
 
+── 3D surface plots ─────────────────────────────────────────────────────────
+    meshgrid(x, y)            generate coordinate matrices X (M×N) and Y (M×N)
+    meshgrid(x)               square N×N grid — x used for both axes
+    [X, Y] = meshgrid(x, y)  multi-output form (standard usage)
+    surf(X, Y, Z)             colored 3D surface (ASCII elevation silhouette)
+    surf(X, Y, Z, 'f.svg')   surf to SVG file (requires plot-svg)
+    surf(X, Y, Z, 'f.png')   surf to PNG file
+    mesh(X, Y, Z)             wireframe surface (same as surf in ASCII mode)
+    mesh(X, Y, Z, 'f.svg')   mesh to SVG file
+    mesh(X, Y, Z, 'f.png')   mesh to PNG file
+
+    X, Y, Z must have the same dimensions (M×N from meshgrid).  In SVG/PNG
+    mode surf draws row + column grid lines; mesh draws row lines only.
+    colormap() applies to surf/mesh file output.
+
 Append a file path as the last string argument to save instead of print:
     plot(x, y, 'out.svg')          SVG (requires --features plot-svg)
     plot(x, y, 'out.png')          PNG (requires --features plot-svg)
@@ -3590,11 +3606,24 @@ Append a file path as the last string argument to save instead of print:
     colormap('inferno')
     imagesc(Z, 'heat.png', 1200, 900)
 
+    % 3D surface
+    [X, Y] = meshgrid(-3:0.2:3, -3:0.2:3);
+    Z = sin(sqrt(X.^2 + Y.^2));
+    colormap('viridis')
+    surf(X, Y, Z, 'surface.svg')
+
+    % Wireframe
+    [X2, Y2] = meshgrid(-2:0.2:2, -2:0.2:2);
+    colormap('jet')
+    mesh(X2, Y2, X2.^2 - Y2.^2, 'saddle.svg')
+
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
           examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
           examples/plot3_demo.calc               (3D ASCII demo)
           examples/plot3_file/plot3_file.calc    (3D SVG/PNG demo)
-          examples/colormap/imagesc_demo.calc    (imagesc/colormap demo)"
+          examples/colormap/imagesc_demo.calc    (imagesc/colormap demo)
+          examples/surf_demo/surf_demo.calc      (surf — sine wave + Gaussian bell)
+          examples/surf_demo/mesh_demo.calc      (mesh — sine wave wireframe + saddle)"
     );
 }

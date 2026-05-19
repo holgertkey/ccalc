@@ -1,4 +1,4 @@
-# Phase 30 — Colormaps & imagesc
+# Phase 30 — Colormaps, imagesc & 3D Surfaces
 
 Matrix-to-image rendering: false-colour heat-maps with configurable colormaps
 and an optional colour-scale legend (colorbar). Builds on the `PlotPlugin`
@@ -119,6 +119,107 @@ together with the existing annotation fields (`title`, `xlabel`, etc.).
 - `examples/colormap/imagesc_demo.calc` — gradient matrix + all 8 colormaps + colorbar
 - `examples/colormap/mandelbrot.calc` — Mandelbrot escape-count map with `colormap('inferno')`
 - `examples/colormap/julia.calc` — Julia set with `colormap('magma')`
+
+---
+
+## Phase 30b — `meshgrid` + `surf` + `mesh` (v0.37.0+001) ✅
+
+3D surface visualisation: `surf` draws a colored surface, `mesh` draws a
+wireframe. Both require `meshgrid` to generate the coordinate matrices.
+
+### `meshgrid` — engine change
+
+`meshgrid` is a new engine built-in (added to `builtin_names()` and
+`call_builtin` in `eval.rs`).  Uses `NARGOUT` to select single or multi-output:
+
+| Call | Returns |
+|---|---|
+| `[X, Y] = meshgrid(x, y)` | `Value::Tuple([X_mat, Y_mat])` |
+| `X = meshgrid(x, y)` | `Value::Matrix(X_mat)` (X only) |
+| `[X, Y] = meshgrid(x)` | square N×N grid (x used for both axes) |
+
+X is M×N where every row is a copy of `x`; Y is M×N where every column is a
+copy of `y`.  The `1`-argument form uses `x` for both dimensions (MATLAB
+compatible).
+
+### `surf` and `mesh` — plot plugin
+
+Both functions are dispatched by the `PlotPlugin` (added to `EXPORTED`).
+Argument forms:
+
+| Call | Output |
+|---|---|
+| `surf(X, Y, Z)` | ASCII elevation map (requires `plot` feature) |
+| `surf(X, Y, Z, 'f.svg')` | SVG file (requires `plot-svg`) |
+| `surf(X, Y, Z, 'f.png')` | PNG file (requires `plot-svg`) |
+| `mesh(X, Y, Z)` | wireframe ASCII (same as surf in ASCII mode) |
+| `mesh(X, Y, Z, 'f.svg')` | wireframe SVG |
+
+X, Y, Z must all have the same dimensions (M×N). A clear error is returned
+if dimensions differ.
+
+### ASCII tier
+
+`render_surf_ascii` in `surface.rs` (gated `#[cfg(feature = "plot")]`):
+
+1. Compute the maximum Z over each column (`col_max`).
+2. Print a character grid of height 20: row `k` prints `#` for columns where
+   `col_max[c] ≥ z_min + z_range * (k / 20)`.
+3. Print x-axis tick labels (first and last x value).
+4. Print `xlabel` / `ylabel` / `zlabel` footer lines when set.
+
+Both `surf` and `mesh` produce identical ASCII output.
+
+### File tier
+
+`draw_surface` in `surface.rs` (gated `#[cfg(feature = "plot-svg")]`).
+
+**Axis mapping** — chart `(X, Y, Z)` = our `(X, Z_height, Y_depth)`:
+
+| Chart dim | plotters role | our value |
+|---|---|---|
+| First (X) | horizontal left–right | `x_vals` |
+| Second (Y) | visual height (up) | `z` values |
+| Third (Z) | depth (into page) | `y_vals` |
+
+Points: `(x_vals[c], z[r*nc+c], y_vals[r])` ensure our Z (function value)
+is the visual height and our Y (spatial coordinate) is depth.
+This matches the conventional MATLAB `surf` view.
+
+**`surf`**: draws all row lines _and_ all column lines, each colored by the
+mean Z of that row or column through the active colormap.
+
+**`mesh`**: draws only row lines (sparser wireframe appearance).
+
+Note: `SurfaceSeries` was evaluated but rejected — its axis-mapping convention
+(`(xi, yi, f(xi,yi))` → `(chart_X, chart_Y_height, chart_Z_depth)`) placed our
+spatial Y values on the height axis, causing a flat-wall artifact.  `LineSeries`
+with explicit point ordering is simpler and correct.
+
+### Implementation
+
+| Source file | Role |
+|---|---|
+| `crates/ccalc-engine/src/eval.rs` | `meshgrid` cases in `call_builtin`; entry in `builtin_names()` |
+| `crates/ccalc-plot/src/surface.rs` | ASCII + SVG/PNG renderers for `surf` and `mesh` |
+| `crates/ccalc-plot/src/lib.rs` | `surf`/`mesh` in `EXPORTED`; dispatch to `render_surface` |
+
+### Tests
+
+**Engine tests** (`eval_tests.rs`, mod `phase30b_tests`): 5 tests —
+`meshgrid` dimensions, X row equality, Y column equality, single-output form,
+single-argument square form.
+
+**Plot tests** (`lib.rs`, mod `tests`): 7 tests —
+missing arguments error, dimension mismatch error (surf + mesh), ASCII no-error
+(surf + mesh), SVG file creation (`surf`), PNG magic bytes (`mesh`).
+
+### Example scripts
+
+- `examples/surf_demo/surf_demo.calc` — sine wave surface + Gaussian bell
+- `examples/surf_demo/mesh_demo.calc` — sine wave wireframe + saddle surface
+
+Both write output files to `examples/surf_demo/tmp/`.
 
 ---
 
