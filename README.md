@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.37.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.38.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -815,6 +815,9 @@ Append a file path to save instead of print to terminal:
 | `scatter3(x, y, z, 'f.png')` | `plot-svg` | 3D scatter to file |
 | `colormap('viridis')` | — | Set colormap for next `imagesc` (viridis/inferno/magma/plasma/hot/cool/jet/gray) |
 | `colorbar()` | — | Append colour-scale legend strip to next file export |
+| `subplot(rows, cols, k)` | — | Activate panel k in a rows×cols grid; enters accumulating mode |
+| `hold('on')` / `hold('off')` | — | Overlay multiple series; `hold('off')` flushes to ASCII (no subplot) |
+| `savefig('f.svg')` | `plot-svg` | Commit last panel and write composed figure to SVG/PNG |
 
 ### Annotations
 
@@ -855,7 +858,9 @@ plot3(cos(t), sin(t), t/(4*pi), 'helix.svg')
 See `examples/plot_demo.calc` (ASCII), `examples/plot_file/plot_file.calc` (file export),
 `examples/plot_extended.calc` (bar/stem/stairs/hist/loglog),
 `examples/plot3_demo.calc` (3D ASCII), `examples/plot3_file/plot3_file.calc` (3D file export),
-and `examples/colormap/imagesc_demo.calc` (imagesc/colormap heat-maps)
+`examples/colormap/imagesc_demo.calc` (imagesc/colormap heat-maps),
+`examples/subplot_demo/subplot_demo.calc` (2×2 subplot grid), and
+`examples/hold_demo/hold_demo.calc` (hold on/off overlay)
 for full worked examples. Run `help plot` in the REPL for a quick reference.
 
 ---
@@ -2068,6 +2073,8 @@ The `examples/` directory contains annotated formula files ready to run:
 | `colormap/imagesc_demo.calc` | `imagesc` with all 8 colormaps, colorbar, gradient/radial/sine-wave matrices — requires `--features plot-svg` |
 | `colormap/mandelbrot.calc`   | Mandelbrot escape-count heat-map with `colormap('inferno')` + colorbar — requires `--features plot-svg` |
 | `colormap/julia.calc`        | Julia set with `colormap('magma')` + colorbar — requires `--features plot-svg` |
+| `subplot_demo/subplot_demo.calc` | 2×2 subplot grid: sin, cos, bar, hist — saved to SVG — requires `--features plot-svg` |
+| `hold_demo/hold_demo.calc`   | Overlaid sin and cos series using `hold on/off`; ASCII and SVG variants |
 
 ```bash
 ccalc < examples/mortgage.calc

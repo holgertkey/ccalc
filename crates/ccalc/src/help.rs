@@ -80,7 +80,8 @@ pub fn print(topic: Option<&str>) {
             | "semilogy" | "plot3" | "scatter3" | "3d" | "xlabel" | "ylabel" | "zlabel" | "title"
             | "xlim" | "ylim" | "zlim" | "legend" | "grid" | "figurestate" | "plotting" | "charts"
             | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap" | "surf" | "mesh"
-            | "meshgrid" | "surface" | "wireframe",
+            | "meshgrid" | "surface" | "wireframe" | "subplot" | "hold" | "savefig" | "multipanel"
+            | "panels",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -3543,6 +3544,24 @@ Two rendering tiers; both use the same annotation API.
     mode surf draws row + column grid lines; mesh draws row lines only.
     colormap() applies to surf/mesh file output.
 
+── Multi-panel layout ───────────────────────────────────────────────────────
+    subplot(rows, cols, index)   activate panel index (1-based, row-major)
+    hold('on')                   start accumulating series without rendering
+    hold('off')                  stop accumulating; flush to ASCII if no subplot
+    savefig('path.svg')          commit last panel; write all panels to SVG/PNG
+
+    Once subplot or hold('on') is called, all plot calls accumulate instead
+    of rendering.  Annotations set after a plot call are collected for the
+    current panel and consumed at commit time (next subplot or savefig).
+    savefig requires --features plot-svg.
+
+    x = linspace(0, 2*pi, 60);
+    subplot(2, 2, 1); title('sin'); plot(x, sin(x));
+    subplot(2, 2, 2); title('cos'); plot(x, cos(x));
+    subplot(2, 2, 3); bar([1 4 2 5 3]);
+    subplot(2, 2, 4); hist(randn(1, 200), 20);
+    savefig('out.svg')
+
 Append a file path as the last string argument to save instead of print:
     plot(x, y, 'out.svg')          SVG (requires --features plot-svg)
     plot(x, y, 'out.png')          PNG (requires --features plot-svg)
@@ -3618,6 +3637,20 @@ Append a file path as the last string argument to save instead of print:
     colormap('jet')
     mesh(X2, Y2, X2.^2 - Y2.^2, 'saddle.svg')
 
+    % 2×2 subplot grid to SVG
+    x = linspace(0, 2*pi, 60);
+    subplot(2, 2, 1); title('sin'); plot(x, sin(x));
+    subplot(2, 2, 2); title('cos'); plot(x, cos(x));
+    subplot(2, 2, 3); bar([3 1 4 1 5 9]);
+    subplot(2, 2, 4); hist(randn(1, 200), 20);
+    savefig('grid.svg')
+
+    % Overlay with hold
+    hold('on');
+    plot(x, sin(x));
+    plot(x, cos(x));
+    hold('off')
+
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
           examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
@@ -3625,6 +3658,8 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot3_file/plot3_file.calc    (3D SVG/PNG demo)
           examples/colormap/imagesc_demo.calc    (imagesc/colormap demo)
           examples/surf_demo/surf_demo.calc      (surf — sine wave + Gaussian bell)
-          examples/surf_demo/mesh_demo.calc      (mesh — sine wave wireframe + saddle)"
+          examples/surf_demo/mesh_demo.calc      (mesh — sine wave wireframe + saddle)
+          examples/subplot_demo/subplot_demo.calc  (2×2 subplot grid)
+          examples/hold_demo/hold_demo.calc        (hold on/off overlay)"
     );
 }

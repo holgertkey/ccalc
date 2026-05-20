@@ -282,6 +282,83 @@ Both functions accept `title`, `xlabel`, `ylabel`, `xlim`, `ylim`, and
 
 ---
 
+## Multi-panel layout
+
+`subplot`, `hold`, and `savefig` work together to compose figures with multiple panels
+or overlaid series.
+
+### `subplot(rows, cols, index)`
+
+Activates panel `index` (1-based, row-major) in a `rows × cols` grid.
+Once called, ccalc enters *accumulating mode*: all subsequent plot calls
+(`plot`, `scatter`, `bar`, `stem`, `stairs`, `hist`) are buffered instead of
+rendered immediately. Annotations (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`,
+`legend`, `grid`) set after the render call are collected for the current panel
+and consumed at commit time.
+
+Calling `subplot` a second time commits the current panel and starts the next one.
+`savefig` commits the last panel and writes the composed figure.
+
+```matlab
+x = linspace(0, 2*pi, 60);
+
+subplot(2, 2, 1);
+title('sin(x)');
+plot(x, sin(x));
+
+subplot(2, 2, 2);
+title('cos(x)');
+plot(x, cos(x));
+
+subplot(2, 2, 3);
+bar([3 1 4 1 5 9 2 6]);
+
+subplot(2, 2, 4);
+hist(randn(1, 200), 20);
+
+savefig('out.svg');
+```
+
+### `hold('on')` / `hold('off')`
+
+Overlay multiple series in a single chart panel.
+
+- `hold('on')` — enables accumulating mode; subsequent plot calls push series
+  into the current panel without rendering.
+- `hold('off')` — disables accumulating mode and, if no `subplot` is active,
+  immediately renders the accumulated series to the terminal (ASCII tier).
+  For file output, call `savefig` before `hold('off')`.
+
+```matlab
+x = linspace(0, 2*pi, 80);
+
+% ASCII overlay: both series rendered at hold('off')
+hold('on');
+plot(x, sin(x));
+plot(x, cos(x));
+hold('off');
+
+% File overlay via subplot + savefig
+subplot(1, 1, 1);
+title('sin and cos overlay');
+hold('on');
+plot(x, sin(x));
+plot(x, cos(x));
+hold('off');
+savefig('overlay.svg');
+```
+
+### `savefig('path')`
+
+Commits the last pending panel and renders all accumulated panels to a single
+SVG or PNG file (requires `--features plot-svg`). The grid layout is determined
+by the `rows × cols` dimensions passed to the `subplot` calls.
+
+When used without `subplot` (only with `hold`), the single panel fills the
+entire canvas.
+
+---
+
 ## False-colour images (imagesc)
 
 Render a matrix as a heat-map — each cell is coloured according to its value.
@@ -467,6 +544,8 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/surf_demo/surf_demo.calc` — sine wave surface + Gaussian bell (`surf`)
 - `examples/surf_demo/mesh_demo.calc` — sine wave wireframe + saddle surface (`mesh`)
 - `examples/contour_demo/contour_demo.calc` — `contour` and `contourf` on Gaussian bell + saddle
+- `examples/subplot_demo/subplot_demo.calc` — 2×2 grid: sin, cos, bar, hist (SVG export)
+- `examples/hold_demo/hold_demo.calc` — overlaid sin and cos series using `hold on/off`
 
 ---
 
