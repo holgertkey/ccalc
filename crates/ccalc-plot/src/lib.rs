@@ -111,7 +111,6 @@ pub struct FigureState {
     pub colorbar: bool,
 
     // ── Phase 30d — subplot + hold ────────────────────────────────────────
-
     /// Active subplot grid position `(rows, cols, index_1based)`.
     pub subplot: Option<(u32, u32, u32)>,
     /// When `true`, plot calls accumulate into [`Self::pending_series`].
@@ -132,8 +131,8 @@ thread_local! {
 const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
-    "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf",
-    "subplot", "hold", "savefig",
+    "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
+    "savefig",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -521,31 +520,27 @@ impl Plugin for PlotPlugin {
             }
 
             // ── subplot ────────────────────────────────────────────────
-            "subplot" => {
-                match args {
-                    [Value::Scalar(m), Value::Scalar(n), Value::Scalar(k)] => {
-                        let m = *m as u32;
-                        let n = *n as u32;
-                        let k = *k as u32;
-                        if m == 0 || n == 0 || k == 0 || k > m * n {
-                            return Err(format!(
-                                "subplot: invalid layout ({m},{n},{k}) — \
+            "subplot" => match args {
+                [Value::Scalar(m), Value::Scalar(n), Value::Scalar(k)] => {
+                    let m = *m as u32;
+                    let n = *n as u32;
+                    let k = *k as u32;
+                    if m == 0 || n == 0 || k == 0 || k > m * n {
+                        return Err(format!(
+                            "subplot: invalid layout ({m},{n},{k}) — \
                                  index must be in 1..={}",
-                                m * n
-                            ));
-                        }
-                        FIGURE_STATE.with(|f| {
-                            let mut st = f.borrow_mut();
-                            commit_current_panel(&mut st);
-                            st.subplot = Some((m, n, k));
-                        });
-                        Ok(Value::Void)
+                            m * n
+                        ));
                     }
-                    _ => Err(
-                        "subplot: expected 3 numeric arguments (rows, cols, index)".into()
-                    ),
+                    FIGURE_STATE.with(|f| {
+                        let mut st = f.borrow_mut();
+                        commit_current_panel(&mut st);
+                        st.subplot = Some((m, n, k));
+                    });
+                    Ok(Value::Void)
                 }
-            }
+                _ => Err("subplot: expected 3 numeric arguments (rows, cols, index)".into()),
+            },
 
             // ── hold ───────────────────────────────────────────────────
             "hold" => {
@@ -554,13 +549,13 @@ impl Plugin for PlotPlugin {
                     [Value::Str(s) | Value::StringObj(s)] => match s.as_str() {
                         "on" => true,
                         "off" => false,
-                        other => return Err(format!(
-                            "hold: expected 'on', 'off', or no argument, got '{other}'"
-                        )),
+                        other => {
+                            return Err(format!(
+                                "hold: expected 'on', 'off', or no argument, got '{other}'"
+                            ));
+                        }
                     },
-                    _ => return Err(
-                        "hold: expected 'on', 'off', or no argument".into()
-                    ),
+                    _ => return Err("hold: expected 'on', 'off', or no argument".into()),
                 };
 
                 if !turn_on {
@@ -1407,11 +1402,9 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
 
 #[cfg(not(feature = "plot"))]
 fn render_panel_ascii(_panel: &Panel) -> Result<Value, String> {
-    Err(
-        "hold: ASCII rendering requires the 'plot' feature flag — \
+    Err("hold: ASCII rendering requires the 'plot' feature flag — \
          rebuild with: cargo build --features plot"
-            .into(),
-    )
+        .into())
 }
 
 #[cfg(feature = "plot-svg")]
@@ -1422,11 +1415,9 @@ fn render_panels_file(panels: &[Panel], path: &str) -> Result<Value, String> {
 
 #[cfg(not(feature = "plot-svg"))]
 fn render_panels_file(_panels: &[Panel], _path: &str) -> Result<Value, String> {
-    Err(
-        "savefig: SVG/PNG export requires the 'plot-svg' feature — \
+    Err("savefig: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
-            .into(),
-    )
+        .into())
 }
 
 // ── Argument helpers (continued) ───────────────────────────────────────────
@@ -2445,7 +2436,10 @@ mod tests {
             (st.hold, st.pending_series.is_empty())
         });
         assert!(!hold, "hold should be false after hold('off')");
-        assert!(series_empty, "pending_series should be cleared after hold('off')");
+        assert!(
+            series_empty,
+            "pending_series should be cleared after hold('off')"
+        );
         FIGURE_STATE.with(|f| f.take());
     }
 
@@ -2481,7 +2475,10 @@ mod tests {
         let y = f64_vec(&[1.0, 2.0, 3.0]);
         plugin.call("plot", &[y], &env).unwrap();
         let count = FIGURE_STATE.with(|f| f.borrow().pending_series.len());
-        assert_eq!(count, 1, "plot under subplot should accumulate into pending_series");
+        assert_eq!(
+            count, 1,
+            "plot under subplot should accumulate into pending_series"
+        );
         FIGURE_STATE.with(|f| f.take());
     }
 
@@ -2511,7 +2508,10 @@ mod tests {
             (st.panels.len(), st.pending_series.len())
         });
         assert_eq!(panels_len, 1, "panel 1 should be committed");
-        assert_eq!(pending_len, 0, "pending_series should be empty after commit");
+        assert_eq!(
+            pending_len, 0,
+            "pending_series should be empty after commit"
+        );
         FIGURE_STATE.with(|f| f.take());
     }
 
@@ -2554,7 +2554,9 @@ mod tests {
                 &env,
             )
             .unwrap();
-        plugin.call("plot", &[f64_vec(&[1.0, 2.0, 3.0])], &env).unwrap();
+        plugin
+            .call("plot", &[f64_vec(&[1.0, 2.0, 3.0])], &env)
+            .unwrap();
         plugin
             .call(
                 "subplot",
@@ -2562,12 +2564,17 @@ mod tests {
                 &env,
             )
             .unwrap();
-        plugin.call("plot", &[f64_vec(&[3.0, 2.0, 1.0])], &env).unwrap();
+        plugin
+            .call("plot", &[f64_vec(&[3.0, 2.0, 1.0])], &env)
+            .unwrap();
         plugin
             .call("savefig", &[Value::Str(path.into())], &env)
             .unwrap();
         let content = std::fs::read_to_string(path).unwrap();
-        assert!(content.contains("<svg"), "savefig should produce an SVG file");
+        assert!(
+            content.contains("<svg"),
+            "savefig should produce an SVG file"
+        );
         std::fs::remove_file(path).ok();
     }
 }
