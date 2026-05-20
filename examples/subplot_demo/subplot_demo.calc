@@ -1,0 +1,28 @@
+% subplot_demo.calc — 2x2 grid: sin, cos, bar, hist
+% Saves a composed SVG figure with four panels.
+% Usage: ccalc subplot_demo.calc
+
+x = linspace(0, 2*pi, 60);
+
+subplot(2, 2, 1);
+title('sin(x)');
+xlabel('x');
+ylabel('y');
+plot(x, sin(x));
+
+subplot(2, 2, 2);
+title('cos(x)');
+xlabel('x');
+ylabel('y');
+plot(x, cos(x));
+
+subplot(2, 2, 3);
+title('bar chart');
+bar([3 1 4 1 5 9 2 6]);
+
+subplot(2, 2, 4);
+title('histogram');
+hist(randn(1, 200), 20);
+
+savefig('subplot_demo_output.svg');
+fprintf('Saved to subplot_demo_output.svg\n');

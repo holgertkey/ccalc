@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-05-20
+
+### Added
+
+- **Phase 30d — `subplot` + `hold` + `savefig`** (`crates/ccalc-plot`):
+  - **`subplot(rows, cols, index)`**: activates a multi-panel layout. Each subsequent
+    plot call accumulates its series into the current panel rather than rendering
+    immediately. Switching panels (`subplot(2,2,2)` after `subplot(2,2,1)`) commits
+    the previous panel. Index is 1-based, validated against `rows × cols`.
+  - **`hold('on')` / `hold('off')` / `hold`** (toggle): when `hold` is active, plot
+    calls accumulate series instead of rendering. `hold('off')` without an active
+    subplot flushes all accumulated series to ASCII stdout (sequential, with `---`
+    dividers). Inside a subplot context, `hold('off')` clears the flag but defers
+    rendering to `savefig`.
+  - **`savefig(path)`**: commits the current in-progress panel and renders all
+    accumulated panels to a single SVG or PNG file. Uses plotters'
+    `DrawingArea::split_evenly((rows, cols))` to partition the 800×600 canvas into
+    a grid; each panel is drawn in its sub-area. Supports `Line`, `Scatter`, `Bar`,
+    `Stem`, and `Hist` series types with per-series color cycling.
+  - New types: `PendingSeries` enum (Line / Scatter / Bar / Stem / Hist),
+    `Panel` struct (layout + annotations + series). Added to `FigureState`:
+    `subplot`, `hold`, `pending_series`, `panels`.
+  - All existing render calls (`plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`)
+    automatically detect accumulating mode (`subplot.is_some() || hold`) and branch
+    accordingly; non-accumulating behavior is unchanged.
+  - 9 new unit tests in `lib.rs`; 1 integration test in `svg_png_tests.rs`.
+  - Example scripts: `examples/subplot_demo/subplot_demo.calc` (2×2 grid: sin, cos,
+    bar, hist), `examples/hold_demo/hold_demo.calc` (overlaid sin and cos).
+
 ## [0.37.0+003] - 2026-05-19
 
 ### Fixed

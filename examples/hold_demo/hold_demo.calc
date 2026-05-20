@@ -1,0 +1,25 @@
+% hold_demo.calc — overlaid sin and cos series using hold on/off
+% Usage: ccalc hold_demo.calc
+
+x = linspace(0, 2*pi, 80);
+
+% ASCII output: both series printed sequentially after hold('off').
+hold('on');
+plot(x, sin(x));
+plot(x, cos(x));
+hold('off');
+
+fprintf('ASCII: sin and cos series rendered.\n');
+
+% File output: activate subplot first so savefig can collect the panels,
+% then use hold('on')/'off') to layer multiple series in one panel.
+subplot(1, 1, 1);
+title('sin and cos overlay');
+xlabel('x');
+ylabel('y');
+hold('on');
+plot(x, sin(x));
+plot(x, cos(x));
+hold('off');
+savefig('hold_demo_output.svg');
+fprintf('Saved overlay to hold_demo_output.svg\n');

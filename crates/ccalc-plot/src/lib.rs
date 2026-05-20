@@ -1,10 +1,10 @@
-//! Plot plugin for ccalc — Phase 30c.
+//! Plot plugin for ccalc — Phase 30d.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
-//! `contour`, `contourf`, and annotation functions (`xlabel`, `ylabel`,
-//! `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`,
-//! `colorbar`).
+//! `contour`, `contourf`, `subplot`, `hold`, `savefig`, and annotation
+//! functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`, `xlim`,
+//! `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -38,12 +38,53 @@ use ccalc_engine::plugin::Plugin;
 
 use dispatch::{extract_file_arg, extract_matrix, extract_vector};
 
+// ── PendingSeries / Panel ──────────────────────────────────────────────────
+
+/// A renderable data series stored for deferred rendering under `hold`/`subplot`.
+#[derive(Clone)]
+pub enum PendingSeries {
+    /// Connected line plot.
+    Line(Vec<f64>, Vec<f64>),
+    /// Point-cloud scatter.
+    Scatter(Vec<f64>, Vec<f64>),
+    /// Vertical bar chart.
+    Bar(Vec<f64>, Vec<f64>),
+    /// Stem (lollipop) chart.
+    Stem(Vec<f64>, Vec<f64>),
+    /// Histogram — pre-computed counts and bin edges.
+    Hist { counts: Vec<usize>, edges: Vec<f64> },
+}
+
+/// A committed subplot panel ready for file rendering.
+#[derive(Clone, Default)]
+pub struct Panel {
+    /// Grid position `(rows, cols, index_1based)` inside a subplot layout.
+    pub layout: Option<(u32, u32, u32)>,
+    /// X-axis label.
+    pub xlabel: Option<String>,
+    /// Y-axis label.
+    pub ylabel: Option<String>,
+    /// Chart title.
+    pub title: Option<String>,
+    /// Series labels for legend.
+    pub legend: Vec<String>,
+    /// X-axis range override.
+    pub xlim: Option<(f64, f64)>,
+    /// Y-axis range override.
+    pub ylim: Option<(f64, f64)>,
+    /// Whether to draw grid lines.
+    pub grid: bool,
+    /// Accumulated data series.
+    pub series: Vec<PendingSeries>,
+}
+
 // ── FigureState ────────────────────────────────────────────────────────────
 
-/// Per-figure annotation state consumed by the next render call.
+/// Per-figure annotation and accumulation state.
 ///
-/// Set via `xlabel()`, `ylabel()`, `title()` etc. and cleared automatically
-/// after each `plot()` / `scatter()` / `bar()` call.
+/// Annotations (`xlabel`, `title`, …) are set via their corresponding
+/// functions and consumed at the next render call (or at `hold('off')` /
+/// `savefig` when in accumulating mode).
 #[derive(Default, Clone)]
 pub struct FigureState {
     /// X-axis label.
@@ -68,6 +109,17 @@ pub struct FigureState {
     pub colormap: Option<String>,
     /// Whether to append a colorbar to the next `imagesc` render.
     pub colorbar: bool,
+
+    // ── Phase 30d — subplot + hold ────────────────────────────────────────
+
+    /// Active subplot grid position `(rows, cols, index_1based)`.
+    pub subplot: Option<(u32, u32, u32)>,
+    /// When `true`, plot calls accumulate into [`Self::pending_series`].
+    pub hold: bool,
+    /// Series accumulated for the current in-progress panel.
+    pub pending_series: Vec<PendingSeries>,
+    /// Committed panels waiting for `savefig`.
+    pub panels: Vec<Panel>,
 }
 
 thread_local! {
@@ -81,7 +133,36 @@ const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
     "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf",
+    "subplot", "hold", "savefig",
 ];
+
+// ── subplot / hold helpers ─────────────────────────────────────────────────
+
+/// Returns `true` when the figure is in accumulating mode (subplot or hold).
+fn is_accumulating(st: &FigureState) -> bool {
+    st.subplot.is_some() || st.hold
+}
+
+/// Commits the current in-progress panel to `st.panels`.
+///
+/// Only commits when there are pending series to avoid creating empty panels.
+/// Clears annotations and `pending_series` after committing.
+fn commit_current_panel(st: &mut FigureState) {
+    if !st.pending_series.is_empty() {
+        let panel = Panel {
+            layout: st.subplot,
+            xlabel: st.xlabel.take(),
+            ylabel: st.ylabel.take(),
+            title: st.title.take(),
+            legend: std::mem::take(&mut st.legend),
+            xlim: st.xlim.take(),
+            ylim: st.ylim.take(),
+            grid: std::mem::replace(&mut st.grid, false),
+            series: std::mem::take(&mut st.pending_series),
+        };
+        st.panels.push(panel);
+    }
+}
 
 // ── PlotPlugin ─────────────────────────────────────────────────────────────
 
@@ -167,35 +248,73 @@ impl Plugin for PlotPlugin {
             // ── Render calls ───────────────────────────────────────────
             "plot" => {
                 let (data_args, path) = extract_file_arg(args);
-                let state = FIGURE_STATE.with(|f| f.take());
-                let (x, ys) = extract_xy_multi("plot", &data_args)?;
-                if ys.len() == 1 {
-                    render_line_xy("plot", &x, &ys[0], path.as_deref(), state)
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    let (x, ys) = extract_xy_multi("plot", &data_args)?;
+                    FIGURE_STATE.with(|f| {
+                        let mut st = f.borrow_mut();
+                        for y in ys {
+                            st.pending_series.push(PendingSeries::Line(x.clone(), y));
+                        }
+                    });
+                    Ok(Value::Void)
                 } else {
-                    render_multi_series(&x, &ys, path.as_deref(), state)
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    let (x, ys) = extract_xy_multi("plot", &data_args)?;
+                    if ys.len() == 1 {
+                        render_line_xy("plot", &x, &ys[0], path.as_deref(), state)
+                    } else {
+                        render_multi_series(&x, &ys, path.as_deref(), state)
+                    }
                 }
             }
 
             "scatter" | "bar" | "stem" | "stairs" => {
                 let (data_args, path) = extract_file_arg(args);
-                let state = FIGURE_STATE.with(|f| f.take());
-                render_ascii_or_file(name, &data_args, path.as_deref(), state)
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    let (x, y) = extract_xy(name, &data_args)?;
+                    let (x, y) = if name == "stairs" {
+                        make_step_data(&x, &y)
+                    } else {
+                        (x, y)
+                    };
+                    let series = match name {
+                        "scatter" => PendingSeries::Scatter(x, y),
+                        "bar" | "stairs" => PendingSeries::Bar(x, y),
+                        "stem" => PendingSeries::Stem(x, y),
+                        _ => unreachable!(),
+                    };
+                    FIGURE_STATE.with(|f| f.borrow_mut().pending_series.push(series));
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_ascii_or_file(name, &data_args, path.as_deref(), state)
+                }
             }
 
             // ── Histogram ──────────────────────────────────────────────
             "hist" => {
                 let (data_args, path) = extract_file_arg(args);
-                let state = FIGURE_STATE.with(|f| f.take());
-                let (counts, edges) = parse_and_compute_hist(&data_args)?;
-                match path.as_deref() {
-                    None | Some("ascii") => {
-                        render_hist_ascii(&counts, &edges, &state);
-                        Ok(Value::Void)
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    let (counts, edges) = parse_and_compute_hist(&data_args)?;
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut()
+                            .pending_series
+                            .push(PendingSeries::Hist { counts, edges });
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    let (counts, edges) = parse_and_compute_hist(&data_args)?;
+                    match path.as_deref() {
+                        None | Some("ascii") => {
+                            render_hist_ascii(&counts, &edges, &state);
+                            Ok(Value::Void)
+                        }
+                        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+                            render_hist_file(&counts, &edges, p, state)
+                        }
+                        Some(p) => Err(format!("hist: unknown output target '{p}'")),
                     }
-                    Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
-                        render_hist_file(&counts, &edges, p, state)
-                    }
-                    Some(p) => Err(format!("hist: unknown output target '{p}'")),
                 }
             }
 
@@ -399,6 +518,98 @@ impl Plugin for PlotPlugin {
                     path.as_deref(),
                     state,
                 )
+            }
+
+            // ── subplot ────────────────────────────────────────────────
+            "subplot" => {
+                match args {
+                    [Value::Scalar(m), Value::Scalar(n), Value::Scalar(k)] => {
+                        let m = *m as u32;
+                        let n = *n as u32;
+                        let k = *k as u32;
+                        if m == 0 || n == 0 || k == 0 || k > m * n {
+                            return Err(format!(
+                                "subplot: invalid layout ({m},{n},{k}) — \
+                                 index must be in 1..={}",
+                                m * n
+                            ));
+                        }
+                        FIGURE_STATE.with(|f| {
+                            let mut st = f.borrow_mut();
+                            commit_current_panel(&mut st);
+                            st.subplot = Some((m, n, k));
+                        });
+                        Ok(Value::Void)
+                    }
+                    _ => Err(
+                        "subplot: expected 3 numeric arguments (rows, cols, index)".into()
+                    ),
+                }
+            }
+
+            // ── hold ───────────────────────────────────────────────────
+            "hold" => {
+                let turn_on = match args {
+                    [] => !FIGURE_STATE.with(|f| f.borrow().hold),
+                    [Value::Str(s) | Value::StringObj(s)] => match s.as_str() {
+                        "on" => true,
+                        "off" => false,
+                        other => return Err(format!(
+                            "hold: expected 'on', 'off', or no argument, got '{other}'"
+                        )),
+                    },
+                    _ => return Err(
+                        "hold: expected 'on', 'off', or no argument".into()
+                    ),
+                };
+
+                if !turn_on {
+                    let panel_opt = FIGURE_STATE.with(|f| {
+                        let mut st = f.borrow_mut();
+                        st.hold = false;
+                        // When not in subplot mode: extract panel for ASCII flush.
+                        if st.subplot.is_none() && !st.pending_series.is_empty() {
+                            Some(Panel {
+                                layout: None,
+                                xlabel: st.xlabel.take(),
+                                ylabel: st.ylabel.take(),
+                                title: st.title.take(),
+                                legend: std::mem::take(&mut st.legend),
+                                xlim: st.xlim.take(),
+                                ylim: st.ylim.take(),
+                                grid: std::mem::replace(&mut st.grid, false),
+                                series: std::mem::take(&mut st.pending_series),
+                            })
+                        } else {
+                            None
+                        }
+                    });
+                    if let Some(panel) = panel_opt {
+                        return render_panel_ascii(&panel);
+                    }
+                } else {
+                    FIGURE_STATE.with(|f| f.borrow_mut().hold = true);
+                }
+                Ok(Value::Void)
+            }
+
+            // ── savefig ────────────────────────────────────────────────
+            "savefig" => {
+                let path = require_string("savefig", args)?;
+                if !path.ends_with(".svg") && !path.ends_with(".png") {
+                    return Err("savefig: path must end with '.svg' or '.png'".into());
+                }
+                let panels = FIGURE_STATE.with(|f| {
+                    let mut st = f.borrow_mut();
+                    commit_current_panel(&mut st);
+                    st.hold = false;
+                    st.subplot = None;
+                    std::mem::take(&mut st.panels)
+                });
+                if panels.is_empty() {
+                    return Err("savefig: no panels to render".into());
+                }
+                render_panels_file(&panels, &path)
             }
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
@@ -785,7 +996,6 @@ fn extract_lim(name: &str, args: &[Value]) -> Result<(f64, f64), String> {
 // ── Stairs helpers ─────────────────────────────────────────────────────────
 
 /// Converts (x, y) data into step/staircase pairs for rendering.
-#[cfg(any(feature = "plot", feature = "plot-svg"))]
 fn make_step_data(x: &[f64], y: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let n = x.len();
     if n == 0 {
@@ -1158,6 +1368,65 @@ fn render_3d_file(
         "{name}: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
     ))
+}
+
+// ── subplot / hold / savefig render ───────────────────────────────────────
+
+/// Renders all series in a panel to ASCII stdout (used by `hold('off')`).
+///
+/// Each series is printed sequentially; a `---` divider separates them.
+#[cfg(feature = "plot")]
+fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
+    if panel.series.is_empty() {
+        return Ok(Value::Void);
+    }
+    let base_state = FigureState {
+        xlabel: panel.xlabel.clone(),
+        ylabel: panel.ylabel.clone(),
+        title: panel.title.clone(),
+        xlim: panel.xlim,
+        ylim: panel.ylim,
+        ..FigureState::default()
+    };
+    for (i, series) in panel.series.iter().enumerate() {
+        if i > 0 {
+            println!("---");
+        }
+        match series {
+            PendingSeries::Line(x, y) => ascii::render_line(x, y, base_state.clone()),
+            PendingSeries::Scatter(x, y) => ascii::render_scatter(x, y, base_state.clone()),
+            PendingSeries::Bar(x, y) => ascii::render_bar(x, y, base_state.clone()),
+            PendingSeries::Stem(x, y) => ascii::render_stem(x, y, base_state.clone()),
+            PendingSeries::Hist { counts, edges } => {
+                render_hist_ascii(counts, edges, &base_state);
+            }
+        }
+    }
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_panel_ascii(_panel: &Panel) -> Result<Value, String> {
+    Err(
+        "hold: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+            .into(),
+    )
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_panels_file(panels: &[Panel], path: &str) -> Result<Value, String> {
+    file::render_subplot_panels(panels, path).map_err(|e| format!("savefig: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_panels_file(_panels: &[Panel], _path: &str) -> Result<Value, String> {
+    Err(
+        "savefig: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+            .into(),
+    )
 }
 
 // ── Argument helpers (continued) ───────────────────────────────────────────
@@ -2121,6 +2390,184 @@ mod tests {
             &[0x89, 0x50, 0x4E, 0x47],
             "output should be PNG"
         );
+        std::fs::remove_file(path).ok();
+    }
+
+    // ── Phase 30d: subplot + hold + savefig ──────────────────────────
+
+    #[test]
+    fn test_subplot_sets_state() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(2.0), Value::Scalar(2.0), Value::Scalar(1.0)],
+                &env,
+            )
+            .unwrap();
+        let subplot = FIGURE_STATE.with(|f| f.borrow().subplot);
+        assert_eq!(subplot, Some((2, 2, 1)));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_hold_on_sets_flag() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
+        let hold = FIGURE_STATE.with(|f| f.borrow().hold);
+        assert!(hold, "hold flag should be true after hold('on')");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_hold_off_clears_flag_and_series() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        // Prime hold + a series so hold('off') has something to flush.
+        FIGURE_STATE.with(|f| {
+            let mut st = f.borrow_mut();
+            st.hold = true;
+            st.pending_series
+                .push(PendingSeries::Line(vec![1.0, 2.0], vec![1.0, 4.0]));
+        });
+        // State is mutated before ASCII rendering; ignore the render result so
+        // this test passes regardless of which feature flags are enabled.
+        let _ = plugin.call("hold", &[Value::Str("off".into())], &env);
+        let (hold, series_empty) = FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            (st.hold, st.pending_series.is_empty())
+        });
+        assert!(!hold, "hold should be false after hold('off')");
+        assert!(series_empty, "pending_series should be cleared after hold('off')");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_plot_accumulates_under_hold() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
+        let y1 = f64_vec(&[1.0, 2.0, 3.0]);
+        let y2 = f64_vec(&[3.0, 2.0, 1.0]);
+        plugin.call("plot", &[y1], &env).unwrap();
+        plugin.call("plot", &[y2], &env).unwrap();
+        let count = FIGURE_STATE.with(|f| f.borrow().pending_series.len());
+        assert_eq!(count, 2, "two plot calls should accumulate 2 series");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_subplot_then_plot_accumulates() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(2.0), Value::Scalar(1.0), Value::Scalar(1.0)],
+                &env,
+            )
+            .unwrap();
+        let y = f64_vec(&[1.0, 2.0, 3.0]);
+        plugin.call("plot", &[y], &env).unwrap();
+        let count = FIGURE_STATE.with(|f| f.borrow().pending_series.len());
+        assert_eq!(count, 1, "plot under subplot should accumulate into pending_series");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_second_subplot_commits_first_panel() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(2.0), Value::Scalar(1.0), Value::Scalar(1.0)],
+                &env,
+            )
+            .unwrap();
+        plugin.call("plot", &[f64_vec(&[1.0, 2.0])], &env).unwrap();
+        // Move to panel 2 — should commit panel 1
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(2.0), Value::Scalar(1.0), Value::Scalar(2.0)],
+                &env,
+            )
+            .unwrap();
+        let (panels_len, pending_len) = FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            (st.panels.len(), st.pending_series.len())
+        });
+        assert_eq!(panels_len, 1, "panel 1 should be committed");
+        assert_eq!(pending_len, 0, "pending_series should be empty after commit");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_subplot_invalid_index_errors() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call(
+            "subplot",
+            &[Value::Scalar(2.0), Value::Scalar(2.0), Value::Scalar(5.0)],
+            &env,
+        );
+        assert!(result.is_err(), "index 5 in a 2×2 grid should error");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_savefig_with_no_panels_errors() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("savefig", &[Value::Str("out.svg".into())], &env);
+        assert!(result.is_err(), "savefig with no panels should error");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_subplot_savefig_creates_svg() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_subplot_grid.svg";
+        std::fs::create_dir_all(".debug").ok();
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(2.0), Value::Scalar(1.0), Value::Scalar(1.0)],
+                &env,
+            )
+            .unwrap();
+        plugin.call("plot", &[f64_vec(&[1.0, 2.0, 3.0])], &env).unwrap();
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(2.0), Value::Scalar(1.0), Value::Scalar(2.0)],
+                &env,
+            )
+            .unwrap();
+        plugin.call("plot", &[f64_vec(&[3.0, 2.0, 1.0])], &env).unwrap();
+        plugin
+            .call("savefig", &[Value::Str(path.into())], &env)
+            .unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("<svg"), "savefig should produce an SVG file");
         std::fs::remove_file(path).ok();
     }
 }

@@ -506,6 +506,198 @@ fn range_with_margin(vals: &[f64]) -> (f64, f64) {
     }
 }
 
+// ── subplot / savefig rendering ────────────────────────────────────────────
+
+/// Renders a list of [`Panel`]s into a single SVG or PNG file.
+///
+/// Grid dimensions are inferred from the maximum row/column indices found in
+/// panel layouts. A single panel without a layout fills the whole canvas.
+pub(crate) fn render_subplot_panels(panels: &[crate::Panel], path: &str) -> Result<(), String> {
+    let rows = panels
+        .iter()
+        .filter_map(|p| p.layout.map(|(r, _, _)| r))
+        .max()
+        .unwrap_or(1);
+    let cols = panels
+        .iter()
+        .filter_map(|p| p.layout.map(|(_, c, _)| c))
+        .max()
+        .unwrap_or(1);
+
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_panels(panels, rows, cols, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_panels(panels, rows, cols, root)
+    } else {
+        Err(format!("savefig: unsupported format '{path}'"))
+    }
+}
+
+fn draw_panels<DB: DrawingBackend>(
+    panels: &[crate::Panel],
+    rows: u32,
+    cols: u32,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let sub_areas = root.split_evenly((rows as usize, cols as usize));
+
+    for panel in panels {
+        let idx = panel
+            .layout
+            .map(|(_, _, k)| k.saturating_sub(1) as usize)
+            .unwrap_or(0);
+        let area = &sub_areas[idx.min(sub_areas.len().saturating_sub(1))];
+        draw_panel(panel, area)?;
+    }
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn draw_panel<DB: DrawingBackend>(
+    panel: &crate::Panel,
+    area: &DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    use crate::PendingSeries;
+
+    if panel.series.is_empty() {
+        return Ok(());
+    }
+
+    // Collect coordinate bounds across all series.
+    let mut all_x: Vec<f64> = Vec::new();
+    let mut all_y: Vec<f64> = Vec::new();
+    let mut has_zero_baseline = false;
+
+    for series in &panel.series {
+        match series {
+            PendingSeries::Line(x, y) | PendingSeries::Scatter(x, y) => {
+                all_x.extend_from_slice(x);
+                all_y.extend_from_slice(y);
+            }
+            PendingSeries::Bar(x, y) | PendingSeries::Stem(x, y) => {
+                all_x.extend_from_slice(x);
+                all_y.extend_from_slice(y);
+                has_zero_baseline = true;
+            }
+            PendingSeries::Hist { counts, edges } => {
+                all_x.extend_from_slice(edges);
+                all_y.push(0.0);
+                all_y.push(counts.iter().copied().max().unwrap_or(0) as f64);
+                has_zero_baseline = true;
+            }
+        }
+    }
+
+    let (x_min, x_max) = panel.xlim.unwrap_or_else(|| range_with_margin(&all_x));
+    let (y_min, y_max) = panel.ylim.unwrap_or_else(|| {
+        if has_zero_baseline {
+            range_with_zero_baseline(&all_y)
+        } else {
+            range_with_margin(&all_y)
+        }
+    });
+
+    let title = panel.title.as_deref().unwrap_or("");
+    let xlabel = panel.xlabel.as_deref().unwrap_or("");
+    let ylabel = panel.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(title, ("sans-serif", 16))
+        .margin(15)
+        .x_label_area_size(30)
+        .y_label_area_size(40)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)
+        .map_err(|e| e.to_string())?;
+
+    if panel.grid {
+        chart
+            .configure_mesh()
+            .x_desc(xlabel)
+            .y_desc(ylabel)
+            .draw()
+            .map_err(|e| e.to_string())?;
+    } else {
+        chart
+            .configure_mesh()
+            .x_desc(xlabel)
+            .y_desc(ylabel)
+            .disable_mesh()
+            .draw()
+            .map_err(|e| e.to_string())?;
+    }
+
+    for (i, series) in panel.series.iter().enumerate() {
+        let color = SERIES_COLORS[i % SERIES_COLORS.len()];
+        match series {
+            PendingSeries::Line(x, y) => {
+                chart
+                    .draw_series(LineSeries::new(
+                        x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)),
+                        &color,
+                    ))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Scatter(x, y) => {
+                chart
+                    .draw_series(
+                        x.iter()
+                            .zip(y.iter())
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, color.filled())),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Bar(x, y) => {
+                let bar_w = bar_half_width(x, x_min, x_max);
+                chart
+                    .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
+                        let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
+                        Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], color.filled())
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Stem(x, y) => {
+                for (&xi, &yi) in x.iter().zip(y.iter()) {
+                    chart
+                        .draw_series(std::iter::once(PathElement::new(
+                            vec![(xi, 0.0), (xi, yi)],
+                            color,
+                        )))
+                        .map_err(|e| e.to_string())?;
+                }
+                chart
+                    .draw_series(
+                        x.iter()
+                            .zip(y.iter())
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, color.filled())),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Hist { counts, edges } => {
+                chart
+                    .draw_series((0..counts.len()).map(|j| {
+                        Rectangle::new(
+                            [(edges[j], 0.0), (edges[j + 1], counts[j] as f64)],
+                            color.filled(),
+                        )
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Y range for bar/stem: always includes y = 0 as the baseline.
 fn range_with_zero_baseline(vals: &[f64]) -> (f64, f64) {
     let lo = vals.iter().copied().fold(f64::INFINITY, f64::min).min(0.0);
