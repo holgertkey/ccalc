@@ -5,11 +5,13 @@
 %   - decoding arrays  → Matrix (all-numeric) or Cell (mixed)
 %   - decoding objects → Struct; nested objects → nested Struct
 %   - encoding scalars, strings, matrices, structs, cells
+%   - encoding StructArray → JSON array of objects
+%   - unsupported types (complex, datetime, duration) → informative errors
 %   - roundtrip encode → decode
 %   - reading and writing JSON files
 %   - practical: compute statistics on a JSON dataset
 %
-% Temporary files are written to examples/json/tmp/ (git-ignored).
+% Temporary files are written to examples/json/output/ (git-ignored).
 %
 % NOTE: Requires the json feature flag.
 %   Build:  cargo build --features json
@@ -143,7 +145,7 @@ fprintf('  approved: %g\n', decoded.approved)
 
 fprintf('\n=== 7. Reading and writing JSON files ===\n')
 
-cfg_path = 'examples/json/tmp/config.json';
+cfg_path = 'examples/json/output/config.json';
 
 % Write a config JSON file (single line — fgetl reads one line at a time)
 fid = fopen(cfg_path, 'w');
@@ -164,7 +166,7 @@ fprintf('threshold: %g\n', app.threshold)
 fprintf('tags:      %s, %s, %s\n', tags{1}, tags{2}, tags{3})
 
 % Write a processed result back to a file
-out_path = 'examples/json/tmp/result.json';
+out_path = 'examples/json/output/result.json';
 res.processed = 1;
 res.input     = cfg_path;
 res.tag_count = numel(tags);
@@ -174,12 +176,64 @@ fprintf(fid, '%s\n', jsonencode(res))
 fclose(fid);
 fprintf('Wrote result to %s\n', out_path)
 
-% ── 8. Practical: compute statistics on a JSON dataset ────────────────────────
+% ── 8. StructArray encoding ───────────────────────────────────────────────────
 
-fprintf('\n=== 8. Practical: statistics on a JSON dataset ===\n')
+fprintf('\n=== 8. StructArray encoding ===\n')
+
+% Build a 1-D struct array: sa(1).field, sa(2).field, ...
+sa(1).name = 'Alice';  sa(1).score = 91;
+sa(2).name = 'Bob';    sa(2).score = 85;
+sa(3).name = 'Carol';  sa(3).score = 78;
+
+j = jsonencode(sa);
+fprintf('StructArray → JSON:\n  %s\n', j)
+
+% Round-trip: decode → Cell of Struct
+rt = jsondecode(j);
+fprintf('Decoded back: %d elements\n', numel(rt))
+for k = 1:numel(rt)
+  rec = rt{k};
+  fprintf('  [%d] %s  score=%g\n', k, rec.name, rec.score)
+end
+
+% ── 9. Unsupported types (error handling) ─────────────────────────────────────
+
+fprintf('\n=== 9. Unsupported types — expect error messages ===\n')
+
+% Complex scalar — cannot be represented in JSON
+try
+  jsonencode(2 + 3i);
+catch e
+  fprintf('complex scalar:   %s\n', e.message)
+end
+
+% Complex matrix — same restriction
+try
+  jsonencode([1+2i, 3+4i]);
+catch e
+  fprintf('complex matrix:   %s\n', e.message)
+end
+
+% DateTime — no standard JSON representation
+try
+  jsonencode(datetime(2024, 6, 1));
+catch e
+  fprintf('datetime:         %s\n', e.message)
+end
+
+% Duration — no standard JSON representation
+try
+  jsonencode(seconds(90));
+catch e
+  fprintf('duration:         %s\n', e.message)
+end
+
+% ── 10. Practical: compute statistics on a JSON dataset ───────────────────────
+
+fprintf('\n=== 10. Practical: statistics on a JSON dataset ===\n')
 
 % Write a JSON array of student records (compact, single line)
-data_path = 'examples/json/tmp/students.json';
+data_path = 'examples/json/output/students.json';
 fid = fopen(data_path, 'w');
 fprintf(fid, '[')
 fprintf(fid, '{"name":"Alice","score":91,"grade":"A"},')
@@ -227,7 +281,7 @@ summary.mean  = mean(scores);
 summary.std   = std(scores);
 summary.top   = top_st.name;
 
-sum_path = 'examples/json/tmp/summary.json';
+sum_path = 'examples/json/output/summary.json';
 fid = fopen(sum_path, 'w');
 fprintf(fid, '%s\n', jsonencode(summary))
 fclose(fid);

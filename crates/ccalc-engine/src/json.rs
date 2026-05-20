@@ -121,6 +121,15 @@ pub(crate) fn value_to_json(v: &Value) -> Result<serde_json::Value, String> {
         }
         Value::Void => Err("jsonencode: cannot encode Void".to_string()),
         Value::Tuple(_) => Err("jsonencode: cannot encode multi-output tuple".to_string()),
+        Value::ComplexMatrix(_) => {
+            Err("jsonencode: cannot represent complex matrix in JSON".to_string())
+        }
+        Value::DateTime(_) | Value::DateTimeArray(_) => {
+            Err("jsonencode: cannot encode datetime value".to_string())
+        }
+        Value::Duration(_) | Value::DurationArray(_) => {
+            Err("jsonencode: cannot encode duration value".to_string())
+        }
     }
 }
 

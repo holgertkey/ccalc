@@ -10,7 +10,7 @@
 %
 % Output: examples/colormap/tmp/julia_high.png
 
-out = 'examples/colormap/tmp/';
+out = 'examples/colormap/output/';
 
 % Seed constant — try c = -0.4 + 0.6i or c = 0.285 + 0.01i for other shapes.
 c_seed = -0.7 + 0.27 * i;

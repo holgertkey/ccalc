@@ -7,10 +7,10 @@
 %   cargo build --release --features plot-svg
 %   ccalc examples/colormap/imagesc_demo.calc
 %
-% Output files are written to examples/colormap/tmp/
+% Output files are written to examples/colormap/output/
 % Open the SVG files in any web browser.
 
-out = 'examples/colormap/tmp/';
+out = 'examples/colormap/output/';
 
 % --- 1. Simple rising-gradient matrix ---
 %

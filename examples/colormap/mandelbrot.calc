@@ -10,7 +10,7 @@
 %
 % Output: examples/colormap/tmp/mandelbrot.svg
 
-out = 'examples/colormap/tmp/';
+out = 'examples/colormap/output/';
 
 % Grid parameters — increase nx/ny for higher resolution (takes longer).
 nx       = 80;

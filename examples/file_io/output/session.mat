@@ -1,0 +1,29 @@
+C = 0.00000022
+R = 4700
+a1 = 'Session 1: x = 10'
+a2 = 'Session 2: x = 20'
+a3 = 'Session 3: x = 30'
+append_path = 'examples/file_io/output/appended.txt'
+csv_path = 'examples/file_io/output/measurements.csv'
+eof_check = -1
+f_cutoff = 153.9216085819694
+fd = 8
+i1 = 0.012
+i2 = 0.015
+i3 = 0.018
+label = 'RC low-pass filter'
+line1 = 'ccalc file I/O demo log'
+line2 = '======================='
+line3 = 'pi  = 3.141593'
+line4 = 'e   = 2.718282'
+line5 = 'phi = 1.618034'
+log_path = 'examples/file_io/output/demo_log.txt'
+mat_path = 'examples/file_io/output/session.mat'
+pi_copy = 3.14159
+t1 = 0
+t2 = 0.5
+t3 = 1
+tsv_path = 'examples/file_io/output/results.tsv'
+v1 = 3.3
+v2 = 3.28
+v3 = 3.25

@@ -10,7 +10,7 @@
 %
 % Output: examples/colormap/tmp/mandelbrot_high.png
 
-out = 'examples/colormap/tmp/';
+out = 'examples/colormap/output/';
 
 % Grid: 800x600 cells → canvas 1600x1200 px (each cell = 2x2 pixels).
 % Increase nx/ny further for pixel-perfect output (much slower).

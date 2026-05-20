@@ -7,7 +7,7 @@
 %   - RFC 4180 quoting (commas inside cell values)
 %   - explicit 'Delimiter' option
 %
-% Temporary files are written to examples/csv/tmp/ (git-ignored).
+% Temporary files are written to examples/csv/output/ (git-ignored).
 %
 % Usage: ccalc examples/csv/csv.calc
 
@@ -19,7 +19,7 @@ T.name  = {'Alice', 'Bob', 'Carol', 'Dave', 'Eve'};
 T.score = [91; 85; 78; 93; 62];
 T.pass  = [1; 1; 1; 1; 0];
 
-csv_path = 'examples/csv/tmp/grades.csv';
+csv_path = 'examples/csv/output/grades.csv';
 writetable(T, csv_path);
 fprintf('Wrote %s\n', csv_path)
 
@@ -66,7 +66,7 @@ S.result = {'Pass', 'Fail'};
 S.count  = [n_pass; n_fail];
 S.pct    = [100 * n_pass / n; 100 * n_fail / n];
 
-sum_path = 'examples/csv/tmp/summary.csv';
+sum_path = 'examples/csv/output/summary.csv';
 writetable(S, sum_path);
 
 fid = fopen(sum_path, 'r');
@@ -80,7 +80,7 @@ fclose(fid);
 fprintf('\n=== 4. readmatrix — sensor data (header auto-skipped) ===\n')
 
 % Write a CSV with a non-numeric header row + numeric data
-sens_path = 'examples/csv/tmp/sensor.csv';
+sens_path = 'examples/csv/output/sensor.csv';
 fid = fopen(sens_path, 'w');
 fprintf(fid, 'time_s,voltage_V,current_A\n')
 fprintf(fid, '0.0,3.300,0.012\n')
@@ -104,7 +104,7 @@ for k = 1:size(M, 1)
 end
 
 % A purely numeric first row is treated as data (not a header)
-num_path = 'examples/csv/tmp/pure_numeric.csv';
+num_path = 'examples/csv/output/pure_numeric.csv';
 fid = fopen(num_path, 'w');
 fprintf(fid, '0.0,1.0\n')
 fprintf(fid, '1.0,2.0\n')
@@ -120,7 +120,7 @@ fprintf('\n=== 5. RFC 4180 quoting — commas inside cell values ===\n')
 C.city       = {'Paris', 'New York, NY', 'Sao Paulo', 'London'};
 C.population = [2161000; 8336817; 12325232; 8982000];
 
-city_path = 'examples/csv/tmp/cities.csv';
+city_path = 'examples/csv/output/cities.csv';
 writetable(C, city_path);
 
 % Show raw CSV — "New York, NY" must be double-quoted
@@ -146,7 +146,7 @@ end
 fprintf('\n=== 6. Tab-separated files (explicit Delimiter) ===\n')
 
 % Write grades as TSV
-tsv_path = 'examples/csv/tmp/grades.tsv';
+tsv_path = 'examples/csv/output/grades.tsv';
 writetable(T, tsv_path, 'Delimiter', '\t');
 fprintf('Wrote TSV: %s\n', tsv_path)
 
@@ -158,7 +158,7 @@ fprintf('Students: %d  |  first: %s (%d)  |  last: %s (%d)\n', ...
   numel(t2_score), t2_name{1}, t2_score(1), t2_name{5}, t2_score(5))
 
 % readmatrix on a numeric TSV with a header row
-temps_path = 'examples/csv/tmp/temps.tsv';
+temps_path = 'examples/csv/output/temps.tsv';
 fid = fopen(temps_path, 'w');
 fprintf(fid, 'hour\ttemp_C\thumidity_pct\n')
 fprintf(fid, '0\t18.5\t62\n')
