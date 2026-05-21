@@ -9,3 +9,7 @@ src = "src"
 default-theme = "navy"
 git-repository-url = "https://github.com/holgertkey/ccalc"
 edit-url-template = "https://github.com/holgertkey/ccalc/edit/main/docs/src/{path}"
+
+[output.html.fold]
+enable = true
+level = 0
