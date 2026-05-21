@@ -1,11 +1,10 @@
-% fill_area_polar_demo.m — Phase 30e: fill, area, polar, style strings
-% Usage: ccalc fill_area_polar_demo.m
+% fill_area_polar_demo.calc — Phase 30e: fill, area, polar, style strings
+% Usage: ccalc fill_area_polar_demo.calc
 
 % ── fill: filled triangle polygon ────────────────────────────────────────────
 tx = [0, 1, 0.5];
 ty = [0, 0, 1];
 
-% ASCII: bounding-box density fill approximation
 fprintf('fill (ASCII):\n');
 fill(tx, ty);
 
@@ -17,7 +16,6 @@ fprintf('Saved fill_triangle.svg\n');
 x = linspace(0, 2*pi, 80);
 y = sin(x) + 1;
 
-% ASCII
 fprintf('\narea (ASCII):\n');
 area(x, y);
 
@@ -29,11 +27,9 @@ fprintf('Saved area_sine.svg\n');
 theta = linspace(0, 2*pi, 200);
 r = ones(size(theta));
 
-% ASCII
 fprintf('\npolar (circle, ASCII):\n');
 polar(theta, r);
 
-% File
 polar(theta, r, 'examples/fill_area_polar_demo/output/polar_circle.svg');
 fprintf('Saved polar_circle.svg\n');
 
@@ -45,16 +41,18 @@ title('rose curve');
 polar(theta2, r2, 'examples/fill_area_polar_demo/output/polar_rose.svg');
 fprintf('Saved polar_rose.svg\n');
 
-% ── plot with style string ────────────────────────────────────────────────────
+% ── style strings — file outputput only (color/linestyle invisible in ASCII) ─────
+% Style strings are applied at SVG/PNG render time; textplots is monochrome.
 xs = linspace(0, 2*pi, 60);
-
-fprintf('\nplot with style strings (r--):\n');
-plot(xs, sin(xs), 'r--');
 
 title('sin and cos — style strings');
 xlabel('x');
 ylabel('y');
-hold('on');
+subplot(1, 2, 1);
+title('sin  r--');
 plot(xs, sin(xs), 'r--');
+subplot(1, 2, 2);
+title('cos  b.');
 plot(xs, cos(xs), 'b.');
-hold('off');
+savefig('examples/fill_area_polar_demo/output/style_strings.svg');
+fprintf('Saved style_strings.svg\n');
