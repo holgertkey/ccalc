@@ -10,7 +10,7 @@ fprintf('fill (ASCII):\n');
 fill(tx, ty);
 
 % File: plotters Polygon element with red fill
-fill(tx, ty, 'r', 'examples/fill_area_polar_demo/out/fill_triangle.svg');
+fill(tx, ty, 'r', 'examples/fill_area_polar_demo/output/fill_triangle.svg');
 fprintf('Saved fill_triangle.svg\n');
 
 % ── area: filled area under curve ────────────────────────────────────────────
@@ -22,7 +22,7 @@ fprintf('\narea (ASCII):\n');
 area(x, y);
 
 % File: area under a sine wave
-area(x, y, 'b', 'examples/fill_area_polar_demo/out/area_sine.svg');
+area(x, y, 'b', 'examples/fill_area_polar_demo/output/area_sine.svg');
 fprintf('Saved area_sine.svg\n');
 
 % ── polar: circle r=1 ────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ fprintf('\npolar (circle, ASCII):\n');
 polar(theta, r);
 
 % File
-polar(theta, r, 'examples/fill_area_polar_demo/out/polar_circle.svg');
+polar(theta, r, 'examples/fill_area_polar_demo/output/polar_circle.svg');
 fprintf('Saved polar_circle.svg\n');
 
 % ── polar: rose curve r = |cos(2*theta)| ─────────────────────────────────────
@@ -42,7 +42,7 @@ theta2 = linspace(0, 2*pi, 360);
 r2 = abs(cos(2 * theta2));
 
 title('rose curve');
-polar(theta2, r2, 'examples/fill_area_polar_demo/out/polar_rose.svg');
+polar(theta2, r2, 'examples/fill_area_polar_demo/output/polar_rose.svg');
 fprintf('Saved polar_rose.svg\n');
 
 % ── plot with style string ────────────────────────────────────────────────────
