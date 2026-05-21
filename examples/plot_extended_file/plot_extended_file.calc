@@ -11,10 +11,10 @@
 % To combine with ASCII terminal output, build with:
 %   cargo build --release --features plot-all
 %
-% Output files are written to examples/plot_extended_file/tmp/.
+% Output files are written to examples/plot_extended_file/output/.
 % Open SVG files in any web browser; PNG files in any image viewer.
 
-out = 'examples/plot_extended_file/tmp/';
+out = 'examples/plot_extended_file/output/';
 
 % ------------------------------------------------------------------ %
 % 1. Bar chart — SVG                                                   %

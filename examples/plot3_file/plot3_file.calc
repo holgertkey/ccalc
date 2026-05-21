@@ -8,10 +8,10 @@
 %
 % For ASCII terminal rendering, use --features plot instead.
 %
-% Output files are written to examples/plot3_file/tmp/.
+% Output files are written to examples/plot3_file/output/.
 % Open SVG files in any web browser; PNG files in any image viewer.
 
-out = 'examples/plot3_file/tmp/';
+out = 'examples/plot3_file/output/';
 
 % ------------------------------------------------------------------ %
 % 1. Helix — line plot, SVG                                           %

@@ -8,10 +8,10 @@
 %   cargo build --release --features plot-svg
 %   ccalc examples/plot_file/plot_file.calc
 %
-% Output files are written to examples/plot_file/tmp/.
+% Output files are written to examples/plot_file/output/.
 % Open the SVG files in any web browser; PNG files in any image viewer.
 
-out = 'examples/plot_file/tmp/';
+out = 'examples/plot_file/output/';
 
 % --- 1. Line plot to SVG ---
 %

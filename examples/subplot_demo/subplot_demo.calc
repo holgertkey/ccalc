@@ -24,5 +24,5 @@ subplot(2, 2, 4);
 title('histogram');
 hist(randn(1, 200), 20);
 
-savefig('examples\subplot_demo\out\subplot_demo_output.svg');
+savefig('examples\subplot_demo\output\subplot_demo_output.svg');
 fprintf('Saved to subplot_demo_output.svg\n');
