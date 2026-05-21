@@ -75,8 +75,8 @@ pub fn render_stem(x: &[f64], y: &[f64], state: FigureState) {
 
 /// Renders a filled polygon to stdout (bounding-box shaded with `░` chars).
 ///
-/// textplots has no native polygon fill; we print a bounding-box density block
-/// as a visual approximation and overlay the outline as a line series.
+/// textplots has no native polygon fill; we sample a grid of cells and shade
+/// each one with `░` if its centre lies inside the polygon (even-odd rule).
 pub fn render_fill(x: &[f64], y: &[f64], state: FigureState) {
     if x.is_empty() {
         return;
@@ -86,10 +86,8 @@ pub fn render_fill(x: &[f64], y: &[f64], state: FigureState) {
     let y_min = y.iter().copied().fold(f64::INFINITY, f64::min) as f32;
     let y_max = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) as f32;
     print_header(&state);
-    // Print a simple density-fill bounding box to indicate a polygon region,
-    // then overlay the outline.
     let cols: usize = 60;
-    let rows: usize = 12;
+    let rows: usize = 15;
     let col_step = (x_max - x_min) / cols as f32;
     let row_step = if (y_max - y_min).abs() > f32::EPSILON {
         (y_max - y_min) / rows as f32
@@ -97,10 +95,10 @@ pub fn render_fill(x: &[f64], y: &[f64], state: FigureState) {
         1.0
     };
     for r in (0..rows).rev() {
-        let cy = y_min + r as f32 * row_step;
+        let cy = y_min + (r as f32 + 0.5) * row_step;
         let mut row_str = String::new();
         for c in 0..cols {
-            let cx = x_min + c as f32 * col_step;
+            let cx = x_min + (c as f32 + 0.5) * col_step;
             if point_in_polygon(cx, cy, &data) {
                 row_str.push('░');
             } else {
@@ -109,9 +107,6 @@ pub fn render_fill(x: &[f64], y: &[f64], state: FigureState) {
         }
         println!("|{row_str}|");
     }
-    Chart::new(100, 20, x_min, x_max)
-        .lineplot(&Shape::Lines(&data))
-        .display();
     print_labels(&state);
 }
 
