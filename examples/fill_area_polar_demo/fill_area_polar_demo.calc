@@ -8,7 +8,6 @@ ty = [0, 0, 1];
 fprintf('fill (ASCII):\n');
 fill(tx, ty);
 
-% File: plotters Polygon element with red fill
 fill(tx, ty, 'r', 'examples/fill_area_polar_demo/output/fill_triangle.svg');
 fprintf('Saved fill_triangle.svg\n');
 
@@ -19,7 +18,6 @@ y = sin(x) + 1;
 fprintf('\narea (ASCII):\n');
 area(x, y);
 
-% File: area under a sine wave
 area(x, y, 'b', 'examples/fill_area_polar_demo/output/area_sine.svg');
 fprintf('Saved area_sine.svg\n');
 
@@ -41,18 +39,38 @@ title('rose curve');
 polar(theta2, r2, 'examples/fill_area_polar_demo/output/polar_rose.svg');
 fprintf('Saved polar_rose.svg\n');
 
-% ── style strings — file outputput only (color/linestyle invisible in ASCII) ─────
+% ── style strings: all 8 colors ──────────────────────────────────────────────
+% Color codes: r g b c m y k w
 % Style strings are applied at SVG/PNG render time; textplots is monochrome.
-xs = linspace(0, 2*pi, 60);
+xs = linspace(0, 2*pi, 80);
+s  = sin(xs);
 
-title('sin and cos — style strings');
-xlabel('x');
-ylabel('y');
-subplot(1, 2, 1);
-title('sin  r--');
-plot(xs, sin(xs), 'r--');
-subplot(1, 2, 2);
-title('cos  b.');
-plot(xs, cos(xs), 'b.');
-savefig('examples/fill_area_polar_demo/output/style_strings.svg');
-fprintf('Saved style_strings.svg\n');
+subplot(2, 4, 1); title('r  red');          plot(xs, s, 'r');
+subplot(2, 4, 2); title('g  green');        plot(xs, s, 'g');
+subplot(2, 4, 3); title('b  blue');         plot(xs, s, 'b');
+subplot(2, 4, 4); title('c  cyan');         plot(xs, s, 'c');
+subplot(2, 4, 5); title('m  magenta');      plot(xs, s, 'm');
+subplot(2, 4, 6); title('y  yellow');       plot(xs, s, 'y');
+subplot(2, 4, 7); title('k  black');        plot(xs, s, 'k');
+subplot(2, 4, 8); title('w  white');        plot(xs, s, 'w');
+savefig('examples/fill_area_polar_demo/output/style_colors.svg');
+fprintf('Saved style_colors.svg\n');
+
+% ── style strings: all 4 line styles ─────────────────────────────────────────
+% Line-style codes: -  --  -.  :
+subplot(2, 2, 1); title('-   solid');       plot(xs, s, 'b-');
+subplot(2, 2, 2); title('--  dashed');      plot(xs, s, 'b--');
+subplot(2, 2, 3); title('-.  dash-dot');    plot(xs, s, 'b-.');
+subplot(2, 2, 4); title(':   dotted');      plot(xs, s, 'b:');
+savefig('examples/fill_area_polar_demo/output/style_linestyles.svg');
+fprintf('Saved style_linestyles.svg\n');
+
+% ── style strings: color + linestyle combinations ────────────────────────────
+subplot(2, 3, 1); title('r--'); plot(xs, s, 'r--');
+subplot(2, 3, 2); title('g-.'); plot(xs, s, 'g-.');
+subplot(2, 3, 3); title('b:');  plot(xs, s, 'b:');
+subplot(2, 3, 4); title('c-');  plot(xs, s, 'c-');
+subplot(2, 3, 5); title('m--'); plot(xs, s, 'm--');
+subplot(2, 3, 6); title('k:');  plot(xs, s, 'k:');
+savefig('examples/fill_area_polar_demo/output/style_combinations.svg');
+fprintf('Saved style_combinations.svg\n');

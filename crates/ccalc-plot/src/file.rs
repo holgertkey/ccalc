@@ -5,8 +5,8 @@
 use plotters::prelude::*;
 use plotters::series::LineSeries;
 
+use crate::style::{LinestyleKind, StyleSpec};
 use crate::FigureState;
-use crate::style::StyleSpec;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -756,12 +756,74 @@ where
         match series {
             PendingSeries::Line(x, y, style) => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
-                chart
-                    .draw_series(LineSeries::new(
-                        x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)),
-                        &color,
-                    ))
-                    .map_err(|e| e.to_string())?;
+                let linestyle = style
+                    .as_ref()
+                    .map(|s| s.linestyle)
+                    .unwrap_or(LinestyleKind::Solid);
+                let pts: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                let n = pts.len();
+                match linestyle {
+                    LinestyleKind::Solid => {
+                        chart
+                            .draw_series(LineSeries::new(pts.iter().copied(), &color))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    LinestyleKind::Dashed => {
+                        let dash = (n / 8).max(3);
+                        let gap = (n / 16).max(2);
+                        let mut i = 0;
+                        while i < n {
+                            let end = (i + dash).min(n);
+                            if end > i + 1 {
+                                chart
+                                    .draw_series(LineSeries::new(
+                                        pts[i..end].iter().copied(),
+                                        &color,
+                                    ))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            i = end + gap;
+                        }
+                    }
+                    LinestyleKind::DashDot => {
+                        let dash = (n / 8).max(3);
+                        let gap = (n / 25).max(1);
+                        let mut i = 0;
+                        while i < n {
+                            let end = (i + dash).min(n);
+                            if end > i + 1 {
+                                chart
+                                    .draw_series(LineSeries::new(
+                                        pts[i..end].iter().copied(),
+                                        &color,
+                                    ))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            i = end + gap;
+                            if i < n {
+                                chart
+                                    .draw_series(std::iter::once(Circle::new(
+                                        pts[i],
+                                        3,
+                                        color.filled(),
+                                    )))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            i += gap + 1;
+                        }
+                    }
+                    LinestyleKind::Dotted => {
+                        let step = (n / 25).max(1);
+                        chart
+                            .draw_series(
+                                pts.iter()
+                                    .step_by(step)
+                                    .map(|&p| Circle::new(p, 2, color.filled())),
+                            )
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
             }
             PendingSeries::Scatter(x, y, style) => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
