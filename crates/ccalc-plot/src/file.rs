@@ -5,8 +5,8 @@
 use plotters::prelude::*;
 use plotters::series::LineSeries;
 
-use crate::style::{LinestyleKind, StyleSpec};
 use crate::FigureState;
+use crate::style::{LinestyleKind, StyleSpec};
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;

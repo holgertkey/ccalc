@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `extract_style_and_file_arg` in `dispatch.rs` peels the optional style
     string after the file-path check.
   - 5 new integration tests; 9 unit tests in `style.rs`.
-  - Example script: `examples/fill_area_polar_demo/fill_area_polar_demo.m`.
+  - Example script: `examples/fill_area_polar_demo/fill_area_polar_demo.calc`.
   - mdBook docs updated with Style strings, fill, area, and polar sections.
 
 ## [0.38.0] - 2026-05-20

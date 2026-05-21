@@ -81,7 +81,7 @@ pub fn print(topic: Option<&str>) {
             | "xlim" | "ylim" | "zlim" | "legend" | "grid" | "figurestate" | "plotting" | "charts"
             | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap" | "surf" | "mesh"
             | "meshgrid" | "surface" | "wireframe" | "subplot" | "hold" | "savefig" | "multipanel"
-            | "panels",
+            | "panels" | "fill" | "area" | "polar" | "style" | "linestyle" | "color" | "stylestr",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -189,6 +189,9 @@ FFT     fft(x)  fft(x,n)  ifft(X)              (requires --features fft)
         fftshift(x)  ifftshift(x)  fftfreq(n,d)  (always available)
 Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features plot)
         plot3(x,y,z)  scatter3(x,y,z)       3D line/scatter (orthographic projection)
+        fill(x,y)  area(x,y)               filled polygon / filled area under curve
+        polar(theta,r)                      polar coordinate line chart
+        plot(x,y,'r--')                     style string: color + linestyle (MATLAB)
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
         plot3(x,y,z,'f.svg')               3D file export via plotters build_cartesian_3d
         title('t')  xlabel('x')  ylabel('y')  zlabel('z')  set annotations
@@ -300,7 +303,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help setops      triu/tril/repmat/kron/cross/dot, set ops, sub2ind/ind2sub/repelem
   help poly        polyval/polyfit/roots/poly, conv/deconv, interp1
   help fft         fft/ifft, fftshift/ifftshift, fftfreq — FFT & signal processing
-  help plot        plot/scatter, file export (SVG/PNG), annotations
+  help plot        plot/scatter/fill/area/polar, style strings, file export (SVG/PNG)
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -3544,6 +3547,51 @@ Two rendering tiers; both use the same annotation API.
     mode surf draws row + column grid lines; mesh draws row lines only.
     colormap() applies to surf/mesh file output.
 
+── Filled polygons and areas ─────────────────────────────────────────────────
+    fill(x, y)                   filled polygon (vertices in x/y)
+    fill(x, y, 'r')              filled polygon with style string
+    fill(x, y, 'out.svg')        save filled polygon to SVG/PNG
+    fill(x, y, 'b', 'out.svg')  style + file (style before path)
+    area(x, y)                   filled area under curve (baseline y=0)
+    area(x, y, 'g--')            area with style string
+    area(x, y, 'out.svg')        save area chart to SVG/PNG
+
+    ASCII tier:  bounding-box density grid using ░ characters with
+                 ray-casting point-in-polygon (even-odd rule) test.
+    File tier:   plotters Polygon element at 40% opacity + full-opacity outline.
+
+── Polar plots ──────────────────────────────────────────────────────────────
+    polar(theta, r)              polar chart; theta in radians
+    polar(theta, r, 'out.svg')   save polar chart to SVG/PNG
+
+    Coordinate transform: x = r·cos(θ), y = r·sin(θ), then render_line_xy.
+    Supports the same file-export and annotation flags as plot().
+
+── Style strings ────────────────────────────────────────────────────────────
+    An optional string argument (before the file path) controls color,
+    marker, and line style for plot, scatter, fill, and area.
+
+    Colors (single char):
+      'r' red    'g' green    'b' blue    'c' cyan
+      'm' magenta  'y' yellow  'k' black  'w' white
+
+    Line styles:
+      '-'   solid (default)    '--'  dashed
+      '-.'  dash-dot           ':'   dotted
+
+    Marker symbols:
+      '.'  point    'o'  circle    'x'  cross    '+'  plus
+      '*'  star     's'  square    'd'  diamond  '^'  triangle
+
+    Combinations — color, marker, and linestyle in any order:
+      'r--'   red dashed line
+      'b.'    blue point markers
+      'g-.'   green dash-dot
+      'k:'    black dotted
+      'c-'    cyan solid
+
+    Style strings affect SVG/PNG output only; ASCII charts are monochrome.
+
 ── Multi-panel layout ───────────────────────────────────────────────────────
     subplot(rows, cols, index)   activate panel index (1-based, row-major)
     hold('on')                   start accumulating series without rendering
@@ -3651,6 +3699,26 @@ Append a file path as the last string argument to save instead of print:
     plot(x, cos(x));
     hold('off')
 
+    % Filled triangle polygon
+    fill([0 1 0.5], [0 0 1], 'r', 'triangle.svg')
+
+    % Area under sine curve
+    x = linspace(0, 2*pi, 80);
+    area(x, sin(x) + 1, 'b', 'sine_area.svg')
+
+    % Polar rose curve  r = |cos(2*theta)|
+    theta = linspace(0, 2*pi, 360);
+    polar(theta, abs(cos(2*theta)), 'rose.svg')
+
+    % Style strings subplot
+    xs = linspace(0, 2*pi, 80);
+    s  = sin(xs);
+    subplot(2, 4, 1); plot(xs, s, 'r');
+    subplot(2, 4, 2); plot(xs, s, 'g');
+    subplot(2, 4, 3); plot(xs, s, 'b--');
+    subplot(2, 4, 4); plot(xs, s, 'k:');
+    savefig('style_demo.svg')
+
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
           examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
@@ -3660,6 +3728,7 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/surf_demo/surf_demo.calc      (surf — sine wave + Gaussian bell)
           examples/surf_demo/mesh_demo.calc      (mesh — sine wave wireframe + saddle)
           examples/subplot_demo/subplot_demo.calc  (2×2 subplot grid)
-          examples/hold_demo/hold_demo.calc        (hold on/off overlay)"
+          examples/hold_demo/hold_demo.calc        (hold on/off overlay)
+          examples/fill_area_polar_demo/fill_area_polar_demo.calc  (Phase 30e demo)"
     );
 }

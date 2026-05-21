@@ -2,7 +2,7 @@
 
 A fast terminal calculator with Octave/MATLAB syntax and script support — one binary, no runtime.
 
-**Current version: 0.38.0** — see [CHANGELOG](CHANGELOG.md) for history.
+**Current version: 0.39.0** — see [CHANGELOG](CHANGELOG.md) for history.
 
 **[📖 Documentation](https://holgertkey.github.io/ccalc/)**
 
@@ -799,9 +799,36 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `semilogy(x, y)` | `plot` | Linear x-axis, log₁₀ y |
 | `plot3(x, y, z)` | `plot` | 3D line; ASCII uses orthographic projection |
 | `scatter3(x, y, z)` | `plot` | 3D point cloud; ASCII uses orthographic projection |
+| `fill(x, y)` / `fill(x, y, style)` | `plot` | Filled polygon; ASCII uses ░ density grid, file uses Polygon element |
+| `area(x, y)` / `area(x, y, style)` | `plot` | Filled area under curve (closes polygon to y=0 baseline) |
+| `polar(theta, r)` | `plot` | Polar chart — coordinate transform then `render_line_xy` |
 | `imagesc(Z)` | `plot` | False-colour heat-map of matrix Z (ASCII density chars) |
 | `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG (800 × 600 px) |
 | `imagesc(Z, 'f.png', W, H)` | `plot-svg` | False-colour image at custom W × H pixels |
+
+### Style strings
+
+An optional style string argument (before the file path) sets color, marker, and line style — MATLAB-compatible:
+
+| Code | Color | Code | Line style | Code | Marker |
+|------|-------|------|------------|------|--------|
+| `r`  | red   | `-`  | solid      | `.`  | point  |
+| `g`  | green | `--` | dashed     | `o`  | circle |
+| `b`  | blue  | `-.` | dash-dot   | `x`  | cross  |
+| `c`  | cyan  | `:`  | dotted     | `+`  | plus   |
+| `m`  | magenta |   |            | `*`  | star   |
+| `y`  | yellow  |   |            | `s`  | square |
+| `k`  | black   |   |            | `d`  | diamond|
+| `w`  | white   |   |            | `^`  | triangle|
+
+```matlab
+plot(x, y, 'r--')          % red dashed line
+plot(x, y, 'b.')           % blue point markers
+fill(x, y, 'g')            % green filled polygon
+area(x, y, 'c-', 'out.svg') % cyan solid area to file
+```
+
+Style strings affect SVG/PNG output only; ASCII charts are always monochrome.
 
 Append a file path to save instead of print to terminal:
 
@@ -2075,6 +2102,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `colormap/julia.calc`        | Julia set with `colormap('magma')` + colorbar — requires `--features plot-svg` |
 | `subplot_demo/subplot_demo.calc` | 2×2 subplot grid: sin, cos, bar, hist — saved to SVG — requires `--features plot-svg` |
 | `hold_demo/hold_demo.calc`   | Overlaid sin and cos series using `hold on/off`; ASCII and SVG variants |
+| `fill_area_polar_demo/fill_area_polar_demo.calc` | Phase 30e: `fill`/`area` ASCII+SVG, `polar` circle + rose curve, all 8 style colors, all 4 line styles, color+linestyle combos |
 
 ```bash
 ccalc < examples/mortgage.calc
