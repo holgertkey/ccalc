@@ -73,6 +73,82 @@ pub fn render_stem(x: &[f64], y: &[f64], state: FigureState) {
     print_labels(&state);
 }
 
+/// Renders a filled polygon to stdout (bounding-box shaded with `░` chars).
+///
+/// textplots has no native polygon fill; we print a bounding-box density block
+/// as a visual approximation and overlay the outline as a line series.
+pub fn render_fill(x: &[f64], y: &[f64], state: FigureState) {
+    if x.is_empty() {
+        return;
+    }
+    let data = to_f32_pairs(x, y);
+    let (x_min, x_max) = chart_x_bounds(x, &state);
+    let y_min = y.iter().copied().fold(f64::INFINITY, f64::min) as f32;
+    let y_max = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) as f32;
+    print_header(&state);
+    // Print a simple density-fill bounding box to indicate a polygon region,
+    // then overlay the outline.
+    let cols: usize = 60;
+    let rows: usize = 12;
+    let col_step = (x_max - x_min) / cols as f32;
+    let row_step = if (y_max - y_min).abs() > f32::EPSILON {
+        (y_max - y_min) / rows as f32
+    } else {
+        1.0
+    };
+    for r in (0..rows).rev() {
+        let cy = y_min + r as f32 * row_step;
+        let mut row_str = String::new();
+        for c in 0..cols {
+            let cx = x_min + c as f32 * col_step;
+            if point_in_polygon(cx, cy, &data) {
+                row_str.push('░');
+            } else {
+                row_str.push(' ');
+            }
+        }
+        println!("|{row_str}|");
+    }
+    Chart::new(100, 20, x_min, x_max)
+        .lineplot(&Shape::Lines(&data))
+        .display();
+    print_labels(&state);
+}
+
+/// Renders a filled area under curve to stdout.
+pub fn render_area(x: &[f64], y: &[f64], state: FigureState) {
+    if x.is_empty() {
+        return;
+    }
+    // Build a closed polygon: outline + baseline.
+    let mut poly_x = x.to_vec();
+    let mut poly_y = y.to_vec();
+    poly_x.push(*x.last().unwrap());
+    poly_y.push(0.0);
+    poly_x.push(x[0]);
+    poly_y.push(0.0);
+    render_fill(&poly_x, &poly_y, state);
+}
+
+/// Ray-casting point-in-polygon test (2D, even-odd rule).
+fn point_in_polygon(px: f32, py: f32, polygon: &[(f32, f32)]) -> bool {
+    let n = polygon.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = polygon[i];
+        let (xj, yj) = polygon[j];
+        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 fn print_labels(state: &FigureState) {
     if let Some(xl) = &state.xlabel {
         println!("x: {xl}");

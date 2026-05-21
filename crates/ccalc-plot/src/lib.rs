@@ -1,10 +1,10 @@
-//! Plot plugin for ccalc — Phase 30d.
+//! Plot plugin for ccalc — Phase 30e.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
-//! `contour`, `contourf`, `subplot`, `hold`, `savefig`, and annotation
-//! functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`, `xlim`,
-//! `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
+//! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
+//! `polar`, and annotation functions (`xlabel`, `ylabel`, `zlabel`, `title`,
+//! `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -21,6 +21,7 @@
 pub mod colormap;
 pub mod dispatch;
 pub mod proj3d;
+pub mod style;
 
 #[cfg(feature = "plot")]
 mod ascii;
@@ -36,23 +37,28 @@ use std::cell::RefCell;
 use ccalc_engine::env::{Env, Value};
 use ccalc_engine::plugin::Plugin;
 
-use dispatch::{extract_file_arg, extract_matrix, extract_vector};
+use dispatch::{extract_file_arg, extract_matrix, extract_style_and_file_arg, extract_vector};
+use style::StyleSpec;
 
 // ── PendingSeries / Panel ──────────────────────────────────────────────────
 
 /// A renderable data series stored for deferred rendering under `hold`/`subplot`.
 #[derive(Clone)]
 pub enum PendingSeries {
-    /// Connected line plot.
-    Line(Vec<f64>, Vec<f64>),
-    /// Point-cloud scatter.
-    Scatter(Vec<f64>, Vec<f64>),
+    /// Connected line plot, with optional style override.
+    Line(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+    /// Point-cloud scatter, with optional style override.
+    Scatter(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Vertical bar chart.
     Bar(Vec<f64>, Vec<f64>),
     /// Stem (lollipop) chart.
     Stem(Vec<f64>, Vec<f64>),
     /// Histogram — pre-computed counts and bin edges.
     Hist { counts: Vec<usize>, edges: Vec<f64> },
+    /// Filled polygon.
+    Fill(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+    /// Area under a curve (polygon closing along y = 0).
+    Area(Vec<f64>, Vec<f64>, Option<StyleSpec>),
 }
 
 /// A committed subplot panel ready for file rendering.
@@ -132,7 +138,7 @@ const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
     "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
-    "savefig",
+    "savefig", "fill", "area", "polar",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -246,13 +252,17 @@ impl Plugin for PlotPlugin {
 
             // ── Render calls ───────────────────────────────────────────
             "plot" => {
-                let (data_args, path) = extract_file_arg(args);
+                let (data_args, style, path) = extract_style_and_file_arg(args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (x, ys) = extract_xy_multi("plot", &data_args)?;
                     FIGURE_STATE.with(|f| {
                         let mut st = f.borrow_mut();
                         for y in ys {
-                            st.pending_series.push(PendingSeries::Line(x.clone(), y));
+                            st.pending_series.push(PendingSeries::Line(
+                                x.clone(),
+                                y,
+                                style.clone(),
+                            ));
                         }
                     });
                     Ok(Value::Void)
@@ -268,7 +278,7 @@ impl Plugin for PlotPlugin {
             }
 
             "scatter" | "bar" | "stem" | "stairs" => {
-                let (data_args, path) = extract_file_arg(args);
+                let (data_args, style, path) = extract_style_and_file_arg(args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (x, y) = extract_xy(name, &data_args)?;
                     let (x, y) = if name == "stairs" {
@@ -277,7 +287,7 @@ impl Plugin for PlotPlugin {
                         (x, y)
                     };
                     let series = match name {
-                        "scatter" => PendingSeries::Scatter(x, y),
+                        "scatter" => PendingSeries::Scatter(x, y, style),
                         "bar" | "stairs" => PendingSeries::Bar(x, y),
                         "stem" => PendingSeries::Stem(x, y),
                         _ => unreachable!(),
@@ -605,6 +615,53 @@ impl Plugin for PlotPlugin {
                     return Err("savefig: no panels to render".into());
                 }
                 render_panels_file(&panels, &path)
+            }
+
+            // ── fill ──────────────────────────────────────────────────
+            "fill" => {
+                let (data_args, style, path) = extract_style_and_file_arg(args)?;
+                let (x, y) = extract_xy("fill", &data_args)?;
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut()
+                            .pending_series
+                            .push(PendingSeries::Fill(x, y, style));
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_fill_xy(&x, &y, path.as_deref(), style, state)
+                }
+            }
+
+            // ── area ──────────────────────────────────────────────────
+            "area" => {
+                let (data_args, style, path) = extract_style_and_file_arg(args)?;
+                let (x, y) = extract_xy("area", &data_args)?;
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut()
+                            .pending_series
+                            .push(PendingSeries::Area(x, y, style));
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_area_xy(&x, &y, path.as_deref(), style, state)
+                }
+            }
+
+            // ── polar ─────────────────────────────────────────────────
+            "polar" => {
+                let (data_args, _style, path) = extract_style_and_file_arg(args)?;
+                let (theta, r) = extract_xy("polar", &data_args)?;
+                let (px, py): (Vec<f64>, Vec<f64>) = theta
+                    .iter()
+                    .zip(r.iter())
+                    .map(|(&t, &rv)| (rv * t.cos(), rv * t.sin()))
+                    .unzip();
+                let state = FIGURE_STATE.with(|f| f.take());
+                render_line_xy("polar", &px, &py, path.as_deref(), state)
             }
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
@@ -1280,6 +1337,116 @@ fn render_line_xy_file(
     ))
 }
 
+// ── fill / area dispatch ───────────────────────────────────────────────────
+
+fn render_fill_xy(
+    x: &[f64],
+    y: &[f64],
+    path: Option<&str>,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_fill_ascii(x, y, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_fill_file(x, y, p, style, state)
+        }
+        Some(p) => Err(format!("fill: unknown output target '{p}'")),
+    }
+}
+
+fn render_area_xy(
+    x: &[f64],
+    y: &[f64],
+    path: Option<&str>,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_area_ascii(x, y, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_area_file(x, y, p, style, state)
+        }
+        Some(p) => Err(format!("area: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_fill_ascii(x: &[f64], y: &[f64], state: FigureState) -> Result<Value, String> {
+    ascii::render_fill(x, y, state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_fill_ascii(_x: &[f64], _y: &[f64], _state: FigureState) -> Result<Value, String> {
+    Err("fill: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot")]
+fn render_area_ascii(x: &[f64], y: &[f64], state: FigureState) -> Result<Value, String> {
+    ascii::render_area(x, y, state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_area_ascii(_x: &[f64], _y: &[f64], _state: FigureState) -> Result<Value, String> {
+    Err("area: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_fill_file(
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_fill(x, y, path, style, state).map_err(|e| format!("fill: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_fill_file(
+    _x: &[f64],
+    _y: &[f64],
+    _path: &str,
+    _style: Option<StyleSpec>,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("fill: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_area_file(
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_area(x, y, path, style, state).map_err(|e| format!("area: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_area_file(
+    _x: &[f64],
+    _y: &[f64],
+    _path: &str,
+    _style: Option<StyleSpec>,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("area: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
 // ── 3D dispatch ────────────────────────────────────────────────────────────
 
 fn render_3d(
@@ -1388,13 +1555,17 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
             println!("---");
         }
         match series {
-            PendingSeries::Line(x, y) => ascii::render_line(x, y, base_state.clone()),
-            PendingSeries::Scatter(x, y) => ascii::render_scatter(x, y, base_state.clone()),
+            PendingSeries::Line(x, y, _style) => ascii::render_line(x, y, base_state.clone()),
+            PendingSeries::Scatter(x, y, _style) => {
+                ascii::render_scatter(x, y, base_state.clone());
+            }
             PendingSeries::Bar(x, y) => ascii::render_bar(x, y, base_state.clone()),
             PendingSeries::Stem(x, y) => ascii::render_stem(x, y, base_state.clone()),
             PendingSeries::Hist { counts, edges } => {
                 render_hist_ascii(counts, edges, &base_state);
             }
+            PendingSeries::Fill(x, y, _style) => ascii::render_fill(x, y, base_state.clone()),
+            PendingSeries::Area(x, y, _style) => ascii::render_area(x, y, base_state.clone()),
         }
     }
     Ok(Value::Void)
@@ -2426,7 +2597,7 @@ mod tests {
             let mut st = f.borrow_mut();
             st.hold = true;
             st.pending_series
-                .push(PendingSeries::Line(vec![1.0, 2.0], vec![1.0, 4.0]));
+                .push(PendingSeries::Line(vec![1.0, 2.0], vec![1.0, 4.0], None));
         });
         // State is mutated before ASCII rendering; ignore the render result so
         // this test passes regardless of which feature flags are enabled.

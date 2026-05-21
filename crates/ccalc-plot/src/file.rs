@@ -6,6 +6,7 @@ use plotters::prelude::*;
 use plotters::series::LineSeries;
 
 use crate::FigureState;
+use crate::style::StyleSpec;
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
@@ -261,6 +262,114 @@ pub(crate) fn render_stem(
     state: FigureState,
 ) -> Result<(), String> {
     render_file(ChartKind::Stem, x, y, path, state)
+}
+
+/// Writes an SVG or PNG filled-polygon plot to `path`.
+pub(crate) fn render_fill(
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<(), String> {
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_polygon_chart(x, y, false, style, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_polygon_chart(x, y, false, style, &state, root)
+    } else {
+        Err(format!("fill: unsupported format '{path}'"))
+    }
+}
+
+/// Writes an SVG or PNG area-under-curve plot to `path`.
+pub(crate) fn render_area(
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<(), String> {
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_polygon_chart(x, y, true, style, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_polygon_chart(x, y, true, style, &state, root)
+    } else {
+        Err(format!("area: unsupported format '{path}'"))
+    }
+}
+
+fn draw_polygon_chart<DB: DrawingBackend>(
+    x: &[f64],
+    y: &[f64],
+    area_mode: bool,
+    style: Option<StyleSpec>,
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    root.fill(&WHITE).map_err(|e| e.to_string())?;
+
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
+    let y_with_zero: Vec<f64> = y.iter().copied().chain(std::iter::once(0.0)).collect();
+    let (y_min, y_max) = state
+        .ylim
+        .unwrap_or_else(|| range_with_zero_baseline(&y_with_zero));
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20))
+        .margin(30)
+        .x_label_area_size(40)
+        .y_label_area_size(50)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .x_desc(xlabel)
+        .y_desc(ylabel)
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    let fill_color = style_to_rgb(&style).unwrap_or(RGBColor(0, 114, 189));
+
+    // Build polygon vertices: outline + closing segment along y=0 for area mode.
+    let mut pts: Vec<(f64, f64)> = x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+    if area_mode && !pts.is_empty() {
+        pts.push((*x.last().unwrap(), 0.0));
+        pts.push((x[0], 0.0));
+    }
+
+    chart
+        .draw_series(std::iter::once(Polygon::new(pts, fill_color.mix(0.4))))
+        .map_err(|e| e.to_string())?;
+
+    // Overlay outline.
+    let outline_pts: Vec<(f64, f64)> = x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+    chart
+        .draw_series(LineSeries::new(outline_pts, &fill_color))
+        .map_err(|e| e.to_string())?;
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Converts an optional [`StyleSpec`] color to a plotters [`RGBColor`].
+fn style_to_rgb(style: &Option<StyleSpec>) -> Option<RGBColor> {
+    style
+        .as_ref()
+        .and_then(|s| s.color.as_ref())
+        .map(|c| RGBColor(c.0, c.1, c.2))
 }
 
 fn render_file(
@@ -580,7 +689,7 @@ where
 
     for series in &panel.series {
         match series {
-            PendingSeries::Line(x, y) | PendingSeries::Scatter(x, y) => {
+            PendingSeries::Line(x, y, _) | PendingSeries::Scatter(x, y, _) => {
                 all_x.extend_from_slice(x);
                 all_y.extend_from_slice(y);
             }
@@ -593,6 +702,12 @@ where
                 all_x.extend_from_slice(edges);
                 all_y.push(0.0);
                 all_y.push(counts.iter().copied().max().unwrap_or(0) as f64);
+                has_zero_baseline = true;
+            }
+            PendingSeries::Fill(x, y, _) | PendingSeries::Area(x, y, _) => {
+                all_x.extend_from_slice(x);
+                all_y.extend_from_slice(y);
+                all_y.push(0.0);
                 has_zero_baseline = true;
             }
         }
@@ -637,9 +752,10 @@ where
     }
 
     for (i, series) in panel.series.iter().enumerate() {
-        let color = SERIES_COLORS[i % SERIES_COLORS.len()];
+        let default_color = SERIES_COLORS[i % SERIES_COLORS.len()];
         match series {
-            PendingSeries::Line(x, y) => {
+            PendingSeries::Line(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
                 chart
                     .draw_series(LineSeries::new(
                         x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)),
@@ -647,7 +763,8 @@ where
                     ))
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::Scatter(x, y) => {
+            PendingSeries::Scatter(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
                 chart
                     .draw_series(
                         x.iter()
@@ -661,7 +778,10 @@ where
                 chart
                     .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                         let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
-                        Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], color.filled())
+                        Rectangle::new(
+                            [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
+                            default_color.filled(),
+                        )
                     }))
                     .map_err(|e| e.to_string())?;
             }
@@ -670,7 +790,7 @@ where
                     chart
                         .draw_series(std::iter::once(PathElement::new(
                             vec![(xi, 0.0), (xi, yi)],
-                            color,
+                            default_color,
                         )))
                         .map_err(|e| e.to_string())?;
                 }
@@ -678,7 +798,7 @@ where
                     .draw_series(
                         x.iter()
                             .zip(y.iter())
-                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, color.filled())),
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, default_color.filled())),
                     )
                     .map_err(|e| e.to_string())?;
             }
@@ -687,9 +807,27 @@ where
                     .draw_series((0..counts.len()).map(|j| {
                         Rectangle::new(
                             [(edges[j], 0.0), (edges[j + 1], counts[j] as f64)],
-                            color.filled(),
+                            default_color.filled(),
                         )
                     }))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Fill(x, y, style) | PendingSeries::Area(x, y, style) => {
+                let is_area = matches!(series, PendingSeries::Area(..));
+                let fill_color = style_to_rgb(style).unwrap_or(default_color);
+                let mut pts: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                if is_area && !pts.is_empty() {
+                    pts.push((*x.last().unwrap(), 0.0));
+                    pts.push((x[0], 0.0));
+                }
+                chart
+                    .draw_series(std::iter::once(Polygon::new(pts, fill_color.mix(0.4))))
+                    .map_err(|e| e.to_string())?;
+                let outline: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                chart
+                    .draw_series(LineSeries::new(outline, &fill_color))
                     .map_err(|e| e.to_string())?;
             }
         }

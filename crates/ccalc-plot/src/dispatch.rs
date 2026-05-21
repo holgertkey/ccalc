@@ -2,6 +2,8 @@
 
 use ccalc_engine::env::Value;
 
+use crate::style::{StyleSpec, looks_like_style_str, parse_style_str};
+
 /// Splits off a trailing file-path argument from `args`.
 ///
 /// Returns `(data_args, Some(path))` if the last argument is a string
@@ -56,6 +58,29 @@ pub fn extract_matrix(v: &Value) -> Result<(Vec<f64>, usize, usize), String> {
         Value::Scalar(f) => Ok((vec![*f], 1, 1)),
         _ => Err("imagesc: expected a numeric matrix".into()),
     }
+}
+
+/// Splits off an optional trailing style string and/or file-path argument from `args`.
+#[allow(clippy::type_complexity)]
+///
+/// Calls [`extract_file_arg`] first to separate any path, then checks whether the
+/// last remaining argument looks like a MATLAB-style format string (e.g. `"r--"`,
+/// `"b."`).  Returns `(data_args, style, path)`.
+pub fn extract_style_and_file_arg(
+    args: &[Value],
+) -> Result<(Vec<Value>, Option<StyleSpec>, Option<String>), String> {
+    let (mut data_args, path) = extract_file_arg(args);
+
+    let mut style: Option<StyleSpec> = None;
+    if let Some(last) = data_args.last()
+        && let Some(s) = as_str(last)
+        && looks_like_style_str(&s)
+    {
+        style = Some(parse_style_str(&s)?);
+        data_args.pop();
+    }
+
+    Ok((data_args, style, path))
 }
 
 fn as_str(v: &Value) -> Option<String> {

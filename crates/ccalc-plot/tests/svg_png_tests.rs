@@ -618,3 +618,94 @@ fn test_imagesc_with_colorbar_svg() {
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("<svg"), "SVG file should contain <svg tag");
 }
+
+// ── Phase 30e — fill / area / polar ──────────────────────────────────────────
+
+#[test]
+fn test_fill_writes_svg_file() {
+    let path = svg_path("test_fill.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    // Triangle polygon.
+    let x = row_vec(&[0.0, 1.0, 0.5]);
+    let y = row_vec(&[0.0, 0.0, 1.0]);
+    plugin
+        .call("fill", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "fill SVG should contain <svg tag");
+}
+
+#[test]
+fn test_fill_with_style_string() {
+    let path = svg_path("test_fill_red.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 0.5]);
+    let y = row_vec(&[0.0, 0.0, 1.0]);
+    // Style 'r' → red fill color.
+    plugin
+        .call(
+            "fill",
+            &[x, y, Value::Str("r".into()), Value::Str(path.clone())],
+            &env,
+        )
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}
+
+#[test]
+fn test_area_writes_svg_file() {
+    let path = svg_path("test_area.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0, 3.0, 4.0]);
+    let y = row_vec(&[0.0, 1.0, 0.5, 1.5, 0.0]);
+    plugin
+        .call("area", &[x, y, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "area SVG should contain <svg tag");
+}
+
+#[test]
+fn test_polar_writes_svg_file() {
+    use std::f64::consts::PI;
+    let path = svg_path("test_polar.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    // Circle in polar coordinates: r = 1 for all theta.
+    let n = 64usize;
+    let theta_vals: Vec<f64> = (0..=n).map(|i| 2.0 * PI * i as f64 / n as f64).collect();
+    let r_vals: Vec<f64> = vec![1.0; theta_vals.len()];
+    let theta = Value::Matrix(Array2::from_shape_vec((1, theta_vals.len()), theta_vals).unwrap());
+    let r = Value::Matrix(Array2::from_shape_vec((1, r_vals.len()), r_vals).unwrap());
+    plugin
+        .call("polar", &[theta, r, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        content.contains("<svg"),
+        "polar SVG should contain <svg tag"
+    );
+}
+
+#[test]
+fn test_plot_with_style_string() {
+    // plot(x, y, 'r--', path) — style string accepted without error.
+    let path = svg_path("test_plot_style.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 4.0, 9.0]);
+    plugin
+        .call(
+            "plot",
+            &[x, y, Value::Str("r--".into()), Value::Str(path.clone())],
+            &env,
+        )
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"));
+}

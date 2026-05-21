@@ -291,8 +291,8 @@ or overlaid series.
 
 Activates panel `index` (1-based, row-major) in a `rows × cols` grid.
 Once called, ccalc enters *accumulating mode*: all subsequent plot calls
-(`plot`, `scatter`, `bar`, `stem`, `stairs`, `hist`) are buffered instead of
-rendered immediately. Annotations (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`,
+(`plot`, `scatter`, `bar`, `stem`, `stairs`, `hist`, `fill`, `area`) are
+buffered instead of rendered immediately. Annotations (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`,
 `legend`, `grid`) set after the render call are collected for the current panel
 and consumed at commit time.
 
@@ -435,9 +435,109 @@ imagesc(Z, 'mandelbrot.svg')
 
 ---
 
+## Style strings
+
+All 2D plot functions (`plot`, `scatter`, `fill`, `area`) accept an optional
+MATLAB-compatible *style string* as a trailing argument (before the file path).
+
+The string is a short combination of a color code, a marker code, and/or a
+line-style code in any order.
+
+| Code | Meaning |
+|---|---|
+| `r` `g` `b` `c` `m` `y` `k` `w` | Color |
+| `.` `o` `x` `+` `*` `s` `d` `^` | Marker (file export only) |
+| `-` | Solid line (default) |
+| `--` | Dashed line |
+| `-.` | Dash-dot line |
+| `:` | Dotted line |
+
+```matlab
+x = linspace(0, 2*pi, 80);
+
+% Red dashed line
+plot(x, sin(x), 'r--')
+
+% Blue scatter with dot markers
+scatter(x, cos(x), 'b.')
+
+% Green solid line to SVG
+plot(x, sin(x), 'g-', 'wave.svg')
+
+% Red fill
+fill([0, 1, 0.5], [0, 0, 1], 'r', 'tri.svg')
+```
+
+> **Note:** In ASCII (textplots) mode, color and line-style are ignored because
+> the backend is monochrome Braille. Style strings still parse without error.
+
+---
+
+## Filled polygons and areas
+
+### `fill(x, y)` / `fill(x, y, style)` / `fill(x, y, style, 'file')`
+
+Filled polygon. `x` and `y` are coordinate vectors of the polygon vertices; the
+shape is automatically closed (last vertex connects back to the first).
+
+**ASCII tier:** prints a bounding-box density block with a `░` fill character plus
+an outline using `textplots`.
+
+**File tier:** draws a plotters `Polygon` element filled at 40 % opacity, with the
+full-opacity outline drawn as a `LineSeries` on top.
+
+```matlab
+% Filled triangle
+fill([0, 1, 0.5], [0, 0, 1])
+
+% Red-filled triangle → SVG
+fill([0, 1, 0.5], [0, 0, 1], 'r', 'triangle.svg')
+```
+
+### `area(y)` / `area(x, y)` / `area(x, y, style)` / `area(x, y, style, 'file')`
+
+Filled area under a curve. The curve is closed along `y = 0` to form a polygon
+(equivalent to `fill` with an added baseline segment).
+
+```matlab
+x = linspace(0, 2*pi, 80);
+
+% ASCII area preview
+area(x, sin(x) + 1)
+
+% Blue area under sine wave → SVG
+area(x, sin(x) + 1, 'b', 'area_sine.svg')
+```
+
+---
+
+## Polar plots
+
+### `polar(theta, r)` / `polar(theta, r, style)` / `polar(theta, r, 'file')`
+
+Converts polar coordinates `(r, theta)` to Cartesian `(x, y)` using
+`x = r·cos(θ)`, `y = r·sin(θ)` and renders a connected line plot.
+
+`theta` is in **radians**.
+
+```matlab
+theta = linspace(0, 2*pi, 200);
+
+% Unit circle
+polar(theta, ones(size(theta)))
+
+% Rose curve: r = |cos(2θ)|
+polar(theta, abs(cos(2*theta)), 'rose.svg')
+
+% Archimedean spiral: r = θ/(2π)
+polar(theta, theta / (2*pi), 'spiral.svg')
+```
+
+---
+
 ## File export
 
-Append a file path as the **last** string argument:
+Append a file path as the **last** string argument (after the optional style string):
 
 | Extension | Format | Notes |
 |---|---|---|

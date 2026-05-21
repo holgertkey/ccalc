@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-05-21
+
+### Added
+
+- **Phase 30e — Style strings, `fill`, `area`, `polar`** (`crates/ccalc-plot`):
+  - **Style strings** (`'r--'`, `'b.'`, `'g-'`, …): optional trailing argument
+    to `plot`, `scatter`, `fill`, and `area`. MATLAB-compatible: color code (8
+    single-char codes), marker code (8 codes), and line-style code (`-`, `--`,
+    `-.`, `:`). Parsed by `style.rs` with greedy 2-char matching for `--`/`-.`.
+    New types: `StyleColor`, `MarkerKind`, `LinestyleKind`, `StyleSpec`,
+    `looks_like_style_str`, `parse_style_str` with 9 unit tests.
+  - **`fill(x, y[, style][, path])`**: filled polygon. ASCII: bounding-box
+    density-fill with ray-casting point-in-polygon. File: plotters `Polygon`
+    element at 40 % opacity with full-opacity outline.
+  - **`area(x, y[, style][, path])`**: area under curve — builds closing
+    baseline segment `(x_last, 0) → (x_0, 0)` and delegates to fill renderer.
+  - **`polar(theta, r[, style][, path])`**: pure coordinate transform
+    (`x = r·cos(θ)`, `y = r·sin(θ)`) then `render_line_xy`.
+  - `PendingSeries::Line` and `::Scatter` extended with `Option<StyleSpec>` third
+    element; new `Fill` and `Area` variants with same signature.
+  - `draw_panel` in `file.rs` applies style color to `Line`/`Scatter`; handles
+    `Fill`/`Area` via `Polygon` + outline `LineSeries`.
+  - `extract_style_and_file_arg` in `dispatch.rs` peels the optional style
+    string after the file-path check.
+  - 5 new integration tests; 9 unit tests in `style.rs`.
+  - Example script: `examples/fill_area_polar_demo/fill_area_polar_demo.m`.
+  - mdBook docs updated with Style strings, fill, area, and polar sections.
+
 ## [0.38.0] - 2026-05-20
 
 ### Added
