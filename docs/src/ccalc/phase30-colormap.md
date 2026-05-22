@@ -14,10 +14,8 @@ infrastructure from Phase 29.
   using 10 density characters. Requires the `plot` feature.
 - **`imagesc(Z, 'file.svg')` / `imagesc(Z, 'file.png')`** — saves a
   full-colour heat-map to a file. One `Rectangle` per matrix cell, RGB colour
-  from the active colormap LUT. Default canvas: 800 × 600 px (override with `figure(w, h)`). Requires `plot-svg`.
-- **`imagesc(Z, 'file.png', W, H)`** — same but uses a custom canvas size of
-  `W × H` pixels. Setting `W = ncols(Z)`, `H = nrows(Z)` gives pixel-perfect
-  output (one matrix cell = one pixel).
+  from the active colormap LUT. Canvas size from `figure(w, h)` (default
+  800 × 600 px). Requires `plot-svg`.
 - **`colormap('name')`** — sets the active colormap, consumed by the next
   `imagesc` call. Validates against the list of supported names; returns an
   error for unknown names.
@@ -47,7 +45,6 @@ linearly between stops via `lut_lerp`:
 |---|---|---|
 | `imagesc(Z)` | — (ASCII) | `plot` |
 | `imagesc(Z, path)` | from `figure(w,h)`, else 800 × 600 px | `plot-svg` |
-| `imagesc(Z, path, W, H)` | W × H px (overrides `figure`) | `plot-svg` |
 
 ### FigureState additions
 

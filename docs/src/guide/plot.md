@@ -369,10 +369,8 @@ Render a matrix as a heat-map — each cell is coloured according to its value.
 - Without a path: ASCII tier prints a character-art grid using 10 density
   characters (`" .:-=+*#@█"`) mapped from `Z_min` to `Z_max`.
 - With a `.svg` or `.png` path: file tier draws one filled `Rectangle` per
-  cell, scaled to the canvas. Default canvas is 800 × 600 px.
-  Requires `--features plot-svg`.
-- With `W, H`: custom canvas size in pixels — e.g. `imagesc(Z, 'f.png', 1920, 1080)`.
-  Setting `W = ncols(Z)` and `H = nrows(Z)` gives one pixel per matrix cell.
+  cell, scaled to the canvas. Canvas size comes from `figure(w, h)` (default
+  800 × 600 px). Requires `--features plot-svg`.
 
 ### `colormap('name')`
 
@@ -406,10 +404,6 @@ colormap('viridis')
 colorbar()
 title('Signal strength')
 imagesc(Z, 'heat.svg')
-
-% Custom size: each matrix cell maps to one pixel
-colormap('hot')
-imagesc(Z, 'heat_hires.png', 800, 800)
 
 % Mandelbrot set — colormap changes false-colour appearance
 N = 200; max_iter = 60;
@@ -632,8 +626,6 @@ subplot(2, 2, 4); hist(randn(1, 200), 20);
 savefig('hd_grid.png')
 ```
 
-> **Note:** The `imagesc(Z, path, W, H)` 4-argument form continues to work as
-> a per-call override and takes precedence over `figure(w, h)` for that call only.
 
 ---
 

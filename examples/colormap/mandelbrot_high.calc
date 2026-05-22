@@ -45,11 +45,12 @@ end
 
 fprintf('Rendering %dx%d Mandelbrot set (max_iter=%d)...\n', nx, ny, max_iter)
 
+figure(1600, 1200)
 colormap('hot')
 colorbar()
 title('Mandelbrot set — escape count')
 xlabel('Re(c)')
 ylabel('Im(c)')
-imagesc(Z, strcat(out, 'mandelbrot_high.png'), 1600, 1200)
+imagesc(Z, strcat(out, 'mandelbrot_high.png'))
 
 fprintf('Written to %smandelbrot_high.png\n', out)

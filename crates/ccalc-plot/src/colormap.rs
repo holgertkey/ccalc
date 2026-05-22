@@ -243,17 +243,16 @@ const CB_WIDTH: u32 = 80;
 /// The active colormap is taken from `state.colormap` (default `"viridis"`).
 /// If `state.colorbar` is `true`, a gradient strip with value labels is
 /// appended on the right side of the image.
-/// `width` and `height` set the canvas size in pixels.
+/// Canvas size is taken from [`FigureState::canvas_size`] (default 800 × 600).
 #[cfg(feature = "plot-svg")]
 pub fn render_imagesc_file(
     z: &[f64],
     nrows: usize,
     ncols: usize,
     path: &str,
-    width: u32,
-    height: u32,
     state: FigureState,
 ) -> Result<(), String> {
+    let (width, height) = state.canvas_size();
     if path.ends_with(".svg") {
         let root = SVGBackend::new(path, (width, height)).into_drawing_area();
         draw_imagesc(z, nrows, ncols, &state, root, width)

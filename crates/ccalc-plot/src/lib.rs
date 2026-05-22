@@ -451,44 +451,21 @@ impl Plugin for PlotPlugin {
                 let (z, nrows, ncols) = extract_matrix(&args[0])?;
                 let state = FIGURE_STATE.with(|f| f.take());
                 // Accepted forms:
-                //   imagesc(Z)
-                //   imagesc(Z, path)
-                //   imagesc(Z, path, W, H)   — W/H override figure(w,h)
-                let default_canvas = state.canvas_size();
-                let (path, width, height): (Option<String>, u32, u32) = match args.len() {
-                    1 => (None, default_canvas.0, default_canvas.1),
+                //   imagesc(Z)          — ASCII or terminal
+                //   imagesc(Z, path)    — file export; canvas from figure(w,h) or 800×600
+                let path: Option<String> = match args.len() {
+                    1 => None,
                     2 => match &args[1] {
-                        Value::Str(s) | Value::StringObj(s) => {
-                            (Some(s.clone()), default_canvas.0, default_canvas.1)
-                        }
+                        Value::Str(s) | Value::StringObj(s) => Some(s.clone()),
                         _ => {
                             return Err(
                                 "imagesc: second argument must be a file path string".into()
                             );
                         }
                     },
-                    4 => {
-                        let p = match &args[1] {
-                            Value::Str(s) | Value::StringObj(s) => s.clone(),
-                            _ => {
-                                return Err(
-                                    "imagesc: second argument must be a file path string".into()
-                                );
-                            }
-                        };
-                        let w = match &args[2] {
-                            Value::Scalar(f) if *f >= 1.0 => *f as u32,
-                            _ => return Err("imagesc: width must be a positive integer".into()),
-                        };
-                        let h = match &args[3] {
-                            Value::Scalar(f) if *f >= 1.0 => *f as u32,
-                            _ => return Err("imagesc: height must be a positive integer".into()),
-                        };
-                        (Some(p), w, h)
-                    }
-                    n => return Err(format!("imagesc: expected 1, 2, or 4 arguments, got {n}")),
+                    n => return Err(format!("imagesc: expected 1 or 2 arguments, got {n}")),
                 };
-                render_imagesc(&z, nrows, ncols, path.as_deref(), width, height, state)
+                render_imagesc(&z, nrows, ncols, path.as_deref(), state)
             }
 
             // ── surf / mesh ────────────────────────────────────────────
@@ -1052,14 +1029,12 @@ fn render_imagesc(
     nrows: usize,
     ncols: usize,
     path: Option<&str>,
-    width: u32,
-    height: u32,
     state: FigureState,
 ) -> Result<Value, String> {
     match path {
         None | Some("ascii") => render_imagesc_ascii_tier(z, nrows, ncols, state),
         Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
-            render_imagesc_file_tier(z, nrows, ncols, p, width, height, state)
+            render_imagesc_file_tier(z, nrows, ncols, p, state)
         }
         Some(p) => Err(format!("imagesc: unknown output target '{p}'")),
     }
@@ -1096,11 +1071,9 @@ fn render_imagesc_file_tier(
     nrows: usize,
     ncols: usize,
     path: &str,
-    width: u32,
-    height: u32,
     state: FigureState,
 ) -> Result<Value, String> {
-    colormap::render_imagesc_file(z, nrows, ncols, path, width, height, state)
+    colormap::render_imagesc_file(z, nrows, ncols, path, state)
         .map_err(|e| format!("imagesc: {e}"))?;
     Ok(Value::Void)
 }
@@ -1111,8 +1084,6 @@ fn render_imagesc_file_tier(
     _nrows: usize,
     _ncols: usize,
     _path: &str,
-    _width: u32,
-    _height: u32,
     _state: FigureState,
 ) -> Result<Value, String> {
     Err("imagesc: SVG/PNG export requires the 'plot-svg' feature — \

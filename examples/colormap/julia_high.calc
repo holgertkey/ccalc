@@ -45,11 +45,12 @@ end
 
 fprintf('Rendering %dx%d Julia set c=-0.7+0.27i (max_iter=%d)...\n', nx, ny, max_iter)
 
+figure(1600, 1200)
 colormap('magma')
 colorbar()
 title('Julia set: c = -0.7 + 0.27i')
 xlabel('Re(z_0)')
 ylabel('Im(z_0)')
-imagesc(Z, strcat(out, 'julia_high.png'), 1600, 1200)
+imagesc(Z, strcat(out, 'julia_high.png'))
 
 fprintf('Written to %sjulia_high.png\n', out)
