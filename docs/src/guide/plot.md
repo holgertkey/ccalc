@@ -6,7 +6,7 @@ Two rendering tiers are available:
 | Feature flag | Backend | Enables |
 |---|---|---|
 | `plot` | `textplots` | ASCII Braille chart printed to terminal |
-| `plot-svg` | `plotters` | SVG and PNG file export (800 × 600 px) |
+| `plot-svg` | `plotters` | SVG and PNG file export (default 800 × 600 px, customisable via `figure`) |
 | `plot-all` | both | terminal + file export |
 
 Build with the desired tier:
@@ -600,6 +600,43 @@ plot(x, sin(x), 'sine.svg')
 
 ---
 
+## Canvas size
+
+### `figure(width, height)`
+
+Sets the output canvas size in pixels for the **next** SVG or PNG export.
+Applies to all file-export functions: `plot`, `scatter`, `bar`, `hist`, `fill`,
+`area`, `polar`, `quiver`, `surf`, `mesh`, `contour`, `contourf`, and `savefig`.
+
+- Width and height must be integers in the range **1–16384**.
+- The size persists across panels (like `colormap`) and is cleared when the
+  figure state resets after a render.
+- Silently ignored in ASCII (terminal) mode — char-art dimensions are fixed.
+
+```matlab
+% Wide landscape chart
+figure(1200, 400)
+plot(x, sin(x), 'wide.svg')
+
+% Square heatmap
+figure(600, 600)
+colormap('viridis')
+imagesc(Z, 'square.svg')
+
+% Multi-panel at HD resolution
+figure(1920, 1080)
+subplot(2, 2, 1); plot(x, sin(x)); title('sin')
+subplot(2, 2, 2); plot(x, cos(x)); title('cos')
+subplot(2, 2, 3); bar([1 2 3 4]);
+subplot(2, 2, 4); hist(randn(1, 200), 20);
+savefig('hd_grid.png')
+```
+
+> **Note:** The `imagesc(Z, path, W, H)` 4-argument form continues to work as
+> a per-call override and takes precedence over `figure(w, h)` for that call only.
+
+---
+
 ## File export
 
 Append a file path as the **last** string argument (after the optional style string):
@@ -607,7 +644,7 @@ Append a file path as the **last** string argument (after the optional style str
 | Extension | Format | Notes |
 |---|---|---|
 | `'.svg'` | SVG vector graphic | Opens in any browser |
-| `'.png'` | PNG raster, 800 × 600 px | |
+| `'.png'` | PNG raster | Default 800 × 600 px; override with `figure(w, h)` |
 | `'ascii'` | Terminal chart | Forces ASCII even with `plot-svg` active |
 
 `imagesc` always writes to a file (never prints a file path to the terminal).
@@ -655,6 +692,7 @@ plot(t, y)       % all annotations applied here, then cleared
 | `grid('off')` | Disable grid | Yes |
 | `colormap('name')` | Set colormap for next `imagesc` / `surf` / `mesh` | Yes |
 | `colorbar()` | Append colour-scale strip (file export only, `imagesc`) | Yes |
+| `figure(w, h)` | Set canvas size in pixels for next SVG/PNG export (1–16384) | Yes |
 | `text(x, y, 's')` | Add label at data coordinate — flushed with next render | Yes |
 
 Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
@@ -672,7 +710,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 
 ## SVG/PNG chart properties
 
-- **Size:** 800 × 600 px (fixed).
+- **Size:** 800 × 600 px by default; set with `figure(width, height)` (range 1–16384 px).
 - **Colours (multi-series):** 7-colour Octave palette — blue, orange, yellow, purple,
   green, cyan, dark red — cycling as needed.
 - **Line plots:** `LineSeries` (1 px, series colour).

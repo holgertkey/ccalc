@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.40.0+001] - 2026-05-22
+
+### Added
+
+- **`figure(width, height)`** — sets the canvas size (in pixels) for the next
+  SVG/PNG export. Applies to all plot functions (`plot`, `scatter`, `bar`,
+  `hist`, `fill`, `area`, `polar`, `quiver`, `surf`, `mesh`, `contour`,
+  `contourf`) and to `savefig`. Stored as `FigureState.figure_size:
+  Option<(u32, u32)>`; falls back to `800×600` when not set. Persists across
+  panels (like `colormap`); cleared when figure state resets.
+  Validation: width and height must be in the range 1–16384.
+  The existing `imagesc(Z, path, W, H)` 4-argument form continues to work and
+  overrides `figure()` for that call only. ASCII tier silently ignores pixel
+  sizes (char-art dimensions remain fixed). 6 new tests.
+
 ## [0.40.0] - 2026-05-22
 
 ### Added
