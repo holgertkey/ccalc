@@ -103,11 +103,12 @@ pub fn render_surf_file(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (800, 600)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_surface(x_vals, y_vals, z, nrows, ncols, &state, root, false)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_surface(x_vals, y_vals, z, nrows, ncols, &state, root, false)
     } else {
         Err(format!("surf: unsupported format '{path}'"))
@@ -129,11 +130,12 @@ pub fn render_mesh_file(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (800, 600)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_surface(x_vals, y_vals, z, nrows, ncols, &state, root, true)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_surface(x_vals, y_vals, z, nrows, ncols, &state, root, true)
     } else {
         Err(format!("mesh: unsupported format '{path}'"))

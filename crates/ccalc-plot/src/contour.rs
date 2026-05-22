@@ -206,11 +206,12 @@ pub fn render_contour_file(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (800, 600)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_contour(x_vals, y_vals, z, nrows, ncols, levels, &state, root, false)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_contour(x_vals, y_vals, z, nrows, ncols, levels, &state, root, false)
     } else {
         Err(format!("contour: unsupported format '{path}'"))
@@ -233,11 +234,12 @@ pub fn render_contourf_file(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (800, 600)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_contour(x_vals, y_vals, z, nrows, ncols, levels, &state, root, true)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (800, 600)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_contour(x_vals, y_vals, z, nrows, ncols, levels, &state, root, true)
     } else {
         Err(format!("contourf: unsupported format '{path}'"))

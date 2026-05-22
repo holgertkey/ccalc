@@ -8,8 +8,6 @@ use plotters::series::LineSeries;
 use crate::FigureState;
 use crate::style::{LinestyleKind, StyleSpec};
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
 
 /// Octave-style colour cycle for multi-series plots.
 const SERIES_COLORS: [RGBColor; 7] = [
@@ -59,11 +57,12 @@ pub(crate) fn render_multi_line(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_multi_line_chart(x, ys, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_multi_line_chart(x, ys, &state, root)
     } else {
         Err(format!("plot: unsupported format '{path}'"))
@@ -167,11 +166,12 @@ pub(crate) fn render_hist(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_hist_chart(counts, edges, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_hist_chart(counts, edges, &state, root)
     } else {
         Err(format!("hist: unsupported format '{path}'"))
@@ -272,11 +272,12 @@ pub(crate) fn render_fill(
     style: Option<StyleSpec>,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_polygon_chart(x, y, false, style, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_polygon_chart(x, y, false, style, &state, root)
     } else {
         Err(format!("fill: unsupported format '{path}'"))
@@ -291,11 +292,12 @@ pub(crate) fn render_area(
     style: Option<StyleSpec>,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_polygon_chart(x, y, true, style, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_polygon_chart(x, y, true, style, &state, root)
     } else {
         Err(format!("area: unsupported format '{path}'"))
@@ -379,11 +381,12 @@ fn render_file(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_chart(kind, x, y, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_chart(kind, x, y, &state, root)
     } else {
         Err(format!("file: unsupported format '{path}'"))
@@ -521,11 +524,12 @@ pub(crate) fn render_plot3(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_3d_chart(false, x, y, z, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_3d_chart(false, x, y, z, &state, root)
     } else {
         Err(format!("plot3: unsupported format '{path}'"))
@@ -540,11 +544,12 @@ pub(crate) fn render_scatter3(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_3d_chart(true, x, y, z, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_3d_chart(true, x, y, z, &state, root)
     } else {
         Err(format!("scatter3: unsupported format '{path}'"))
@@ -621,7 +626,11 @@ fn range_with_margin(vals: &[f64]) -> (f64, f64) {
 ///
 /// Grid dimensions are inferred from the maximum row/column indices found in
 /// panel layouts. A single panel without a layout fills the whole canvas.
-pub(crate) fn render_subplot_panels(panels: &[crate::Panel], path: &str) -> Result<(), String> {
+pub(crate) fn render_subplot_panels(
+    panels: &[crate::Panel],
+    path: &str,
+    canvas: (u32, u32),
+) -> Result<(), String> {
     let rows = panels
         .iter()
         .filter_map(|p| p.layout.map(|(r, _, _)| r))
@@ -634,10 +643,10 @@ pub(crate) fn render_subplot_panels(panels: &[crate::Panel], path: &str) -> Resu
         .unwrap_or(1);
 
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_panels(panels, rows, cols, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_panels(panels, rows, cols, root)
     } else {
         Err(format!("savefig: unsupported format '{path}'"))
@@ -983,11 +992,12 @@ pub(crate) fn render_quiver(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    let canvas = state.canvas_size();
     if path.ends_with(".svg") {
-        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
         draw_quiver_chart(xs, ys, us, vs, &state, root)
     } else if path.ends_with(".png") {
-        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
         draw_quiver_chart(xs, ys, us, vs, &state, root)
     } else {
         Err(format!("quiver: unsupported format '{path}'"))

@@ -2890,6 +2890,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "fieldnames",
         "ifft",
         "ifftshift",
+        "figure",
         "find",
         "fliplr",
         "flipud",

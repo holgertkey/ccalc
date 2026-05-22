@@ -134,6 +134,20 @@ pub struct FigureState {
     pub panels: Vec<Panel>,
     /// Text annotations accumulated for the current render (flushed at render time).
     pub annotations: Vec<(f64, f64, String)>,
+
+    // ── Phase 31 — custom canvas size ─────────────────────────────────────
+    /// Output canvas size in pixels `(width, height)` for file export.
+    ///
+    /// `None` falls back to the default `800×600`. Set via `figure(w, h)`.
+    /// Persists across panels; cleared only when the whole state is reset.
+    pub figure_size: Option<(u32, u32)>,
+}
+
+impl FigureState {
+    /// Returns the canvas size in pixels, falling back to `800×600` if not set.
+    pub fn canvas_size(&self) -> (u32, u32) {
+        self.figure_size.unwrap_or((800, 600))
+    }
 }
 
 thread_local! {
@@ -147,7 +161,7 @@ const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
     "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
-    "savefig", "fill", "area", "polar", "quiver", "text",
+    "savefig", "fill", "area", "polar", "quiver", "text", "figure",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -396,6 +410,26 @@ impl Plugin for PlotPlugin {
                 render_3d(name, &data_args, path.as_deref(), state)
             }
 
+            // ── Canvas size ────────────────────────────────────────────
+            "figure" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "figure: expected 2 arguments (width, height), got {}",
+                        args.len()
+                    ));
+                }
+                let w = match &args[0] {
+                    Value::Scalar(f) if *f >= 1.0 && *f <= 16384.0 => *f as u32,
+                    _ => return Err("figure: width must be a positive integer (1–16384)".into()),
+                };
+                let h = match &args[1] {
+                    Value::Scalar(f) if *f >= 1.0 && *f <= 16384.0 => *f as u32,
+                    _ => return Err("figure: height must be a positive integer (1–16384)".into()),
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().figure_size = Some((w, h)));
+                Ok(Value::Void)
+            }
+
             // ── Colormap / colorbar setters ────────────────────────────
             "colormap" => {
                 let cmap = require_string("colormap", args)?;
@@ -419,11 +453,14 @@ impl Plugin for PlotPlugin {
                 // Accepted forms:
                 //   imagesc(Z)
                 //   imagesc(Z, path)
-                //   imagesc(Z, path, W, H)
+                //   imagesc(Z, path, W, H)   — W/H override figure(w,h)
+                let default_canvas = state.canvas_size();
                 let (path, width, height): (Option<String>, u32, u32) = match args.len() {
-                    1 => (None, 800, 600),
+                    1 => (None, default_canvas.0, default_canvas.1),
                     2 => match &args[1] {
-                        Value::Str(s) | Value::StringObj(s) => (Some(s.clone()), 800, 600),
+                        Value::Str(s) | Value::StringObj(s) => {
+                            (Some(s.clone()), default_canvas.0, default_canvas.1)
+                        }
                         _ => {
                             return Err(
                                 "imagesc: second argument must be a file path string".into()
@@ -615,17 +652,18 @@ impl Plugin for PlotPlugin {
                 if !path.ends_with(".svg") && !path.ends_with(".png") {
                     return Err("savefig: path must end with '.svg' or '.png'".into());
                 }
-                let panels = FIGURE_STATE.with(|f| {
+                let (panels, canvas) = FIGURE_STATE.with(|f| {
                     let mut st = f.borrow_mut();
                     commit_current_panel(&mut st);
                     st.hold = false;
                     st.subplot = None;
-                    std::mem::take(&mut st.panels)
+                    let canvas = st.canvas_size();
+                    (std::mem::take(&mut st.panels), canvas)
                 });
                 if panels.is_empty() {
                     return Err("savefig: no panels to render".into());
                 }
-                render_panels_file(&panels, &path)
+                render_panels_file(&panels, &path, canvas)
             }
 
             // ── fill ──────────────────────────────────────────────────
@@ -1795,13 +1833,13 @@ fn render_panel_ascii(_panel: &Panel) -> Result<Value, String> {
 }
 
 #[cfg(feature = "plot-svg")]
-fn render_panels_file(panels: &[Panel], path: &str) -> Result<Value, String> {
-    file::render_subplot_panels(panels, path).map_err(|e| format!("savefig: {e}"))?;
+fn render_panels_file(panels: &[Panel], path: &str, canvas: (u32, u32)) -> Result<Value, String> {
+    file::render_subplot_panels(panels, path, canvas).map_err(|e| format!("savefig: {e}"))?;
     Ok(Value::Void)
 }
 
 #[cfg(not(feature = "plot-svg"))]
-fn render_panels_file(_panels: &[Panel], _path: &str) -> Result<Value, String> {
+fn render_panels_file(_panels: &[Panel], _path: &str, _canvas: (u32, u32)) -> Result<Value, String> {
     Err("savefig: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
         .into())
@@ -2434,6 +2472,61 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
     }
 
+    // ── figure() tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_figure_sets_canvas_size() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("figure", &[Value::Scalar(1200.0), Value::Scalar(400.0)], &env)
+            .unwrap();
+        let size = FIGURE_STATE.with(|f| f.borrow().figure_size);
+        assert_eq!(size, Some((1200, 400)));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_figure_default_canvas_size() {
+        FIGURE_STATE.with(|f| f.take());
+        let st = FIGURE_STATE.with(|f| f.take());
+        assert_eq!(st.canvas_size(), (800, 600));
+    }
+
+    #[test]
+    fn test_figure_wrong_arg_count_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("figure", &[Value::Scalar(800.0)], &env);
+        assert!(result.is_err());
+        let result = plugin.call("figure", &[], &env);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_figure_invalid_size_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("figure", &[Value::Scalar(0.0), Value::Scalar(600.0)], &env);
+        assert!(result.is_err(), "width 0 should error");
+        let result = plugin.call(
+            "figure",
+            &[Value::Scalar(800.0), Value::Scalar(20000.0)],
+            &env,
+        );
+        assert!(result.is_err(), "height > 16384 should error");
+    }
+
+    #[test]
+    fn test_figure_in_builtin_names() {
+        use ccalc_engine::eval::builtin_names;
+        assert!(
+            builtin_names().contains(&"figure"),
+            "figure missing from builtin_names"
+        );
+    }
+
     #[test]
     fn test_colormap_invalid_name_errors() {
         let plugin = PlotPlugin;
@@ -3027,6 +3120,27 @@ mod tests {
             content.contains("<svg"),
             "savefig should produce an SVG file"
         );
+        std::fs::remove_file(path).ok();
+    }
+
+    #[cfg(feature = "plot-svg")]
+    #[test]
+    fn test_figure_size_applied_to_svg() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_figure_size.svg";
+        std::fs::create_dir_all(".debug").ok();
+        plugin
+            .call("figure", &[Value::Scalar(1024.0), Value::Scalar(300.0)], &env)
+            .unwrap();
+        plugin
+            .call("plot", &[f64_vec(&[1.0, 2.0, 3.0]), f64_vec(&[1.0, 4.0, 9.0]),
+                             Value::Str(path.into())], &env)
+            .unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("1024"), "SVG should contain requested width");
+        assert!(content.contains("300"),  "SVG should contain requested height");
         std::fs::remove_file(path).ok();
     }
 }
