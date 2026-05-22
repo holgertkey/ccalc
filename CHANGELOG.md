@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.40.0+002] - 2026-05-22
+
+### Added
+
+- **ASCII terminal auto-detection** (`crates/ccalc-plot`): all ASCII chart
+  renderers now read `$COLUMNS` (default 80) and `$LINES` (default 24) at
+  render time instead of using hardcoded dimensions.
+  Affected renderers: `plot`/`scatter`/`bar`/`stem`/`stairs` (textplots
+  Braille canvas), `fill`/`area` (character grid), `hist` (bar width),
+  `contour`/`contourf` (density map), `surf`/`mesh` (elevation height),
+  `quiver` (arrow grid). Two new helpers `term_cols()` / `term_rows()` in
+  `lib.rs`; `chart_canvas()` helper in `ascii.rs` converts terminal size to
+  Braille dot resolution. 3 new tests.
+
 ## [0.40.0+001] - 2026-05-22
 
 ### Added

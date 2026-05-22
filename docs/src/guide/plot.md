@@ -237,9 +237,9 @@ Draws `n` evenly-spaced contour isolines.
 - `Z` — scalar-field matrix, same size as `X` and `Y`.
 - `n` — number of contour levels (default `10`).
   Levels are placed evenly inside the Z range (never at the exact min/max).
-- Without a path: ASCII tier prints an 80 × 24 character-art density map where
-  each character encodes the Z band of the corresponding sample point
-  (palette: `" .:-=+*#"`).
+- Without a path: ASCII tier prints a character-art density map (dimensions
+  from `$COLUMNS` × `$LINES`, default 80 × 24) where each character encodes
+  the Z band of the corresponding sample point (palette: `" .:-=+*#"`).
 - With a `.svg` or `.png` path: file tier draws each isoline as a colored
   `LineSeries`, with colors cycling through the active colormap.
 
@@ -368,6 +368,7 @@ Render a matrix as a heat-map — each cell is coloured according to its value.
 - `Z` — any numeric matrix.
 - Without a path: ASCII tier prints a character-art grid using 10 density
   characters (`" .:-=+*#@█"`) mapped from `Z_min` to `Z_max`.
+  Grid dimensions adapt to terminal width (`$COLUMNS`, default 80).
 - With a `.svg` or `.png` path: file tier draws one filled `Rectangle` per
   cell, scaled to the canvas. Canvas size comes from `figure(w, h)` (default
   800 × 600 px). Requires `--features plot-svg`.
@@ -596,7 +597,7 @@ plot(x, sin(x), 'sine.svg')
 
 ## Canvas size
 
-### `figure(width, height)`
+### File export: `figure(width, height)`
 
 Sets the output canvas size in pixels for the **next** SVG or PNG export.
 Applies to all file-export functions: `plot`, `scatter`, `bar`, `hist`, `fill`,
@@ -605,7 +606,8 @@ Applies to all file-export functions: `plot`, `scatter`, `bar`, `hist`, `fill`,
 - Width and height must be integers in the range **1–16384**.
 - The size persists across panels (like `colormap`) and is cleared when the
   figure state resets after a render.
-- Silently ignored in ASCII (terminal) mode — char-art dimensions are fixed.
+- Has no effect in ASCII (terminal) mode — ASCII chart dimensions follow the
+  terminal size instead (see below).
 
 ```matlab
 % Wide landscape chart
@@ -624,6 +626,35 @@ subplot(2, 2, 2); plot(x, cos(x)); title('cos')
 subplot(2, 2, 3); bar([1 2 3 4]);
 subplot(2, 2, 4); hist(randn(1, 200), 20);
 savefig('hd_grid.png')
+```
+
+### ASCII output: terminal auto-detection
+
+ASCII charts automatically adapt to the terminal size by reading the standard
+environment variables `$COLUMNS` (width, default 80) and `$LINES` (height,
+default 24) at render time.
+
+| Chart type | Uses `$COLUMNS` | Uses `$LINES` |
+|---|---|---|
+| `plot`, `scatter`, `bar`, `stem`, `stairs` | Yes (Braille canvas width) | Yes (Braille canvas height) |
+| `fill`, `area` | Yes (character grid) | Yes |
+| `hist` | Yes (bar width) | — |
+| `contour`, `contourf` | Yes | Yes |
+| `surf`, `mesh` | — | Yes (elevation height) |
+| `quiver` | Yes | Yes |
+
+Set these variables in your shell before running ccalc to get larger charts:
+
+```bash
+export COLUMNS=120
+export LINES=40
+ccalc
+```
+
+Or inline for a single script:
+
+```bash
+COLUMNS=120 LINES=40 ccalc -q myscript.calc
 ```
 
 
@@ -684,7 +715,7 @@ plot(t, y)       % all annotations applied here, then cleared
 | `grid('off')` | Disable grid | Yes |
 | `colormap('name')` | Set colormap for next `imagesc` / `surf` / `mesh` | Yes |
 | `colorbar()` | Append colour-scale strip (file export only, `imagesc`) | Yes |
-| `figure(w, h)` | Set canvas size in pixels for next SVG/PNG export (1–16384) | Yes |
+| `figure(w, h)` | Set SVG/PNG canvas size in pixels (1–16384); ASCII ignores it | Yes |
 | `text(x, y, 's')` | Add label at data coordinate — flushed with next render | Yes |
 
 Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
@@ -702,7 +733,8 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 
 ## SVG/PNG chart properties
 
-- **Size:** 800 × 600 px by default; set with `figure(width, height)` (range 1–16384 px).
+- **Size (file export):** 800 × 600 px by default; override with `figure(width, height)` (1–16384 px).
+- **Size (ASCII):** adapts to terminal `$COLUMNS` × `$LINES` (defaults 80 × 24).
 - **Colours (multi-series):** 7-colour Octave palette — blue, orange, yellow, purple,
   green, cyan, dark red — cycling as needed.
 - **Line plots:** `LineSeries` (1 px, series colour).
