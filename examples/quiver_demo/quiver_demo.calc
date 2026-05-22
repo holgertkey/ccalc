@@ -20,4 +20,4 @@ quiver(X, Y, U, V);
 title("Rotational flow field");
 xlabel("x");
 ylabel("y");
-quiver(X, Y, U, V, "output/quiver_demo.svg");
+quiver(X, Y, U, V, "examples/quiver_demo/output/quiver_demo.svg");

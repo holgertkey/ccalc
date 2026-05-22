@@ -16,4 +16,4 @@ text(2.0, 2.0, "tip");
 title("Gradient field with annotations");
 xlabel("x");
 ylabel("y");
-quiver(x, y, u, v, "output/annotations.svg");
+quiver(x, y, u, v, "examples/annotations/output/annotations.svg");
