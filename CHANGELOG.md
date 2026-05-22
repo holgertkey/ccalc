@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-05-22
+
+### Added
+
+- **Phase 30f — `quiver` + `text`** (`crates/ccalc-plot`):
+  - **`quiver(x, y, u, v[, path])`**: vector field plot. Accepts flat vectors or
+    M×N matrices (e.g. meshgrid output) for all four arguments via new
+    `extract_flat` helper in `dispatch.rs`. Same-length validation; accumulates
+    as `PendingSeries::Quiver` under `hold`/`subplot` or renders immediately.
+    ASCII tier: 60×20 character grid; arrow direction mapped to one of eight
+    Unicode arrows (`→ ↗ ↑ ↖ ← ↙ ↓ ↘`) via atan2 octant lookup.
+    File tier: shaft as `PathElement` + filled triangular `Polygon` arrowhead
+    at the tip. Arrow length normalised so the longest arrow fills 80% of the
+    minimum grid spacing.
+  - **`text(x, y, 'label')`**: text annotation at data coordinates. Stored in
+    `FigureState.annotations`; committed to `Panel.annotations` at panel flush.
+    ASCII tier: printed below chart as `(x, y): label` lines.
+    File tier: 12 pt sans-serif `Text` element via plotters.
+  - New `extract_flat` public function in `dispatch.rs` that flattens any M×N
+    matrix to `Vec<f64>` (unlike `extract_vector` which requires 1-D vectors).
+  - `draw_text_annotations` helper in `file.rs` iterates annotations and calls
+    `draw_series` with plotters `Text::new(label.clone(), ...)`.
+  - 3 new regression tests; example scripts `quiver_demo/quiver_demo.calc` and
+    `annotations/annotations.calc`.
+  - mdBook docs updated with "Vector field plots" and "Text annotations" sections.
+  - `help plot` updated with quiver and text sections; topic router extended with
+    "quiver", "vector", "vectorfield", "text", "annotation", "annotations".
+
 ## [0.39.0] - 2026-05-21
 
 ### Added

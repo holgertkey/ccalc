@@ -81,7 +81,8 @@ pub fn print(topic: Option<&str>) {
             | "xlim" | "ylim" | "zlim" | "legend" | "grid" | "figurestate" | "plotting" | "charts"
             | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap" | "surf" | "mesh"
             | "meshgrid" | "surface" | "wireframe" | "subplot" | "hold" | "savefig" | "multipanel"
-            | "panels" | "fill" | "area" | "polar" | "style" | "linestyle" | "color" | "stylestr",
+            | "panels" | "fill" | "area" | "polar" | "style" | "linestyle" | "color" | "stylestr"
+            | "quiver" | "vector" | "vectorfield" | "text" | "annotation" | "annotations",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -191,6 +192,8 @@ Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features pl
         plot3(x,y,z)  scatter3(x,y,z)       3D line/scatter (orthographic projection)
         fill(x,y)  area(x,y)               filled polygon / filled area under curve
         polar(theta,r)                      polar coordinate line chart
+        quiver(x,y,u,v)                     vector field arrows (Unicode / SVG)
+        text(x,y,'label')                   text annotation at data coordinates
         plot(x,y,'r--')                     style string: color + linestyle (MATLAB)
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
         plot3(x,y,z,'f.svg')               3D file export via plotters build_cartesian_3d
@@ -3567,6 +3570,37 @@ Two rendering tiers; both use the same annotation API.
     Coordinate transform: x = r·cos(θ), y = r·sin(θ), then render_line_xy.
     Supports the same file-export and annotation flags as plot().
 
+── Vector field plots ───────────────────────────────────────────────────────
+    quiver(x, y, u, v)            plot arrows at (x,y) with direction (u,v)
+    quiver(x, y, u, v, 'f.svg')  save vector field to SVG/PNG
+
+    x, y, u, v must all have the same number of elements.  M×N matrices
+    (e.g. from meshgrid) are accepted and flattened automatically.
+
+    ASCII tier:  60×20 character grid; arrow direction mapped to one of eight
+                 Unicode arrows: → ↗ ↑ ↖ ← ↙ ↓ ↘
+    File tier:   shaft drawn as PathElement; arrowhead as a filled Polygon
+                 triangle at the tip.  Arrow length is normalised so the
+                 longest arrow fills 80% of the minimum grid spacing.
+
+    % Rotational flow  u = -y,  v = x
+    [X, Y] = meshgrid(-2:1:2, -2:1:2);
+    quiver(X, Y, -Y, X, 'flow.svg')
+
+── Text annotations ─────────────────────────────────────────────────────────
+    text(x, y, 'label')   place a text label at data coordinate (x, y)
+
+    Annotations accumulate in FigureState and are flushed (drawn + cleared)
+    with the next quiver or savefig call, just like title/xlabel.
+
+    ASCII tier:  annotations are printed below the chart as
+                 (x, y): label  lines.
+    File tier:   rendered as 12 pt sans-serif text via plotters Text element.
+
+    text(0.0, 0.0, 'origin')
+    text(2.0, 2.0, 'tip')
+    quiver(x, y, u, v, 'annotated.svg')
+
 ── Style strings ────────────────────────────────────────────────────────────
     An optional string argument (before the file path) controls color,
     marker, and line style for plot, scatter, fill, and area.
@@ -3710,6 +3744,16 @@ Append a file path as the last string argument to save instead of print:
     theta = linspace(0, 2*pi, 360);
     polar(theta, abs(cos(2*theta)), 'rose.svg')
 
+    % Rotational vector field
+    [X, Y] = meshgrid(-2:1:2, -2:1:2);
+    title('Rotational flow')
+    quiver(X, Y, -Y, X, 'flow.svg')
+
+    % Vector field with text annotations
+    text(0.0, 0.0, 'origin')
+    text(2.0, 2.0, 'tip')
+    quiver([0 1 2], [0 1 2], [1 1 1], [1 1 1], 'annotated.svg')
+
     % Style strings subplot
     xs = linspace(0, 2*pi, 80);
     s  = sin(xs);
@@ -3729,6 +3773,8 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/surf_demo/mesh_demo.calc      (mesh — sine wave wireframe + saddle)
           examples/subplot_demo/subplot_demo.calc  (2×2 subplot grid)
           examples/hold_demo/hold_demo.calc        (hold on/off overlay)
-          examples/fill_area_polar_demo/fill_area_polar_demo.calc  (Phase 30e demo)"
+          examples/fill_area_polar_demo/fill_area_polar_demo.calc  (fill/area/polar demo)
+          examples/quiver_demo/quiver_demo.calc    (quiver — rotational flow field)
+          examples/annotations/annotations.calc   (text annotations with quiver)"
     );
 }
