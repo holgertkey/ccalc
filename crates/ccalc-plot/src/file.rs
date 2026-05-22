@@ -1009,8 +1009,16 @@ where
 
     // Axis ranges span both origins and scaled tips.
     let scale = arrow_scale(xs, ys, us, vs);
-    let tip_x: Vec<f64> = xs.iter().zip(us.iter()).map(|(&x, &u)| x + u * scale).collect();
-    let tip_y: Vec<f64> = ys.iter().zip(vs.iter()).map(|(&y, &v)| y + v * scale).collect();
+    let tip_x: Vec<f64> = xs
+        .iter()
+        .zip(us.iter())
+        .map(|(&x, &u)| x + u * scale)
+        .collect();
+    let tip_y: Vec<f64> = ys
+        .iter()
+        .zip(vs.iter())
+        .map(|(&y, &v)| y + v * scale)
+        .collect();
     let all_x: Vec<f64> = xs.iter().copied().chain(tip_x.iter().copied()).collect();
     let all_y: Vec<f64> = ys.iter().copied().chain(tip_y.iter().copied()).collect();
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(&all_x));
@@ -1047,7 +1055,10 @@ where
 
         // Arrow shaft.
         chart
-            .draw_series(std::iter::once(PathElement::new(vec![(x0, y0), (x1, y1)], BLUE)))
+            .draw_series(std::iter::once(PathElement::new(
+                vec![(x0, y0), (x1, y1)],
+                BLUE,
+            )))
             .map_err(|e| e.to_string())?;
 
         // Triangular arrowhead at tip.
@@ -1108,7 +1119,11 @@ fn min_vec_spacing(vals: &[f64]) -> f64 {
         .map(|w| (w[1] - w[0]).abs())
         .filter(|&d| d > 1e-12)
         .fold(f64::INFINITY, f64::min);
-    if min_sp.is_infinite() { 1.0 } else { min_sp.max(1e-6) }
+    if min_sp.is_infinite() {
+        1.0
+    } else {
+        min_sp.max(1e-6)
+    }
 }
 
 /// Draws text annotations onto a 2-D chart using data coordinates.

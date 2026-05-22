@@ -38,7 +38,9 @@ use std::cell::RefCell;
 use ccalc_engine::env::{Env, Value};
 use ccalc_engine::plugin::Plugin;
 
-use dispatch::{extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg, extract_vector};
+use dispatch::{
+    extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg, extract_vector,
+};
 use style::StyleSpec;
 
 // ── PendingSeries / Panel ──────────────────────────────────────────────────
@@ -2952,7 +2954,11 @@ mod tests {
         plugin
             .call(
                 "text",
-                &[Value::Scalar(0.0), Value::Scalar(1.0), Value::Str("label".into())],
+                &[
+                    Value::Scalar(0.0),
+                    Value::Scalar(1.0),
+                    Value::Str("label".into()),
+                ],
                 &env,
             )
             .unwrap();
