@@ -1810,7 +1810,11 @@ fn render_panels_file(panels: &[Panel], path: &str, canvas: (u32, u32)) -> Resul
 }
 
 #[cfg(not(feature = "plot-svg"))]
-fn render_panels_file(_panels: &[Panel], _path: &str, _canvas: (u32, u32)) -> Result<Value, String> {
+fn render_panels_file(
+    _panels: &[Panel],
+    _path: &str,
+    _canvas: (u32, u32),
+) -> Result<Value, String> {
     Err("savefig: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
         .into())
@@ -2451,7 +2455,11 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         plugin
-            .call("figure", &[Value::Scalar(1200.0), Value::Scalar(400.0)], &env)
+            .call(
+                "figure",
+                &[Value::Scalar(1200.0), Value::Scalar(400.0)],
+                &env,
+            )
             .unwrap();
         let size = FIGURE_STATE.with(|f| f.borrow().figure_size);
         assert_eq!(size, Some((1200, 400)));
@@ -3103,15 +3111,32 @@ mod tests {
         let path = ".debug/test_figure_size.svg";
         std::fs::create_dir_all(".debug").ok();
         plugin
-            .call("figure", &[Value::Scalar(1024.0), Value::Scalar(300.0)], &env)
+            .call(
+                "figure",
+                &[Value::Scalar(1024.0), Value::Scalar(300.0)],
+                &env,
+            )
             .unwrap();
         plugin
-            .call("plot", &[f64_vec(&[1.0, 2.0, 3.0]), f64_vec(&[1.0, 4.0, 9.0]),
-                             Value::Str(path.into())], &env)
+            .call(
+                "plot",
+                &[
+                    f64_vec(&[1.0, 2.0, 3.0]),
+                    f64_vec(&[1.0, 4.0, 9.0]),
+                    Value::Str(path.into()),
+                ],
+                &env,
+            )
             .unwrap();
         let content = std::fs::read_to_string(path).unwrap();
-        assert!(content.contains("1024"), "SVG should contain requested width");
-        assert!(content.contains("300"),  "SVG should contain requested height");
+        assert!(
+            content.contains("1024"),
+            "SVG should contain requested width"
+        );
+        assert!(
+            content.contains("300"),
+            "SVG should contain requested height"
+        );
         std::fs::remove_file(path).ok();
     }
 }

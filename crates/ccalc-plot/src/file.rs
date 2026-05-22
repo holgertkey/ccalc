@@ -8,7 +8,6 @@ use plotters::series::LineSeries;
 use crate::FigureState;
 use crate::style::{LinestyleKind, StyleSpec};
 
-
 /// Octave-style colour cycle for multi-series plots.
 const SERIES_COLORS: [RGBColor; 7] = [
     RGBColor(0, 114, 189),  // blue
