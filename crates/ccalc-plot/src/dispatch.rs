@@ -19,6 +19,20 @@ pub fn extract_file_arg(args: &[Value]) -> (Vec<Value>, Option<String>) {
     (args.to_vec(), None)
 }
 
+/// Extracts a flat `Vec<f64>` from any numeric [`Value`].
+///
+/// Accepts `Scalar` (promoted to a one-element vector) and any `Matrix`
+/// regardless of shape (row-major order).  Unlike [`extract_vector`] this
+/// does **not** require a vector layout, so it is suitable for meshgrid-style
+/// 2-D inputs.
+pub fn extract_flat(v: &Value) -> Result<Vec<f64>, String> {
+    match v {
+        Value::Scalar(f) => Ok(vec![*f]),
+        Value::Matrix(m) => Ok(m.iter().copied().collect()),
+        _ => Err("plot: numeric array argument required".into()),
+    }
+}
+
 /// Extracts a flat `Vec<f64>` from a scalar or vector `Value`.
 ///
 /// A `Scalar` is promoted to a one-element vector. A `Matrix` is accepted

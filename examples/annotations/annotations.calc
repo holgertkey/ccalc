@@ -1,0 +1,19 @@
+% annotations.calc — combining quiver() with text() annotations
+%
+% Shows how text() places labels at specific data coordinates.
+% Labels are flushed together with the next quiver or savefig call.
+
+% Simple gradient field: u = 1, v = 1 everywhere
+x = [0, 1, 2];
+y = [0, 1, 2];
+u = [1, 1, 1];
+v = [1, 1, 1];
+
+% Add a text annotation before rendering
+text(0.0, 0.0, "origin");
+text(2.0, 2.0, "tip");
+
+title("Gradient field with annotations");
+xlabel("x");
+ylabel("y");
+quiver(x, y, u, v, "output/annotations.svg");

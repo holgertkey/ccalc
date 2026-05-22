@@ -291,9 +291,9 @@ or overlaid series.
 
 Activates panel `index` (1-based, row-major) in a `rows × cols` grid.
 Once called, ccalc enters *accumulating mode*: all subsequent plot calls
-(`plot`, `scatter`, `bar`, `stem`, `stairs`, `hist`, `fill`, `area`) are
+(`plot`, `scatter`, `bar`, `stem`, `stairs`, `hist`, `fill`, `area`, `quiver`) are
 buffered instead of rendered immediately. Annotations (`title`, `xlabel`, `ylabel`, `xlim`, `ylim`,
-`legend`, `grid`) set after the render call are collected for the current panel
+`legend`, `grid`, `text`) set after the render call are collected for the current panel
 and consumed at commit time.
 
 Calling `subplot` a second time commits the current panel and starts the next one.
@@ -535,6 +535,71 @@ polar(theta, theta / (2*pi), 'spiral.svg')
 
 ---
 
+## Vector field plots
+
+### `quiver(x, y, u, v)` / `quiver(x, y, u, v, 'file')`
+
+Draws a vector field: at each point `(x[i], y[i])` an arrow is drawn in the
+direction `(u[i], v[i])`.
+
+- All four arrays must have the same length (or the same total element count when
+  meshgrid matrices are passed — they are flattened in row-major order).
+- Arrow scale: the longest arrow is normalised to 80 % of the minimum grid spacing,
+  so arrows never overlap adjacent grid cells.
+
+**ASCII tier:** places a Unicode directional arrow character (`→ ↗ ↑ ↖ ← ↙ ↓ ↘`)
+at the grid position of each origin point.
+
+**File tier:** each arrow is drawn as a shaft (`PathElement`) plus a filled
+triangular arrowhead at the tip.
+
+```matlab
+% Simple rotational flow: u = -y, v = x
+[X, Y] = meshgrid(-2:1:2, -2:1:2);
+U = -Y;
+V = X;
+
+% ASCII render
+title('Rotational flow')
+quiver(X, Y, U, V)
+
+% SVG export
+quiver(X, Y, U, V, 'flow.svg')
+```
+
+---
+
+## Text annotations
+
+### `text(x, y, 'str')` / `text(x, y, 'str', 'file')`
+
+Places a text label at the data coordinates `(x, y)`.
+
+Text annotations are stored in `FigureState.annotations` and are flushed
+alongside plot data at the next render call or at `savefig` / `hold('off')`.
+They do **not** trigger an immediate render on their own.
+
+**ASCII tier:** annotations are printed below the chart as
+`(x, y): label` lines.
+
+**File tier:** annotations are drawn as `Text` elements at their data
+coordinates using a 12-pt sans-serif font.
+
+```matlab
+% Annotate a quiver plot
+text(0.0, 0.0, 'origin')
+text(2.0, 2.0, 'tip region')
+quiver(x, y, u, v, 'annotated.svg')
+
+% Annotate any plot
+x = linspace(0, 2*pi, 80);
+text(pi/2, 1.0, 'peak')
+text(3*pi/2, -1.0, 'trough')
+plot(x, sin(x), 'sine.svg')
+```
+
+---
+
 ## File export
 
 Append a file path as the **last** string argument (after the optional style string):
@@ -590,6 +655,7 @@ plot(t, y)       % all annotations applied here, then cleared
 | `grid('off')` | Disable grid | Yes |
 | `colormap('name')` | Set colormap for next `imagesc` / `surf` / `mesh` | Yes |
 | `colorbar()` | Append colour-scale strip (file export only, `imagesc`) | Yes |
+| `text(x, y, 's')` | Add label at data coordinate — flushed with next render | Yes |
 
 Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
 ignore it.

@@ -1,10 +1,11 @@
-//! Plot plugin for ccalc — Phase 30e.
+//! Plot plugin for ccalc — Phase 30f.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
 //! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
-//! `polar`, and annotation functions (`xlabel`, `ylabel`, `zlabel`, `title`,
-//! `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
+//! `polar`, `quiver`, `text`, and annotation functions (`xlabel`, `ylabel`,
+//! `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`,
+//! `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -37,7 +38,7 @@ use std::cell::RefCell;
 use ccalc_engine::env::{Env, Value};
 use ccalc_engine::plugin::Plugin;
 
-use dispatch::{extract_file_arg, extract_matrix, extract_style_and_file_arg, extract_vector};
+use dispatch::{extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg, extract_vector};
 use style::StyleSpec;
 
 // ── PendingSeries / Panel ──────────────────────────────────────────────────
@@ -59,6 +60,8 @@ pub enum PendingSeries {
     Fill(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Area under a curve (polygon closing along y = 0).
     Area(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+    /// Vector field: origin coordinates `(x, y)` and displacement vectors `(u, v)`.
+    Quiver(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>),
 }
 
 /// A committed subplot panel ready for file rendering.
@@ -82,6 +85,8 @@ pub struct Panel {
     pub grid: bool,
     /// Accumulated data series.
     pub series: Vec<PendingSeries>,
+    /// Text annotations placed on this panel.
+    pub annotations: Vec<(f64, f64, String)>,
 }
 
 // ── FigureState ────────────────────────────────────────────────────────────
@@ -125,6 +130,8 @@ pub struct FigureState {
     pub pending_series: Vec<PendingSeries>,
     /// Committed panels waiting for `savefig`.
     pub panels: Vec<Panel>,
+    /// Text annotations accumulated for the current render (flushed at render time).
+    pub annotations: Vec<(f64, f64, String)>,
 }
 
 thread_local! {
@@ -138,7 +145,7 @@ const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
     "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
-    "savefig", "fill", "area", "polar",
+    "savefig", "fill", "area", "polar", "quiver", "text",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -164,6 +171,7 @@ fn commit_current_panel(st: &mut FigureState) {
             ylim: st.ylim.take(),
             grid: std::mem::replace(&mut st.grid, false),
             series: std::mem::take(&mut st.pending_series),
+            annotations: std::mem::take(&mut st.annotations),
         };
         st.panels.push(panel);
     }
@@ -584,6 +592,7 @@ impl Plugin for PlotPlugin {
                                 ylim: st.ylim.take(),
                                 grid: std::mem::replace(&mut st.grid, false),
                                 series: std::mem::take(&mut st.pending_series),
+                                annotations: std::mem::take(&mut st.annotations),
                             })
                         } else {
                             None
@@ -662,6 +671,69 @@ impl Plugin for PlotPlugin {
                     .unzip();
                 let state = FIGURE_STATE.with(|f| f.take());
                 render_line_xy("polar", &px, &py, path.as_deref(), state)
+            }
+
+            // ── quiver ────────────────────────────────────────────────
+            "quiver" => {
+                let (data_args, path) = extract_file_arg(args);
+                if data_args.len() != 4 {
+                    return Err(format!(
+                        "quiver: expected 4 data arguments (x, y, u, v), got {}",
+                        data_args.len()
+                    ));
+                }
+                let x = extract_flat(&data_args[0])
+                    .map_err(|_| "quiver: x must be a numeric array".to_string())?;
+                let y = extract_flat(&data_args[1])
+                    .map_err(|_| "quiver: y must be a numeric array".to_string())?;
+                let u = extract_flat(&data_args[2])
+                    .map_err(|_| "quiver: u must be a numeric array".to_string())?;
+                let v = extract_flat(&data_args[3])
+                    .map_err(|_| "quiver: v must be a numeric array".to_string())?;
+                if x.len() != y.len() || x.len() != u.len() || x.len() != v.len() {
+                    return Err(format!(
+                        "quiver: x, y, u, v must have the same length \
+                         ({}, {}, {}, {})",
+                        x.len(),
+                        y.len(),
+                        u.len(),
+                        v.len()
+                    ));
+                }
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut()
+                            .pending_series
+                            .push(PendingSeries::Quiver(x, y, u, v));
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_quiver(&x, &y, &u, &v, path.as_deref(), state)
+                }
+            }
+
+            // ── text ──────────────────────────────────────────────────
+            "text" => {
+                let (data_args, _path) = extract_file_arg(args);
+                match data_args.as_slice() {
+                    [xval, yval, Value::Str(s) | Value::StringObj(s)] => {
+                        let x = match xval {
+                            Value::Scalar(f) => *f,
+                            _ => return Err("text: x must be a scalar".into()),
+                        };
+                        let y = match yval {
+                            Value::Scalar(f) => *f,
+                            _ => return Err("text: y must be a scalar".into()),
+                        };
+                        let label = s.clone();
+                        FIGURE_STATE.with(|f| {
+                            f.borrow_mut().annotations.push((x, y, label));
+                        });
+                        Ok(Value::Void)
+                    }
+                    _ => Err("text: expected text(x, y, 'string')".into()),
+                }
             }
 
             _ => Err(format!("plot plugin: unknown function '{name}'")),
@@ -1447,6 +1519,142 @@ fn render_area_file(
         .into())
 }
 
+// ── quiver dispatch ────────────────────────────────────────────────────────
+
+fn render_quiver(
+    x: &[f64],
+    y: &[f64],
+    u: &[f64],
+    v: &[f64],
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_quiver_ascii_tier(x, y, u, v, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_quiver_file_tier(x, y, u, v, p, state)
+        }
+        Some(p) => Err(format!("quiver: unknown output target '{p}'")),
+    }
+}
+
+fn render_quiver_ascii_tier(
+    x: &[f64],
+    y: &[f64],
+    u: &[f64],
+    v: &[f64],
+    state: FigureState,
+) -> Result<Value, String> {
+    render_quiver_ascii(x, y, u, v, &state);
+    Ok(Value::Void)
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_quiver_file_tier(
+    x: &[f64],
+    y: &[f64],
+    u: &[f64],
+    v: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_quiver(x, y, u, v, path, state).map_err(|e| format!("quiver: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_quiver_file_tier(
+    _x: &[f64],
+    _y: &[f64],
+    _u: &[f64],
+    _v: &[f64],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("quiver: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+/// ASCII quiver: Unicode directional arrows placed on a character grid.
+fn render_quiver_ascii(xs: &[f64], ys: &[f64], us: &[f64], vs: &[f64], state: &FigureState) {
+    let n = xs.len();
+    if n == 0 {
+        return;
+    }
+    const W: usize = 60;
+    const H: usize = 20;
+
+    let x_min = state
+        .xlim
+        .map(|(lo, _)| lo)
+        .unwrap_or_else(|| xs.iter().copied().fold(f64::INFINITY, f64::min));
+    let x_max = state
+        .xlim
+        .map(|(_, hi)| hi)
+        .unwrap_or_else(|| xs.iter().copied().fold(f64::NEG_INFINITY, f64::max));
+    let y_min = state
+        .ylim
+        .map(|(lo, _)| lo)
+        .unwrap_or_else(|| ys.iter().copied().fold(f64::INFINITY, f64::min));
+    let y_max = state
+        .ylim
+        .map(|(_, hi)| hi)
+        .unwrap_or_else(|| ys.iter().copied().fold(f64::NEG_INFINITY, f64::max));
+
+    let x_span = if (x_max - x_min).abs() < f64::EPSILON {
+        2.0
+    } else {
+        x_max - x_min
+    };
+    let y_span = if (y_max - y_min).abs() < f64::EPSILON {
+        2.0
+    } else {
+        y_max - y_min
+    };
+
+    let mut grid: Vec<Vec<char>> = vec![vec![' '; W]; H];
+
+    for i in 0..n {
+        let col = ((xs[i] - x_min) / x_span * (W - 1) as f64).round() as isize;
+        let row = ((y_max - ys[i]) / y_span * (H - 1) as f64).round() as isize;
+        if col >= 0 && (col as usize) < W && row >= 0 && (row as usize) < H {
+            let angle = vs[i].atan2(us[i]);
+            grid[row as usize][col as usize] = arrow_char(angle);
+        }
+    }
+
+    if let Some(t) = &state.title {
+        println!("{t}");
+    }
+    for row in &grid {
+        println!("|{}|", row.iter().collect::<String>());
+    }
+    if let Some(xl) = &state.xlabel {
+        println!("x: {xl}");
+    }
+    if let Some(yl) = &state.ylabel {
+        println!("y: {yl}");
+    }
+}
+
+/// Maps an angle in radians to one of 8 Unicode directional arrow characters.
+fn arrow_char(angle: f64) -> char {
+    use std::f64::consts::PI;
+    let a = (angle + 2.0 * PI).rem_euclid(2.0 * PI);
+    let octant = ((a + PI / 8.0) / (PI / 4.0)) as usize % 8;
+    match octant {
+        0 => '\u{2192}', // →
+        1 => '\u{2197}', // ↗
+        2 => '\u{2191}', // ↑
+        3 => '\u{2196}', // ↖
+        4 => '\u{2190}', // ←
+        5 => '\u{2199}', // ↙
+        6 => '\u{2193}', // ↓
+        _ => '\u{2198}', // ↘
+    }
+}
+
 // ── 3D dispatch ────────────────────────────────────────────────────────────
 
 fn render_3d(
@@ -1566,7 +1774,13 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
             }
             PendingSeries::Fill(x, y, _style) => ascii::render_fill(x, y, base_state.clone()),
             PendingSeries::Area(x, y, _style) => ascii::render_area(x, y, base_state.clone()),
+            PendingSeries::Quiver(x, y, u, v) => {
+                render_quiver_ascii(x, y, u, v, &base_state);
+            }
         }
+    }
+    for (ax, ay, label) in &panel.annotations {
+        println!("  ({ax:.4}, {ay:.4}): {label}");
     }
     Ok(Value::Void)
 }
@@ -2708,6 +2922,67 @@ mod tests {
         let result = plugin.call("savefig", &[Value::Str("out.svg".into())], &env);
         assert!(result.is_err(), "savefig with no panels should error");
         FIGURE_STATE.with(|f| f.take());
+    }
+
+    // ── Phase 30f: quiver + text ───────────────────────────────────────────
+
+    #[test]
+    fn test_quiver_mismatch_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[0.0, 1.0, 2.0]);
+        let y = f64_vec(&[0.0, 1.0, 2.0]);
+        let u = f64_vec(&[1.0, 0.0]);
+        let v = f64_vec(&[0.0, 1.0, 0.0]);
+        let result = plugin.call("quiver", &[x, y, u, v], &env);
+        assert!(result.is_err(), "length mismatch should produce an error");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("same length"),
+            "error should mention 'same length': {msg}"
+        );
+    }
+
+    #[test]
+    fn test_text_stores_annotation() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call(
+                "text",
+                &[Value::Scalar(0.0), Value::Scalar(1.0), Value::Str("label".into())],
+                &env,
+            )
+            .unwrap();
+        let ann = FIGURE_STATE.with(|f| f.borrow().annotations.clone());
+        assert_eq!(ann.len(), 1, "one annotation should be stored");
+        assert_eq!(ann[0], (0.0, 1.0, "label".to_string()));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_quiver_svg_creates_file() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let x = f64_vec(&[0.0, 1.0, 0.0, 1.0]);
+        let y = f64_vec(&[0.0, 0.0, 1.0, 1.0]);
+        let u = f64_vec(&[1.0, 0.0, -1.0, 0.0]);
+        let v = f64_vec(&[0.0, 1.0, 0.0, -1.0]);
+        let path = ".debug/test_quiver.svg";
+        std::fs::create_dir_all(".debug").ok();
+        let result = plugin.call("quiver", &[x, y, u, v, Value::Str(path.into())], &env);
+        assert!(result.is_ok(), "quiver SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(
+            content.contains("<svg"),
+            "output should be SVG: starts with {}",
+            &content[..50.min(content.len())]
+        );
+        std::fs::remove_file(path).ok();
     }
 
     #[test]

@@ -710,6 +710,12 @@ where
                 all_y.push(0.0);
                 has_zero_baseline = true;
             }
+            PendingSeries::Quiver(x, y, u, v) => {
+                all_x.extend_from_slice(x);
+                all_x.extend(x.iter().zip(u.iter()).map(|(&xi, &ui)| xi + ui));
+                all_y.extend_from_slice(y);
+                all_y.extend(y.iter().zip(v.iter()).map(|(&yi, &vi)| yi + vi));
+            }
         }
     }
 
@@ -892,8 +898,47 @@ where
                     .draw_series(LineSeries::new(outline, &fill_color))
                     .map_err(|e| e.to_string())?;
             }
+            PendingSeries::Quiver(x, y, u, v) => {
+                let scale = arrow_scale(x, y, u, v);
+                let n = x.len();
+                for j in 0..n {
+                    let x0 = x[j];
+                    let y0 = y[j];
+                    let dx = u[j] * scale;
+                    let dy = v[j] * scale;
+                    let x1 = x0 + dx;
+                    let y1 = y0 + dy;
+                    chart
+                        .draw_series(std::iter::once(PathElement::new(
+                            vec![(x0, y0), (x1, y1)],
+                            default_color,
+                        )))
+                        .map_err(|e| e.to_string())?;
+                    let len = (dx * dx + dy * dy).sqrt();
+                    if len > 1e-12 {
+                        let ux = dx / len;
+                        let uy = dy / len;
+                        let head_len = len * 0.3;
+                        let head_w = len * 0.15;
+                        let bx = x1 - ux * head_len;
+                        let by = y1 - uy * head_len;
+                        chart
+                            .draw_series(std::iter::once(Polygon::new(
+                                vec![
+                                    (x1, y1),
+                                    (bx - uy * head_w, by + ux * head_w),
+                                    (bx + uy * head_w, by - ux * head_w),
+                                ],
+                                default_color.filled(),
+                            )))
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
         }
     }
+
+    draw_text_annotations(&mut chart, &panel.annotations)?;
 
     Ok(())
 }
@@ -925,4 +970,172 @@ fn bar_half_width(x: &[f64], x_min: f64, x_max: f64) -> f64 {
     } else {
         ((x_max - x_min).abs() * 0.1).max(0.4)
     }
+}
+
+// ── quiver rendering ───────────────────────────────────────────────────────
+
+/// Writes an SVG or PNG quiver (vector-field) plot to `path`.
+pub(crate) fn render_quiver(
+    xs: &[f64],
+    ys: &[f64],
+    us: &[f64],
+    vs: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_quiver_chart(xs, ys, us, vs, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (WIDTH, HEIGHT)).into_drawing_area();
+        draw_quiver_chart(xs, ys, us, vs, &state, root)
+    } else {
+        Err(format!("quiver: unsupported format '{path}'"))
+    }
+}
+
+fn draw_quiver_chart<DB: DrawingBackend>(
+    xs: &[f64],
+    ys: &[f64],
+    us: &[f64],
+    vs: &[f64],
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    root.fill(&WHITE).map_err(|e| e.to_string())?;
+
+    // Axis ranges span both origins and scaled tips.
+    let scale = arrow_scale(xs, ys, us, vs);
+    let tip_x: Vec<f64> = xs.iter().zip(us.iter()).map(|(&x, &u)| x + u * scale).collect();
+    let tip_y: Vec<f64> = ys.iter().zip(vs.iter()).map(|(&y, &v)| y + v * scale).collect();
+    let all_x: Vec<f64> = xs.iter().copied().chain(tip_x.iter().copied()).collect();
+    let all_y: Vec<f64> = ys.iter().copied().chain(tip_y.iter().copied()).collect();
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(&all_x));
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| range_with_margin(&all_y));
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20))
+        .margin(30)
+        .x_label_area_size(40)
+        .y_label_area_size(50)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .x_desc(xlabel)
+        .y_desc(ylabel)
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    let n = xs.len();
+    for i in 0..n {
+        let x0 = xs[i];
+        let y0 = ys[i];
+        let dx = us[i] * scale;
+        let dy = vs[i] * scale;
+        let x1 = x0 + dx;
+        let y1 = y0 + dy;
+
+        // Arrow shaft.
+        chart
+            .draw_series(std::iter::once(PathElement::new(vec![(x0, y0), (x1, y1)], BLUE)))
+            .map_err(|e| e.to_string())?;
+
+        // Triangular arrowhead at tip.
+        let len = (dx * dx + dy * dy).sqrt();
+        if len > 1e-12 {
+            let ux = dx / len;
+            let uy = dy / len;
+            let head_len = len * 0.3;
+            let head_w = len * 0.15;
+            let bx = x1 - ux * head_len;
+            let by = y1 - uy * head_len;
+            chart
+                .draw_series(std::iter::once(Polygon::new(
+                    vec![
+                        (x1, y1),
+                        (bx - uy * head_w, by + ux * head_w),
+                        (bx + uy * head_w, by - ux * head_w),
+                    ],
+                    BLUE.filled(),
+                )))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    draw_text_annotations(&mut chart, &state.annotations)?;
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Computes the arrow scale factor: 80% of the minimum grid spacing divided
+/// by the maximum arrow magnitude, so the longest arrow fills ~80% of a cell.
+fn arrow_scale(xs: &[f64], ys: &[f64], us: &[f64], vs: &[f64]) -> f64 {
+    let x_sp = min_vec_spacing(xs);
+    let y_sp = min_vec_spacing(ys);
+    let grid_sp = x_sp.min(y_sp);
+    let max_mag = us
+        .iter()
+        .zip(vs.iter())
+        .map(|(&u, &v)| (u * u + v * v).sqrt())
+        .fold(0.0f64, f64::max);
+    if max_mag > 1e-12 {
+        grid_sp * 0.8 / max_mag
+    } else {
+        grid_sp * 0.8
+    }
+}
+
+/// Minimum non-zero gap between adjacent sorted values.
+fn min_vec_spacing(vals: &[f64]) -> f64 {
+    if vals.len() < 2 {
+        return 1.0;
+    }
+    let mut sorted = vals.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Less));
+    let min_sp = sorted
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .filter(|&d| d > 1e-12)
+        .fold(f64::INFINITY, f64::min);
+    if min_sp.is_infinite() { 1.0 } else { min_sp.max(1e-6) }
+}
+
+/// Draws text annotations onto a 2-D chart using data coordinates.
+fn draw_text_annotations<DB: DrawingBackend>(
+    chart: &mut plotters::prelude::ChartContext<
+        '_,
+        DB,
+        plotters::coord::cartesian::Cartesian2d<
+            plotters::coord::types::RangedCoordf64,
+            plotters::coord::types::RangedCoordf64,
+        >,
+    >,
+    annotations: &[(f64, f64, String)],
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    for (ax, ay, label) in annotations {
+        // Text::new requires an owned String so the element has no lifetime
+        // dependency on `annotations` (which avoids a 'static bound from draw_series).
+        chart
+            .draw_series(std::iter::once(Text::new(
+                label.clone(),
+                (*ax, *ay),
+                ("sans-serif", 12),
+            )))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }

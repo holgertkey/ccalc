@@ -1,0 +1,23 @@
+% quiver_demo.calc — vector field visualisation with quiver()
+%
+% Demonstrates quiver() on a simple rotational flow field:
+%   u = -y,  v = x  (counterclockwise rotation)
+
+% Grid points
+[X, Y] = meshgrid(-2:1:2, -2:1:2);
+
+% Velocity components: counterclockwise rotation
+U = -Y;
+V = X;
+
+% ASCII render
+title("Rotational flow field");
+xlabel("x");
+ylabel("y");
+quiver(X, Y, U, V);
+
+% SVG export
+title("Rotational flow field");
+xlabel("x");
+ylabel("y");
+quiver(X, Y, U, V, "output/quiver_demo.svg");
