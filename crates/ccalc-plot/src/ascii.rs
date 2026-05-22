@@ -14,6 +14,16 @@ use crate::FigureState;
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
+/// Returns the textplots canvas size in Braille dots based on terminal dimensions.
+///
+/// textplots encodes 2 dots per terminal column and 4 dots per terminal row, so
+/// `(cols * 2, rows * 2)` fills roughly half the terminal height with the chart.
+fn chart_canvas() -> (u32, u32) {
+    let cols = crate::term_cols();
+    let rows = crate::term_rows();
+    ((cols * 2) as u32, ((rows * 2).clamp(20, 120)) as u32)
+}
+
 fn chart_x_bounds(x: &[f64], state: &FigureState) -> (f32, f32) {
     state
         .xlim
@@ -31,8 +41,9 @@ fn print_header(state: &FigureState) {
 pub fn render_line(x: &[f64], y: &[f64], state: FigureState) {
     let data = to_f32_pairs(x, y);
     let (x_min, x_max) = chart_x_bounds(x, &state);
+    let (cw, ch) = chart_canvas();
     print_header(&state);
-    Chart::new(100, 30, x_min, x_max)
+    Chart::new(cw, ch, x_min, x_max)
         .lineplot(&Shape::Lines(&data))
         .display();
     print_labels(&state);
@@ -42,8 +53,9 @@ pub fn render_line(x: &[f64], y: &[f64], state: FigureState) {
 pub fn render_scatter(x: &[f64], y: &[f64], state: FigureState) {
     let data = to_f32_pairs(x, y);
     let (x_min, x_max) = chart_x_bounds(x, &state);
+    let (cw, ch) = chart_canvas();
     print_header(&state);
-    Chart::new(100, 30, x_min, x_max)
+    Chart::new(cw, ch, x_min, x_max)
         .lineplot(&Shape::Points(&data))
         .display();
     print_labels(&state);
@@ -53,8 +65,9 @@ pub fn render_scatter(x: &[f64], y: &[f64], state: FigureState) {
 pub fn render_bar(x: &[f64], y: &[f64], state: FigureState) {
     let data = to_f32_pairs(x, y);
     let (x_min, x_max) = chart_x_bounds(x, &state);
+    let (cw, ch) = chart_canvas();
     print_header(&state);
-    Chart::new(100, 30, x_min, x_max)
+    Chart::new(cw, ch, x_min, x_max)
         .lineplot(&Shape::Bars(&data))
         .display();
     print_labels(&state);
@@ -64,10 +77,11 @@ pub fn render_bar(x: &[f64], y: &[f64], state: FigureState) {
 pub fn render_stem(x: &[f64], y: &[f64], state: FigureState) {
     let data = to_f32_pairs(x, y);
     let (x_min, x_max) = chart_x_bounds(x, &state);
+    let (cw, ch) = chart_canvas();
     print_header(&state);
     // textplots has no native stem shape — use Bars (filled from baseline) as
     // the closest ASCII approximation; file export produces proper thin stems.
-    Chart::new(100, 30, x_min, x_max)
+    Chart::new(cw, ch, x_min, x_max)
         .lineplot(&Shape::Bars(&data))
         .display();
     print_labels(&state);
@@ -86,8 +100,8 @@ pub fn render_fill(x: &[f64], y: &[f64], state: FigureState) {
     let y_min = y.iter().copied().fold(f64::INFINITY, f64::min) as f32;
     let y_max = y.iter().copied().fold(f64::NEG_INFINITY, f64::max) as f32;
     print_header(&state);
-    let cols: usize = 60;
-    let rows: usize = 15;
+    let cols: usize = crate::term_cols().saturating_sub(2).max(10);
+    let rows: usize = (crate::term_rows() / 2).max(5);
     let col_step = (x_max - x_min) / cols as f32;
     let row_step = if (y_max - y_min).abs() > f32::EPSILON {
         (y_max - y_min) / rows as f32

@@ -148,8 +148,8 @@ pub fn render_contour_ascii(
     state: &FigureState,
 ) {
     const DENSITY: &[char] = &[' ', '.', ':', '-', '=', '+', '*', '#'];
-    const CHART_W: usize = 80;
-    const CHART_H: usize = 24;
+    let chart_w: usize = crate::term_cols();
+    let chart_h: usize = crate::term_rows();
 
     if nrows == 0 || ncols == 0 {
         return;
@@ -161,12 +161,12 @@ pub fn render_contour_ascii(
 
     let n_chars = DENSITY.len();
 
-    for row in (0..CHART_H).rev() {
-        // Sample row index in Z (row 0 = bottom, CHART_H-1 = top).
-        let r = (row * nrows / CHART_H).min(nrows - 1);
-        let line: String = (0..CHART_W)
+    for row in (0..chart_h).rev() {
+        // Sample row index in Z (row 0 = bottom, chart_h-1 = top).
+        let r = (row * nrows / chart_h).min(nrows - 1);
+        let line: String = (0..chart_w)
             .map(|col| {
-                let c = (col * ncols / CHART_W).min(ncols - 1);
+                let c = (col * ncols / chart_w).min(ncols - 1);
                 let v = z[r * ncols + c];
                 // band ∈ [0, levels.len()]
                 let band = levels.iter().filter(|&&lev| v >= lev).count();

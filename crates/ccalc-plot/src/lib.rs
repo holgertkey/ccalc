@@ -150,6 +150,24 @@ impl FigureState {
     }
 }
 
+// ── Terminal size helpers ───────────────────────────────────────────────────
+
+/// Returns the terminal width in columns, read from `$COLUMNS` (default 80).
+pub(crate) fn term_cols() -> usize {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(80)
+}
+
+/// Returns the terminal height in rows, read from `$LINES` (default 24).
+pub(crate) fn term_rows() -> usize {
+    std::env::var("LINES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(24)
+}
+
 thread_local! {
     static FIGURE_STATE: RefCell<FigureState> =
         RefCell::new(FigureState::default());
@@ -1236,12 +1254,7 @@ fn compute_histogram_edges(vals: &[f64], edges: &[f64]) -> (Vec<usize>, Vec<f64>
 /// Prints a character-art histogram to stdout (no feature flag required).
 fn render_hist_ascii(counts: &[usize], edges: &[f64], state: &FigureState) {
     let n_bins = counts.len();
-    let bar_cols: usize = std::env::var("COLUMNS")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(80)
-        .saturating_sub(26)
-        .max(10);
+    let bar_cols: usize = term_cols().saturating_sub(26).max(10);
     let max_count = counts.iter().copied().max().unwrap_or(1).max(1);
     if let Some(t) = &state.title {
         println!("{t}");
@@ -1593,8 +1606,8 @@ fn render_quiver_ascii(xs: &[f64], ys: &[f64], us: &[f64], vs: &[f64], state: &F
     if n == 0 {
         return;
     }
-    const W: usize = 60;
-    const H: usize = 20;
+    let w = term_cols().saturating_sub(4).max(20);
+    let h = (term_rows() / 2).max(10);
 
     let x_min = state
         .xlim
@@ -1624,12 +1637,12 @@ fn render_quiver_ascii(xs: &[f64], ys: &[f64], us: &[f64], vs: &[f64], state: &F
         y_max - y_min
     };
 
-    let mut grid: Vec<Vec<char>> = vec![vec![' '; W]; H];
+    let mut grid: Vec<Vec<char>> = vec![vec![' '; w]; h];
 
     for i in 0..n {
-        let col = ((xs[i] - x_min) / x_span * (W - 1) as f64).round() as isize;
-        let row = ((y_max - ys[i]) / y_span * (H - 1) as f64).round() as isize;
-        if col >= 0 && (col as usize) < W && row >= 0 && (row as usize) < H {
+        let col = ((xs[i] - x_min) / x_span * (w - 1) as f64).round() as isize;
+        let row = ((y_max - ys[i]) / y_span * (h - 1) as f64).round() as isize;
+        if col >= 0 && (col as usize) < w && row >= 0 && (row as usize) < h {
             let angle = vs[i].atan2(us[i]);
             grid[row as usize][col as usize] = arrow_char(angle);
         }
@@ -1930,6 +1943,29 @@ mod tests {
     use ndarray::Array2;
 
     use super::*;
+
+    // ── term_cols / term_rows ─────────────────────────────────────────
+
+    #[test]
+    fn test_term_cols_default() {
+        // Without $COLUMNS set, must return the 80-column fallback.
+        unsafe { std::env::remove_var("COLUMNS") };
+        assert_eq!(term_cols(), 80);
+    }
+
+    #[test]
+    fn test_term_rows_default() {
+        unsafe { std::env::remove_var("LINES") };
+        assert_eq!(term_rows(), 24);
+    }
+
+    #[test]
+    fn test_term_cols_env_override() {
+        unsafe { std::env::set_var("COLUMNS", "132") };
+        let cols = term_cols();
+        unsafe { std::env::remove_var("COLUMNS") };
+        assert_eq!(cols, 132);
+    }
 
     fn f64_vec(vals: &[f64]) -> Value {
         Value::Matrix(Array2::from_shape_vec((1, vals.len()), vals.to_vec()).unwrap())

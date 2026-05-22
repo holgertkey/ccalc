@@ -30,7 +30,7 @@ pub fn render_surf_ascii(
     ncols: usize,
     state: &FigureState,
 ) {
-    const CHART_HEIGHT: usize = 20;
+    let chart_height: usize = (crate::term_rows() / 2).max(10);
 
     if nrows == 0 || ncols == 0 {
         return;
@@ -53,9 +53,9 @@ pub fn render_surf_ascii(
         println!("{t}");
     }
 
-    // Print character grid from top (row CHART_HEIGHT-1 = highest Z) down.
-    for row in (0..CHART_HEIGHT).rev() {
-        let threshold = z_min + z_range * (row as f64 / CHART_HEIGHT as f64);
+    // Print character grid from top (row chart_height-1 = highest Z) down.
+    for row in (0..chart_height).rev() {
+        let threshold = z_min + z_range * (row as f64 / chart_height as f64);
         let line: String = col_max
             .iter()
             .map(|&v| if v >= threshold { '#' } else { ' ' })
