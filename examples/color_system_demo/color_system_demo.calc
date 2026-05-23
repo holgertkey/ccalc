@@ -1,0 +1,182 @@
+% color_system_demo.calc — Phase 30.5: Unified color system
+%
+% Demonstrates all three sub-phases of the unified color system:
+%   30.5a: colormap(M)      — custom N×3 matrix colormap for imagesc
+%   30.5b: Extended colors  — full names, hex #RRGGBB, 1×3 RGB matrix, 'color' named arg
+%   30.5c: Styled series    — Option<StyleSpec> for bar / stem / hist / quiver
+%
+% Requires the plot-svg feature flag at build time:
+%   cargo build --release --features plot-svg
+%   ccalc examples/color_system_demo/color_system_demo.calc
+%
+% Output files are written to examples/color_system_demo/output/
+
+out = 'examples/color_system_demo/output/';
+
+% ── Phase 30.5a: custom colormap from N×3 matrix ──────────────────────────────
+
+fprintf('=== Phase 30.5a: colormap(M) — custom N×3 matrix colormaps ===\n\n');
+
+% Build a simple gradient matrix
+N = 40;
+Z = reshape(1:N*N, N, N);
+
+% 2-stop blue → red
+fprintf('  2-stop blue->red          -> %scmap_blue_red.svg\n', out)
+colormap([0 0 1; 1 0 0])
+title('Custom colormap: blue to red')
+imagesc(Z, strcat(out, 'cmap_blue_red.svg'))
+
+% 3-stop blue → yellow → red
+fprintf('  3-stop blue->yellow->red  -> %scmap_byr.svg\n', out)
+colormap([0 0 1; 1 1 0; 1 0 0])
+colorbar()
+title('Custom colormap: blue-yellow-red')
+imagesc(Z, strcat(out, 'cmap_byr.svg'))
+
+% 4-stop cool ocean-to-fire gradient
+fprintf('  4-stop ocean-fire gradient -> %scmap_ocean_fire.svg\n', out)
+colormap([0.0 0.0 0.4; 0.0 0.5 0.8; 1.0 0.6 0.1; 0.9 0.1 0.0])
+colorbar()
+title('Custom colormap: ocean to fire')
+imagesc(Z, strcat(out, 'cmap_ocean_fire.svg'))
+
+% ── Phase 30.5b: full color names in style strings ────────────────────────────
+
+fprintf('\n=== Phase 30.5b: full color names, hex, RGB matrix ===\n\n');
+
+x = linspace(0, 2*pi, 80);
+s = sin(x);
+c = cos(x);
+
+% --- 2a. Full color names ---
+fprintf('  Full color names subplot   -> %sfull_color_names.svg\n', out)
+
+subplot(3, 4, 1);  title('red');       plot(x, s, 'red');
+subplot(3, 4, 2);  title('green');     plot(x, s, 'green');
+subplot(3, 4, 3);  title('blue');      plot(x, s, 'blue');
+subplot(3, 4, 4);  title('cyan');      plot(x, s, 'cyan');
+subplot(3, 4, 5);  title('magenta');   plot(x, s, 'magenta');
+subplot(3, 4, 6);  title('yellow');    plot(x, s, 'yellow');
+subplot(3, 4, 7);  title('black');     plot(x, s, 'black');
+subplot(3, 4, 8);  title('white');     plot(x, s, 'white');
+subplot(3, 4, 9);  title('orange');    plot(x, s, 'orange');
+subplot(3, 4, 10); title('purple');    plot(x, s, 'purple');
+subplot(3, 4, 11); title('gray');      plot(x, s, 'gray');
+subplot(3, 4, 12); title('grey');      plot(x, s, 'grey');
+savefig(strcat(out, 'full_color_names.svg'))
+
+% --- 2b. Hex colors ---
+fprintf('  Hex color subplot          -> %shex_colors.svg\n', out)
+
+subplot(2, 3, 1); title('#FF4400 ember');    plot(x, s, '#FF4400');
+subplot(2, 3, 2); title('#1A6ECC blue');     plot(x, s, '#1A6ECC');
+subplot(2, 3, 3); title('#2CA02C green');    plot(x, s, '#2CA02C');
+subplot(2, 3, 4); title('#D62728 red');      plot(x, s, '#D62728');
+subplot(2, 3, 5); title('#9467BD purple');   plot(x, s, '#9467BD');
+subplot(2, 3, 6); title('#8C564B brown');    plot(x, s, '#8C564B');
+savefig(strcat(out, 'hex_colors.svg'))
+
+% --- 2c. 1×3 RGB matrix as style argument ---
+fprintf('  RGB matrix style subplot   -> %srgb_matrix.svg\n', out)
+
+subplot(2, 3, 1); title('[1 0.27 0]');  plot(x, s, [1.0 0.27 0.0]);
+subplot(2, 3, 2); title('[0.2 0.6 1]'); plot(x, s, [0.2 0.6  1.0]);
+subplot(2, 3, 3); title('[0.5 0 0.5]'); plot(x, s, [0.5 0.0  0.5]);
+subplot(2, 3, 4); title('[0 0.7 0.3]'); plot(x, s, [0.0 0.7  0.3]);
+subplot(2, 3, 5); title('[0.8 0.8 0]'); plot(x, s, [0.8 0.8  0.0]);
+subplot(2, 3, 6); title('[0.4 0.4 0.4]'); plot(x, s, [0.4 0.4 0.4]);
+savefig(strcat(out, 'rgb_matrix.svg'))
+
+% ASCII demo — full names and hex (monochrome, but parse without error)
+fprintf('\n  ASCII (monochrome — color parsed but ignored):\n')
+plot(x, sin(x), 'orange')
+
+% ── Phase 30.5c: 'color' named argument for bar / stem / hist / quiver ────────
+
+fprintf('\n=== Phase 30.5c: ''color'' named arg for bar/stem/hist/quiver ===\n\n');
+
+% --- 3a. Colored bar charts ---
+fprintf('  Colored bar charts         -> %scolored_bars.svg\n', out)
+
+v = [3 1 4 1 5 9 2 6];
+x_bar = 1:numel(v);
+
+subplot(2, 3, 1); title('red bar');    bar(x_bar, v, 'color', 'red');
+subplot(2, 3, 2); title('orange bar'); bar(x_bar, v, 'color', 'orange');
+subplot(2, 3, 3); title('purple bar'); bar(x_bar, v, 'color', 'purple');
+subplot(2, 3, 4); title('hex bar');    bar(x_bar, v, 'color', '#2CA02C');
+subplot(2, 3, 5); title('RGB bar');    bar(x_bar, v, 'color', [0.2 0.6 1.0]);
+subplot(2, 3, 6); title('gray bar');   bar(x_bar, v, 'color', 'gray');
+savefig(strcat(out, 'colored_bars.svg'))
+
+% ASCII bar
+fprintf('  bar (ASCII):\n')
+bar(x_bar, v, 'color', 'red')
+
+% --- 3b. Colored stem plots ---
+fprintf('\n  Colored stem plots         -> %scolored_stems.svg\n', out)
+
+xs = linspace(0, 2*pi, 20);
+
+subplot(2, 2, 1); title('orange stems');   stem(xs, sin(xs), 'color', 'orange');
+subplot(2, 2, 2); title('purple stems');   stem(xs, cos(xs), 'color', 'purple');
+subplot(2, 2, 3); title('#1A6ECC stems');  stem(xs, sin(xs), 'color', '#1A6ECC');
+subplot(2, 2, 4); title('RGB stems');      stem(xs, cos(xs), 'color', [0.8 0.2 0.1]);
+savefig(strcat(out, 'colored_stems.svg'))
+
+% ASCII stem
+fprintf('  stem (ASCII):\n')
+stem(xs, sin(xs), 'color', 'orange')
+
+% --- 3c. Colored histograms ---
+fprintf('\n  Colored histograms         -> %scolored_hist.svg\n', out)
+
+subplot(2, 2, 1); title('orange hist');  hist(randn(1, 300), 20, 'color', 'orange');
+subplot(2, 2, 2); title('purple hist');  hist(randn(1, 300), 20, 'color', 'purple');
+subplot(2, 2, 3); title('hex hist');     hist(randn(1, 300), 20, 'color', '#336699');
+subplot(2, 2, 4); title('RGB hist');     hist(randn(1, 300), 20, 'color', [0.2 0.8 0.4]);
+savefig(strcat(out, 'colored_hist.svg'))
+
+% ASCII hist
+fprintf('  hist (ASCII):\n')
+hist(randn(1, 200), 15, 'color', 'purple')
+
+% --- 3d. Colored quiver plots ---
+fprintf('\n  Colored quiver plots       -> %scolored_quiver.svg\n', out)
+
+[X, Y] = meshgrid(-2:1:2, -2:1:2);
+U = -Y;
+V =  X;
+
+subplot(2, 2, 1); title('blue quiver');   quiver(X, Y, U, V, 'color', 'blue');
+subplot(2, 2, 2); title('orange quiver'); quiver(X, Y, U, V, 'color', 'orange');
+subplot(2, 2, 3); title('hex quiver');    quiver(X, Y, U, V, 'color', '#2CA02C');
+subplot(2, 2, 4); title('RGB quiver');    quiver(X, Y, U, V, 'color', [0.8 0.1 0.5]);
+savefig(strcat(out, 'colored_quiver.svg'))
+
+% ASCII quiver
+fprintf('  quiver (ASCII):\n')
+title('Rotational flow — orange arrows')
+quiver(X, Y, U, V, 'color', 'orange')
+
+% ── Full showcase: all color forms in one subplot ─────────────────────────────
+
+fprintf('\n=== Showcase: all color specification forms in one figure ===\n\n')
+fprintf('  Showcase subplot           -> %scolor_showcase.svg\n', out)
+
+x2 = linspace(0, 2*pi, 60);
+sy = sin(x2);
+
+subplot(3, 3, 1); title("'r' code");        plot(x2, sy, 'r--');
+subplot(3, 3, 2); title("'orange' name");   plot(x2, sy, 'orange');
+subplot(3, 3, 3); title("'purple' name");   plot(x2, sy, 'purple');
+subplot(3, 3, 4); title("'#FF4400' hex");   plot(x2, sy, '#FF4400');
+subplot(3, 3, 5); title("'#1A6ECC' hex");   plot(x2, sy, '#1A6ECC');
+subplot(3, 3, 6); title("[0.8 0.2 0.1] RGB"); plot(x2, sy, [0.8 0.2 0.1]);
+subplot(3, 3, 7); title("bar + 'color'");   bar(1:8, abs(sy(1:8))*5, 'color', 'orange');
+subplot(3, 3, 8); title("stem + 'color'");  stem(1:8, sy(1:8), 'color', 'purple');
+subplot(3, 3, 9); title("hist + 'color'");  hist(randn(1,200), 10, 'color', '#336699');
+savefig(strcat(out, 'color_showcase.svg'))
+
+fprintf('\nDone. SVG files written to %s\n', out)

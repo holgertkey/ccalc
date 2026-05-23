@@ -848,6 +848,9 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/contour_demo/contour_demo.calc` — `contour` and `contourf` on Gaussian bell + saddle
 - `examples/subplot_demo/subplot_demo.calc` — 2×2 grid: sin, cos, bar, hist (SVG export)
 - `examples/hold_demo/hold_demo.calc` — overlaid sin and cos series using `hold on/off`
+- `examples/fill_area_polar_demo/fill_area_polar_demo.calc` — `fill`, `area`, `polar`, style strings
+- `examples/quiver_demo/quiver_demo.calc` — vector field with Unicode arrow grid
+- `examples/color_system_demo/color_system_demo.calc` — Phase 30.5 unified color system: custom colormaps, full names, hex, RGB matrix, `'color'` named arg for bar/stem/hist/quiver
 
 ---
 
