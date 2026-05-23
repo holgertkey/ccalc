@@ -345,7 +345,7 @@ impl Plugin for PlotPlugin {
 
             // ── Histogram ──────────────────────────────────────────────
             "hist" => {
-                let (data_args, path) = extract_file_arg(args);
+                let (data_args, _style, path) = extract_style_and_file_arg(args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (counts, edges) = parse_and_compute_hist(&data_args)?;
                     FIGURE_STATE.with(|f| {
@@ -2506,6 +2506,59 @@ mod tests {
         let cb = FIGURE_STATE.with(|f| f.borrow().colorbar);
         assert!(cb, "colorbar should set FigureState.colorbar = true");
         FIGURE_STATE.with(|f| f.take());
+    }
+
+    // ── 30.5b: extended style strings ─────────────────────────────────────
+
+    #[test]
+    fn test_style_rgb_matrix_dispatch() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
+        let x = f64_vec(&[1.0, 2.0]);
+        let y = f64_vec(&[1.0, 2.0]);
+        let m = Value::Matrix(Array2::from_shape_vec((1, 3), vec![1.0, 0.0, 0.0]).unwrap());
+        plugin.call("plot", &[x, y, m], &env).unwrap();
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1, "should have one pending series");
+        if let PendingSeries::Line(_, _, style) = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(255, 0, 0))
+            );
+        } else {
+            panic!("expected PendingSeries::Line");
+        }
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_style_color_named_arg_bar() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let v = f64_vec(&[1.0, 2.0, 3.0]);
+        let result = plugin.call(
+            "bar",
+            &[v, Value::Str("color".into()), Value::Str("blue".into())],
+            &env,
+        );
+        assert!(result.is_ok(), "bar with 'color' named arg should succeed: {result:?}");
+    }
+
+    #[test]
+    fn test_style_color_named_arg_hex() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let v = f64_vec(&[1.0, 2.0, 3.0]);
+        let result = plugin.call(
+            "bar",
+            &[v, Value::Str("color".into()), Value::Str("#FF4400".into())],
+            &env,
+        );
+        assert!(result.is_ok(), "bar with hex color should succeed: {result:?}");
     }
 
     #[test]

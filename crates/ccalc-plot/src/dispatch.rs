@@ -2,7 +2,7 @@
 
 use ccalc_engine::env::Value;
 
-use crate::style::{StyleSpec, looks_like_style_str, parse_style_str};
+use crate::style::{StyleColor, StyleSpec, looks_like_style_str, parse_color_token, parse_style_str};
 
 /// Splits off a trailing file-path argument from `args`.
 ///
@@ -74,17 +74,66 @@ pub fn extract_matrix(v: &Value) -> Result<(Vec<f64>, usize, usize), String> {
     }
 }
 
-/// Splits off an optional trailing style string and/or file-path argument from `args`.
+/// Splits off an optional trailing style and/or file-path argument from `args`.
 #[allow(clippy::type_complexity)]
 ///
-/// Calls [`extract_file_arg`] first to separate any path, then checks whether the
-/// last remaining argument looks like a MATLAB-style format string (e.g. `"r--"`,
-/// `"b."`).  Returns `(data_args, style, path)`.
+/// Processing order (first match wins):
+/// 1. Trailing `'color', <value>` named-argument pair.
+/// 2. Trailing 1×3 RGB matrix (values in `[0, 1]`).
+/// 3. Trailing MATLAB-style format string (`"r--"`, `"red"`, `"#FF4400"`, …).
+/// 4. Trailing file path (`.svg`, `.png`, or `"ascii"`).
+///
+/// Returns `(data_args, style, path)`.
 pub fn extract_style_and_file_arg(
     args: &[Value],
 ) -> Result<(Vec<Value>, Option<StyleSpec>, Option<String>), String> {
     let (mut data_args, path) = extract_file_arg(args);
 
+    // ── 'color', <value> named-argument pair ─────────────────────────────
+    let len = data_args.len();
+    if len >= 2 {
+        if let Some(key) = as_str(&data_args[len - 2]) {
+            if key.to_ascii_lowercase() == "color" {
+                let sc = value_to_style_color(&data_args[len - 1])?;
+                data_args.truncate(len - 2);
+                return Ok((
+                    data_args,
+                    Some(StyleSpec { color: Some(sc), ..StyleSpec::default() }),
+                    path,
+                ));
+            }
+        }
+    }
+
+    // ── 1×3 RGB matrix (values must all be in [0, 1]) ────────────────────
+    // Require at least 1 data arg to remain so the data arg is not consumed.
+    let rgb_style = if data_args.len() >= 2 {
+        if let Some(Value::Matrix(m)) = data_args.last() {
+            if m.nrows() == 1
+                && m.ncols() == 3
+                && m.iter().all(|&v| (0.0..=1.0).contains(&v))
+            {
+                let clamp = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+                Some(StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]])))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    if let Some(sc) = rgb_style {
+        data_args.pop();
+        return Ok((
+            data_args,
+            Some(StyleSpec { color: Some(sc), ..StyleSpec::default() }),
+            path,
+        ));
+    }
+
+    // ── MATLAB-style format string ────────────────────────────────────────
     let mut style: Option<StyleSpec> = None;
     if let Some(last) = data_args.last()
         && let Some(s) = as_str(last)
@@ -95,6 +144,19 @@ pub fn extract_style_and_file_arg(
     }
 
     Ok((data_args, style, path))
+}
+
+/// Converts a [`Value`] to a [`StyleColor`] for the `'color'` named argument.
+fn value_to_style_color(v: &Value) -> Result<StyleColor, String> {
+    match v {
+        Value::Str(s) | Value::StringObj(s) => parse_color_token(s)
+            .ok_or_else(|| format!("plot: '{s}' is not a recognised color name or hex code")),
+        Value::Matrix(m) if m.nrows() == 1 && m.ncols() == 3 => {
+            let clamp = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+            Ok(StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]])))
+        }
+        _ => Err("plot: 'color' value must be a color name string or 1×3 matrix".into()),
+    }
 }
 
 fn as_str(v: &Value) -> Option<String> {

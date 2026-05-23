@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0+001] - 2026-05-23
+
+### Added
+
+- **Extended style strings** (`crates/ccalc-plot/src/style.rs`): `parse_style_str`
+  now accepts full color names (`red`, `green`, `blue`, `cyan`, `magenta`,
+  `yellow`, `black`, `white`, `orange`, `purple`, `gray`/`grey`) and `#RRGGBB`
+  hex codes as a standalone color spec.
+- **`parse_color_token(s)`** — new public helper that maps a full name, single
+  letter, or hex string to `StyleColor`; used by both `parse_style_str` and
+  `looks_like_style_str`.
+- **`looks_like_style_str`** updated: returns `true` for full color names and
+  valid 7-character `#RRGGBB` hex codes.
+- **1×3 RGB matrix** style: `plot(x, y, [r g b])` (and all functions routed
+  through `extract_style_and_file_arg`) now accept a 1×3 `Value::Matrix` with
+  all values in `[0, 1]` as the last argument; values are clamped to `u8`.
+  Disambiguation guard: at least one data argument must remain after stripping.
+- **`'color'` named argument**: `bar(v, 'color', 'red')`,
+  `bar(v, 'color', '#FF4400')`, `bar(v, 'color', [r g b])`, and
+  `hist(v, n, 'color', 'purple')` now work. `hist` migrated from
+  `extract_file_arg` to `extract_style_and_file_arg`.
+- 8 new tests: `test_style_full_name_red`, `test_style_full_name_orange`,
+  `test_style_gray_grey_alias`, `test_style_hex_color`,
+  `test_style_hex_bad_format`, `test_style_rgb_matrix_dispatch`,
+  `test_style_color_named_arg_bar`, `test_style_color_named_arg_hex`.
+
 ## [0.41.0] - 2026-05-23
 
 ### Added

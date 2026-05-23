@@ -68,9 +68,47 @@ impl Default for StyleSpec {
     }
 }
 
-/// Returns `true` when every character in `s` is a valid style character.
+/// Tries to parse `token` as a color: single letter, full name, or `#RRGGBB` hex.
+///
+/// Returns `None` for unrecognised tokens.
+pub fn parse_color_token(token: &str) -> Option<StyleColor> {
+    match token.to_ascii_lowercase().as_str() {
+        "r" | "red"     => Some(StyleColor(255,   0,   0)),
+        "g" | "green"   => Some(StyleColor(  0, 128,   0)),
+        "b" | "blue"    => Some(StyleColor(  0,   0, 255)),
+        "c" | "cyan"    => Some(StyleColor(  0, 255, 255)),
+        "m" | "magenta" => Some(StyleColor(255,   0, 255)),
+        "y" | "yellow"  => Some(StyleColor(255, 255,   0)),
+        "k" | "black"   => Some(StyleColor(  0,   0,   0)),
+        "w" | "white"   => Some(StyleColor(255, 255, 255)),
+        "orange"        => Some(StyleColor(255, 165,   0)),
+        "purple"        => Some(StyleColor(128,   0, 128)),
+        "gray" | "grey" => Some(StyleColor(128, 128, 128)),
+        s if s.starts_with('#') && s.len() == 7 => {
+            let r = u8::from_str_radix(&s[1..3], 16).ok()?;
+            let g = u8::from_str_radix(&s[3..5], 16).ok()?;
+            let b = u8::from_str_radix(&s[5..7], 16).ok()?;
+            Some(StyleColor(r, g, b))
+        }
+        _ => None,
+    }
+}
+
+/// Returns `true` when `s` looks like a MATLAB-style format string.
+///
+/// Accepts the classic single-char set (`r`, `g`, `--`, `.`, …), full color
+/// names (`red`, `orange`, …), and hex codes (`#RRGGBB`).
 pub fn looks_like_style_str(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| "rgbcmykw.-:osx+*d^".contains(c))
+    if s.is_empty() {
+        return false;
+    }
+    if s.starts_with('#') {
+        return s.len() == 7;
+    }
+    if parse_color_token(s).is_some() {
+        return true;
+    }
+    s.chars().all(|c| "rgbcmykw.-:osx+*d^".contains(c))
 }
 
 /// Parses a MATLAB-style format string into a [`StyleSpec`].
@@ -96,6 +134,11 @@ pub fn looks_like_style_str(s: &str) -> bool {
 pub fn parse_style_str(s: &str) -> Result<StyleSpec, String> {
     if s.is_empty() {
         return Ok(StyleSpec::default());
+    }
+
+    // Full color name or '#RRGGBB' hex — whole string is just a color.
+    if let Some(sc) = parse_color_token(s) {
+        return Ok(StyleSpec { color: Some(sc), ..StyleSpec::default() });
     }
 
     let mut spec = StyleSpec::default();
@@ -223,5 +266,41 @@ mod tests {
         assert!(!looks_like_style_str(""));
         assert!(!looks_like_style_str("time"));
         assert!(!looks_like_style_str("file.svg"));
+    }
+
+    #[test]
+    fn test_style_full_name_red() {
+        let spec = parse_style_str("red").unwrap();
+        assert_eq!(spec.color, Some(StyleColor(255, 0, 0)));
+        assert_eq!(spec.marker, None);
+        assert_eq!(spec.linestyle, LinestyleKind::Solid);
+    }
+
+    #[test]
+    fn test_style_full_name_orange() {
+        let spec = parse_style_str("orange").unwrap();
+        assert_eq!(spec.color, Some(StyleColor(255, 165, 0)));
+    }
+
+    #[test]
+    fn test_style_gray_grey_alias() {
+        let spec_gray = parse_style_str("gray").unwrap();
+        let spec_grey = parse_style_str("grey").unwrap();
+        assert_eq!(spec_gray.color, spec_grey.color);
+        assert_eq!(spec_gray.color, Some(StyleColor(128, 128, 128)));
+    }
+
+    #[test]
+    fn test_style_hex_color() {
+        let spec = parse_style_str("#1A2B3C").unwrap();
+        assert_eq!(spec.color, Some(StyleColor(0x1A, 0x2B, 0x3C)));
+    }
+
+    #[test]
+    fn test_style_hex_bad_format() {
+        // Too short (6 chars instead of 7) — not a valid hex, falls through to
+        // char-by-char where '#' is an unrecognised character.
+        let result = parse_style_str("#1A2B3");
+        assert!(result.is_err(), "short hex should error");
     }
 }
