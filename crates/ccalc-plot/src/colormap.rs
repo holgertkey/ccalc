@@ -29,6 +29,20 @@ pub fn validate_colormap(name: &str) -> Result<(), String> {
     }
 }
 
+/// A colormap specification: either a built-in named colormap or a custom
+/// N×3 look-up table supplied by the user.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ColormapSpec {
+    /// One of the built-in named colormaps (e.g. `"viridis"`, `"hot"`).
+    ///
+    /// Valid names are listed in [`VALID_COLORMAPS`].
+    Named(String),
+    /// Custom LUT: a vector of `(R, G, B)` triplets (at least two entries).
+    ///
+    /// Component values are in `[0, 255]`; entries are linearly interpolated.
+    Custom(Vec<(u8, u8, u8)>),
+}
+
 /// Maps a normalised value `t ∈ [0, 1]` to an `(R, G, B)` triple.
 ///
 /// Values outside `[0, 1]` are clamped.  Unrecognised names fall back to
@@ -58,6 +72,43 @@ pub fn apply_colormap(t: f64, name: &str) -> (u8, u8, u8) {
             (v, v, v)
         }
         _ => lut_lerp(t, &VIRIDIS),
+    }
+}
+
+/// Maps a normalised value `t ∈ [0, 1]` to an `(R, G, B)` triple using `spec`.
+///
+/// Delegates to [`apply_colormap`] for [`ColormapSpec::Named`] and to the
+/// built-in LUT interpolator for [`ColormapSpec::Custom`].
+///
+/// # Examples
+///
+/// ```
+/// use ccalc_plot::colormap::{apply_colormap_spec, ColormapSpec};
+/// let spec = ColormapSpec::Named("gray".to_string());
+/// assert_eq!(apply_colormap_spec(0.0, &spec), (0, 0, 0));
+/// assert_eq!(apply_colormap_spec(1.0, &spec), (255, 255, 255));
+/// ```
+pub fn apply_colormap_spec(t: f64, spec: &ColormapSpec) -> (u8, u8, u8) {
+    match spec {
+        ColormapSpec::Named(name) => apply_colormap(t, name),
+        ColormapSpec::Custom(lut) => lut_lerp(t, lut),
+    }
+}
+
+/// Validates a [`ColormapSpec`], returning an error string on failure.
+///
+/// Named variants are checked against [`VALID_COLORMAPS`].  Custom variants
+/// require at least two LUT entries.
+pub fn validate_colormap_spec(spec: &ColormapSpec) -> Result<(), String> {
+    match spec {
+        ColormapSpec::Named(name) => validate_colormap(name),
+        ColormapSpec::Custom(lut) => {
+            if lut.len() < 2 {
+                Err("colormap: custom colormap must have at least 2 rows".into())
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 
@@ -282,17 +333,18 @@ where
         return root.present().map_err(|e| e.to_string());
     }
 
-    let cmap = state.colormap.as_deref().unwrap_or("viridis");
+    let default_spec = ColormapSpec::Named("viridis".to_string());
+    let cmap_spec = state.colormap.as_ref().unwrap_or(&default_spec);
     let (z_min, z_max) = data_range(z);
     let range = z_max - z_min;
 
     if state.colorbar {
         let split = (width.saturating_sub(CB_WIDTH)) as i32;
         let (img_area, cb_area) = root.split_horizontally(split);
-        draw_imagesc_cells(&img_area, z, nrows, ncols, state, cmap, z_min, range)?;
-        draw_colorbar(&cb_area, z_min, z_max, cmap)?;
+        draw_imagesc_cells(&img_area, z, nrows, ncols, state, cmap_spec, z_min, range)?;
+        draw_colorbar(&cb_area, z_min, z_max, cmap_spec)?;
     } else {
-        draw_imagesc_cells(&root, z, nrows, ncols, state, cmap, z_min, range)?;
+        draw_imagesc_cells(&root, z, nrows, ncols, state, cmap_spec, z_min, range)?;
     }
 
     root.present().map_err(|e| e.to_string())?;
@@ -307,7 +359,7 @@ fn draw_imagesc_cells<DB: DrawingBackend>(
     nrows: usize,
     ncols: usize,
     state: &FigureState,
-    cmap: &str,
+    spec: &ColormapSpec,
     z_min: f64,
     range: f64,
 ) -> Result<(), String>
@@ -345,7 +397,7 @@ where
             } else {
                 0.5
             };
-            let (rr, gg, bb) = apply_colormap(t, cmap);
+            let (rr, gg, bb) = apply_colormap_spec(t, spec);
             chart
                 .draw_series(std::iter::once(Rectangle::new(
                     [(c as f64, y_lo), ((c + 1) as f64, y_hi)],
@@ -362,7 +414,7 @@ fn draw_colorbar<DB: DrawingBackend>(
     area: &DrawingArea<DB, plotters::coord::Shift>,
     z_min: f64,
     z_max: f64,
-    cmap: &str,
+    spec: &ColormapSpec,
 ) -> Result<(), String>
 where
     DB::ErrorType: std::fmt::Display,
@@ -396,7 +448,7 @@ where
             let t = i as f64 / (n_steps - 1).max(1) as f64;
             let y_lo = z_min + i as f64 * step_h;
             let y_hi = (y_lo + step_h).min(z_max);
-            let (r, g, b) = apply_colormap(t, cmap);
+            let (r, g, b) = apply_colormap_spec(t, spec);
             Rectangle::new([(0.0, y_lo), (1.0, y_hi)], RGBColor(r, g, b).filled())
         }))
         .map_err(|e| e.to_string())?;
@@ -414,6 +466,38 @@ mod tests {
     fn test_apply_colormap_gray_extremes() {
         assert_eq!(apply_colormap(0.0, "gray"), (0, 0, 0));
         assert_eq!(apply_colormap(1.0, "gray"), (255, 255, 255));
+    }
+
+    #[test]
+    fn test_colormap_custom_2pt() {
+        let lut = vec![(0u8, 0, 0), (255u8, 255, 255)];
+        let spec = ColormapSpec::Custom(lut);
+        assert_eq!(apply_colormap_spec(0.0, &spec), (0, 0, 0));
+        assert_eq!(apply_colormap_spec(1.0, &spec), (255, 255, 255));
+    }
+
+    #[test]
+    fn test_colormap_custom_midpt() {
+        let lut = vec![(0u8, 0, 0), (200u8, 100, 50)];
+        let spec = ColormapSpec::Custom(lut);
+        let (r, g, b) = apply_colormap_spec(0.5, &spec);
+        assert_eq!(r, 100);
+        assert_eq!(g, 50);
+        assert_eq!(b, 25);
+    }
+
+    #[test]
+    fn test_colormap_custom_too_short() {
+        let spec = ColormapSpec::Custom(vec![(128u8, 0, 0)]);
+        assert!(validate_colormap_spec(&spec).is_err());
+    }
+
+    #[test]
+    fn test_colormap_spec_named_viridis() {
+        let spec = ColormapSpec::Named("viridis".to_string());
+        assert!(validate_colormap_spec(&spec).is_ok());
+        assert_eq!(apply_colormap_spec(0.0, &spec), apply_colormap(0.0, "viridis"));
+        assert_eq!(apply_colormap_spec(1.0, &spec), apply_colormap(1.0, "viridis"));
     }
 
     #[test]

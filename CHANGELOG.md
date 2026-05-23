@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-05-23
+
+### Added
+
+- **`ColormapSpec` enum** (`crates/ccalc-plot/src/colormap.rs`): unified
+  colormap type replacing bare `Option<String>` in `FigureState`. Two variants:
+  `Named(String)` for the 8 built-in colormaps and `Custom(Vec<(u8,u8,u8)>)`
+  for user-supplied N×3 look-up tables.
+- **`apply_colormap_spec(t, spec)`** — maps `t ∈ [0, 1]` to RGB using the
+  active `ColormapSpec`; delegates to `apply_colormap` for named maps and to
+  `lut_lerp` for custom ones.
+- **`validate_colormap_spec(spec)`** — validates named maps against
+  `VALID_COLORMAPS` and requires ≥ 2 rows for custom LUTs.
+- **`colormap(M)`** dispatch: `colormap` now also accepts a real N×3 matrix
+  (values in `[0, 1]` clamped to `u8`), storing a `ColormapSpec::Custom` LUT.
+  A matrix with ≠ 3 columns returns an error.
+- 6 new tests: `test_colormap_custom_2pt`, `test_colormap_custom_midpt`,
+  `test_colormap_custom_too_short`, `test_colormap_spec_named_viridis`,
+  `test_colormap_matrix_dispatch`, `test_colormap_matrix_wrong_cols`.
+
+### Changed
+
+- `FigureState.colormap` type changed from `Option<String>` to
+  `Option<ColormapSpec>`; all call sites (`colormap.rs`, `contour.rs`,
+  `surface.rs`) migrated to `apply_colormap_spec`. `apply_colormap` retained
+  as a backward-compatible wrapper.
+
 ## [0.40.0+002] - 2026-05-22
 
 ### Added

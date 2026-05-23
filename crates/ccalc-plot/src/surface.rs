@@ -8,7 +8,7 @@ use plotters::series::LineSeries;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::FigureState;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
-use crate::colormap::apply_colormap;
+use crate::colormap::{apply_colormap_spec, ColormapSpec};
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::colormap::data_range;
 
@@ -187,7 +187,8 @@ where
     let (z_lo, z_hi) = state.zlim.unwrap_or((z_min, z_max));
 
     let title = state.title.as_deref().unwrap_or("");
-    let cmap = state.colormap.as_deref().unwrap_or("viridis");
+    let default_spec = ColormapSpec::Named("viridis".to_string());
+    let cmap_spec = state.colormap.as_ref().unwrap_or(&default_spec);
     let z_range = (z_hi - z_lo).max(f64::EPSILON);
 
     // Chart: X = our X, Y (height) = our Z, Z (depth) = our Y.
@@ -207,7 +208,7 @@ where
             .collect();
         let z_avg = z_row_avg(z, r, ncols);
         let t = ((z_avg - z_lo) / z_range).clamp(0.0, 1.0);
-        let (rr, gg, bb) = apply_colormap(t, cmap);
+        let (rr, gg, bb) = apply_colormap_spec(t, cmap_spec);
         chart
             .draw_series(LineSeries::new(points, RGBColor(rr, gg, bb)))
             .map_err(|e| e.to_string())?;
@@ -223,7 +224,7 @@ where
                 .collect();
             let z_avg = z_col_avg(z, c, nrows, ncols);
             let t = ((z_avg - z_lo) / z_range).clamp(0.0, 1.0);
-            let (rr, gg, bb) = apply_colormap(t, cmap);
+            let (rr, gg, bb) = apply_colormap_spec(t, cmap_spec);
             chart
                 .draw_series(LineSeries::new(points, RGBColor(rr, gg, bb)))
                 .map_err(|e| e.to_string())?;

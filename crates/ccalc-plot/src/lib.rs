@@ -38,6 +38,7 @@ use std::cell::RefCell;
 use ccalc_engine::env::{Env, Value};
 use ccalc_engine::plugin::Plugin;
 
+use colormap::ColormapSpec;
 use dispatch::{
     extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg, extract_vector,
 };
@@ -118,8 +119,8 @@ pub struct FigureState {
     pub zlim: Option<(f64, f64)>,
     /// Whether to draw grid lines (file export only; ASCII ignores).
     pub grid: bool,
-    /// Active colormap name for `imagesc` (default `"viridis"` when `None`).
-    pub colormap: Option<String>,
+    /// Active colormap for `imagesc` (default [`ColormapSpec::Named`]`("viridis")` when `None`).
+    pub colormap: Option<ColormapSpec>,
     /// Whether to append a colorbar to the next `imagesc` render.
     pub colorbar: bool,
 
@@ -450,9 +451,33 @@ impl Plugin for PlotPlugin {
 
             // ── Colormap / colorbar setters ────────────────────────────
             "colormap" => {
-                let cmap = require_string("colormap", args)?;
-                colormap::validate_colormap(&cmap)?;
-                FIGURE_STATE.with(|f| f.borrow_mut().colormap = Some(cmap));
+                if args.is_empty() {
+                    return Err("colormap: one argument required".into());
+                }
+                let spec = match &args[0] {
+                    Value::Str(name) | Value::StringObj(name) => {
+                        ColormapSpec::Named(name.clone())
+                    }
+                    Value::Matrix(m) => {
+                        if m.ncols() != 3 {
+                            return Err("colormap: matrix argument must be N×3".into());
+                        }
+                        let lut: Vec<(u8, u8, u8)> = (0..m.nrows())
+                            .map(|r| {
+                                let clamp = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+                                (clamp(m[[r, 0]]), clamp(m[[r, 1]]), clamp(m[[r, 2]]))
+                            })
+                            .collect();
+                        ColormapSpec::Custom(lut)
+                    }
+                    _ => {
+                        return Err(
+                            "colormap: argument must be a name string or N×3 matrix".into()
+                        )
+                    }
+                };
+                colormap::validate_colormap_spec(&spec)?;
+                FIGURE_STATE.with(|f| f.borrow_mut().colormap = Some(spec));
                 Ok(Value::Void)
             }
 
@@ -2468,7 +2493,7 @@ mod tests {
             .call("colormap", &[Value::Str("hot".into())], &env)
             .unwrap();
         let cmap = FIGURE_STATE.with(|f| f.borrow().colormap.clone());
-        assert_eq!(cmap, Some("hot".into()));
+        assert_eq!(cmap, Some(colormap::ColormapSpec::Named("hot".to_string())));
         FIGURE_STATE.with(|f| f.take());
     }
 
@@ -2481,6 +2506,33 @@ mod tests {
         let cb = FIGURE_STATE.with(|f| f.borrow().colorbar);
         assert!(cb, "colorbar should set FigureState.colorbar = true");
         FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_colormap_matrix_dispatch() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let m = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
+        let result = plugin.call("colormap", &[Value::Matrix(m)], &env);
+        assert!(result.is_ok(), "colormap(N×3 matrix) should succeed: {result:?}");
+        let spec = FIGURE_STATE.with(|f| f.borrow().colormap.clone());
+        assert!(
+            matches!(spec, Some(colormap::ColormapSpec::Custom(_))),
+            "should store ColormapSpec::Custom"
+        );
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_colormap_matrix_wrong_cols() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let m = Array2::from_shape_vec((2, 2), vec![1.0, 0.0, 0.0, 1.0]).unwrap();
+        let result = plugin.call("colormap", &[Value::Matrix(m)], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("N×3"), "error should mention N×3: {msg}");
     }
 
     // ── figure() tests ───────────────────────────────────────────────────────

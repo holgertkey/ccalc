@@ -12,7 +12,7 @@ use plotters::series::LineSeries;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::FigureState;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
-use crate::colormap::apply_colormap;
+use crate::colormap::{apply_colormap_spec, ColormapSpec};
 
 // ── Level computation ──────────────────────────────────────────────────────
 
@@ -283,7 +283,8 @@ where
     let title = state.title.as_deref().unwrap_or("");
     let xlabel = state.xlabel.as_deref().unwrap_or("");
     let ylabel = state.ylabel.as_deref().unwrap_or("");
-    let cmap = state.colormap.as_deref().unwrap_or("viridis");
+    let default_spec = ColormapSpec::Named("viridis".to_string());
+    let cmap_spec = state.colormap.as_ref().unwrap_or(&default_spec);
 
     let n_levels = levels.len();
 
@@ -325,7 +326,7 @@ where
                 // band ∈ [0, n_levels]; map to [0, 1] for colormap
                 let band = levels.iter().filter(|&&lev| z_mean >= lev).count();
                 let t = band as f64 / n_levels as f64;
-                let (rr, gg, bb) = apply_colormap(t, cmap);
+                let (rr, gg, bb) = apply_colormap_spec(t, cmap_spec);
 
                 let x0 = x_vals[c];
                 let x1 = x_vals[c + 1];
@@ -349,7 +350,7 @@ where
         } else {
             0.5
         };
-        let (rr, gg, bb) = apply_colormap(t, cmap);
+        let (rr, gg, bb) = apply_colormap_spec(t, cmap_spec);
         let color = RGBColor(rr, gg, bb);
 
         for ((x0, y0), (x1, y1)) in marching_squares(x_vals, y_vals, z, nrows, ncols, level) {
