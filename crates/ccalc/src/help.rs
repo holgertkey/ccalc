@@ -3529,11 +3529,16 @@ Two rendering tiers; both use the same annotation API.
     imagesc(Z, 'f.svg')      save false-colour image to SVG (requires plot-svg)
     imagesc(Z, 'f.png')      save to PNG
     imagesc(Z, 'f.png', W, H) save at custom size W×H pixels
-    colormap('name')         set active colormap (consumed by next imagesc)
+    colormap('name')         set named colormap (consumed by next imagesc)
+    colormap(M)              set custom colormap from N×3 matrix (values in [0,1])
     colorbar()               append colour-scale legend strip (file export only)
 
-    Supported colormaps:  viridis (default)  inferno  magma  plasma
-                          hot  cool  jet  gray
+    Named colormaps:  viridis (default)  inferno  magma  plasma
+                      hot  cool  jet  gray
+
+    Custom colormap: N×3 matrix, each row an RGB control point in [0, 1].
+      colormap([0 0 1; 1 0 0])      % two-stop blue → red
+      colormap([0 0 1; 1 1 0; 1 0 0])  % blue → yellow → red
 
 ── 3D surface plots ─────────────────────────────────────────────────────────
     meshgrid(x, y)            generate coordinate matrices X (M×N) and Y (M×N)
@@ -3601,13 +3606,34 @@ Two rendering tiers; both use the same annotation API.
     text(2.0, 2.0, 'tip')
     quiver(x, y, u, v, 'annotated.svg')
 
-── Style strings ────────────────────────────────────────────────────────────
-    An optional string argument (before the file path) controls color,
-    marker, and line style for plot, scatter, fill, and area.
+── Color specification ───────────────────────────────────────────────────────
+    Five ways to specify a color:
 
-    Colors (single char):
-      'r' red    'g' green    'b' blue    'c' cyan
-      'm' magenta  'y' yellow  'k' black  'w' white
+    1. Single-letter code (MATLAB-compatible):
+         'r' red    'g' green    'b' blue    'c' cyan
+         'm' magenta  'y' yellow  'k' black  'w' white
+
+    2. Full color name (case-insensitive):
+         'red' 'green' 'blue' 'cyan' 'magenta' 'yellow' 'black' 'white'
+         'orange'  'purple'  'gray' / 'grey'
+
+    3. Hex color '#RRGGBB':
+         '#FF4400'   '#1A6ECC'   '#336699'
+
+    4. 1×3 RGB matrix (values in [0, 1]):
+         [1 0 0]        red
+         [0.8 0.2 0.1]  brownish red
+         [0.2 0.6 1.0]  light blue
+
+    5. 'color', value  named argument (bar / stem / hist / quiver):
+         bar(v, 'color', 'red')
+         hist(v, 20, 'color', '#FF8800')
+         quiver(X, Y, U, V, 'color', 'blue')
+         bar(v, 'color', [0.2 0.6 1.0])
+
+── Style strings (plot, scatter, fill, area) ────────────────────────────────
+    An optional string or value argument (before the file path) controls color,
+    marker, and line style.
 
     Line styles:
       '-'   solid (default)    '--'  dashed
@@ -3618,11 +3644,10 @@ Two rendering tiers; both use the same annotation API.
       '*'  star     's'  square    'd'  diamond  '^'  triangle
 
     Combinations — color, marker, and linestyle in any order:
-      'r--'   red dashed line
-      'b.'    blue point markers
-      'g-.'   green dash-dot
+      'r--'   red dashed line       'orange'  full name
+      'b.'    blue point markers    '#FF4400' hex color
+      'g-.'   green dash-dot        [1 0 0]   RGB matrix (all values in [0,1])
       'k:'    black dotted
-      'c-'    cyan solid
 
     Style strings affect SVG/PNG output only; ASCII charts are monochrome.
 
@@ -3762,6 +3787,20 @@ Append a file path as the last string argument to save instead of print:
     subplot(2, 4, 3); plot(xs, s, 'b--');
     subplot(2, 4, 4); plot(xs, s, 'k:');
     savefig('style_demo.svg')
+
+    % Extended colors — full name, hex, RGB matrix
+    plot(xs, sin(xs), 'orange')
+    plot(xs, cos(xs), '#1A6ECC')
+    plot(xs, sin(xs), [0.8 0.2 0.1])
+
+    % 'color' named argument for bar/stem/hist/quiver
+    bar([1 3 2 5 4], 'color', 'purple')
+    stem(xs, sin(xs), 'color', '#FF8800')
+    hist(randn(1,500), 20, 'color', 'gray')
+
+    % Custom colormap
+    colormap([0 0 1; 1 1 0; 1 0 0])
+    imagesc(reshape(1:64, 8, 8), 'custom_cmap.svg')
 
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)

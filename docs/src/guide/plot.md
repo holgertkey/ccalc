@@ -373,10 +373,12 @@ Render a matrix as a heat-map — each cell is coloured according to its value.
   cell, scaled to the canvas. Canvas size comes from `figure(w, h)` (default
   800 × 600 px). Requires `--features plot-svg`.
 
-### `colormap('name')`
+### `colormap('name')` / `colormap(M)`
 
 Set the active colormap for the **next** `imagesc` call (consumed and cleared
 together with other `FigureState` annotations). Case-insensitive.
+
+**Named colormaps:**
 
 | Name | Description |
 |---|---|
@@ -388,6 +390,21 @@ together with other `FigureState` annotations). Case-insensitive.
 | `cool` | Cyan → magenta |
 | `jet` | Classic MATLAB: blue → cyan → green → yellow → red |
 | `gray` | Black → white (monochrome) |
+
+**Custom colormap from matrix:**
+
+Pass an N×3 matrix where each row is an RGB control point with values in [0, 1].
+The colormap is linearly interpolated between control points.
+
+```matlab
+% Two-stop blue → red
+colormap([0 0 1; 1 0 0])
+imagesc(Z, 'heat.svg')
+
+% Three-stop blue → yellow → red
+colormap([0 0 1; 1 1 0; 1 0 0])
+imagesc(Z, 'custom.svg')
+```
 
 ### `colorbar()`
 
@@ -430,17 +447,42 @@ imagesc(Z, 'mandelbrot.svg')
 
 ---
 
-## Style strings
+## Style strings and colors
 
-All 2D plot functions (`plot`, `scatter`, `fill`, `area`) accept an optional
-MATLAB-compatible *style string* as a trailing argument (before the file path).
+### Color specification forms
 
-The string is a short combination of a color code, a marker code, and/or a
-line-style code in any order.
+Five ways to specify a color, accepted by all plot functions that support styling:
+
+| Form | Example | Description |
+|---|---|---|
+| Single-letter code | `'r'`, `'b'` | MATLAB-compatible short codes |
+| Full color name | `'red'`, `'orange'` | Full English names |
+| Hex `#RRGGBB` | `'#FF4400'` | 24-bit hex color |
+| 1×3 RGB matrix | `[1 0.27 0]` | Row vector with values in [0, 1] |
+| `'color'`, value | `'color', 'red'` | Named argument (for bar/stem/hist/quiver) |
+
+**Single-letter codes:**
+
+| Code | Color | Code | Color |
+|---|---|---|---|
+| `r` | red | `c` | cyan |
+| `g` | green | `m` | magenta |
+| `b` | blue | `y` | yellow |
+| `k` | black | `w` | white |
+
+**Additional named colors** (full names only, not single-letter):
+`orange`, `purple`, `gray` / `grey`
+
+### Style strings for `plot`, `scatter`, `fill`, `area`
+
+These functions accept an optional MATLAB-compatible *style string* before the file
+path. The string combines a color code, a marker code, and/or a line-style code in
+any order.
 
 | Code | Meaning |
 |---|---|
-| `r` `g` `b` `c` `m` `y` `k` `w` | Color |
+| `r` `g` `b` `c` `m` `y` `k` `w` | Single-letter color |
+| full name or `#RRGGBB` | Full color name or hex (style string is the entire argument) |
 | `.` `o` `x` `+` `*` `s` `d` `^` | Marker (file export only) |
 | `-` | Solid line (default) |
 | `--` | Dashed line |
@@ -450,8 +492,17 @@ line-style code in any order.
 ```matlab
 x = linspace(0, 2*pi, 80);
 
-% Red dashed line
+% Single-letter code: red dashed line
 plot(x, sin(x), 'r--')
+
+% Full color name
+plot(x, sin(x), 'orange')
+
+% Hex color
+plot(x, cos(x), '#1A6ECC')
+
+% 1×3 RGB matrix (values in [0, 1])
+plot(x, sin(x), [0.8 0.2 0.1])
 
 % Blue scatter with dot markers
 scatter(x, cos(x), 'b.')
@@ -463,8 +514,31 @@ plot(x, sin(x), 'g-', 'wave.svg')
 fill([0, 1, 0.5], [0, 0, 1], 'r', 'tri.svg')
 ```
 
+### Color for `bar`, `stem`, `hist`, `quiver`
+
+These functions do not use a trailing style string (to avoid ambiguity with
+data arguments). Use the `'color'` named argument instead:
+
+```matlab
+% Color name
+bar([1 3 2 5 4], 'color', 'red')
+
+% Hex color
+stem(x, sin(x), 'color', '#FF8800')
+
+% Full name in hist
+hist(randn(1, 500), 20, 'color', 'purple')
+
+% Quiver with named color
+[X, Y] = meshgrid(-2:2, -2:2);
+quiver(X, Y, -Y, X, 'color', 'blue')
+
+% RGB matrix form also works
+bar([1 3 2 5 4], 'color', [0.2 0.6 1.0])
+```
+
 > **Note:** In ASCII (textplots) mode, color and line-style are ignored because
-> the backend is monochrome Braille. Style strings still parse without error.
+> the backend is monochrome Braille. Style specifications still parse without error.
 
 ---
 

@@ -301,6 +301,150 @@ writes four files to `examples/contour_demo/tmp/`.
 
 ---
 
+---
+
+## Phase 30.5 — Unified color system (v0.41.0) ✅
+
+Closes the color gaps: `colormap()` gains custom matrix input; style strings
+gain full color names, hex codes, and RGB matrices; `bar`/`stem`/`hist`/`quiver`
+gain a `'color'` named argument. All plot types now share a consistent two-layer
+color model.
+
+### Phase 30.5a — `ColormapSpec` enum + `colormap(M)` N×3 matrix input (v0.41.0) ✅
+
+**Goal:** `colormap()` accepts a custom N×3 matrix (rows = control points,
+columns = R G B in [0, 1]) in addition to named colormaps.
+
+**New types in `colormap.rs`:**
+
+```rust
+pub enum ColormapSpec {
+    Named(String),               // one of 8 built-in names
+    Custom(Vec<(u8, u8, u8)>),   // user-supplied control points, 0–255
+}
+
+pub fn apply_colormap_spec(t: f64, spec: &ColormapSpec) -> (u8, u8, u8)
+pub fn validate_colormap_spec(spec: &ColormapSpec) -> Result<(), String>
+```
+
+`FigureState.colormap` changed from `Option<String>` → `Option<ColormapSpec>`.
+
+**Engine dispatch (`eval.rs`):**
+
+```matlab
+colormap([0 0 1; 1 0 0])        % two-stop blue → red
+colormap([0 0 1; 1 1 0; 1 0 0]) % three-stop blue → yellow → red
+```
+
+The matrix must be N×3 with values in [0, 1]; a 1-row matrix returns an error
+("custom colormap must have at least 2 rows").
+
+**Tests:** 6 tests — custom 2-point, 3-point, too-short LUT, Named→`apply_colormap`
+parity, matrix dispatch via engine, wrong column count.
+
+---
+
+### Phase 30.5b — Extended style strings: full names, hex, 1×3 RGB matrix (v0.41.0+001) ✅
+
+**Goal:** `plot(x, y, 'red')`, `plot(x, y, '#FF4400')`, and
+`plot(x, y, [1 0.27 0])` all work. Same extensions reach `bar`, `stem`,
+`scatter`, `fill`, `area`.
+
+**`parse_color_token` in `style.rs`** — central color parser used by both
+`parse_style_str` and the `'color'` named-argument handler:
+
+| Input | Example | Resolves to |
+|---|---|---|
+| Single letter | `'r'` | `StyleColor(255,0,0)` |
+| Full name | `'orange'` | `StyleColor(255,165,0)` |
+| `gray`/`grey` | both spellings | `StyleColor(128,128,128)` |
+| Hex `#RRGGBB` | `'#FF4400'` | `StyleColor(255,68,0)` |
+
+Full names supported: `red`, `green`, `blue`, `cyan`, `magenta`, `yellow`,
+`black`, `white`, `orange`, `purple`, `gray`/`grey`.
+
+**1×3 RGB matrix detection** in `extract_style_and_file_arg` (dispatch.rs):
+a trailing `[r g b]` matrix with all values ∈ [0, 1] is consumed as a
+`StyleSpec { color: Some(StyleColor) }`.
+
+**`'color'` named argument** — trailing `('color', <value>)` pair in arg list
+builds a minimal `StyleSpec`. The value can be a string or a 1×3 RGB matrix.
+
+```matlab
+bar(x, y, 'color', 'red')
+hist(v, 20, 'color', '#FF8800')
+bar(v, 'color', [0.2 0.6 1.0])
+```
+
+**Tests:** 8 tests — full name red/orange, gray/grey alias, hex parse, bad hex
+format, RGB matrix dispatch, `'color'` named arg for bar (ASCII), `'color'` hex
+via named arg.
+
+---
+
+### Phase 30.5c — `Option<StyleSpec>` for Bar / Stem / Hist / Quiver (v0.41.0+002) ✅
+
+**Goal:** all `PendingSeries` variants carry an `Option<StyleSpec>`; both the
+accumulating (`draw_panel`) and standalone render paths use the color when
+present, falling back to `SERIES_COLORS[i % 7]`.
+
+**`PendingSeries` enum changes (`lib.rs`):**
+
+```rust
+Bar(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+Stem(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+Hist { counts: Vec<usize>, edges: Vec<f64>, style: Option<StyleSpec> },
+Quiver(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Option<StyleSpec>),
+```
+
+**New dispatch helpers in `lib.rs`:**
+
+- `render_bar_xy(x, y, path, style, state)` — dispatches bar to ASCII or file
+- `render_stem_xy(x, y, path, style, state)` — dispatches stem to ASCII or file
+
+**`extract_style_and_file_arg_min(args, min_data)` in `dispatch.rs`:**
+Variant of the style extractor with a configurable guard: the 1×3 RGB matrix
+detection only fires when `args.len() > min_data`. Quiver uses `min_data = 4`
+to prevent a data vector from being mistaken for a color spec.
+
+**Color resolution in `file.rs` (`draw_panel`):**
+
+```rust
+PendingSeries::Bar(xs, ys, style) => {
+    let color = style_to_rgb(style)
+        .unwrap_or(SERIES_COLORS[series_idx % SERIES_COLORS.len()]);
+    // draw rectangles with color
+}
+```
+
+Same pattern applied to `Stem`, `Hist`, and `Quiver` arms.
+
+**Tests:** 6 tests — bar red, bar default color cycle, stem blue, hist hex
+orange, quiver green, structural exhaustiveness check.
+
+---
+
+### Two-layer color model summary
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Discrete layer   (per-series)                          │
+│    StyleColor(r,g,b)  ← style string / RGB matrix /    │
+│                          'color' named arg               │
+│    Fallback: SERIES_COLORS[i % 7]                       │
+├─────────────────────────────────────────────────────────┤
+│  Continuous layer (per-value)                           │
+│    ColormapSpec::Named(s)  → apply_colormap(t, s)       │
+│    ColormapSpec::Custom(v) → lut_lerp(t, &v)            │
+│    Output: (u8,u8,u8) for imagesc/surf/mesh/contour     │
+└─────────────────────────────────────────────────────────┘
+```
+
+The layers are independent: a scatter series can carry its own `StyleColor`
+while an `imagesc` underneath uses `ColormapSpec`.
+
+---
+
 ## See also
 
 - [Plot functions guide](../guide/plot.md)

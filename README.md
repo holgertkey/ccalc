@@ -808,9 +808,19 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG (800 × 600 px) |
 | `imagesc(Z, 'f.png', W, H)` | `plot-svg` | False-colour image at custom W × H pixels |
 
-### Style strings
+### Style strings and colors
 
-An optional style string argument (before the file path) sets color, marker, and line style — MATLAB-compatible:
+**Color specification forms** (accepted by all styled plot functions):
+
+| Form | Example | Description |
+|---|---|---|
+| Single-letter | `'r'`, `'b'` | MATLAB-compatible short code |
+| Full name | `'red'`, `'orange'`, `'purple'`, `'gray'` | Full English name |
+| Hex `#RRGGBB` | `'#FF4400'` | 24-bit hex color |
+| 1×3 RGB matrix | `[1 0.27 0]` | Values in [0, 1] |
+| `'color'`, value | `'color', 'red'` | Named arg for bar/stem/hist/quiver |
+
+An optional style string argument (before the file path) sets color, marker, and line style for `plot`, `scatter`, `fill`, `area` — MATLAB-compatible:
 
 | Code | Color | Code | Line style | Code | Marker |
 |------|-------|------|------------|------|--------|
@@ -824,10 +834,12 @@ An optional style string argument (before the file path) sets color, marker, and
 | `w`  | white   |   |            | `^`  | triangle|
 
 ```matlab
-plot(x, y, 'r--')          % red dashed line
-plot(x, y, 'b.')           % blue point markers
-fill(x, y, 'g')            % green filled polygon
-area(x, y, 'c-', 'out.svg') % cyan solid area to file
+plot(x, y, 'r--')                % red dashed line
+plot(x, y, 'orange')             % full color name
+plot(x, y, '#1A6ECC')            % hex color
+plot(x, y, [0.8 0.2 0.1])        % RGB matrix
+bar([1 3 2 5], 'color', 'purple')  % 'color' named arg
+hist(v, 20, 'color', '#FF8800')    % hex via named arg
 ```
 
 Style strings affect SVG/PNG output only; ASCII charts are always monochrome.
@@ -842,7 +854,8 @@ Append a file path to save instead of print to terminal:
 | `hist(v, 20, 'h.svg')` | `plot-svg` | Histogram saved to file |
 | `plot3(x, y, z, 'f.svg')` | `plot-svg` | 3D line to file (SVG or PNG) |
 | `scatter3(x, y, z, 'f.png')` | `plot-svg` | 3D scatter to file |
-| `colormap('viridis')` | — | Set colormap for next `imagesc` (viridis/inferno/magma/plasma/hot/cool/jet/gray) |
+| `colormap('viridis')` | — | Named colormap for next `imagesc` (viridis/inferno/magma/plasma/hot/cool/jet/gray) |
+| `colormap(M)` | — | Custom colormap from N×3 matrix (values in [0, 1]) |
 | `colorbar()` | — | Append colour-scale legend strip to next file export |
 | `subplot(rows, cols, k)` | — | Activate panel k in a rows×cols grid; enters accumulating mode |
 | `hold('on')` / `hold('off')` | — | Overlay multiple series; `hold('off')` flushes to ASCII (no subplot) |
