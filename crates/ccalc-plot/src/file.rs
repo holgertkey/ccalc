@@ -163,15 +163,16 @@ pub(crate) fn render_hist(
     counts: &[usize],
     edges: &[f64],
     path: &str,
+    style: Option<crate::style::StyleSpec>,
     state: FigureState,
 ) -> Result<(), String> {
     let canvas = state.canvas_size();
     if path.ends_with(".svg") {
         let root = SVGBackend::new(path, canvas).into_drawing_area();
-        draw_hist_chart(counts, edges, &state, root)
+        draw_hist_chart(counts, edges, &style, &state, root)
     } else if path.ends_with(".png") {
         let root = BitMapBackend::new(path, canvas).into_drawing_area();
-        draw_hist_chart(counts, edges, &state, root)
+        draw_hist_chart(counts, edges, &style, &state, root)
     } else {
         Err(format!("hist: unsupported format '{path}'"))
     }
@@ -180,6 +181,7 @@ pub(crate) fn render_hist(
 fn draw_hist_chart<DB: DrawingBackend>(
     counts: &[usize],
     edges: &[f64],
+    style: &Option<crate::style::StyleSpec>,
     state: &FigureState,
     root: DrawingArea<DB, plotters::coord::Shift>,
 ) -> Result<(), String>
@@ -229,12 +231,13 @@ where
             .map_err(|e| e.to_string())?;
     }
 
+    let bar_color = style_to_rgb(style).unwrap_or(SERIES_COLORS[0]);
     // Edge-to-edge bars (no gap between adjacent bins).
     chart
         .draw_series((0..counts.len()).map(|i| {
             Rectangle::new(
                 [(edges[i], 0.0), (edges[i + 1], counts[i] as f64)],
-                BLUE.filled(),
+                bar_color.filled(),
             )
         }))
         .map_err(|e| e.to_string())?;
@@ -248,9 +251,10 @@ pub(crate) fn render_bar(
     x: &[f64],
     y: &[f64],
     path: &str,
+    style: Option<crate::style::StyleSpec>,
     state: FigureState,
 ) -> Result<(), String> {
-    render_file(ChartKind::Bar, x, y, path, state)
+    render_file_styled(ChartKind::Bar, x, y, path, style, state)
 }
 
 /// Writes an SVG or PNG stem plot to `path`, routing on the file extension.
@@ -258,9 +262,10 @@ pub(crate) fn render_stem(
     x: &[f64],
     y: &[f64],
     path: &str,
+    style: Option<crate::style::StyleSpec>,
     state: FigureState,
 ) -> Result<(), String> {
-    render_file(ChartKind::Stem, x, y, path, state)
+    render_file_styled(ChartKind::Stem, x, y, path, style, state)
 }
 
 /// Writes an SVG or PNG filled-polygon plot to `path`.
@@ -380,13 +385,24 @@ fn render_file(
     path: &str,
     state: FigureState,
 ) -> Result<(), String> {
+    render_file_styled(kind, x, y, path, None, state)
+}
+
+fn render_file_styled(
+    kind: ChartKind,
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<crate::style::StyleSpec>,
+    state: FigureState,
+) -> Result<(), String> {
     let canvas = state.canvas_size();
     if path.ends_with(".svg") {
         let root = SVGBackend::new(path, canvas).into_drawing_area();
-        draw_chart(kind, x, y, &state, root)
+        draw_chart(kind, x, y, &style, &state, root)
     } else if path.ends_with(".png") {
         let root = BitMapBackend::new(path, canvas).into_drawing_area();
-        draw_chart(kind, x, y, &state, root)
+        draw_chart(kind, x, y, &style, &state, root)
     } else {
         Err(format!("file: unsupported format '{path}'"))
     }
@@ -396,6 +412,7 @@ fn draw_chart<DB: DrawingBackend>(
     kind: ChartKind,
     x: &[f64],
     y: &[f64],
+    style: &Option<crate::style::StyleSpec>,
     state: &FigureState,
     root: DrawingArea<DB, plotters::coord::Shift>,
 ) -> Result<(), String>
@@ -464,6 +481,7 @@ where
         })
         .collect();
 
+    let chart_color = style_to_rgb(style).unwrap_or(SERIES_COLORS[0]);
     match kind {
         ChartKind::Line => {
             chart
@@ -484,7 +502,7 @@ where
             chart
                 .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                     let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
-                    Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], BLUE.filled())
+                    Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], chart_color.filled())
                 }))
                 .map_err(|e| e.to_string())?;
         }
@@ -494,7 +512,7 @@ where
                 chart
                     .draw_series(std::iter::once(PathElement::new(
                         vec![(xi, 0.0), (xi, yi)],
-                        BLUE,
+                        chart_color,
                     )))
                     .map_err(|e| e.to_string())?;
             }
@@ -503,7 +521,7 @@ where
                 .draw_series(
                     x.iter()
                         .zip(y.iter())
-                        .map(|(&xi, &yi)| Circle::new((xi, yi), 4, BLUE.filled())),
+                        .map(|(&xi, &yi)| Circle::new((xi, yi), 4, chart_color.filled())),
                 )
                 .map_err(|e| e.to_string())?;
         }
@@ -701,12 +719,12 @@ where
                 all_x.extend_from_slice(x);
                 all_y.extend_from_slice(y);
             }
-            PendingSeries::Bar(x, y) | PendingSeries::Stem(x, y) => {
+            PendingSeries::Bar(x, y, _) | PendingSeries::Stem(x, y, _) => {
                 all_x.extend_from_slice(x);
                 all_y.extend_from_slice(y);
                 has_zero_baseline = true;
             }
-            PendingSeries::Hist { counts, edges } => {
+            PendingSeries::Hist { counts, edges, style: _ } => {
                 all_x.extend_from_slice(edges);
                 all_y.push(0.0);
                 all_y.push(counts.iter().copied().max().unwrap_or(0) as f64);
@@ -718,7 +736,7 @@ where
                 all_y.push(0.0);
                 has_zero_baseline = true;
             }
-            PendingSeries::Quiver(x, y, u, v) => {
+            PendingSeries::Quiver(x, y, u, v, _) => {
                 all_x.extend_from_slice(x);
                 all_x.extend(x.iter().zip(u.iter()).map(|(&xi, &ui)| xi + ui));
                 all_y.extend_from_slice(y);
@@ -849,24 +867,26 @@ where
                     )
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::Bar(x, y) => {
+            PendingSeries::Bar(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
                 let bar_w = bar_half_width(x, x_min, x_max);
                 chart
                     .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                         let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
                         Rectangle::new(
                             [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
-                            default_color.filled(),
+                            color.filled(),
                         )
                     }))
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::Stem(x, y) => {
+            PendingSeries::Stem(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
                 for (&xi, &yi) in x.iter().zip(y.iter()) {
                     chart
                         .draw_series(std::iter::once(PathElement::new(
                             vec![(xi, 0.0), (xi, yi)],
-                            default_color,
+                            color,
                         )))
                         .map_err(|e| e.to_string())?;
                 }
@@ -874,16 +894,17 @@ where
                     .draw_series(
                         x.iter()
                             .zip(y.iter())
-                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, default_color.filled())),
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, color.filled())),
                     )
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::Hist { counts, edges } => {
+            PendingSeries::Hist { counts, edges, style } => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
                 chart
                     .draw_series((0..counts.len()).map(|j| {
                         Rectangle::new(
                             [(edges[j], 0.0), (edges[j + 1], counts[j] as f64)],
-                            default_color.filled(),
+                            color.filled(),
                         )
                     }))
                     .map_err(|e| e.to_string())?;
@@ -906,7 +927,8 @@ where
                     .draw_series(LineSeries::new(outline, &fill_color))
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::Quiver(x, y, u, v) => {
+            PendingSeries::Quiver(x, y, u, v, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
                 let scale = arrow_scale(x, y, u, v);
                 let n = x.len();
                 for j in 0..n {
@@ -919,7 +941,7 @@ where
                     chart
                         .draw_series(std::iter::once(PathElement::new(
                             vec![(x0, y0), (x1, y1)],
-                            default_color,
+                            color,
                         )))
                         .map_err(|e| e.to_string())?;
                     let len = (dx * dx + dy * dy).sqrt();
@@ -937,7 +959,7 @@ where
                                     (bx - uy * head_w, by + ux * head_w),
                                     (bx + uy * head_w, by - ux * head_w),
                                 ],
-                                default_color.filled(),
+                                color.filled(),
                             )))
                             .map_err(|e| e.to_string())?;
                     }
@@ -989,15 +1011,16 @@ pub(crate) fn render_quiver(
     us: &[f64],
     vs: &[f64],
     path: &str,
+    style: Option<crate::style::StyleSpec>,
     state: FigureState,
 ) -> Result<(), String> {
     let canvas = state.canvas_size();
     if path.ends_with(".svg") {
         let root = SVGBackend::new(path, canvas).into_drawing_area();
-        draw_quiver_chart(xs, ys, us, vs, &state, root)
+        draw_quiver_chart(xs, ys, us, vs, &style, &state, root)
     } else if path.ends_with(".png") {
         let root = BitMapBackend::new(path, canvas).into_drawing_area();
-        draw_quiver_chart(xs, ys, us, vs, &state, root)
+        draw_quiver_chart(xs, ys, us, vs, &style, &state, root)
     } else {
         Err(format!("quiver: unsupported format '{path}'"))
     }
@@ -1008,6 +1031,7 @@ fn draw_quiver_chart<DB: DrawingBackend>(
     ys: &[f64],
     us: &[f64],
     vs: &[f64],
+    style: &Option<crate::style::StyleSpec>,
     state: &FigureState,
     root: DrawingArea<DB, plotters::coord::Shift>,
 ) -> Result<(), String>
@@ -1053,6 +1077,7 @@ where
         .draw()
         .map_err(|e| e.to_string())?;
 
+    let arrow_color = style_to_rgb(style).unwrap_or(SERIES_COLORS[0]);
     let n = xs.len();
     for i in 0..n {
         let x0 = xs[i];
@@ -1066,7 +1091,7 @@ where
         chart
             .draw_series(std::iter::once(PathElement::new(
                 vec![(x0, y0), (x1, y1)],
-                BLUE,
+                arrow_color,
             )))
             .map_err(|e| e.to_string())?;
 
@@ -1086,7 +1111,7 @@ where
                         (bx - uy * head_w, by + ux * head_w),
                         (bx + uy * head_w, by - ux * head_w),
                     ],
-                    BLUE.filled(),
+                    arrow_color.filled(),
                 )))
                 .map_err(|e| e.to_string())?;
         }

@@ -40,7 +40,8 @@ use ccalc_engine::plugin::Plugin;
 
 use colormap::ColormapSpec;
 use dispatch::{
-    extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg, extract_vector,
+    extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg,
+    extract_style_and_file_arg_min, extract_vector,
 };
 use style::StyleSpec;
 
@@ -53,18 +54,18 @@ pub enum PendingSeries {
     Line(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Point-cloud scatter, with optional style override.
     Scatter(Vec<f64>, Vec<f64>, Option<StyleSpec>),
-    /// Vertical bar chart.
-    Bar(Vec<f64>, Vec<f64>),
-    /// Stem (lollipop) chart.
-    Stem(Vec<f64>, Vec<f64>),
-    /// Histogram — pre-computed counts and bin edges.
-    Hist { counts: Vec<usize>, edges: Vec<f64> },
+    /// Vertical bar chart, with optional style override.
+    Bar(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+    /// Stem (lollipop) chart, with optional style override.
+    Stem(Vec<f64>, Vec<f64>, Option<StyleSpec>),
+    /// Histogram — pre-computed counts and bin edges, with optional style override.
+    Hist { counts: Vec<usize>, edges: Vec<f64>, style: Option<StyleSpec> },
     /// Filled polygon.
     Fill(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Area under a curve (polygon closing along y = 0).
     Area(Vec<f64>, Vec<f64>, Option<StyleSpec>),
-    /// Vector field: origin coordinates `(x, y)` and displacement vectors `(u, v)`.
-    Quiver(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>),
+    /// Vector field: origin coordinates `(x, y)` and displacement vectors `(u, v)`, with optional style override.
+    Quiver(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Option<StyleSpec>),
 }
 
 /// A committed subplot panel ready for file rendering.
@@ -331,27 +332,37 @@ impl Plugin for PlotPlugin {
                     };
                     let series = match name {
                         "scatter" => PendingSeries::Scatter(x, y, style),
-                        "bar" | "stairs" => PendingSeries::Bar(x, y),
-                        "stem" => PendingSeries::Stem(x, y),
+                        "bar" | "stairs" => PendingSeries::Bar(x, y, style),
+                        "stem" => PendingSeries::Stem(x, y, style),
                         _ => unreachable!(),
                     };
                     FIGURE_STATE.with(|f| f.borrow_mut().pending_series.push(series));
                     Ok(Value::Void)
                 } else {
                     let state = FIGURE_STATE.with(|f| f.take());
-                    render_ascii_or_file(name, &data_args, path.as_deref(), state)
+                    match name {
+                        "bar" => {
+                            let (x, y) = extract_xy(name, &data_args)?;
+                            render_bar_xy(&x, &y, path.as_deref(), style, state)
+                        }
+                        "stem" => {
+                            let (x, y) = extract_xy(name, &data_args)?;
+                            render_stem_xy(&x, &y, path.as_deref(), style, state)
+                        }
+                        _ => render_ascii_or_file(name, &data_args, path.as_deref(), state),
+                    }
                 }
             }
 
             // ── Histogram ──────────────────────────────────────────────
             "hist" => {
-                let (data_args, _style, path) = extract_style_and_file_arg(args)?;
+                let (data_args, style, path) = extract_style_and_file_arg(args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (counts, edges) = parse_and_compute_hist(&data_args)?;
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
                             .pending_series
-                            .push(PendingSeries::Hist { counts, edges });
+                            .push(PendingSeries::Hist { counts, edges, style });
                     });
                     Ok(Value::Void)
                 } else {
@@ -363,7 +374,7 @@ impl Plugin for PlotPlugin {
                             Ok(Value::Void)
                         }
                         Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
-                            render_hist_file(&counts, &edges, p, state)
+                            render_hist_file(&counts, &edges, p, style, state)
                         }
                         Some(p) => Err(format!("hist: unknown output target '{p}'")),
                     }
@@ -735,7 +746,7 @@ impl Plugin for PlotPlugin {
 
             // ── quiver ────────────────────────────────────────────────
             "quiver" => {
-                let (data_args, path) = extract_file_arg(args);
+                let (data_args, style, path) = extract_style_and_file_arg_min(args, 4)?;
                 if data_args.len() != 4 {
                     return Err(format!(
                         "quiver: expected 4 data arguments (x, y, u, v), got {}",
@@ -764,12 +775,12 @@ impl Plugin for PlotPlugin {
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
                             .pending_series
-                            .push(PendingSeries::Quiver(x, y, u, v));
+                            .push(PendingSeries::Quiver(x, y, u, v, style));
                     });
                     Ok(Value::Void)
                 } else {
                     let state = FIGURE_STATE.with(|f| f.take());
-                    render_quiver(&x, &y, &u, &v, path.as_deref(), state)
+                    render_quiver(&x, &y, &u, &v, path.as_deref(), style, state)
                 }
             }
 
@@ -834,8 +845,6 @@ fn render_file(
     let result = match name {
         "plot" | "stairs" => file::render_line(&x, &y, path, state),
         "scatter" => file::render_scatter(&x, &y, path, state),
-        "bar" => file::render_bar(&x, &y, path, state),
-        "stem" => file::render_stem(&x, &y, path, state),
         _ => unreachable!(),
     };
     result.map_err(|e| format!("{name}: {e}"))?;
@@ -1308,9 +1317,10 @@ fn render_hist_file(
     counts: &[usize],
     edges: &[f64],
     path: &str,
+    style: Option<StyleSpec>,
     state: FigureState,
 ) -> Result<Value, String> {
-    file::render_hist(counts, edges, path, state).map_err(|e| format!("hist: {e}"))?;
+    file::render_hist(counts, edges, path, style, state).map_err(|e| format!("hist: {e}"))?;
     Ok(Value::Void)
 }
 
@@ -1319,6 +1329,7 @@ fn render_hist_file(
     _counts: &[usize],
     _edges: &[f64],
     _path: &str,
+    _style: Option<StyleSpec>,
     _state: FigureState,
 ) -> Result<Value, String> {
     Err("hist: SVG/PNG export requires the 'plot-svg' feature — \
@@ -1568,6 +1579,116 @@ fn render_area_file(
         .into())
 }
 
+// ── bar / stem dispatch ────────────────────────────────────────────────────
+
+fn render_bar_xy(
+    x: &[f64],
+    y: &[f64],
+    path: Option<&str>,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_bar_ascii(x, y, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_bar_file(x, y, p, style, state)
+        }
+        Some(p) => Err(format!("bar: unknown output target '{p}'")),
+    }
+}
+
+fn render_stem_xy(
+    x: &[f64],
+    y: &[f64],
+    path: Option<&str>,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_stem_ascii(x, y, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_stem_file(x, y, p, style, state)
+        }
+        Some(p) => Err(format!("stem: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_bar_ascii(x: &[f64], y: &[f64], state: FigureState) -> Result<Value, String> {
+    ascii::render_bar(x, y, state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_bar_ascii(_x: &[f64], _y: &[f64], _state: FigureState) -> Result<Value, String> {
+    Err("bar: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot")]
+fn render_stem_ascii(x: &[f64], y: &[f64], state: FigureState) -> Result<Value, String> {
+    ascii::render_stem(x, y, state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_stem_ascii(_x: &[f64], _y: &[f64], _state: FigureState) -> Result<Value, String> {
+    Err("stem: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_bar_file(
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_bar(x, y, path, style, state).map_err(|e| format!("bar: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_bar_file(
+    _x: &[f64],
+    _y: &[f64],
+    _path: &str,
+    _style: Option<StyleSpec>,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("bar: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_stem_file(
+    x: &[f64],
+    y: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_stem(x, y, path, style, state).map_err(|e| format!("stem: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_stem_file(
+    _x: &[f64],
+    _y: &[f64],
+    _path: &str,
+    _style: Option<StyleSpec>,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("stem: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
 // ── quiver dispatch ────────────────────────────────────────────────────────
 
 fn render_quiver(
@@ -1576,12 +1697,13 @@ fn render_quiver(
     u: &[f64],
     v: &[f64],
     path: Option<&str>,
+    style: Option<StyleSpec>,
     state: FigureState,
 ) -> Result<Value, String> {
     match path {
         None | Some("ascii") => render_quiver_ascii_tier(x, y, u, v, state),
         Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
-            render_quiver_file_tier(x, y, u, v, p, state)
+            render_quiver_file_tier(x, y, u, v, p, style, state)
         }
         Some(p) => Err(format!("quiver: unknown output target '{p}'")),
     }
@@ -1605,9 +1727,10 @@ fn render_quiver_file_tier(
     u: &[f64],
     v: &[f64],
     path: &str,
+    style: Option<StyleSpec>,
     state: FigureState,
 ) -> Result<Value, String> {
-    file::render_quiver(x, y, u, v, path, state).map_err(|e| format!("quiver: {e}"))?;
+    file::render_quiver(x, y, u, v, path, style, state).map_err(|e| format!("quiver: {e}"))?;
     Ok(Value::Void)
 }
 
@@ -1618,6 +1741,7 @@ fn render_quiver_file_tier(
     _u: &[f64],
     _v: &[f64],
     _path: &str,
+    _style: Option<StyleSpec>,
     _state: FigureState,
 ) -> Result<Value, String> {
     Err("quiver: SVG/PNG export requires the 'plot-svg' feature — \
@@ -1816,14 +1940,14 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
             PendingSeries::Scatter(x, y, _style) => {
                 ascii::render_scatter(x, y, base_state.clone());
             }
-            PendingSeries::Bar(x, y) => ascii::render_bar(x, y, base_state.clone()),
-            PendingSeries::Stem(x, y) => ascii::render_stem(x, y, base_state.clone()),
-            PendingSeries::Hist { counts, edges } => {
+            PendingSeries::Bar(x, y, _style) => ascii::render_bar(x, y, base_state.clone()),
+            PendingSeries::Stem(x, y, _style) => ascii::render_stem(x, y, base_state.clone()),
+            PendingSeries::Hist { counts, edges, style: _ } => {
                 render_hist_ascii(counts, edges, &base_state);
             }
             PendingSeries::Fill(x, y, _style) => ascii::render_fill(x, y, base_state.clone()),
             PendingSeries::Area(x, y, _style) => ascii::render_area(x, y, base_state.clone()),
-            PendingSeries::Quiver(x, y, u, v) => {
+            PendingSeries::Quiver(x, y, u, v, _style) => {
                 render_quiver_ascii(x, y, u, v, &base_state);
             }
         }
@@ -2586,6 +2710,148 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(msg.contains("N×3"), "error should mention N×3: {msg}");
+    }
+
+    // ── 30.5c: Option<StyleSpec> for Bar / Stem / Hist / Quiver ─────────────
+
+    #[test]
+    fn test_bar_accumulates_with_style_red() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        let y = f64_vec(&[4.0, 5.0, 6.0]);
+        plugin
+            .call("bar", &[x, y, Value::Str("r".into())], &env)
+            .unwrap();
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1, "should have one bar series");
+        if let PendingSeries::Bar(_, _, style) = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(255, 0, 0)),
+                "bar should carry red style"
+            );
+        } else {
+            panic!("expected PendingSeries::Bar");
+        }
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_stem_accumulates_with_style_blue() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        let y = f64_vec(&[1.0, 2.0, 3.0]);
+        plugin
+            .call("stem", &[x, y, Value::Str("blue".into())], &env)
+            .unwrap();
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1, "should have one stem series");
+        if let PendingSeries::Stem(_, _, style) = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(0, 0, 255)),
+                "stem should carry blue style"
+            );
+        } else {
+            panic!("expected PendingSeries::Stem");
+        }
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_hist_accumulates_with_style_hex() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        let data = f64_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        plugin
+            .call("hist", &[data, Value::Str("#FF8800".into())], &env)
+            .unwrap();
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1, "should have one hist series");
+        if let PendingSeries::Hist { style, .. } = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(0xFF, 0x88, 0x00)),
+                "hist should carry hex colour style"
+            );
+        } else {
+            panic!("expected PendingSeries::Hist");
+        }
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_quiver_accumulates_with_style_green() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        let x = f64_vec(&[0.0, 1.0]);
+        let y = f64_vec(&[0.0, 1.0]);
+        let u = f64_vec(&[1.0, 0.0]);
+        let v = f64_vec(&[0.0, 1.0]);
+        plugin
+            .call("quiver", &[x, y, u, v, Value::Str("g".into())], &env)
+            .unwrap();
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1, "should have one quiver series");
+        if let PendingSeries::Quiver(_, _, _, _, style) = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(0, 128, 0)),
+                "quiver should carry green style"
+            );
+        } else {
+            panic!("expected PendingSeries::Quiver");
+        }
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_bar_no_style_stores_none() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        let x = f64_vec(&[1.0, 2.0]);
+        let y = f64_vec(&[3.0, 4.0]);
+        plugin.call("bar", &[x, y], &env).unwrap();
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        if let PendingSeries::Bar(_, _, style) = &series[0] {
+            assert!(style.is_none(), "unstyled bar should have None style");
+        } else {
+            panic!("expected PendingSeries::Bar");
+        }
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_bar_svg_with_red_style() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let tmp = std::env::temp_dir().join("bar_red_30_5c.svg");
+        let path = tmp.to_string_lossy().to_string();
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        let y = f64_vec(&[4.0, 5.0, 3.0]);
+        let result = plugin.call(
+            "bar",
+            &[x, y, Value::Str("r".into()), Value::Str(path.clone())],
+            &env,
+        );
+        assert!(result.is_ok(), "bar with red style to SVG should succeed: {result:?}");
+        assert!(std::path::Path::new(&path).exists(), "SVG file should be created");
+        let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
     }
 
     // ── figure() tests ───────────────────────────────────────────────────────

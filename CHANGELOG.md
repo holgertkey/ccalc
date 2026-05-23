@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0+002] - 2026-05-23
+
+### Added
+
+- **`Option<StyleSpec>` for `Bar`, `Stem`, `Hist`, `Quiver`** (`PendingSeries` in
+  `crates/ccalc-plot/src/lib.rs`): all four deferred-render variants now carry an
+  optional style override, matching the existing `Line`/`Scatter`/`Fill`/`Area`
+  variants.
+- **Style threading through all render paths**: `draw_panel` in `file.rs` now
+  applies `style_to_rgb(style).unwrap_or(default_color)` for Bar, Stem, Hist,
+  and Quiver panels; standalone `render_bar`, `render_stem`, `render_hist`, and
+  `render_quiver` in `file.rs` each accept `Option<StyleSpec>` and thread color
+  into `draw_chart` / `draw_hist_chart` / `draw_quiver_chart`.
+- **`render_bar_xy` / `render_stem_xy`** dispatch helpers (mirroring
+  `render_fill_xy`/`render_area_xy`) route bar/stem through ASCII or styled SVG
+  paths and accept `Option<StyleSpec>`.
+- **`extract_style_and_file_arg_min(args, min_data)`** — new variant of the
+  style-extraction helper with a `min_data` guard for the 1×3 RGB matrix
+  detection, preventing ambiguous vector data args from being consumed as colors.
+  `quiver` dispatch now uses `min_data = 4`.
+- 6 new tests: `test_bar_accumulates_with_style_red`,
+  `test_stem_accumulates_with_style_blue`, `test_hist_accumulates_with_style_hex`,
+  `test_quiver_accumulates_with_style_green`, `test_bar_no_style_stores_none`,
+  `test_bar_svg_with_red_style` (cfg(plot-svg)).
+
 ## [0.41.0+001] - 2026-05-23
 
 ### Added

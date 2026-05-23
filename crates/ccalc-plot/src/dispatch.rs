@@ -79,35 +79,50 @@ pub fn extract_matrix(v: &Value) -> Result<(Vec<f64>, usize, usize), String> {
 ///
 /// Processing order (first match wins):
 /// 1. Trailing `'color', <value>` named-argument pair.
-/// 2. Trailing 1×3 RGB matrix (values in `[0, 1]`).
+/// 2. Trailing 1×3 RGB matrix (values in `[0, 1]`) — only when the number of
+///    remaining data args would exceed `min_data` after stripping.
 /// 3. Trailing MATLAB-style format string (`"r--"`, `"red"`, `"#FF4400"`, …).
 /// 4. Trailing file path (`.svg`, `.png`, or `"ascii"`).
+///
+/// `min_data` sets the minimum number of data arguments that must remain after
+/// removing the style element.  Pass `1` for most callers; pass a higher value
+/// (e.g. `4` for `quiver`) to prevent ambiguous vector data from being consumed
+/// as an RGB colour spec.
 ///
 /// Returns `(data_args, style, path)`.
 pub fn extract_style_and_file_arg(
     args: &[Value],
 ) -> Result<(Vec<Value>, Option<StyleSpec>, Option<String>), String> {
+    extract_style_and_file_arg_min(args, 1)
+}
+
+/// Like [`extract_style_and_file_arg`] but with a caller-supplied `min_data` guard.
+#[allow(clippy::type_complexity)]
+pub fn extract_style_and_file_arg_min(
+    args: &[Value],
+    min_data: usize,
+) -> Result<(Vec<Value>, Option<StyleSpec>, Option<String>), String> {
     let (mut data_args, path) = extract_file_arg(args);
 
     // ── 'color', <value> named-argument pair ─────────────────────────────
     let len = data_args.len();
-    if len >= 2 {
-        if let Some(key) = as_str(&data_args[len - 2]) {
-            if key.to_ascii_lowercase() == "color" {
-                let sc = value_to_style_color(&data_args[len - 1])?;
-                data_args.truncate(len - 2);
-                return Ok((
-                    data_args,
-                    Some(StyleSpec { color: Some(sc), ..StyleSpec::default() }),
-                    path,
-                ));
-            }
-        }
+    if len >= 2
+        && let Some(key) = as_str(&data_args[len - 2])
+        && key.eq_ignore_ascii_case("color")
+    {
+        let sc = value_to_style_color(&data_args[len - 1])?;
+        data_args.truncate(len - 2);
+        return Ok((
+            data_args,
+            Some(StyleSpec { color: Some(sc), ..StyleSpec::default() }),
+            path,
+        ));
     }
 
     // ── 1×3 RGB matrix (values must all be in [0, 1]) ────────────────────
-    // Require at least 1 data arg to remain so the data arg is not consumed.
-    let rgb_style = if data_args.len() >= 2 {
+    // Require at least `min_data + 1` args so at least `min_data` data args
+    // remain after stripping the colour matrix.
+    let rgb_style = if data_args.len() > min_data {
         if let Some(Value::Matrix(m)) = data_args.last() {
             if m.nrows() == 1
                 && m.ncols() == 3
