@@ -6,8 +6,8 @@
 %   30.6c: gridcolor() / gridwidth()         — grid line style
 %   30.6d: axis('equal'|'tight'|'off'|'on') — axis scale mode / visibility
 %
-% Requires the plot-svg feature flag:
-%   cargo build --release --features plot-svg
+% Requires both plot-svg and plot feature flags (use plot-all):
+%   cargo build --release --features plot-all
 %   ccalc examples/figure_appearance_demo/figure_appearance_demo.calc
 %
 % Output files are written to examples/figure_appearance_demo/output/
@@ -309,6 +309,7 @@ plot(cos(t), sin(t), 'b', strcat(out, 'axis_equal_circle.svg'))
 % Compare default (no axis mode) — same circle, may appear elliptical
 fprintf('  default axis (for compare) -> %saxis_default_circle.svg\n', out)
 
+axis('on')
 title('Unit circle — default axis')
 xlabel('x')
 ylabel('y')
@@ -317,6 +318,7 @@ plot(cos(t), sin(t), 'b', strcat(out, 'axis_default_circle.svg'))
 % axis('equal') side-by-side with default
 fprintf('  equal vs default           -> %saxis_equal_vs_default.svg\n', out)
 
+axis('on')
 subplot(1, 2, 1)
 title('default axis')
 xlabel('x')
@@ -335,6 +337,7 @@ savefig(strcat(out, 'axis_equal_vs_default.svg'))
 % --- axis('tight') — no margin, data touches the edges ---
 fprintf('  axis tight (bar)           -> %saxis_tight_bar.svg\n', out)
 
+axis('on')
 subplot(1, 2, 1)
 title('default axis (5% margin)')
 bar([3 1 4 1 5 9 2 6])
@@ -346,23 +349,32 @@ bar([3 1 4 1 5 9 2 6])
 
 savefig(strcat(out, 'axis_tight_bar.svg'))
 
-% axis('tight') with line chart
+% axis('tight') with line chart — use non-zero x start so the margin gap is visible
 fprintf('  axis tight (line)          -> %saxis_tight_line.svg\n', out)
+
+axis('on')
+tx = linspace(2, 8, 60);
+ty = sin(tx);
 
 subplot(1, 2, 1)
 title('default (5% margin)')
-plot(x, sx)
+xlabel('x')
+ylabel('y')
+plot(tx, ty)
 
 subplot(1, 2, 2)
 axis('tight')
-title("axis('tight')")
-plot(x, sx)
+title("axis('tight') — no margin")
+xlabel('x')
+ylabel('y')
+plot(tx, ty)
 
 savefig(strcat(out, 'axis_tight_line.svg'))
 
 % --- axis('off') — no axis decorations; clean chart area ---
 fprintf('  axis off (line + bar)      -> %saxis_off.svg\n', out)
 
+axis('on')
 subplot(2, 2, 1)
 title('default axes (line)')
 plot(x, sx, 'b')
@@ -373,6 +385,7 @@ title("axis('off') — line")
 plot(x, sx, 'b')
 
 subplot(2, 2, 3)
+axis('on')
 title('default axes (bar)')
 bar([3 1 4 1 5 9 2 6])
 
@@ -386,6 +399,7 @@ savefig(strcat(out, 'axis_off.svg'))
 % --- axis('on') — restore after axis('off') ---
 fprintf('  axis on (restore)          -> %saxis_on_restore.svg\n', out)
 
+axis('on')
 subplot(1, 3, 1)
 title('default (baseline)')
 plot(x, sx, 'b')
@@ -424,6 +438,7 @@ axis('on')
 fprintf('\n=== Showcase: all Phase 30.6 features combined ===\n\n');
 fprintf('  Full showcase              -> %sshowcase.svg\n', out)
 
+axis('on')
 subplot(2, 3, 1)
 theme('dark')
 title('30.6a: dark theme')
