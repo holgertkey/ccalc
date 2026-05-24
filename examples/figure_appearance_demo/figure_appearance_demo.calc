@@ -57,21 +57,9 @@ ylabel('amplitude')
 fprintf('  bgcolor GitHub-dark        -> %sbgcolor_github_dark.svg\n', out)
 plot(x, sx, strcat(out, 'bgcolor_github_dark.svg'))
 
-% Side-by-side theme comparison
-subplot(1, 2, 1)
+% Theme is figure-level: theme_light.svg and theme_dark.svg above already
+% serve as the side-by-side comparison — no subplot needed here.
 theme('light')
-title('light theme')
-xlabel('x')
-plot(x, sx, 'b')
-
-subplot(1, 2, 2)
-theme('dark')
-title('dark theme')
-xlabel('x')
-plot(x, sx, 'orange')
-
-fprintf('  Theme comparison           -> %stheme_comparison.svg\n', out)
-savefig(strcat(out, 'theme_comparison.svg'))
 
 % ASCII: theme is ignored (always monochrome) but must not error
 fprintf('\n  ASCII (theme ignored, monochrome):\n')
