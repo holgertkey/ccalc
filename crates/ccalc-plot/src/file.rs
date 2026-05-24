@@ -1609,9 +1609,15 @@ mod tests {
         let (_, ls_none) = resolve_grid_styles(bold, light, None, None);
         assert_eq!(ls_none.stroke_width, 1);
         let (_, ls_4) = resolve_grid_styles(bold, light, None, Some(4.0));
-        assert_eq!(ls_4.stroke_width, 1, "grid_width must not thicken minor lines");
+        assert_eq!(
+            ls_4.stroke_width, 1,
+            "grid_width must not thicken minor lines"
+        );
         let (_, ls_sub) = resolve_grid_styles(bold, light, None, Some(0.3));
-        assert_eq!(ls_sub.stroke_width, 1, "sub-pixel grid_width must not affect minor lines");
+        assert_eq!(
+            ls_sub.stroke_width, 1,
+            "sub-pixel grid_width must not affect minor lines"
+        );
     }
 
     #[test]
@@ -1620,7 +1626,10 @@ mod tests {
         let light = RGBColor(200, 200, 240);
         let (bold_s, _) = resolve_grid_styles(bold, light, None, None);
         assert_eq!(bold_s.stroke_width, 1);
-        assert!((bold_s.color.3 - 1.0_f64).abs() < 1e-6, "default alpha must be 1.0");
+        assert!(
+            (bold_s.color.3 - 1.0_f64).abs() < 1e-6,
+            "default alpha must be 1.0"
+        );
     }
 
     #[test]
@@ -1630,14 +1639,26 @@ mod tests {
 
         let (s03, ls) = resolve_grid_styles(bold, light, None, Some(0.3));
         assert_eq!(s03.stroke_width, 1);
-        assert!((s03.color.3 - 0.3_f64).abs() < 0.01, "gridwidth 0.3 must give alpha ≈ 0.3");
-        assert_eq!(ls.stroke_width, 1, "light lines stay thin regardless of grid_width");
+        assert!(
+            (s03.color.3 - 0.3_f64).abs() < 0.01,
+            "gridwidth 0.3 must give alpha ≈ 0.3"
+        );
+        assert_eq!(
+            ls.stroke_width, 1,
+            "light lines stay thin regardless of grid_width"
+        );
 
         let (s07, _) = resolve_grid_styles(bold, light, None, Some(0.7));
         assert_eq!(s07.stroke_width, 1);
-        assert!((s07.color.3 - 0.7_f64).abs() < 0.01, "gridwidth 0.7 must give alpha ≈ 0.7");
+        assert!(
+            (s07.color.3 - 0.7_f64).abs() < 0.01,
+            "gridwidth 0.7 must give alpha ≈ 0.7"
+        );
 
-        assert!(s03.color.3 < s07.color.3, "0.3 must be less opaque than 0.7");
+        assert!(
+            s03.color.3 < s07.color.3,
+            "0.3 must be less opaque than 0.7"
+        );
     }
 
     #[test]
@@ -1647,7 +1668,10 @@ mod tests {
 
         let (s15, _) = resolve_grid_styles(bold, light, None, Some(1.5));
         assert_eq!(s15.stroke_width, 2);
-        assert!((s15.color.3 - 1.0_f64).abs() < 1e-6, "width≥1 must have full alpha");
+        assert!(
+            (s15.color.3 - 1.0_f64).abs() < 1e-6,
+            "width≥1 must have full alpha"
+        );
 
         let (s3, _) = resolve_grid_styles(bold, light, None, Some(3.0));
         assert_eq!(s3.stroke_width, 3);

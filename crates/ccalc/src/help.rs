@@ -82,9 +82,9 @@ pub fn print(topic: Option<&str>) {
             | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap" | "surf" | "mesh"
             | "meshgrid" | "surface" | "wireframe" | "subplot" | "hold" | "savefig" | "multipanel"
             | "panels" | "fill" | "area" | "polar" | "style" | "linestyle" | "color" | "stylestr"
-            | "quiver" | "vectorfield" | "text" | "annotation" | "annotations"
-            | "theme" | "bgcolor" | "background" | "fontsize" | "linewidth" | "markersize"
-            | "gridcolor" | "gridwidth" | "axis" | "axismode" | "equal" | "tight" | "appearance",
+            | "quiver" | "vectorfield" | "text" | "annotation" | "annotations" | "theme"
+            | "bgcolor" | "background" | "fontsize" | "linewidth" | "markersize" | "gridcolor"
+            | "gridwidth" | "axis" | "axismode" | "equal" | "tight" | "appearance",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
