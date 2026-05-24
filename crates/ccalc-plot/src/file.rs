@@ -6,7 +6,7 @@ use plotters::prelude::*;
 use plotters::series::LineSeries;
 
 use crate::FigureState;
-use crate::style::{LinestyleKind, StyleSpec};
+use crate::style::{LinestyleKind, StyleColor, StyleSpec, Theme};
 
 /// Octave-style colour cycle for multi-series plots.
 const SERIES_COLORS: [RGBColor; 7] = [
@@ -77,7 +77,8 @@ fn draw_multi_line_chart<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
 
@@ -90,29 +91,26 @@ where
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
-    if state.grid {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .draw()
-            .map_err(|e| e.to_string())?;
-    } else {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .disable_mesh()
-            .draw()
-            .map_err(|e| e.to_string())?;
+    let mut mesh_binding = chart.configure_mesh();
+    let mut mesh = mesh_binding
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .x_desc(xlabel)
+        .y_desc(ylabel);
+    if !state.grid {
+        mesh = mesh.disable_mesh();
     }
+    mesh.draw().map_err(|e| e.to_string())?;
 
     let has_legend = !state.legend.is_empty();
     let clip_x = state.xlim.is_some();
@@ -188,7 +186,8 @@ fn draw_hist_chart<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
 
     let x_min = state
         .xlim
@@ -207,29 +206,26 @@ where
     let ylabel = state.ylabel.as_deref().unwrap_or("count");
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
-    if state.grid {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .draw()
-            .map_err(|e| e.to_string())?;
-    } else {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .disable_mesh()
-            .draw()
-            .map_err(|e| e.to_string())?;
+    let mut mesh_binding = chart.configure_mesh();
+    let mut mesh = mesh_binding
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .x_desc(xlabel)
+        .y_desc(ylabel);
+    if !state.grid {
+        mesh = mesh.disable_mesh();
     }
+    mesh.draw().map_err(|e| e.to_string())?;
 
     let bar_color = style_to_rgb(style).unwrap_or(SERIES_COLORS[0]);
     // Edge-to-edge bars (no gap between adjacent bins).
@@ -319,7 +315,8 @@ fn draw_polygon_chart<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
     let y_with_zero: Vec<f64> = y.iter().copied().chain(std::iter::once(0.0)).collect();
@@ -332,7 +329,7 @@ where
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -341,6 +338,11 @@ where
 
     chart
         .configure_mesh()
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
         .y_desc(ylabel)
         .disable_mesh()
@@ -376,6 +378,49 @@ fn style_to_rgb(style: &Option<StyleSpec>) -> Option<RGBColor> {
         .as_ref()
         .and_then(|s| s.color.as_ref())
         .map(|c| RGBColor(c.0, c.1, c.2))
+}
+
+/// Resolves the active [`Theme`] for `state`: explicit theme > light default.
+fn resolve_theme(state: &FigureState) -> Theme {
+    state.theme.clone().unwrap_or_else(Theme::light)
+}
+
+/// Returns the effective background colour as a plotters [`RGBColor`].
+///
+/// Resolution order: per-figure `bg_color` override > active theme background.
+fn effective_bg(state: &FigureState) -> RGBColor {
+    let c: StyleColor = state
+        .bg_color
+        .unwrap_or_else(|| resolve_theme(state).bg);
+    RGBColor(c.0, c.1, c.2)
+}
+
+/// Converts a [`StyleColor`] to a plotters [`RGBColor`].
+fn sc_to_rgb(c: StyleColor) -> RGBColor {
+    RGBColor(c.0, c.1, c.2)
+}
+
+/// Resolves all five theme colours for a state in one call.
+///
+/// Returns `(bg, text, axis, grid_bold, grid_light)`.
+fn resolve_colors(state: &FigureState) -> (RGBColor, RGBColor, RGBColor, RGBColor, RGBColor) {
+    let theme = resolve_theme(state);
+    let bg = effective_bg(state);
+    let text = sc_to_rgb(theme.text);
+    let axis = sc_to_rgb(theme.axis);
+    let grid_bold = sc_to_rgb(theme.grid_bold);
+    let grid_light = sc_to_rgb(theme.grid_light);
+    (bg, text, axis, grid_bold, grid_light)
+}
+
+/// Resolves theme colours from an already-resolved [`Theme`] (no state access).
+fn theme_to_colors(theme: &Theme) -> (RGBColor, RGBColor, RGBColor, RGBColor) {
+    (
+        sc_to_rgb(theme.text),
+        sc_to_rgb(theme.axis),
+        sc_to_rgb(theme.grid_bold),
+        sc_to_rgb(theme.grid_light),
+    )
 }
 
 fn render_file(
@@ -419,7 +464,8 @@ fn draw_chart<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
 
     // Bar and stem charts always include y = 0 in the y axis.
     let zero_baseline = matches!(kind, ChartKind::Bar | ChartKind::Stem);
@@ -438,29 +484,26 @@ where
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
-    if state.grid {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .draw()
-            .map_err(|e| e.to_string())?;
-    } else {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .disable_mesh()
-            .draw()
-            .map_err(|e| e.to_string())?;
+    let mut mesh_binding = chart.configure_mesh();
+    let mut mesh = mesh_binding
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .x_desc(xlabel)
+        .y_desc(ylabel);
+    if !state.grid {
+        mesh = mesh.disable_mesh();
     }
+    mesh.draw().map_err(|e| e.to_string())?;
 
     // When xlim/ylim is set explicitly, clip data to the visible range so
     // that no segment is drawn through the chart boundary (which would create
@@ -587,7 +630,8 @@ fn draw_3d_chart<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let text_c = sc_to_rgb(resolve_theme(state).text);
+    root.fill(&effective_bg(state)).map_err(|e| e.to_string())?;
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
     let (y_min, y_max) = state.ylim.unwrap_or_else(|| range_with_margin(y));
@@ -596,7 +640,7 @@ where
     let title = state.title.as_deref().unwrap_or("");
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .build_cartesian_3d(x_min..x_max, y_min..y_max, z_min..z_max)
         .map_err(|e| e.to_string())?;
@@ -650,6 +694,8 @@ pub(crate) fn render_subplot_panels(
     panels: &[crate::Panel],
     path: &str,
     canvas: (u32, u32),
+    theme: &Theme,
+    bg: RGBColor,
 ) -> Result<(), String> {
     let rows = panels
         .iter()
@@ -664,10 +710,10 @@ pub(crate) fn render_subplot_panels(
 
     if path.ends_with(".svg") {
         let root = SVGBackend::new(path, canvas).into_drawing_area();
-        draw_panels(panels, rows, cols, root)
+        draw_panels(panels, rows, cols, theme, bg, root)
     } else if path.ends_with(".png") {
         let root = BitMapBackend::new(path, canvas).into_drawing_area();
-        draw_panels(panels, rows, cols, root)
+        draw_panels(panels, rows, cols, theme, bg, root)
     } else {
         Err(format!("savefig: unsupported format '{path}'"))
     }
@@ -677,12 +723,14 @@ fn draw_panels<DB: DrawingBackend>(
     panels: &[crate::Panel],
     rows: u32,
     cols: u32,
+    theme: &Theme,
+    bg: RGBColor,
     root: DrawingArea<DB, plotters::coord::Shift>,
 ) -> Result<(), String>
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    root.fill(&bg).map_err(|e| e.to_string())?;
     let sub_areas = root.split_evenly((rows as usize, cols as usize));
 
     for panel in panels {
@@ -691,7 +739,7 @@ where
             .map(|(_, _, k)| k.saturating_sub(1) as usize)
             .unwrap_or(0);
         let area = &sub_areas[idx.min(sub_areas.len().saturating_sub(1))];
-        draw_panel(panel, area)?;
+        draw_panel(panel, theme, area)?;
     }
 
     root.present().map_err(|e| e.to_string())?;
@@ -700,12 +748,14 @@ where
 
 fn draw_panel<DB: DrawingBackend>(
     panel: &crate::Panel,
+    theme: &Theme,
     area: &DrawingArea<DB, plotters::coord::Shift>,
 ) -> Result<(), String>
 where
     DB::ErrorType: std::fmt::Display,
 {
     use crate::PendingSeries;
+    let (text_c, axis_c, grid_bold_c, grid_light_c) = theme_to_colors(theme);
 
     if panel.series.is_empty() {
         return Ok(());
@@ -766,29 +816,26 @@ where
     let ylabel = panel.ylabel.as_deref().unwrap_or("");
 
     let mut chart = ChartBuilder::on(area)
-        .caption(title, ("sans-serif", 16))
+        .caption(title, ("sans-serif", 16).into_font().color(&text_c))
         .margin(15)
         .x_label_area_size(30)
         .y_label_area_size(40)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
-    if panel.grid {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .draw()
-            .map_err(|e| e.to_string())?;
-    } else {
-        chart
-            .configure_mesh()
-            .x_desc(xlabel)
-            .y_desc(ylabel)
-            .disable_mesh()
-            .draw()
-            .map_err(|e| e.to_string())?;
+    let mut mesh_binding = chart.configure_mesh();
+    let mut mesh = mesh_binding
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 11).into_font().color(&text_c))
+        .label_style(("sans-serif", 10).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .x_desc(xlabel)
+        .y_desc(ylabel);
+    if !panel.grid {
+        mesh = mesh.disable_mesh();
     }
+    mesh.draw().map_err(|e| e.to_string())?;
 
     for (i, series) in panel.series.iter().enumerate() {
         let default_color = SERIES_COLORS[i % SERIES_COLORS.len()];
@@ -1046,7 +1093,8 @@ fn draw_quiver_chart<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
 
     // Axis ranges span both origins and scaled tips.
     let scale = arrow_scale(xs, ys, us, vs);
@@ -1070,7 +1118,7 @@ where
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -1079,6 +1127,11 @@ where
 
     chart
         .configure_mesh()
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
         .y_desc(ylabel)
         .disable_mesh()

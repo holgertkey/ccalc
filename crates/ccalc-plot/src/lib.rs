@@ -43,7 +43,7 @@ use dispatch::{
     extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg,
     extract_style_and_file_arg_min, extract_vector,
 };
-use style::StyleSpec;
+use style::{StyleColor, StyleSpec, Theme};
 
 // ── PendingSeries / Panel ──────────────────────────────────────────────────
 
@@ -141,6 +141,12 @@ pub struct FigureState {
     /// Text annotations accumulated for the current render (flushed at render time).
     pub annotations: Vec<(f64, f64, String)>,
 
+    // ── Phase 30.6a — theme + background colour ───────────────────────────
+    /// Active colour theme (`None` means use the light default).
+    pub theme: Option<Theme>,
+    /// Per-figure background colour override (beats the theme background).
+    pub bg_color: Option<StyleColor>,
+
     // ── Phase 31 — custom canvas size ─────────────────────────────────────
     /// Output canvas size in pixels `(width, height)` for file export.
     ///
@@ -153,6 +159,19 @@ impl FigureState {
     /// Returns the canvas size in pixels, falling back to `800×600` if not set.
     pub fn canvas_size(&self) -> (u32, u32) {
         self.figure_size.unwrap_or((800, 600))
+    }
+
+    /// Returns the resolved active [`Theme`]: explicit `theme` field > light default.
+    pub fn resolve_theme(&self) -> style::Theme {
+        self.theme.clone().unwrap_or_else(style::Theme::light)
+    }
+
+    /// Returns the effective background colour as an RGB triple.
+    ///
+    /// Resolution order: explicit `bg_color` override > active theme background.
+    pub fn effective_bg_rgb(&self) -> (u8, u8, u8) {
+        let c = self.bg_color.unwrap_or_else(|| self.resolve_theme().bg);
+        (c.0, c.1, c.2)
     }
 }
 
@@ -185,7 +204,7 @@ const EXPORTED: &[&str] = &[
     "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
     "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
-    "savefig", "fill", "area", "polar", "quiver", "text", "figure",
+    "savefig", "fill", "area", "polar", "quiver", "text", "figure", "theme", "bgcolor",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -499,6 +518,54 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
+            // ── Theme / background colour ──────────────────────────────
+            "theme" => {
+                if args.is_empty() {
+                    return Err("theme: one argument required (e.g. 'dark' or 'light')".into());
+                }
+                let name = match &args[0] {
+                    Value::Str(s) | Value::StringObj(s) => s.clone(),
+                    _ => return Err("theme: argument must be a theme name string".into()),
+                };
+                let t = Theme::from_name(&name)?;
+                FIGURE_STATE.with(|f| f.borrow_mut().theme = Some(t));
+                Ok(Value::Void)
+            }
+
+            "bgcolor" => {
+                if args.is_empty() {
+                    return Err("bgcolor: one argument required".into());
+                }
+                let sc = match &args[0] {
+                    Value::Str(s) | Value::StringObj(s) => {
+                        style::parse_color_token(s).ok_or_else(|| {
+                            format!("bgcolor: unrecognised color '{s}'")
+                        })?
+                    }
+                    Value::Matrix(m) if m.nrows() == 1 && m.ncols() == 3 => {
+                        let all_unit = (0..3).all(|c| {
+                            let v = m[[0, c]];
+                            (0.0..=1.0).contains(&v)
+                        });
+                        if !all_unit {
+                            return Err(
+                                "bgcolor: RGB matrix values must be in [0, 1]".into()
+                            );
+                        }
+                        let clamp = |v: f64| (v * 255.0).round() as u8;
+                        StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]]))
+                    }
+                    _ => {
+                        return Err(
+                            "bgcolor: argument must be a color name string or 1×3 RGB matrix"
+                                .into(),
+                        )
+                    }
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().bg_color = Some(sc));
+                Ok(Value::Void)
+            }
+
             // ── imagesc ────────────────────────────────────────────────
             "imagesc" => {
                 if args.is_empty() {
@@ -685,18 +752,20 @@ impl Plugin for PlotPlugin {
                 if !path.ends_with(".svg") && !path.ends_with(".png") {
                     return Err("savefig: path must end with '.svg' or '.png'".into());
                 }
-                let (panels, canvas) = FIGURE_STATE.with(|f| {
+                let (panels, canvas, theme, bg_override) = FIGURE_STATE.with(|f| {
                     let mut st = f.borrow_mut();
                     commit_current_panel(&mut st);
                     st.hold = false;
                     st.subplot = None;
                     let canvas = st.canvas_size();
-                    (std::mem::take(&mut st.panels), canvas)
+                    let theme = st.theme.clone().unwrap_or_else(style::Theme::light);
+                    let bg_override = st.bg_color;
+                    (std::mem::take(&mut st.panels), canvas, theme, bg_override)
                 });
                 if panels.is_empty() {
                     return Err("savefig: no panels to render".into());
                 }
-                render_panels_file(&panels, &path, canvas)
+                render_panels_file(&panels, &path, canvas, &theme, bg_override)
             }
 
             // ── fill ──────────────────────────────────────────────────
@@ -1972,8 +2041,22 @@ fn render_panel_ascii(_panel: &Panel) -> Result<Value, String> {
 }
 
 #[cfg(feature = "plot-svg")]
-fn render_panels_file(panels: &[Panel], path: &str, canvas: (u32, u32)) -> Result<Value, String> {
-    file::render_subplot_panels(panels, path, canvas).map_err(|e| format!("savefig: {e}"))?;
+fn render_panels_file(
+    panels: &[Panel],
+    path: &str,
+    canvas: (u32, u32),
+    theme: &style::Theme,
+    bg_override: Option<style::StyleColor>,
+) -> Result<Value, String> {
+    use plotters::style::RGBColor;
+    let bg = bg_override
+        .map(|c| RGBColor(c.0, c.1, c.2))
+        .unwrap_or_else(|| {
+            let c = theme.bg;
+            RGBColor(c.0, c.1, c.2)
+        });
+    file::render_subplot_panels(panels, path, canvas, theme, bg)
+        .map_err(|e| format!("savefig: {e}"))?;
     Ok(Value::Void)
 }
 
@@ -1982,6 +2065,8 @@ fn render_panels_file(
     _panels: &[Panel],
     _path: &str,
     _canvas: (u32, u32),
+    _theme: &style::Theme,
+    _bg_override: Option<style::StyleColor>,
 ) -> Result<Value, String> {
     Err("savefig: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
@@ -3576,5 +3661,103 @@ mod tests {
             "SVG should contain requested height"
         );
         std::fs::remove_file(path).ok();
+    }
+
+    // ── Phase 30.6a — Theme + bgcolor ─────────────────────────────────
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_theme_dark_svg_contains_dark_bg() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+
+        let path = ".debug/test_theme_dark.svg";
+        plugin.call("theme", &[Value::Str("dark".into())], &env).unwrap();
+        plugin.call(
+            "plot",
+            &[
+                f64_vec(&[1.0, 2.0]),
+                f64_vec(&[1.0, 2.0]),
+                Value::Str(path.into()),
+            ],
+            &env,
+        ).unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        // Dark theme background is #1E1E2E.
+        assert!(content.contains("1E1E2E") || content.contains("1e1e2e"),
+            "SVG must contain the dark theme background colour");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_theme_light_is_default() {
+        let light = style::Theme::light();
+        // Default FigureState has no theme → resolve_theme returns light.
+        let st = FigureState::default();
+        let resolved = st.resolve_theme();
+        assert_eq!(resolved.bg, light.bg);
+        assert_eq!(resolved.text, light.text);
+    }
+
+    #[test]
+    fn test_theme_unknown_name_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("theme", &[Value::Str("rainbow".into())], &env);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown theme"));
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_bgcolor_overrides_theme_bg() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+
+        let path = ".debug/test_bgcolor_override.svg";
+        plugin.call("theme", &[Value::Str("dark".into())], &env).unwrap();
+        // Override with a bright red background.
+        plugin.call("bgcolor", &[Value::Str("red".into())], &env).unwrap();
+        plugin.call(
+            "plot",
+            &[
+                f64_vec(&[1.0, 2.0]),
+                f64_vec(&[1.0, 2.0]),
+                Value::Str(path.into()),
+            ],
+            &env,
+        ).unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        // Red = #FF0000; dark theme bg #1E1E2E must NOT be the fill.
+        assert!(!content.contains("1E1E2E") && !content.contains("1e1e2e"),
+            "Dark theme bg should not appear when bgcolor overrides it");
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_bgcolor_hex_accepted() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("bgcolor", &[Value::Str("#AABBCC".into())], &env).unwrap();
+        let bg = FIGURE_STATE.with(|f| f.borrow().bg_color);
+        assert_eq!(bg, Some(style::StyleColor(0xAA, 0xBB, 0xCC)));
+    }
+
+    #[test]
+    fn test_bgcolor_rgb_matrix() {
+        use ndarray::Array2;
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        // [0.0, 0.5, 1.0] as 1×3 matrix → RGB(0, 128, 255).
+        let m = Value::Matrix(
+            Array2::from_shape_vec((1, 3), vec![0.0_f64, 0.5, 1.0]).unwrap(),
+        );
+        plugin.call("bgcolor", &[m], &env).unwrap();
+        let bg = FIGURE_STATE.with(|f| f.borrow().bg_color);
+        assert_eq!(bg, Some(style::StyleColor(0, 128, 255)));
     }
 }

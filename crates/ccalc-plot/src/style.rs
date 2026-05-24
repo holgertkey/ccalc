@@ -47,6 +47,58 @@ pub enum LinestyleKind {
     DashDot,
 }
 
+/// Coordinated colour preset for a figure.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Theme {
+    /// Background fill colour.
+    pub bg: StyleColor,
+    /// Title and axis-label text colour.
+    pub text: StyleColor,
+    /// Axis line and tick colour.
+    pub axis: StyleColor,
+    /// Bold (major) grid line colour.
+    pub grid_bold: StyleColor,
+    /// Light (minor) grid line colour.
+    pub grid_light: StyleColor,
+}
+
+impl Theme {
+    /// Returns the built-in light theme (white background, black text).
+    pub fn light() -> Self {
+        Theme {
+            bg: StyleColor(255, 255, 255),
+            text: StyleColor(0, 0, 0),
+            axis: StyleColor(0, 0, 0),
+            grid_bold: StyleColor(180, 180, 180),
+            grid_light: StyleColor(220, 220, 220),
+        }
+    }
+
+    /// Returns the built-in dark theme (Catppuccin Mocha palette).
+    pub fn dark() -> Self {
+        Theme {
+            bg: StyleColor(0x1E, 0x1E, 0x2E),
+            text: StyleColor(0xCD, 0xD6, 0xF4),
+            axis: StyleColor(0x6C, 0x70, 0x86),
+            grid_bold: StyleColor(0x45, 0x47, 0x5A),
+            grid_light: StyleColor(0x31, 0x32, 0x44),
+        }
+    }
+
+    /// Looks up a theme by name (`"light"` or `"dark"`), case-insensitive.
+    ///
+    /// Returns `Err` for unrecognised names.
+    pub fn from_name(name: &str) -> Result<Self, String> {
+        match name.to_ascii_lowercase().as_str() {
+            "light" => Ok(Theme::light()),
+            "dark" => Ok(Theme::dark()),
+            other => Err(format!(
+                "theme: unknown theme '{other}' — expected 'light' or 'dark'"
+            )),
+        }
+    }
+}
+
 /// Combined plot style parsed from a MATLAB-style format string.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StyleSpec {

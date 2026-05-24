@@ -266,7 +266,8 @@ fn draw_contour<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    root.fill(&WHITE).map_err(|e| e.to_string())?;
+    let (r, g, b) = state.effective_bg_rgb();
+    root.fill(&RGBColor(r, g, b)).map_err(|e| e.to_string())?;
 
     if nrows == 0 || ncols == 0 || levels.is_empty() {
         return root.present().map_err(|e| e.to_string());

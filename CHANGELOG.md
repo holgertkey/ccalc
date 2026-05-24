@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0+003] - 2026-05-24
+
+### Added
+
+- **`Theme` struct** (`crates/ccalc-plot/src/style.rs`): coordinated colour
+  preset with five fields — `bg`, `text`, `axis`, `grid_bold`, `grid_light`.
+  Built-in presets via `Theme::light()` (white bg, black text) and
+  `Theme::dark()` (Catppuccin Mocha palette: `#1E1E2E` bg, `#CDD6F4` text,
+  etc.). `Theme::from_name(name)` resolves `"light"` / `"dark"` case-insensitively.
+- **`FigureState.theme: Option<Theme>`** and **`FigureState.bg_color: Option<StyleColor>`**
+  — two new fields in `lib.rs`; default `None` means light theme + white background.
+- **`theme(name)` function** — sets the active colour theme for the next render
+  (e.g. `theme('dark')`). Accepts any string argument; returns an error for
+  unrecognised names.
+- **`bgcolor(color)` function** — overrides only the figure background, beating
+  the theme. Accepts a color name string (`'red'`, `'#AABBCC'`) or a 1×3 RGB
+  matrix with values in `[0, 1]`.
+- Both `"theme"` and `"bgcolor"` added to the `EXPORTED` function list for
+  tab-completion.
+- **`FigureState::resolve_theme()`** and **`FigureState::effective_bg_rgb()`**
+  public methods for use across submodules (`surface.rs`, `contour.rs`,
+  `colormap.rs`).
+- **Theme-aware rendering in `file.rs`**: helper functions `resolve_theme`,
+  `effective_bg`, `sc_to_rgb`, `resolve_colors`, `theme_to_colors`; all 10
+  `root.fill(&WHITE)` sites (7 in `file.rs`, 1 each in `surface.rs`,
+  `contour.rs`, `colormap.rs`) replaced with the effective background colour.
+  Every `configure_mesh()` call now threads `axis_style`, `axis_desc_style`,
+  `label_style`, `bold_line_style`, and `light_line_style` from the resolved
+  theme; every `.caption(...)` call uses the theme text colour.
+- 6 new tests: `test_theme_dark_svg_contains_dark_bg`,
+  `test_theme_light_is_default`, `test_theme_unknown_name_errors`,
+  `test_bgcolor_overrides_theme_bg`, `test_bgcolor_hex_accepted`,
+  `test_bgcolor_rgb_matrix`.
+
 ## [0.41.0+002] - 2026-05-23
 
 ### Added
