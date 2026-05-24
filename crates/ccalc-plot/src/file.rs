@@ -502,7 +502,10 @@ where
             chart
                 .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                     let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
-                    Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], chart_color.filled())
+                    Rectangle::new(
+                        [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
+                        chart_color.filled(),
+                    )
                 }))
                 .map_err(|e| e.to_string())?;
         }
@@ -724,7 +727,11 @@ where
                 all_y.extend_from_slice(y);
                 has_zero_baseline = true;
             }
-            PendingSeries::Hist { counts, edges, style: _ } => {
+            PendingSeries::Hist {
+                counts,
+                edges,
+                style: _,
+            } => {
                 all_x.extend_from_slice(edges);
                 all_y.push(0.0);
                 all_y.push(counts.iter().copied().max().unwrap_or(0) as f64);
@@ -873,10 +880,7 @@ where
                 chart
                     .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                         let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
-                        Rectangle::new(
-                            [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
-                            color.filled(),
-                        )
+                        Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], color.filled())
                     }))
                     .map_err(|e| e.to_string())?;
             }
@@ -898,7 +902,11 @@ where
                     )
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::Hist { counts, edges, style } => {
+            PendingSeries::Hist {
+                counts,
+                edges,
+                style,
+            } => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
                 chart
                     .draw_series((0..counts.len()).map(|j| {

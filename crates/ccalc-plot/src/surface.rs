@@ -8,9 +8,9 @@ use plotters::series::LineSeries;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::FigureState;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
-use crate::colormap::{apply_colormap_spec, ColormapSpec};
-#[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::colormap::data_range;
+#[cfg(any(feature = "plot", feature = "plot-svg"))]
+use crate::colormap::{ColormapSpec, apply_colormap_spec};
 
 // ── ASCII renderers ────────────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@ use plotters::series::LineSeries;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::FigureState;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
-use crate::colormap::{apply_colormap_spec, ColormapSpec};
+use crate::colormap::{ColormapSpec, apply_colormap_spec};
 
 // ── Level computation ──────────────────────────────────────────────────────
 

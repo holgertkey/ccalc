@@ -73,16 +73,16 @@ impl Default for StyleSpec {
 /// Returns `None` for unrecognised tokens.
 pub fn parse_color_token(token: &str) -> Option<StyleColor> {
     match token.to_ascii_lowercase().as_str() {
-        "r" | "red"     => Some(StyleColor(255,   0,   0)),
-        "g" | "green"   => Some(StyleColor(  0, 128,   0)),
-        "b" | "blue"    => Some(StyleColor(  0,   0, 255)),
-        "c" | "cyan"    => Some(StyleColor(  0, 255, 255)),
-        "m" | "magenta" => Some(StyleColor(255,   0, 255)),
-        "y" | "yellow"  => Some(StyleColor(255, 255,   0)),
-        "k" | "black"   => Some(StyleColor(  0,   0,   0)),
-        "w" | "white"   => Some(StyleColor(255, 255, 255)),
-        "orange"        => Some(StyleColor(255, 165,   0)),
-        "purple"        => Some(StyleColor(128,   0, 128)),
+        "r" | "red" => Some(StyleColor(255, 0, 0)),
+        "g" | "green" => Some(StyleColor(0, 128, 0)),
+        "b" | "blue" => Some(StyleColor(0, 0, 255)),
+        "c" | "cyan" => Some(StyleColor(0, 255, 255)),
+        "m" | "magenta" => Some(StyleColor(255, 0, 255)),
+        "y" | "yellow" => Some(StyleColor(255, 255, 0)),
+        "k" | "black" => Some(StyleColor(0, 0, 0)),
+        "w" | "white" => Some(StyleColor(255, 255, 255)),
+        "orange" => Some(StyleColor(255, 165, 0)),
+        "purple" => Some(StyleColor(128, 0, 128)),
         "gray" | "grey" => Some(StyleColor(128, 128, 128)),
         s if s.starts_with('#') && s.len() == 7 => {
             let r = u8::from_str_radix(&s[1..3], 16).ok()?;
@@ -138,7 +138,10 @@ pub fn parse_style_str(s: &str) -> Result<StyleSpec, String> {
 
     // Full color name or '#RRGGBB' hex — whole string is just a color.
     if let Some(sc) = parse_color_token(s) {
-        return Ok(StyleSpec { color: Some(sc), ..StyleSpec::default() });
+        return Ok(StyleSpec {
+            color: Some(sc),
+            ..StyleSpec::default()
+        });
     }
 
     let mut spec = StyleSpec::default();

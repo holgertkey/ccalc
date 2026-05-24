@@ -496,8 +496,14 @@ mod tests {
     fn test_colormap_spec_named_viridis() {
         let spec = ColormapSpec::Named("viridis".to_string());
         assert!(validate_colormap_spec(&spec).is_ok());
-        assert_eq!(apply_colormap_spec(0.0, &spec), apply_colormap(0.0, "viridis"));
-        assert_eq!(apply_colormap_spec(1.0, &spec), apply_colormap(1.0, "viridis"));
+        assert_eq!(
+            apply_colormap_spec(0.0, &spec),
+            apply_colormap(0.0, "viridis")
+        );
+        assert_eq!(
+            apply_colormap_spec(1.0, &spec),
+            apply_colormap(1.0, "viridis")
+        );
     }
 
     #[test]

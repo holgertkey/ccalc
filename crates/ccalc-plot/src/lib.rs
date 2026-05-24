@@ -59,7 +59,11 @@ pub enum PendingSeries {
     /// Stem (lollipop) chart, with optional style override.
     Stem(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Histogram — pre-computed counts and bin edges, with optional style override.
-    Hist { counts: Vec<usize>, edges: Vec<f64>, style: Option<StyleSpec> },
+    Hist {
+        counts: Vec<usize>,
+        edges: Vec<f64>,
+        style: Option<StyleSpec>,
+    },
     /// Filled polygon.
     Fill(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Area under a curve (polygon closing along y = 0).
@@ -360,9 +364,11 @@ impl Plugin for PlotPlugin {
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (counts, edges) = parse_and_compute_hist(&data_args)?;
                     FIGURE_STATE.with(|f| {
-                        f.borrow_mut()
-                            .pending_series
-                            .push(PendingSeries::Hist { counts, edges, style });
+                        f.borrow_mut().pending_series.push(PendingSeries::Hist {
+                            counts,
+                            edges,
+                            style,
+                        });
                     });
                     Ok(Value::Void)
                 } else {
@@ -466,9 +472,7 @@ impl Plugin for PlotPlugin {
                     return Err("colormap: one argument required".into());
                 }
                 let spec = match &args[0] {
-                    Value::Str(name) | Value::StringObj(name) => {
-                        ColormapSpec::Named(name.clone())
-                    }
+                    Value::Str(name) | Value::StringObj(name) => ColormapSpec::Named(name.clone()),
                     Value::Matrix(m) => {
                         if m.ncols() != 3 {
                             return Err("colormap: matrix argument must be N×3".into());
@@ -482,9 +486,7 @@ impl Plugin for PlotPlugin {
                         ColormapSpec::Custom(lut)
                     }
                     _ => {
-                        return Err(
-                            "colormap: argument must be a name string or N×3 matrix".into()
-                        )
+                        return Err("colormap: argument must be a name string or N×3 matrix".into());
                     }
                 };
                 colormap::validate_colormap_spec(&spec)?;
@@ -1942,7 +1944,11 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
             }
             PendingSeries::Bar(x, y, _style) => ascii::render_bar(x, y, base_state.clone()),
             PendingSeries::Stem(x, y, _style) => ascii::render_stem(x, y, base_state.clone()),
-            PendingSeries::Hist { counts, edges, style: _ } => {
+            PendingSeries::Hist {
+                counts,
+                edges,
+                style: _,
+            } => {
                 render_hist_ascii(counts, edges, &base_state);
             }
             PendingSeries::Fill(x, y, _style) => ascii::render_fill(x, y, base_state.clone()),
@@ -2669,7 +2675,10 @@ mod tests {
             &[v, Value::Str("color".into()), Value::Str("blue".into())],
             &env,
         );
-        assert!(result.is_ok(), "bar with 'color' named arg should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "bar with 'color' named arg should succeed: {result:?}"
+        );
     }
 
     #[test]
@@ -2682,7 +2691,10 @@ mod tests {
             &[v, Value::Str("color".into()), Value::Str("#FF4400".into())],
             &env,
         );
-        assert!(result.is_ok(), "bar with hex color should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "bar with hex color should succeed: {result:?}"
+        );
     }
 
     #[test]
@@ -2692,7 +2704,10 @@ mod tests {
         let env = Env::new();
         let m = Array2::from_shape_vec((2, 3), vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]).unwrap();
         let result = plugin.call("colormap", &[Value::Matrix(m)], &env);
-        assert!(result.is_ok(), "colormap(N×3 matrix) should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "colormap(N×3 matrix) should succeed: {result:?}"
+        );
         let spec = FIGURE_STATE.with(|f| f.borrow().colormap.clone());
         assert!(
             matches!(spec, Some(colormap::ColormapSpec::Custom(_))),
@@ -2719,7 +2734,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let x = f64_vec(&[1.0, 2.0, 3.0]);
         let y = f64_vec(&[4.0, 5.0, 6.0]);
         plugin
@@ -2744,7 +2761,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let x = f64_vec(&[1.0, 2.0, 3.0]);
         let y = f64_vec(&[1.0, 2.0, 3.0]);
         plugin
@@ -2769,7 +2788,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let data = f64_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
         plugin
             .call("hist", &[data, Value::Str("#FF8800".into())], &env)
@@ -2793,7 +2814,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let x = f64_vec(&[0.0, 1.0]);
         let y = f64_vec(&[0.0, 1.0]);
         let u = f64_vec(&[1.0, 0.0]);
@@ -2820,7 +2843,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let x = f64_vec(&[1.0, 2.0]);
         let y = f64_vec(&[3.0, 4.0]);
         plugin.call("bar", &[x, y], &env).unwrap();
@@ -2848,8 +2873,14 @@ mod tests {
             &[x, y, Value::Str("r".into()), Value::Str(path.clone())],
             &env,
         );
-        assert!(result.is_ok(), "bar with red style to SVG should succeed: {result:?}");
-        assert!(std::path::Path::new(&path).exists(), "SVG file should be created");
+        assert!(
+            result.is_ok(),
+            "bar with red style to SVG should succeed: {result:?}"
+        );
+        assert!(
+            std::path::Path::new(&path).exists(),
+            "SVG file should be created"
+        );
         let _ = std::fs::remove_file(&path);
         FIGURE_STATE.with(|f| f.take());
     }

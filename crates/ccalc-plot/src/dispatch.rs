@@ -2,7 +2,9 @@
 
 use ccalc_engine::env::Value;
 
-use crate::style::{StyleColor, StyleSpec, looks_like_style_str, parse_color_token, parse_style_str};
+use crate::style::{
+    StyleColor, StyleSpec, looks_like_style_str, parse_color_token, parse_style_str,
+};
 
 /// Splits off a trailing file-path argument from `args`.
 ///
@@ -114,7 +116,10 @@ pub fn extract_style_and_file_arg_min(
         data_args.truncate(len - 2);
         return Ok((
             data_args,
-            Some(StyleSpec { color: Some(sc), ..StyleSpec::default() }),
+            Some(StyleSpec {
+                color: Some(sc),
+                ..StyleSpec::default()
+            }),
             path,
         ));
     }
@@ -124,12 +129,13 @@ pub fn extract_style_and_file_arg_min(
     // remain after stripping the colour matrix.
     let rgb_style = if data_args.len() > min_data {
         if let Some(Value::Matrix(m)) = data_args.last() {
-            if m.nrows() == 1
-                && m.ncols() == 3
-                && m.iter().all(|&v| (0.0..=1.0).contains(&v))
-            {
+            if m.nrows() == 1 && m.ncols() == 3 && m.iter().all(|&v| (0.0..=1.0).contains(&v)) {
                 let clamp = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-                Some(StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]])))
+                Some(StyleColor(
+                    clamp(m[[0, 0]]),
+                    clamp(m[[0, 1]]),
+                    clamp(m[[0, 2]]),
+                ))
             } else {
                 None
             }
@@ -143,7 +149,10 @@ pub fn extract_style_and_file_arg_min(
         data_args.pop();
         return Ok((
             data_args,
-            Some(StyleSpec { color: Some(sc), ..StyleSpec::default() }),
+            Some(StyleSpec {
+                color: Some(sc),
+                ..StyleSpec::default()
+            }),
             path,
         ));
     }
@@ -168,7 +177,11 @@ fn value_to_style_color(v: &Value) -> Result<StyleColor, String> {
             .ok_or_else(|| format!("plot: '{s}' is not a recognised color name or hex code")),
         Value::Matrix(m) if m.nrows() == 1 && m.ncols() == 3 => {
             let clamp = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-            Ok(StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]])))
+            Ok(StyleColor(
+                clamp(m[[0, 0]]),
+                clamp(m[[0, 1]]),
+                clamp(m[[0, 2]]),
+            ))
         }
         _ => Err("plot: 'color' value must be a color name string or 1×3 matrix".into()),
     }
