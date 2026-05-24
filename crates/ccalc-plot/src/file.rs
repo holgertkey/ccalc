@@ -79,6 +79,8 @@ where
 {
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
+    let (grid_bold_style, grid_light_style) =
+        resolve_grid_styles(grid_bold_c, grid_light_c, state.grid_color, state.grid_width);
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
 
@@ -108,8 +110,8 @@ where
         .axis_style(ShapeStyle::from(&axis_c))
         .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
         .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
-        .bold_line_style(ShapeStyle::from(&grid_bold_c))
-        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .bold_line_style(grid_bold_style)
+        .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
     if !state.grid {
@@ -196,6 +198,8 @@ where
 {
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
+    let (grid_bold_style, grid_light_style) =
+        resolve_grid_styles(grid_bold_c, grid_light_c, state.grid_color, state.grid_width);
 
     let x_min = state
         .xlim
@@ -230,8 +234,8 @@ where
         .axis_style(ShapeStyle::from(&axis_c))
         .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
         .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
-        .bold_line_style(ShapeStyle::from(&grid_bold_c))
-        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .bold_line_style(grid_bold_style)
+        .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
     if !state.grid {
@@ -437,6 +441,31 @@ fn theme_to_colors(theme: &Theme) -> (RGBColor, RGBColor, RGBColor, RGBColor) {
     )
 }
 
+/// Resolves bold and light grid line styles with optional colour/width overrides.
+///
+/// When `grid_color` is set it replaces both the bold and light theme colours.
+/// When `grid_width` is set it applies to both styles; otherwise width is 1.
+fn resolve_grid_styles(
+    theme_bold: RGBColor,
+    theme_light: RGBColor,
+    grid_color: Option<crate::style::StyleColor>,
+    grid_width: Option<f32>,
+) -> (ShapeStyle, ShapeStyle) {
+    let bold_c = grid_color
+        .map(|sc| RGBColor(sc.0, sc.1, sc.2))
+        .unwrap_or(theme_bold);
+    let light_c = grid_color
+        .map(|sc| RGBColor(sc.0, sc.1, sc.2))
+        .unwrap_or(theme_light);
+    let width = grid_width
+        .map(|f| f.round().max(1.0) as u32)
+        .unwrap_or(1);
+    (
+        ShapeStyle::from(&bold_c).stroke_width(width),
+        ShapeStyle::from(&light_c).stroke_width(width),
+    )
+}
+
 /// Effective title/caption font size: session override → given default, min 8.
 fn eff_title_size(session: Option<u32>, default: u32) -> u32 {
     session.map(|f| f.max(8)).unwrap_or(default)
@@ -509,6 +538,8 @@ where
 {
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
+    let (grid_bold_style, grid_light_style) =
+        resolve_grid_styles(grid_bold_c, grid_light_c, state.grid_color, state.grid_width);
 
     // Bar and stem charts always include y = 0 in the y axis.
     let zero_baseline = matches!(kind, ChartKind::Bar | ChartKind::Stem);
@@ -543,8 +574,8 @@ where
         .axis_style(ShapeStyle::from(&axis_c))
         .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
         .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
-        .bold_line_style(ShapeStyle::from(&grid_bold_c))
-        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .bold_line_style(grid_bold_style)
+        .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
     if !state.grid {
@@ -809,6 +840,8 @@ where
 {
     use crate::PendingSeries;
     let (text_c, axis_c, grid_bold_c, grid_light_c) = theme_to_colors(theme);
+    let (grid_bold_style, grid_light_style) =
+        resolve_grid_styles(grid_bold_c, grid_light_c, panel.grid_color, panel.grid_width);
 
     if panel.series.is_empty() {
         return Ok(());
@@ -885,8 +918,8 @@ where
         .axis_style(ShapeStyle::from(&axis_c))
         .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
         .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
-        .bold_line_style(ShapeStyle::from(&grid_bold_c))
-        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .bold_line_style(grid_bold_style)
+        .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
     if !panel.grid {

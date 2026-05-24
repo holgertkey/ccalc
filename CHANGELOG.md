@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0+005] - 2026-05-24
+
+### Added
+
+- **Phase 30.6c — Grid style**
+- **`FigureState.grid_color: Option<StyleColor>`** and **`FigureState.grid_width: Option<f32>`**
+  — session-level overrides for grid line colour and stroke width.
+- **`Panel.grid_color`** and **`Panel.grid_width`** — carried into committed subplot
+  panels via `commit_current_panel` and the `hold('off')` inline Panel construction.
+- **`gridcolor(color)` function** — overrides the colour of both bold and light grid
+  lines. Accepts a color name string (`'red'`, `'#AABBCC'`) or a 1×3 RGB matrix
+  with values in `[0, 1]`.
+- **`gridwidth(n)` function** — overrides grid line stroke width (pixels). Both
+  `bold_line_style` and `light_line_style` use the same width override.
+- Both `"gridcolor"` and `"gridwidth"` added to `EXPORTED` for tab-completion.
+- **`resolve_grid_styles` helper in `file.rs`** — merges theme colours with optional
+  overrides and returns `(bold_style, light_style)` as plotters `ShapeStyle` values.
+  Wired into `draw_chart`, `draw_panel`, `draw_multi_line_chart`, `draw_hist_chart`.
+  (`draw_polygon_chart` and `draw_quiver_chart` always call `.disable_mesh()` so
+  they are unaffected.)
+- 4 new tests.
+
 ## [0.41.0+004] - 2026-05-24
 
 ### Added

@@ -101,6 +101,10 @@ pub struct Panel {
     pub line_width: Option<f32>,
     /// Session-level marker size carried into this panel.
     pub marker_size: Option<u32>,
+    /// Session-level grid colour override carried into this panel.
+    pub grid_color: Option<StyleColor>,
+    /// Session-level grid line width carried into this panel.
+    pub grid_width: Option<f32>,
 }
 
 // ── FigureState ────────────────────────────────────────────────────────────
@@ -160,6 +164,12 @@ pub struct FigureState {
     pub line_width: Option<f32>,
     /// Marker radius override for scatter / marker series (pixels).
     pub marker_size: Option<u32>,
+
+    // ── Phase 30.6c — grid style ───────────────────────────────────────────
+    /// Grid line colour override (applied to both bold and light grid lines).
+    pub grid_color: Option<StyleColor>,
+    /// Grid line stroke width override in pixels.
+    pub grid_width: Option<f32>,
 
     // ── Phase 31 — custom canvas size ─────────────────────────────────────
     /// Output canvas size in pixels `(width, height)` for file export.
@@ -256,6 +266,8 @@ const EXPORTED: &[&str] = &[
     "fontsize",
     "linewidth",
     "markersize",
+    "gridcolor",
+    "gridwidth",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -285,6 +297,8 @@ fn commit_current_panel(st: &mut FigureState) {
             font_size: st.font_size,
             line_width: st.line_width,
             marker_size: st.marker_size,
+            grid_color: st.grid_color,
+            grid_width: st.grid_width,
         };
         st.panels.push(panel);
     }
@@ -643,6 +657,45 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
+            // ── Grid colour / width overrides ──────────────────────────
+            "gridcolor" => {
+                if args.is_empty() {
+                    return Err("gridcolor: one argument required".into());
+                }
+                let sc = match &args[0] {
+                    Value::Str(s) | Value::StringObj(s) => style::parse_color_token(s)
+                        .ok_or_else(|| format!("gridcolor: unrecognised color '{s}'"))?,
+                    Value::Matrix(m) if m.nrows() == 1 && m.ncols() == 3 => {
+                        let all_unit = (0..3).all(|c| {
+                            let v = m[[0, c]];
+                            (0.0..=1.0).contains(&v)
+                        });
+                        if !all_unit {
+                            return Err("gridcolor: RGB matrix values must be in [0, 1]".into());
+                        }
+                        let clamp = |v: f64| (v * 255.0).round() as u8;
+                        StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]]))
+                    }
+                    _ => {
+                        return Err(
+                            "gridcolor: argument must be a color name string or 1×3 RGB matrix"
+                                .into(),
+                        );
+                    }
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().grid_color = Some(sc));
+                Ok(Value::Void)
+            }
+
+            "gridwidth" => {
+                let val = match args {
+                    [Value::Scalar(f)] if *f > 0.0 => *f as f32,
+                    _ => return Err("gridwidth: expected a positive number".into()),
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().grid_width = Some(val));
+                Ok(Value::Void)
+            }
+
             // ── imagesc ────────────────────────────────────────────────
             "imagesc" => {
                 if args.is_empty() {
@@ -812,6 +865,8 @@ impl Plugin for PlotPlugin {
                                 font_size: st.font_size,
                                 line_width: st.line_width,
                                 marker_size: st.marker_size,
+                                grid_color: st.grid_color,
+                                grid_width: st.grid_width,
                             })
                         } else {
                             None
@@ -4015,5 +4070,84 @@ mod tests {
             .unwrap();
         let ms = FIGURE_STATE.with(|f| f.borrow().marker_size);
         assert_eq!(ms, Some(5_u32));
+    }
+
+    // ── Phase 30.6c — grid style ────────────────────────────────────────
+
+    #[test]
+    fn test_gridcolor_named_color() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin
+            .call("gridcolor", &[Value::Str("red".into())], &env)
+            .unwrap();
+        let gc = FIGURE_STATE.with(|f| f.borrow().grid_color);
+        assert_eq!(gc, Some(StyleColor(255, 0, 0)));
+    }
+
+    #[test]
+    fn test_gridcolor_rgb_matrix() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        use ccalc_engine::env::Value;
+        use ndarray::arr2;
+        let m = Value::Matrix(arr2(&[[0.0_f64, 1.0, 0.0]]));
+        plugin.call("gridcolor", &[m], &env).unwrap();
+        let gc = FIGURE_STATE.with(|f| f.borrow().grid_color);
+        assert_eq!(gc, Some(StyleColor(0, 255, 0)));
+    }
+
+    #[test]
+    fn test_gridwidth_global_setter() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin
+            .call("gridwidth", &[Value::Scalar(2.0)], &env)
+            .unwrap();
+        let gw = FIGURE_STATE.with(|f| f.borrow().grid_width);
+        assert_eq!(gw, Some(2.0_f32));
+    }
+
+    #[test]
+    fn test_gridcolor_carried_into_panel() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin
+            .call("gridcolor", &[Value::Str("blue".into())], &env)
+            .unwrap();
+        plugin
+            .call("gridwidth", &[Value::Scalar(3.0)], &env)
+            .unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[0.0, 1.0]), f64_vec(&[0.0, 1.0])],
+                &env,
+            )
+            .unwrap();
+        // commit_current_panel via subplot call
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(1.0), Value::Scalar(2.0), Value::Scalar(2.0)],
+                &env,
+            )
+            .unwrap();
+        let (gc, gw) = FIGURE_STATE.with(|f| {
+            f.borrow()
+                .panels
+                .first()
+                .map(|p| (p.grid_color, p.grid_width))
+                .unwrap_or((None, None))
+        });
+        assert_eq!(gc, Some(StyleColor(0, 0, 255)));
+        assert_eq!(gw, Some(3.0_f32));
     }
 }
