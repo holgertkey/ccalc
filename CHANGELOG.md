@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-05-24
+
+### Added
+
+- **Phase 30.6 — Figure appearance (complete)**
+- **Phase 30.6a** — `theme('light'|'dark')` and `bgcolor(color)`: coordinated
+  colour presets (Catppuccin Mocha for dark theme); per-figure background override.
+- **Phase 30.6b** — `fontsize(n)` / `linewidth(f)` / `markersize(n)` session-level
+  overrides; per-series `'linewidth'` and `'markersize'` named arguments for
+  `plot` / `scatter`.
+- **Phase 30.6c** — `gridcolor(color)` / `gridwidth(n)` session-level overrides
+  for grid line colour and stroke width.
+- **Phase 30.6d** — `axis('equal'|'tight'|'off'|'on')` mode: equal aspect ratio,
+  tight (no margin) range, hidden axes.
+- **`figure_appearance_demo.calc`** — comprehensive example covering all four
+  sub-phases; output SVGs written to `examples/figure_appearance_demo/output/`.
+
+### Fixed
+
+- **`resolve_grid_styles`** (`file.rs`): `grid_width` now applies **only to bold
+  (major) grid lines**; light (minor subdivision) lines always stay at
+  `stroke_width = 1`. Previously, a thick `gridwidth` was applied to both styles,
+  causing the dense minor subdivisions to merge into a solid grey background.
+- **Sub-pixel `gridwidth`** (values < 1.0): instead of rounding to 1 and
+  appearing identical to the default, values are now rendered via `RGBAColor`
+  alpha proportional to the width (e.g. `gridwidth(0.3)` → 30% opacity,
+  `gridwidth(0.7)` → 70% opacity).
+- **`theme_comparison` demo**: removed the subplot section that incorrectly tried
+  to mix two themes within one figure; the standalone `theme_light.svg` /
+  `theme_dark.svg` files serve as the per-theme reference instead.
+
 ## [0.41.0+006] - 2026-05-24
 
 ### Added
