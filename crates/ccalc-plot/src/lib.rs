@@ -95,6 +95,12 @@ pub struct Panel {
     pub series: Vec<PendingSeries>,
     /// Text annotations placed on this panel.
     pub annotations: Vec<(f64, f64, String)>,
+    /// Session-level font size carried into this panel.
+    pub font_size: Option<u32>,
+    /// Session-level line width carried into this panel.
+    pub line_width: Option<f32>,
+    /// Session-level marker size carried into this panel.
+    pub marker_size: Option<u32>,
 }
 
 // ── FigureState ────────────────────────────────────────────────────────────
@@ -146,6 +152,14 @@ pub struct FigureState {
     pub theme: Option<Theme>,
     /// Per-figure background colour override (beats the theme background).
     pub bg_color: Option<StyleColor>,
+
+    // ── Phase 30.6b — font / stroke sizes ─────────────────────────────────
+    /// Title and axis-label font size override in points (minimum 8).
+    pub font_size: Option<u32>,
+    /// Stroke width override for all line series (pixels).
+    pub line_width: Option<f32>,
+    /// Marker radius override for scatter / marker series (pixels).
+    pub marker_size: Option<u32>,
 
     // ── Phase 31 — custom canvas size ─────────────────────────────────────
     /// Output canvas size in pixels `(width, height)` for file export.
@@ -205,6 +219,7 @@ const EXPORTED: &[&str] = &[
     "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
     "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
     "savefig", "fill", "area", "polar", "quiver", "text", "figure", "theme", "bgcolor",
+    "fontsize", "linewidth", "markersize",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -231,6 +246,9 @@ fn commit_current_panel(st: &mut FigureState) {
             grid: std::mem::replace(&mut st.grid, false),
             series: std::mem::take(&mut st.pending_series),
             annotations: std::mem::take(&mut st.annotations),
+            font_size: st.font_size,
+            line_width: st.line_width,
+            marker_size: st.marker_size,
         };
         st.panels.push(panel);
     }
@@ -561,6 +579,34 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
+            // ── Font / stroke size setters ─────────────────────────────
+            "fontsize" => {
+                let val = match args {
+                    [Value::Scalar(f)] if *f >= 1.0 => (*f as u32).max(8),
+                    _ => return Err("fontsize: expected a positive number".into()),
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().font_size = Some(val));
+                Ok(Value::Void)
+            }
+
+            "linewidth" => {
+                let val = match args {
+                    [Value::Scalar(f)] if *f > 0.0 => *f as f32,
+                    _ => return Err("linewidth: expected a positive number".into()),
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().line_width = Some(val));
+                Ok(Value::Void)
+            }
+
+            "markersize" => {
+                let val = match args {
+                    [Value::Scalar(f)] if *f >= 1.0 => *f as u32,
+                    _ => return Err("markersize: expected a positive integer".into()),
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().marker_size = Some(val));
+                Ok(Value::Void)
+            }
+
             // ── imagesc ────────────────────────────────────────────────
             "imagesc" => {
                 if args.is_empty() {
@@ -727,6 +773,9 @@ impl Plugin for PlotPlugin {
                                 grid: std::mem::replace(&mut st.grid, false),
                                 series: std::mem::take(&mut st.pending_series),
                                 annotations: std::mem::take(&mut st.annotations),
+                                font_size: st.font_size,
+                                line_width: st.line_width,
+                                marker_size: st.marker_size,
                             })
                         } else {
                             None
@@ -3796,5 +3845,128 @@ mod tests {
         plugin.call("bgcolor", &[m], &env).unwrap();
         let bg = FIGURE_STATE.with(|f| f.borrow().bg_color);
         assert_eq!(bg, Some(style::StyleColor(0, 128, 255)));
+    }
+
+    // ── Phase 30.6b tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_linewidth_named_arg_plot() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call(
+                "plot",
+                &[
+                    f64_vec(&[0.0, 1.0]),
+                    f64_vec(&[0.0, 1.0]),
+                    Value::Str("r--".into()),
+                    Value::Str("linewidth".into()),
+                    Value::Scalar(2.5),
+                ],
+                &env,
+            )
+            .unwrap();
+        let lw = FIGURE_STATE.with(|f| {
+            if let Some(PendingSeries::Line(_, _, Some(sp))) = f.borrow().pending_series.first() {
+                sp.line_width
+            } else {
+                None
+            }
+        });
+        assert_eq!(lw, Some(2.5_f32));
+    }
+
+    #[test]
+    fn test_markersize_named_arg_scatter() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call(
+                "scatter",
+                &[
+                    f64_vec(&[1.0, 2.0]),
+                    f64_vec(&[1.0, 2.0]),
+                    Value::Str("markersize".into()),
+                    Value::Scalar(7.0),
+                ],
+                &env,
+            )
+            .unwrap();
+        let ms = FIGURE_STATE.with(|f| {
+            if let Some(PendingSeries::Scatter(_, _, Some(sp))) =
+                f.borrow().pending_series.first()
+            {
+                sp.marker_size
+            } else {
+                None
+            }
+        });
+        assert_eq!(ms, Some(7_u32));
+    }
+
+    #[test]
+    fn test_linewidth_and_markersize_combined() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call(
+                "plot",
+                &[
+                    f64_vec(&[0.0, 1.0]),
+                    f64_vec(&[0.0, 1.0]),
+                    Value::Str("b.".into()),
+                    Value::Str("linewidth".into()),
+                    Value::Scalar(1.5),
+                    Value::Str("markersize".into()),
+                    Value::Scalar(8.0),
+                ],
+                &env,
+            )
+            .unwrap();
+        let (lw, ms) = FIGURE_STATE.with(|f| {
+            if let Some(PendingSeries::Line(_, _, Some(sp))) = f.borrow().pending_series.first() {
+                (sp.line_width, sp.marker_size)
+            } else {
+                (None, None)
+            }
+        });
+        assert_eq!(lw, Some(1.5_f32));
+        assert_eq!(ms, Some(8_u32));
+    }
+
+    #[test]
+    fn test_fontsize_global_setter() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("fontsize", &[Value::Scalar(18.0)], &env).unwrap();
+        let fs = FIGURE_STATE.with(|f| f.borrow().font_size);
+        assert_eq!(fs, Some(18_u32));
+    }
+
+    #[test]
+    fn test_linewidth_global_setter() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("linewidth", &[Value::Scalar(3.0)], &env).unwrap();
+        let lw = FIGURE_STATE.with(|f| f.borrow().line_width);
+        assert_eq!(lw, Some(3.0_f32));
+    }
+
+    #[test]
+    fn test_markersize_global_setter() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        plugin.call("markersize", &[Value::Scalar(5.0)], &env).unwrap();
+        let ms = FIGURE_STATE.with(|f| f.borrow().marker_size);
+        assert_eq!(ms, Some(5_u32));
     }
 }

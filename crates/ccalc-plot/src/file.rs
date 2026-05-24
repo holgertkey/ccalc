@@ -90,8 +90,13 @@ where
     let xlabel = state.xlabel.as_deref().unwrap_or("");
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
+    let title_sz = eff_title_size(state.font_size, 20);
+    let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
+    let tick_sz = eff_axis_desc_size(state.font_size, 11);
+    let lw = eff_line_width(None, state.line_width);
+
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -101,8 +106,8 @@ where
     let mut mesh_binding = chart.configure_mesh();
     let mut mesh = mesh_binding
         .axis_style(ShapeStyle::from(&axis_c))
-        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
-        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
+        .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
         .bold_line_style(ShapeStyle::from(&grid_bold_c))
         .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
@@ -132,7 +137,10 @@ where
             })
             .collect();
         let series_ref = chart
-            .draw_series(LineSeries::new(points, &color))
+            .draw_series(LineSeries::new(
+                points,
+                ShapeStyle::from(&color).stroke_width(lw),
+            ))
             .map_err(|e| e.to_string())?;
         if has_legend {
             let label = state.legend.get(i).map(|s| s.as_str()).unwrap_or("");
@@ -205,8 +213,12 @@ where
     let xlabel = state.xlabel.as_deref().unwrap_or("");
     let ylabel = state.ylabel.as_deref().unwrap_or("count");
 
+    let title_sz = eff_title_size(state.font_size, 20);
+    let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
+    let tick_sz = eff_axis_desc_size(state.font_size, 11);
+
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -216,8 +228,8 @@ where
     let mut mesh_binding = chart.configure_mesh();
     let mut mesh = mesh_binding
         .axis_style(ShapeStyle::from(&axis_c))
-        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
-        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
+        .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
         .bold_line_style(ShapeStyle::from(&grid_bold_c))
         .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
@@ -328,8 +340,12 @@ where
     let xlabel = state.xlabel.as_deref().unwrap_or("");
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
+    let title_sz = eff_title_size(state.font_size, 20);
+    let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
+    let tick_sz = eff_axis_desc_size(state.font_size, 11);
+
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -339,8 +355,8 @@ where
     chart
         .configure_mesh()
         .axis_style(ShapeStyle::from(&axis_c))
-        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
-        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
+        .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
         .bold_line_style(ShapeStyle::from(&grid_bold_c))
         .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
@@ -421,6 +437,32 @@ fn theme_to_colors(theme: &Theme) -> (RGBColor, RGBColor, RGBColor, RGBColor) {
     )
 }
 
+/// Effective title/caption font size: session override → given default, min 8.
+fn eff_title_size(session: Option<u32>, default: u32) -> u32 {
+    session.map(|f| f.max(8)).unwrap_or(default)
+}
+
+/// Effective axis-descriptor font size: proportional to title, min 8.
+fn eff_axis_desc_size(session: Option<u32>, default: u32) -> u32 {
+    session
+        .map(|f| ((f as f32 * 0.65).round() as u32).max(8))
+        .unwrap_or(default)
+}
+
+/// Effective line stroke width (pixels): per-series → session override → 1.
+fn eff_line_width(series_style: Option<&crate::style::StyleSpec>, session: Option<f32>) -> u32 {
+    series_style
+        .and_then(|s| s.line_width)
+        .or(session)
+        .map(|f| f.round().max(1.0) as u32)
+        .unwrap_or(1)
+}
+
+/// Effective marker radius (pixels): per-series → session override → 3.
+fn eff_marker_size(series_style: Option<&crate::style::StyleSpec>, session: Option<u32>) -> u32 {
+    series_style.and_then(|s| s.marker_size).or(session).unwrap_or(3)
+}
+
 fn render_file(
     kind: ChartKind,
     x: &[f64],
@@ -481,8 +523,12 @@ where
     let xlabel = state.xlabel.as_deref().unwrap_or("");
     let ylabel = state.ylabel.as_deref().unwrap_or("");
 
+    let title_sz = eff_title_size(state.font_size, 20);
+    let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
+    let tick_sz = eff_axis_desc_size(state.font_size, 11);
+
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -492,8 +538,8 @@ where
     let mut mesh_binding = chart.configure_mesh();
     let mut mesh = mesh_binding
         .axis_style(ShapeStyle::from(&axis_c))
-        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
-        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
+        .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
         .bold_line_style(ShapeStyle::from(&grid_bold_c))
         .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
@@ -523,10 +569,15 @@ where
         .collect();
 
     let chart_color = style_to_rgb(style).unwrap_or(SERIES_COLORS[0]);
+    let lw = eff_line_width(style.as_ref(), state.line_width);
+    let ms = eff_marker_size(style.as_ref(), state.marker_size) as i32;
     match kind {
         ChartKind::Line => {
             chart
-                .draw_series(LineSeries::new(points, &BLUE))
+                .draw_series(LineSeries::new(
+                    points,
+                    ShapeStyle::from(&chart_color).stroke_width(lw),
+                ))
                 .map_err(|e| e.to_string())?;
         }
         ChartKind::Scatter => {
@@ -534,7 +585,7 @@ where
                 .draw_series(
                     points
                         .iter()
-                        .map(|&(xi, yi)| Circle::new((xi, yi), 3, BLUE.filled())),
+                        .map(|&(xi, yi)| Circle::new((xi, yi), ms, chart_color.filled())),
                 )
                 .map_err(|e| e.to_string())?;
         }
@@ -556,7 +607,7 @@ where
                 chart
                     .draw_series(std::iter::once(PathElement::new(
                         vec![(xi, 0.0), (xi, yi)],
-                        chart_color,
+                        ShapeStyle::from(&chart_color).stroke_width(lw),
                     )))
                     .map_err(|e| e.to_string())?;
             }
@@ -565,7 +616,7 @@ where
                 .draw_series(
                     x.iter()
                         .zip(y.iter())
-                        .map(|(&xi, &yi)| Circle::new((xi, yi), 4, chart_color.filled())),
+                        .map(|(&xi, &yi)| Circle::new((xi, yi), ms, chart_color.filled())),
                 )
                 .map_err(|e| e.to_string())?;
         }
@@ -636,9 +687,10 @@ where
     let (z_min, z_max) = state.zlim.unwrap_or_else(|| range_with_margin(z));
 
     let title = state.title.as_deref().unwrap_or("");
+    let title_sz = eff_title_size(state.font_size, 20);
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
         .build_cartesian_3d(x_min..x_max, y_min..y_max, z_min..z_max)
         .map_err(|e| e.to_string())?;
@@ -813,8 +865,12 @@ where
     let xlabel = panel.xlabel.as_deref().unwrap_or("");
     let ylabel = panel.ylabel.as_deref().unwrap_or("");
 
+    let title_sz = eff_title_size(panel.font_size, 16);
+    let axis_desc_sz = eff_axis_desc_size(panel.font_size, 11);
+    let tick_sz = eff_axis_desc_size(panel.font_size, 10);
+
     let mut chart = ChartBuilder::on(area)
-        .caption(title, ("sans-serif", 16).into_font().color(&text_c))
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(15)
         .x_label_area_size(30)
         .y_label_area_size(40)
@@ -824,8 +880,8 @@ where
     let mut mesh_binding = chart.configure_mesh();
     let mut mesh = mesh_binding
         .axis_style(ShapeStyle::from(&axis_c))
-        .axis_desc_style(("sans-serif", 11).into_font().color(&text_c))
-        .label_style(("sans-serif", 10).into_font().color(&text_c))
+        .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
+        .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
         .bold_line_style(ShapeStyle::from(&grid_bold_c))
         .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
@@ -840,6 +896,8 @@ where
         match series {
             PendingSeries::Line(x, y, style) => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
+                let lw = eff_line_width(style.as_ref(), panel.line_width);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
                 let linestyle = style
                     .as_ref()
                     .map(|s| s.linestyle)
@@ -847,10 +905,11 @@ where
                 let pts: Vec<(f64, f64)> =
                     x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
                 let n = pts.len();
+                let line_style = ShapeStyle::from(&color).stroke_width(lw);
                 match linestyle {
                     LinestyleKind::Solid => {
                         chart
-                            .draw_series(LineSeries::new(pts.iter().copied(), &color))
+                            .draw_series(LineSeries::new(pts.iter().copied(), line_style))
                             .map_err(|e| e.to_string())?;
                     }
                     LinestyleKind::Dashed => {
@@ -863,7 +922,7 @@ where
                                 chart
                                     .draw_series(LineSeries::new(
                                         pts[i..end].iter().copied(),
-                                        &color,
+                                        line_style,
                                     ))
                                     .map_err(|e| e.to_string())?;
                             }
@@ -880,7 +939,7 @@ where
                                 chart
                                     .draw_series(LineSeries::new(
                                         pts[i..end].iter().copied(),
-                                        &color,
+                                        line_style,
                                     ))
                                     .map_err(|e| e.to_string())?;
                             }
@@ -889,7 +948,7 @@ where
                                 chart
                                     .draw_series(std::iter::once(Circle::new(
                                         pts[i],
-                                        3,
+                                        ms,
                                         color.filled(),
                                     )))
                                     .map_err(|e| e.to_string())?;
@@ -903,7 +962,7 @@ where
                             .draw_series(
                                 pts.iter()
                                     .step_by(step)
-                                    .map(|&p| Circle::new(p, 2, color.filled())),
+                                    .map(|&p| Circle::new(p, ms, color.filled())),
                             )
                             .map_err(|e| e.to_string())?;
                     }
@@ -911,11 +970,12 @@ where
             }
             PendingSeries::Scatter(x, y, style) => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
                 chart
                     .draw_series(
                         x.iter()
                             .zip(y.iter())
-                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, color.filled())),
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), ms, color.filled())),
                     )
                     .map_err(|e| e.to_string())?;
             }
@@ -931,11 +991,13 @@ where
             }
             PendingSeries::Stem(x, y, style) => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
+                let lw = eff_line_width(style.as_ref(), panel.line_width);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
                 for (&xi, &yi) in x.iter().zip(y.iter()) {
                     chart
                         .draw_series(std::iter::once(PathElement::new(
                             vec![(xi, 0.0), (xi, yi)],
-                            color,
+                            ShapeStyle::from(&color).stroke_width(lw),
                         )))
                         .map_err(|e| e.to_string())?;
                 }
@@ -943,7 +1005,7 @@ where
                     .draw_series(
                         x.iter()
                             .zip(y.iter())
-                            .map(|(&xi, &yi)| Circle::new((xi, yi), 3, color.filled())),
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), ms, color.filled())),
                     )
                     .map_err(|e| e.to_string())?;
             }

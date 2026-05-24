@@ -106,6 +106,37 @@ pub fn extract_style_and_file_arg_min(
 ) -> Result<(Vec<Value>, Option<StyleSpec>, Option<String>), String> {
     let (mut data_args, path) = extract_file_arg(args);
 
+    // ── Additive named-arg pairs: 'linewidth' / 'markersize' ─────────────
+    // Strip any number of these from the trailing end before the
+    // mutually-exclusive color/format-string extraction below.
+    let mut extra_lw: Option<f32> = None;
+    let mut extra_ms: Option<u32> = None;
+    loop {
+        let len = data_args.len();
+        if len < 2 {
+            break;
+        }
+        if let Some(key) = as_str(&data_args[len - 2]) {
+            if key.eq_ignore_ascii_case("linewidth") {
+                extra_lw = Some(match &data_args[len - 1] {
+                    Value::Scalar(f) if *f > 0.0 => *f as f32,
+                    _ => return Err("linewidth: value must be a positive number".into()),
+                });
+                data_args.truncate(len - 2);
+                continue;
+            }
+            if key.eq_ignore_ascii_case("markersize") {
+                extra_ms = Some(match &data_args[len - 1] {
+                    Value::Scalar(f) if *f >= 1.0 => *f as u32,
+                    _ => return Err("markersize: value must be a positive integer".into()),
+                });
+                data_args.truncate(len - 2);
+                continue;
+            }
+        }
+        break;
+    }
+
     // ── 'color', <value> named-argument pair ─────────────────────────────
     let len = data_args.len();
     if len >= 2
@@ -118,6 +149,8 @@ pub fn extract_style_and_file_arg_min(
             data_args,
             Some(StyleSpec {
                 color: Some(sc),
+                line_width: extra_lw,
+                marker_size: extra_ms,
                 ..StyleSpec::default()
             }),
             path,
@@ -151,6 +184,8 @@ pub fn extract_style_and_file_arg_min(
             data_args,
             Some(StyleSpec {
                 color: Some(sc),
+                line_width: extra_lw,
+                marker_size: extra_ms,
                 ..StyleSpec::default()
             }),
             path,
@@ -163,8 +198,17 @@ pub fn extract_style_and_file_arg_min(
         && let Some(s) = as_str(last)
         && looks_like_style_str(&s)
     {
-        style = Some(parse_style_str(&s)?);
+        let mut sp = parse_style_str(&s)?;
+        sp.line_width = extra_lw;
+        sp.marker_size = extra_ms;
+        style = Some(sp);
         data_args.pop();
+    } else if extra_lw.is_some() || extra_ms.is_some() {
+        style = Some(StyleSpec {
+            line_width: extra_lw,
+            marker_size: extra_ms,
+            ..StyleSpec::default()
+        });
     }
 
     Ok((data_args, style, path))

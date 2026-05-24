@@ -108,6 +108,10 @@ pub struct StyleSpec {
     pub marker: Option<MarkerKind>,
     /// Line style; defaults to [`LinestyleKind::Solid`].
     pub linestyle: LinestyleKind,
+    /// Stroke width in pixels; `None` falls back to the session or hardcoded default (1).
+    pub line_width: Option<f32>,
+    /// Marker radius in pixels; `None` falls back to the session or hardcoded default (3).
+    pub marker_size: Option<u32>,
 }
 
 impl Default for StyleSpec {
@@ -116,6 +120,8 @@ impl Default for StyleSpec {
             color: None,
             marker: None,
             linestyle: LinestyleKind::Solid,
+            line_width: None,
+            marker_size: None,
         }
     }
 }

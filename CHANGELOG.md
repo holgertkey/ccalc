@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0+004] - 2026-05-24
+
+### Added
+
+- **Phase 30.6b — Font size · line width · marker size**
+- **`StyleSpec.line_width: Option<f32>`** and **`StyleSpec.marker_size: Option<u32>`**
+  added to `StyleSpec` in `style.rs`.
+- **Additive named-arg parsing** in `dispatch.rs`: `extract_style_and_file_arg_min`
+  now strips any number of trailing `'linewidth' n` / `'markersize' n` pairs
+  before the mutually-exclusive color/format-string logic, then merges them into
+  the resulting `StyleSpec`. Enables patterns like `plot(x,y,'r--','linewidth',2)`
+  or `scatter(x,y,'markersize',5)`.
+- **`FigureState.font_size: Option<u32>`**, **`FigureState.line_width: Option<f32>`**,
+  **`FigureState.marker_size: Option<u32>`** — session-level overrides applied
+  when no per-series value is present.
+- **`Panel.font_size`**, **`Panel.line_width`**, **`Panel.marker_size`** — carried
+  into committed subplot panels via `commit_current_panel`.
+- **`fontsize(n)`**, **`linewidth(f)`**, **`markersize(n)`** dispatch arms in
+  `lib.rs`; all three added to `EXPORTED` for tab-completion.
+- **`eff_title_size` / `eff_axis_desc_size` / `eff_line_width` / `eff_marker_size`**
+  helpers in `file.rs`; wired into `draw_chart`, `draw_panel`,
+  `draw_multi_line_chart`, `draw_hist_chart`, `draw_polygon_chart`, `draw_3d_chart`.
+- Fixed `draw_chart` Line/Scatter to use `chart_color` (respects style string)
+  instead of hard-coded `BLUE`.
+- 6 new tests.
+
 ## [0.41.0+003] - 2026-05-24
 
 ### Added
