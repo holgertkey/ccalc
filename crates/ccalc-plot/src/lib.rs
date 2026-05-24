@@ -537,20 +537,15 @@ impl Plugin for PlotPlugin {
                     return Err("bgcolor: one argument required".into());
                 }
                 let sc = match &args[0] {
-                    Value::Str(s) | Value::StringObj(s) => {
-                        style::parse_color_token(s).ok_or_else(|| {
-                            format!("bgcolor: unrecognised color '{s}'")
-                        })?
-                    }
+                    Value::Str(s) | Value::StringObj(s) => style::parse_color_token(s)
+                        .ok_or_else(|| format!("bgcolor: unrecognised color '{s}'"))?,
                     Value::Matrix(m) if m.nrows() == 1 && m.ncols() == 3 => {
                         let all_unit = (0..3).all(|c| {
                             let v = m[[0, c]];
                             (0.0..=1.0).contains(&v)
                         });
                         if !all_unit {
-                            return Err(
-                                "bgcolor: RGB matrix values must be in [0, 1]".into()
-                            );
+                            return Err("bgcolor: RGB matrix values must be in [0, 1]".into());
                         }
                         let clamp = |v: f64| (v * 255.0).round() as u8;
                         StyleColor(clamp(m[[0, 0]]), clamp(m[[0, 1]]), clamp(m[[0, 2]]))
@@ -559,7 +554,7 @@ impl Plugin for PlotPlugin {
                         return Err(
                             "bgcolor: argument must be a color name string or 1×3 RGB matrix"
                                 .into(),
-                        )
+                        );
                     }
                 };
                 FIGURE_STATE.with(|f| f.borrow_mut().bg_color = Some(sc));
@@ -2752,34 +2747,62 @@ mod tests {
 
     #[test]
     fn test_style_color_named_arg_bar() {
+        FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let v = f64_vec(&[1.0, 2.0, 3.0]);
-        let result = plugin.call(
-            "bar",
-            &[v, Value::Str("color".into()), Value::Str("blue".into())],
-            &env,
-        );
-        assert!(
-            result.is_ok(),
-            "bar with 'color' named arg should succeed: {result:?}"
-        );
+        plugin
+            .call(
+                "bar",
+                &[v, Value::Str("color".into()), Value::Str("blue".into())],
+                &env,
+            )
+            .expect("bar with 'color' named arg should succeed");
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1);
+        if let PendingSeries::Bar(_, _, style) = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(0, 0, 255)),
+                "bar should carry blue style"
+            );
+        } else {
+            panic!("expected PendingSeries::Bar");
+        }
+        FIGURE_STATE.with(|f| f.take());
     }
 
     #[test]
     fn test_style_color_named_arg_hex() {
+        FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         let v = f64_vec(&[1.0, 2.0, 3.0]);
-        let result = plugin.call(
-            "bar",
-            &[v, Value::Str("color".into()), Value::Str("#FF4400".into())],
-            &env,
-        );
-        assert!(
-            result.is_ok(),
-            "bar with hex color should succeed: {result:?}"
-        );
+        plugin
+            .call(
+                "bar",
+                &[v, Value::Str("color".into()), Value::Str("#FF4400".into())],
+                &env,
+            )
+            .expect("bar with hex color should succeed");
+        let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
+        assert_eq!(series.len(), 1);
+        if let PendingSeries::Bar(_, _, style) = &series[0] {
+            assert_eq!(
+                style.as_ref().and_then(|s| s.color),
+                Some(style::StyleColor(0xFF, 0x44, 0x00)),
+                "bar should carry #FF4400 style"
+            );
+        } else {
+            panic!("expected PendingSeries::Bar");
+        }
+        FIGURE_STATE.with(|f| f.take());
     }
 
     #[test]
@@ -3673,20 +3696,26 @@ mod tests {
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
 
         let path = ".debug/test_theme_dark.svg";
-        plugin.call("theme", &[Value::Str("dark".into())], &env).unwrap();
-        plugin.call(
-            "plot",
-            &[
-                f64_vec(&[1.0, 2.0]),
-                f64_vec(&[1.0, 2.0]),
-                Value::Str(path.into()),
-            ],
-            &env,
-        ).unwrap();
+        plugin
+            .call("theme", &[Value::Str("dark".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[
+                    f64_vec(&[1.0, 2.0]),
+                    f64_vec(&[1.0, 2.0]),
+                    Value::Str(path.into()),
+                ],
+                &env,
+            )
+            .unwrap();
         let content = std::fs::read_to_string(path).unwrap();
         // Dark theme background is #1E1E2E.
-        assert!(content.contains("1E1E2E") || content.contains("1e1e2e"),
-            "SVG must contain the dark theme background colour");
+        assert!(
+            content.contains("1E1E2E") || content.contains("1e1e2e"),
+            "SVG must contain the dark theme background colour"
+        );
         std::fs::remove_file(path).ok();
     }
 
@@ -3717,22 +3746,30 @@ mod tests {
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
 
         let path = ".debug/test_bgcolor_override.svg";
-        plugin.call("theme", &[Value::Str("dark".into())], &env).unwrap();
+        plugin
+            .call("theme", &[Value::Str("dark".into())], &env)
+            .unwrap();
         // Override with a bright red background.
-        plugin.call("bgcolor", &[Value::Str("red".into())], &env).unwrap();
-        plugin.call(
-            "plot",
-            &[
-                f64_vec(&[1.0, 2.0]),
-                f64_vec(&[1.0, 2.0]),
-                Value::Str(path.into()),
-            ],
-            &env,
-        ).unwrap();
+        plugin
+            .call("bgcolor", &[Value::Str("red".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[
+                    f64_vec(&[1.0, 2.0]),
+                    f64_vec(&[1.0, 2.0]),
+                    Value::Str(path.into()),
+                ],
+                &env,
+            )
+            .unwrap();
         let content = std::fs::read_to_string(path).unwrap();
         // Red = #FF0000; dark theme bg #1E1E2E must NOT be the fill.
-        assert!(!content.contains("1E1E2E") && !content.contains("1e1e2e"),
-            "Dark theme bg should not appear when bgcolor overrides it");
+        assert!(
+            !content.contains("1E1E2E") && !content.contains("1e1e2e"),
+            "Dark theme bg should not appear when bgcolor overrides it"
+        );
         std::fs::remove_file(path).ok();
     }
 
@@ -3741,7 +3778,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("bgcolor", &[Value::Str("#AABBCC".into())], &env).unwrap();
+        plugin
+            .call("bgcolor", &[Value::Str("#AABBCC".into())], &env)
+            .unwrap();
         let bg = FIGURE_STATE.with(|f| f.borrow().bg_color);
         assert_eq!(bg, Some(style::StyleColor(0xAA, 0xBB, 0xCC)));
     }
@@ -3753,9 +3792,7 @@ mod tests {
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
         // [0.0, 0.5, 1.0] as 1×3 matrix → RGB(0, 128, 255).
-        let m = Value::Matrix(
-            Array2::from_shape_vec((1, 3), vec![0.0_f64, 0.5, 1.0]).unwrap(),
-        );
+        let m = Value::Matrix(Array2::from_shape_vec((1, 3), vec![0.0_f64, 0.5, 1.0]).unwrap());
         plugin.call("bgcolor", &[m], &env).unwrap();
         let bg = FIGURE_STATE.with(|f| f.borrow().bg_color);
         assert_eq!(bg, Some(style::StyleColor(0, 128, 255)));

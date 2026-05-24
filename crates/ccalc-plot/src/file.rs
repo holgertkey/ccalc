@@ -389,9 +389,7 @@ fn resolve_theme(state: &FigureState) -> Theme {
 ///
 /// Resolution order: per-figure `bg_color` override > active theme background.
 fn effective_bg(state: &FigureState) -> RGBColor {
-    let c: StyleColor = state
-        .bg_color
-        .unwrap_or_else(|| resolve_theme(state).bg);
+    let c: StyleColor = state.bg_color.unwrap_or_else(|| resolve_theme(state).bg);
     RGBColor(c.0, c.1, c.2)
 }
 
