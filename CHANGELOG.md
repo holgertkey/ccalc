@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.41.0+006] - 2026-05-24
+
+### Added
+
+- **Phase 30.6d — Axis mode**
+- **`AxisMode` enum in `style.rs`** — three variants: `Equal`, `Tight`, `Off`
+  (no `On` variant; `axis('on')` sets `axis_mode = None`).
+- **`FigureState.axis_mode: Option<AxisMode>`** — session-level axis display mode.
+- **`Panel.axis_mode: Option<AxisMode>`** — carried into committed panels via
+  `commit_current_panel` and the `hold('off')` inline Panel construction.
+- **`axis(mode)` function** — accepts `'equal'`, `'tight'`, `'off'`, or `'on'`.
+  Added to `EXPORTED` for tab-completion.
+- **`axis('tight')`** — uses `range_exact` / `range_exact_zero_baseline` instead
+  of the 5% margin helpers in all five draw functions.
+- **`axis('equal')`** — calls `apply_equal_scale` after initial range computation,
+  expanding the tighter axis so data-units-per-pixel are equal on both axes.
+  Uses `plot_area_px` to estimate the drawable chart area from canvas size and
+  margin/label-area constants.
+- **`axis('off')`** — sets `x_label_area_size(0)` + `y_label_area_size(0)` on
+  `ChartBuilder` and calls `.disable_axes().disable_mesh()` in `configure_mesh`,
+  hiding all axis decorations and grid lines.
+- New helpers in `file.rs`: `range_exact`, `range_exact_zero_baseline`,
+  `plot_area_px`, `apply_equal_scale`.
+- All five draw functions updated: `draw_chart`, `draw_multi_line_chart`,
+  `draw_hist_chart`, `draw_polygon_chart`, `draw_panel`.
+- 7 new tests (6 logic + 1 SVG render for `axis('off')`).
+
 ## [0.41.0+005] - 2026-05-24
 
 ### Added

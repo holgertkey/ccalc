@@ -6,7 +6,7 @@ use plotters::prelude::*;
 use plotters::series::LineSeries;
 
 use crate::FigureState;
-use crate::style::{LinestyleKind, StyleColor, StyleSpec, Theme};
+use crate::style::{AxisMode, LinestyleKind, StyleColor, StyleSpec, Theme};
 
 /// Octave-style colour cycle for multi-series plots.
 const SERIES_COLORS: [RGBColor; 7] = [
@@ -86,11 +86,8 @@ where
         state.grid_width,
     );
 
-    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
-
-    // Y range spans all series.
-    let all_y: Vec<f64> = ys.iter().flat_map(|v| v.iter().copied()).collect();
-    let (y_min, y_max) = state.ylim.unwrap_or_else(|| range_with_margin(&all_y));
+    let axis_mode = state.axis_mode;
+    let (canvas_w, canvas_h) = root.dim_in_pixel();
 
     let title = state.title.as_deref().unwrap_or("");
     let xlabel = state.xlabel.as_deref().unwrap_or("");
@@ -101,11 +98,36 @@ where
     let tick_sz = eff_axis_desc_size(state.font_size, 11);
     let lw = eff_line_width(None, state.line_width);
 
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) { range_exact(x) } else { range_with_margin(x) }
+    });
+
+    // Y range spans all series.
+    let all_y: Vec<f64> = ys.iter().flat_map(|v| v.iter().copied()).collect();
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) {
+            range_exact(&all_y)
+        } else {
+            range_with_margin(&all_y)
+        }
+    });
+
+    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
+        && state.xlim.is_none()
+        && state.ylim.is_none()
+    {
+        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+    } else {
+        (x_min, x_max, y_min, y_max)
+    };
+
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
-        .x_label_area_size(40)
-        .y_label_area_size(50)
+        .x_label_area_size(xa)
+        .y_label_area_size(ya)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
@@ -118,7 +140,9 @@ where
         .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
-    if !state.grid {
+    if axis_mode == Some(AxisMode::Off) {
+        mesh = mesh.disable_axes().disable_mesh();
+    } else if !state.grid {
         mesh = mesh.disable_mesh();
     }
     mesh.draw().map_err(|e| e.to_string())?;
@@ -209,6 +233,17 @@ where
         state.grid_width,
     );
 
+    let axis_mode = state.axis_mode;
+    let (canvas_w, canvas_h) = root.dim_in_pixel();
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("count");
+
+    let title_sz = eff_title_size(state.font_size, 20);
+    let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
+    let tick_sz = eff_axis_desc_size(state.font_size, 11);
+
     let x_min = state
         .xlim
         .map(|(lo, _)| lo)
@@ -219,21 +254,26 @@ where
         .unwrap_or_else(|| *edges.last().unwrap_or(&1.0));
     let max_count = counts.iter().copied().max().unwrap_or(1).max(1) as f64;
     let y_min = state.ylim.map(|(lo, _)| lo).unwrap_or(0.0);
-    let y_max = state.ylim.map(|(_, hi)| hi).unwrap_or(max_count * 1.05);
+    let y_max = state.ylim.map(|(_, hi)| hi).unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) { max_count } else { max_count * 1.05 }
+    });
 
-    let title = state.title.as_deref().unwrap_or("");
-    let xlabel = state.xlabel.as_deref().unwrap_or("");
-    let ylabel = state.ylabel.as_deref().unwrap_or("count");
+    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
+        && state.xlim.is_none()
+        && state.ylim.is_none()
+    {
+        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+    } else {
+        (x_min, x_max, y_min, y_max)
+    };
 
-    let title_sz = eff_title_size(state.font_size, 20);
-    let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
-    let tick_sz = eff_axis_desc_size(state.font_size, 11);
-
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
-        .x_label_area_size(40)
-        .y_label_area_size(50)
+        .x_label_area_size(xa)
+        .y_label_area_size(ya)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
@@ -246,7 +286,9 @@ where
         .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
-    if !state.grid {
+    if axis_mode == Some(AxisMode::Off) {
+        mesh = mesh.disable_axes().disable_mesh();
+    } else if !state.grid {
         mesh = mesh.disable_mesh();
     }
     mesh.draw().map_err(|e| e.to_string())?;
@@ -342,11 +384,8 @@ where
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
 
-    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
-    let y_with_zero: Vec<f64> = y.iter().copied().chain(std::iter::once(0.0)).collect();
-    let (y_min, y_max) = state
-        .ylim
-        .unwrap_or_else(|| range_with_zero_baseline(&y_with_zero));
+    let axis_mode = state.axis_mode;
+    let (canvas_w, canvas_h) = root.dim_in_pixel();
 
     let title = state.title.as_deref().unwrap_or("");
     let xlabel = state.xlabel.as_deref().unwrap_or("");
@@ -356,26 +395,50 @@ where
     let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
     let tick_sz = eff_axis_desc_size(state.font_size, 11);
 
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) { range_exact(x) } else { range_with_margin(x) }
+    });
+    let y_with_zero: Vec<f64> = y.iter().copied().chain(std::iter::once(0.0)).collect();
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) {
+            range_exact_zero_baseline(&y_with_zero)
+        } else {
+            range_with_zero_baseline(&y_with_zero)
+        }
+    });
+
+    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
+        && state.xlim.is_none()
+        && state.ylim.is_none()
+    {
+        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+    } else {
+        (x_min, x_max, y_min, y_max)
+    };
+
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
-        .x_label_area_size(40)
-        .y_label_area_size(50)
+        .x_label_area_size(xa)
+        .y_label_area_size(ya)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
-    chart
-        .configure_mesh()
+    let mut mesh_binding = chart.configure_mesh();
+    let mut mesh = mesh_binding
         .axis_style(ShapeStyle::from(&axis_c))
         .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
         .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
         .bold_line_style(ShapeStyle::from(&grid_bold_c))
         .light_line_style(ShapeStyle::from(&grid_light_c))
         .x_desc(xlabel)
-        .y_desc(ylabel)
-        .disable_mesh()
-        .draw()
-        .map_err(|e| e.to_string())?;
+        .y_desc(ylabel);
+    if axis_mode == Some(AxisMode::Off) {
+        mesh = mesh.disable_axes();
+    }
+    mesh.disable_mesh().draw().map_err(|e| e.to_string())?;
 
     let fill_color = style_to_rgb(&style).unwrap_or(RGBColor(0, 114, 189));
 
@@ -551,17 +614,11 @@ where
         state.grid_width,
     );
 
+    let axis_mode = state.axis_mode;
+    let (canvas_w, canvas_h) = root.dim_in_pixel();
+
     // Bar and stem charts always include y = 0 in the y axis.
     let zero_baseline = matches!(kind, ChartKind::Bar | ChartKind::Stem);
-
-    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
-    let (y_min, y_max) = state.ylim.unwrap_or_else(|| {
-        if zero_baseline {
-            range_with_zero_baseline(y)
-        } else {
-            range_with_margin(y)
-        }
-    });
 
     let title = state.title.as_deref().unwrap_or("");
     let xlabel = state.xlabel.as_deref().unwrap_or("");
@@ -571,11 +628,39 @@ where
     let axis_desc_sz = eff_axis_desc_size(state.font_size, 12);
     let tick_sz = eff_axis_desc_size(state.font_size, 11);
 
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) { range_exact(x) } else { range_with_margin(x) }
+    });
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| {
+        if zero_baseline {
+            if axis_mode == Some(AxisMode::Tight) {
+                range_exact_zero_baseline(y)
+            } else {
+                range_with_zero_baseline(y)
+            }
+        } else if axis_mode == Some(AxisMode::Tight) {
+            range_exact(y)
+        } else {
+            range_with_margin(y)
+        }
+    });
+
+    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
+        && state.xlim.is_none()
+        && state.ylim.is_none()
+    {
+        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+    } else {
+        (x_min, x_max, y_min, y_max)
+    };
+
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
-        .x_label_area_size(40)
-        .y_label_area_size(50)
+        .x_label_area_size(xa)
+        .y_label_area_size(ya)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
@@ -588,7 +673,9 @@ where
         .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
-    if !state.grid {
+    if axis_mode == Some(AxisMode::Off) {
+        mesh = mesh.disable_axes().disable_mesh();
+    } else if !state.grid {
         mesh = mesh.disable_mesh();
     }
     mesh.draw().map_err(|e| e.to_string())?;
@@ -861,6 +948,9 @@ where
         return Ok(());
     }
 
+    let axis_mode = panel.axis_mode;
+    let (area_w, area_h) = area.dim_in_pixel();
+
     // Collect coordinate bounds across all series.
     let mut all_x: Vec<f64> = Vec::new();
     let mut all_y: Vec<f64> = Vec::new();
@@ -902,10 +992,22 @@ where
         }
     }
 
-    let (x_min, x_max) = panel.xlim.unwrap_or_else(|| range_with_margin(&all_x));
+    let (x_min, x_max) = panel.xlim.unwrap_or_else(|| {
+        if axis_mode == Some(AxisMode::Tight) {
+            range_exact(&all_x)
+        } else {
+            range_with_margin(&all_x)
+        }
+    });
     let (y_min, y_max) = panel.ylim.unwrap_or_else(|| {
         if has_zero_baseline {
-            range_with_zero_baseline(&all_y)
+            if axis_mode == Some(AxisMode::Tight) {
+                range_exact_zero_baseline(&all_y)
+            } else {
+                range_with_zero_baseline(&all_y)
+            }
+        } else if axis_mode == Some(AxisMode::Tight) {
+            range_exact(&all_y)
         } else {
             range_with_margin(&all_y)
         }
@@ -919,11 +1021,22 @@ where
     let axis_desc_sz = eff_axis_desc_size(panel.font_size, 11);
     let tick_sz = eff_axis_desc_size(panel.font_size, 10);
 
+    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
+        && panel.xlim.is_none()
+        && panel.ylim.is_none()
+    {
+        let (pw, ph) = plot_area_px(area_w, area_h, 15, 30, 40, title_sz);
+        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+    } else {
+        (x_min, x_max, y_min, y_max)
+    };
+
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (30, 40) };
     let mut chart = ChartBuilder::on(area)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(15)
-        .x_label_area_size(30)
-        .y_label_area_size(40)
+        .x_label_area_size(xa)
+        .y_label_area_size(ya)
         .build_cartesian_2d(x_min..x_max, y_min..y_max)
         .map_err(|e| e.to_string())?;
 
@@ -936,7 +1049,9 @@ where
         .light_line_style(grid_light_style)
         .x_desc(xlabel)
         .y_desc(ylabel);
-    if !panel.grid {
+    if axis_mode == Some(AxisMode::Off) {
+        mesh = mesh.disable_axes().disable_mesh();
+    } else if !panel.grid {
         mesh = mesh.disable_mesh();
     }
     mesh.draw().map_err(|e| e.to_string())?;
@@ -1153,6 +1268,78 @@ fn range_with_zero_baseline(vals: &[f64]) -> (f64, f64) {
         let margin = span * 0.05;
         (lo - margin, hi + margin)
     }
+}
+
+/// Exact range with no added margin — used by `axis('tight')`.
+fn range_exact(vals: &[f64]) -> (f64, f64) {
+    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    if (hi - lo).abs() < f64::EPSILON {
+        (lo - 1.0, lo + 1.0)
+    } else {
+        (lo, hi)
+    }
+}
+
+/// Tight range that always includes y = 0 — used by `axis('tight')` on bar/stem.
+fn range_exact_zero_baseline(vals: &[f64]) -> (f64, f64) {
+    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min).min(0.0);
+    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max).max(0.0);
+    if (hi - lo).abs() < f64::EPSILON {
+        (lo - 1.0, lo + 1.0)
+    } else {
+        (lo, hi)
+    }
+}
+
+/// Estimated plot area pixel dimensions for `axis('equal')` aspect-ratio maths.
+///
+/// Parameters mirror the `ChartBuilder` calls: `margin(mg)`,
+/// `x_label_area_size(xa)`, `y_label_area_size(ya)`, `title_sz` for the
+/// caption overhead.  Returns `(plot_w, plot_h)`.
+fn plot_area_px(
+    total_w: u32,
+    total_h: u32,
+    mg: u32,
+    xa: u32,
+    ya: u32,
+    title_sz: u32,
+) -> (u32, u32) {
+    let title_h = title_sz + 15;
+    let w = total_w.saturating_sub(2 * mg + ya);
+    let h = total_h.saturating_sub(2 * mg + xa + title_h);
+    (w.max(1), h.max(1))
+}
+
+/// Adjusts `(x_min, x_max, y_min, y_max)` so that data-units per pixel are
+/// equal on both axes.
+///
+/// Always expands the tighter axis (never clips data).  `plot_w` / `plot_h`
+/// are the pixel dimensions of the drawable chart area.
+fn apply_equal_scale(
+    x_min: f64,
+    x_max: f64,
+    y_min: f64,
+    y_max: f64,
+    plot_w: u32,
+    plot_h: u32,
+) -> (f64, f64, f64, f64) {
+    let x_span = x_max - x_min;
+    let y_span = y_max - y_min;
+    let px_aspect = plot_w as f64 / plot_h as f64;
+    // Required x_span for equal scale given current y_span.
+    let target_x = y_span * px_aspect;
+    if target_x > x_span {
+        let cx = (x_min + x_max) / 2.0;
+        return (cx - target_x / 2.0, cx + target_x / 2.0, y_min, y_max);
+    }
+    // Required y_span for equal scale given current x_span.
+    let target_y = x_span / px_aspect;
+    if target_y > y_span {
+        let cy = (y_min + y_max) / 2.0;
+        return (x_min, x_max, cy - target_y / 2.0, cy + target_y / 2.0);
+    }
+    (x_min, x_max, y_min, y_max)
 }
 
 /// Half-width of a bar column: 40% of the minimum x-spacing.

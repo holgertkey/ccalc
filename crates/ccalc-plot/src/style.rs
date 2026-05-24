@@ -99,6 +99,17 @@ impl Theme {
     }
 }
 
+/// Axis display mode set via `axis(...)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AxisMode {
+    /// Equal scaling: same data-units per pixel on both axes.
+    Equal,
+    /// Tight: no margin added around the data range.
+    Tight,
+    /// Hidden: axis lines and tick labels are not drawn.
+    Off,
+}
+
 /// Combined plot style parsed from a MATLAB-style format string.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StyleSpec {

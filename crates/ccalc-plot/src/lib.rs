@@ -3,9 +3,9 @@
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
 //! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
-//! `polar`, `quiver`, `text`, and annotation functions (`xlabel`, `ylabel`,
-//! `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`,
-//! `colorbar`).
+//! `polar`, `quiver`, `text`, `axis`, and annotation functions (`xlabel`,
+//! `ylabel`, `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`,
+//! `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -43,7 +43,7 @@ use dispatch::{
     extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg,
     extract_style_and_file_arg_min, extract_vector,
 };
-use style::{StyleColor, StyleSpec, Theme};
+use style::{AxisMode, StyleColor, StyleSpec, Theme};
 
 // ── PendingSeries / Panel ──────────────────────────────────────────────────
 
@@ -105,6 +105,8 @@ pub struct Panel {
     pub grid_color: Option<StyleColor>,
     /// Session-level grid line width carried into this panel.
     pub grid_width: Option<f32>,
+    /// Axis display mode override carried into this panel.
+    pub axis_mode: Option<AxisMode>,
 }
 
 // ── FigureState ────────────────────────────────────────────────────────────
@@ -170,6 +172,10 @@ pub struct FigureState {
     pub grid_color: Option<StyleColor>,
     /// Grid line stroke width override in pixels.
     pub grid_width: Option<f32>,
+
+    // ── Phase 30.6d — axis mode ────────────────────────────────────────────
+    /// Axis display mode (`axis('equal')`, `axis('tight')`, `axis('off')`).
+    pub axis_mode: Option<AxisMode>,
 
     // ── Phase 31 — custom canvas size ─────────────────────────────────────
     /// Output canvas size in pixels `(width, height)` for file export.
@@ -268,6 +274,7 @@ const EXPORTED: &[&str] = &[
     "markersize",
     "gridcolor",
     "gridwidth",
+    "axis",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -299,6 +306,7 @@ fn commit_current_panel(st: &mut FigureState) {
             marker_size: st.marker_size,
             grid_color: st.grid_color,
             grid_width: st.grid_width,
+            axis_mode: st.axis_mode,
         };
         st.panels.push(panel);
     }
@@ -696,6 +704,24 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
+            // ── axis mode ──────────────────────────────────────────────
+            "axis" => {
+                let s = require_string("axis", args)?;
+                let mode = match s.as_str() {
+                    "equal" => Some(AxisMode::Equal),
+                    "tight" => Some(AxisMode::Tight),
+                    "off" => Some(AxisMode::Off),
+                    "on" => None,
+                    other => {
+                        return Err(format!(
+                            "axis: expected 'equal', 'tight', 'off', or 'on', got '{other}'"
+                        ));
+                    }
+                };
+                FIGURE_STATE.with(|f| f.borrow_mut().axis_mode = mode);
+                Ok(Value::Void)
+            }
+
             // ── imagesc ────────────────────────────────────────────────
             "imagesc" => {
                 if args.is_empty() {
@@ -867,6 +893,7 @@ impl Plugin for PlotPlugin {
                                 marker_size: st.marker_size,
                                 grid_color: st.grid_color,
                                 grid_width: st.grid_width,
+                                axis_mode: st.axis_mode,
                             })
                         } else {
                             None
@@ -4109,6 +4136,136 @@ mod tests {
             .unwrap();
         let gw = FIGURE_STATE.with(|f| f.borrow().grid_width);
         assert_eq!(gw, Some(2.0_f32));
+    }
+
+    // ── 30.6d: axis mode ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_axis_equal_sets_state() {
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("axis", &[Value::Str("equal".into())], &env)
+            .unwrap();
+        let mode = FIGURE_STATE.with(|f| f.borrow().axis_mode);
+        assert_eq!(mode, Some(style::AxisMode::Equal));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_axis_tight_sets_state() {
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("axis", &[Value::Str("tight".into())], &env)
+            .unwrap();
+        let mode = FIGURE_STATE.with(|f| f.borrow().axis_mode);
+        assert_eq!(mode, Some(style::AxisMode::Tight));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_axis_off_sets_state() {
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("axis", &[Value::Str("off".into())], &env)
+            .unwrap();
+        let mode = FIGURE_STATE.with(|f| f.borrow().axis_mode);
+        assert_eq!(mode, Some(style::AxisMode::Off));
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_axis_on_clears_mode() {
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("axis", &[Value::Str("equal".into())], &env)
+            .unwrap();
+        plugin
+            .call("axis", &[Value::Str("on".into())], &env)
+            .unwrap();
+        let mode = FIGURE_STATE.with(|f| f.borrow().axis_mode);
+        assert_eq!(mode, None, "axis('on') should clear the axis mode");
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn test_axis_invalid_arg_errors() {
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let result = plugin.call("axis", &[Value::Str("square".into())], &env);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("expected"),
+            "error should describe valid options: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_axis_mode_carried_into_panel() {
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("axis", &[Value::Str("tight".into())], &env)
+            .unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
+        plugin
+            .call("plot", &[f64_vec(&[0.0, 1.0]), f64_vec(&[0.0, 1.0])], &env)
+            .unwrap();
+        // commit_current_panel via subplot
+        plugin
+            .call(
+                "subplot",
+                &[Value::Scalar(1.0), Value::Scalar(2.0), Value::Scalar(2.0)],
+                &env,
+            )
+            .unwrap();
+        let mode = FIGURE_STATE.with(|f| {
+            f.borrow()
+                .panels
+                .first()
+                .and_then(|p| p.axis_mode)
+        });
+        assert_eq!(
+            mode,
+            Some(style::AxisMode::Tight),
+            "axis_mode should be carried into the committed panel"
+        );
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn test_axis_off_svg_no_error() {
+        FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("axis", &[Value::Str("off".into())], &env)
+            .unwrap();
+        let tmp = std::env::temp_dir().join("axis_off_30_6d.svg");
+        let path = tmp.to_string_lossy().to_string();
+        let x = f64_vec(&[1.0, 2.0, 3.0]);
+        let y = f64_vec(&[1.0, 4.0, 9.0]);
+        let result = plugin.call("plot", &[x, y, Value::Str(path.clone())], &env);
+        assert!(
+            result.is_ok(),
+            "axis('off') + plot to SVG should succeed: {result:?}"
+        );
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(content.contains("<svg"), "output should contain <svg");
+        let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
     }
 
     #[test]
