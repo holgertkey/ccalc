@@ -4126,11 +4126,7 @@ mod tests {
             .call("hold", &[Value::Str("on".into())], &env)
             .unwrap();
         plugin
-            .call(
-                "plot",
-                &[f64_vec(&[0.0, 1.0]), f64_vec(&[0.0, 1.0])],
-                &env,
-            )
+            .call("plot", &[f64_vec(&[0.0, 1.0]), f64_vec(&[0.0, 1.0])], &env)
             .unwrap();
         // commit_current_panel via subplot call
         plugin

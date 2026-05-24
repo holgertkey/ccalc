@@ -79,8 +79,12 @@ where
 {
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
-    let (grid_bold_style, grid_light_style) =
-        resolve_grid_styles(grid_bold_c, grid_light_c, state.grid_color, state.grid_width);
+    let (grid_bold_style, grid_light_style) = resolve_grid_styles(
+        grid_bold_c,
+        grid_light_c,
+        state.grid_color,
+        state.grid_width,
+    );
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
 
@@ -198,8 +202,12 @@ where
 {
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
-    let (grid_bold_style, grid_light_style) =
-        resolve_grid_styles(grid_bold_c, grid_light_c, state.grid_color, state.grid_width);
+    let (grid_bold_style, grid_light_style) = resolve_grid_styles(
+        grid_bold_c,
+        grid_light_c,
+        state.grid_color,
+        state.grid_width,
+    );
 
     let x_min = state
         .xlim
@@ -457,9 +465,7 @@ fn resolve_grid_styles(
     let light_c = grid_color
         .map(|sc| RGBColor(sc.0, sc.1, sc.2))
         .unwrap_or(theme_light);
-    let width = grid_width
-        .map(|f| f.round().max(1.0) as u32)
-        .unwrap_or(1);
+    let width = grid_width.map(|f| f.round().max(1.0) as u32).unwrap_or(1);
     (
         ShapeStyle::from(&bold_c).stroke_width(width),
         ShapeStyle::from(&light_c).stroke_width(width),
@@ -538,8 +544,12 @@ where
 {
     let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
     root.fill(&bg_c).map_err(|e| e.to_string())?;
-    let (grid_bold_style, grid_light_style) =
-        resolve_grid_styles(grid_bold_c, grid_light_c, state.grid_color, state.grid_width);
+    let (grid_bold_style, grid_light_style) = resolve_grid_styles(
+        grid_bold_c,
+        grid_light_c,
+        state.grid_color,
+        state.grid_width,
+    );
 
     // Bar and stem charts always include y = 0 in the y axis.
     let zero_baseline = matches!(kind, ChartKind::Bar | ChartKind::Stem);
@@ -840,8 +850,12 @@ where
 {
     use crate::PendingSeries;
     let (text_c, axis_c, grid_bold_c, grid_light_c) = theme_to_colors(theme);
-    let (grid_bold_style, grid_light_style) =
-        resolve_grid_styles(grid_bold_c, grid_light_c, panel.grid_color, panel.grid_width);
+    let (grid_bold_style, grid_light_style) = resolve_grid_styles(
+        grid_bold_c,
+        grid_light_c,
+        panel.grid_color,
+        panel.grid_width,
+    );
 
     if panel.series.is_empty() {
         return Ok(());
