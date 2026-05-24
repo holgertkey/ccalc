@@ -955,6 +955,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/fill_area_polar_demo/fill_area_polar_demo.calc` — `fill`, `area`, `polar`, style strings
 - `examples/quiver_demo/quiver_demo.calc` — vector field with Unicode arrow grid
 - `examples/color_system_demo/color_system_demo.calc` — Phase 30.5 unified color system: custom colormaps, full names, hex, RGB matrix, `'color'` named arg for bar/stem/hist/quiver
+- `examples/figure_appearance_demo/figure_appearance_demo.calc` — Phase 30.6 figure appearance: `theme`, `bgcolor`, `fontsize`, `linewidth`, `markersize`, `gridcolor`, `gridwidth`, `axis`
 
 ---
 

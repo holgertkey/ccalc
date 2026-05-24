@@ -1,0 +1,469 @@
+% figure_appearance_demo.calc — Phase 30.6: Figure appearance
+%
+% Demonstrates all four sub-phases of figure appearance control:
+%   30.6a: theme() / bgcolor()               — colour themes and background override
+%   30.6b: fontsize() / linewidth() / markersize()  — size overrides (figure & per-series)
+%   30.6c: gridcolor() / gridwidth()         — grid line style
+%   30.6d: axis('equal'|'tight'|'off'|'on') — axis scale mode / visibility
+%
+% Requires the plot-svg feature flag:
+%   cargo build --release --features plot-svg
+%   ccalc examples/figure_appearance_demo/figure_appearance_demo.calc
+%
+% Output files are written to examples/figure_appearance_demo/output/
+
+out = 'examples/figure_appearance_demo/output/';
+
+x  = linspace(0, 2*pi, 80);
+sx = sin(x);
+cx = cos(x);
+
+% ── Phase 30.6a: theme() / bgcolor() ─────────────────────────────────────────
+
+fprintf('=== Phase 30.6a: theme() / bgcolor() ===\n\n');
+
+% Light theme (default)
+theme('light')
+title('sin(x) — light theme (default)')
+xlabel('x')
+ylabel('amplitude')
+grid('on')
+fprintf('  Light theme                -> %stheme_light.svg\n', out)
+plot(x, sx, strcat(out, 'theme_light.svg'))
+
+% Dark theme — Catppuccin Mocha palette
+theme('dark')
+title('sin(x) — dark theme')
+xlabel('x')
+ylabel('amplitude')
+grid('on')
+fprintf('  Dark theme                 -> %stheme_dark.svg\n', out)
+plot(x, sx, strcat(out, 'theme_dark.svg'))
+
+% bgcolor() override on a light base — mid-grey
+bgcolor('#E8E8E8')
+title('sin(x) — grey background')
+xlabel('x')
+ylabel('amplitude')
+fprintf('  bgcolor grey               -> %sbgcolor_grey.svg\n', out)
+plot(x, sx, strcat(out, 'bgcolor_grey.svg'))
+
+% bgcolor() override on dark theme — custom near-black
+theme('dark')
+bgcolor('#0D1117')
+title('sin(x) — GitHub-dark background')
+xlabel('x')
+ylabel('amplitude')
+fprintf('  bgcolor GitHub-dark        -> %sbgcolor_github_dark.svg\n', out)
+plot(x, sx, strcat(out, 'bgcolor_github_dark.svg'))
+
+% Side-by-side theme comparison
+subplot(1, 2, 1)
+theme('light')
+title('light theme')
+xlabel('x')
+plot(x, sx, 'b')
+
+subplot(1, 2, 2)
+theme('dark')
+title('dark theme')
+xlabel('x')
+plot(x, sx, 'orange')
+
+fprintf('  Theme comparison           -> %stheme_comparison.svg\n', out)
+savefig(strcat(out, 'theme_comparison.svg'))
+
+% ASCII: theme is ignored (always monochrome) but must not error
+fprintf('\n  ASCII (theme ignored, monochrome):\n')
+theme('dark')
+title('dark theme in ASCII')
+plot(x, sx)
+theme('light')
+
+% ── Phase 30.6b: fontsize() / linewidth() / markersize() ─────────────────────
+
+fprintf('\n=== Phase 30.6b: fontsize() / linewidth() / markersize() ===\n\n');
+
+% --- Figure-level linewidth ---
+fprintf('  Figure-level linewidth     -> %slinewidth_comparison.svg\n', out)
+
+subplot(2, 2, 1)
+linewidth(0.5)
+title('linewidth 0.5')
+plot(x, sx, 'b')
+
+subplot(2, 2, 2)
+linewidth(1)
+title('linewidth 1 (default)')
+plot(x, sx, 'b')
+
+subplot(2, 2, 3)
+linewidth(2)
+title('linewidth 2')
+plot(x, sx, 'b')
+
+subplot(2, 2, 4)
+linewidth(4)
+title('linewidth 4')
+plot(x, sx, 'b')
+
+savefig(strcat(out, 'linewidth_comparison.svg'))
+
+% --- Figure-level markersize ---
+fprintf('  Figure-level markersize    -> %smarkersize_comparison.svg\n', out)
+
+subplot(2, 2, 1)
+markersize(2)
+title('markersize 2')
+scatter(x, sx)
+
+subplot(2, 2, 2)
+markersize(4)
+title('markersize 4 (default)')
+scatter(x, sx)
+
+subplot(2, 2, 3)
+markersize(7)
+title('markersize 7')
+scatter(x, sx)
+
+subplot(2, 2, 4)
+markersize(12)
+title('markersize 12')
+scatter(x, sx)
+
+savefig(strcat(out, 'markersize_comparison.svg'))
+
+% --- Figure-level fontsize ---
+fprintf('  Figure-level fontsize      -> %sfontsize_comparison.svg\n', out)
+
+subplot(1, 3, 1)
+fontsize(8)
+title('fontsize 8')
+xlabel('x (radians)')
+plot(x, sx, 'b')
+
+subplot(1, 3, 2)
+fontsize(12)
+title('fontsize 12 (default)')
+xlabel('x (radians)')
+plot(x, sx, 'g')
+
+subplot(1, 3, 3)
+fontsize(18)
+title('fontsize 18')
+xlabel('x (radians)')
+plot(x, sx, 'r')
+
+savefig(strcat(out, 'fontsize_comparison.svg'))
+
+% --- Per-series 'linewidth' named argument ---
+fprintf('  Per-series linewidth       -> %sper_series_linewidth.svg\n', out)
+
+subplot(2, 2, 1)
+title("plot 'linewidth' 1")
+plot(x, sx, 'b', 'linewidth', 1)
+
+subplot(2, 2, 2)
+title("plot 'linewidth' 2.5")
+plot(x, sx, 'r--', 'linewidth', 2.5)
+
+subplot(2, 2, 3)
+title("scatter 'markersize' 3")
+scatter(x, sx, 'b', 'markersize', 3)
+
+subplot(2, 2, 4)
+title("scatter 'markersize' 8")
+scatter(x, sx, 'r', 'markersize', 8)
+
+savefig(strcat(out, 'per_series_linewidth.svg'))
+
+% --- Combined: dark theme + large linewidth + large fontsize ---
+fprintf('  Dark + thick + large font  -> %sdark_thick_large.svg\n', out)
+
+theme('dark')
+fontsize(14)
+linewidth(2.5)
+title('sin and cos — dark, thick, 14 pt')
+xlabel('x (radians)')
+ylabel('amplitude')
+grid('on')
+subplot(1, 1, 1)
+hold('on')
+plot(x, sx, 'orange')
+plot(x, cx, '#88CCEE')
+hold('off')
+savefig(strcat(out, 'dark_thick_large.svg'))
+
+% ASCII demo
+fprintf('\n  ASCII (linewidth/markersize parse without error):\n')
+linewidth(2)
+title('linewidth in ASCII (no effect)')
+plot(x, sx)
+
+% ── Phase 30.6c: gridcolor() / gridwidth() ───────────────────────────────────
+
+fprintf('\n=== Phase 30.6c: gridcolor() / gridwidth() ===\n\n');
+
+% --- gridcolor comparison ---
+fprintf('  Grid color comparison      -> %sgridcolor_comparison.svg\n', out)
+
+subplot(2, 3, 1)
+grid('on')
+title('default grid')
+plot(x, sx, 'b')
+
+subplot(2, 3, 2)
+grid('on')
+gridcolor('red')
+title("gridcolor 'red'")
+plot(x, sx, 'b')
+
+subplot(2, 3, 3)
+grid('on')
+gridcolor('orange')
+title("gridcolor 'orange'")
+plot(x, sx, 'b')
+
+subplot(2, 3, 4)
+grid('on')
+gridcolor('#4080FF')
+title("gridcolor '#4080FF'")
+plot(x, sx, 'b')
+
+subplot(2, 3, 5)
+grid('on')
+gridcolor([0.2 0.8 0.4])
+title('gridcolor [0.2 0.8 0.4]')
+plot(x, sx, 'b')
+
+subplot(2, 3, 6)
+grid('on')
+gridcolor('gray')
+title("gridcolor 'gray'")
+plot(x, sx, 'b')
+
+savefig(strcat(out, 'gridcolor_comparison.svg'))
+
+% --- gridwidth comparison ---
+fprintf('  Grid width comparison      -> %sgridwidth_comparison.svg\n', out)
+
+subplot(2, 2, 1)
+grid('on')
+gridwidth(0.3)
+title('gridwidth 0.3 (fine)')
+plot(x, sx, 'b')
+
+subplot(2, 2, 2)
+grid('on')
+gridwidth(0.7)
+title('gridwidth 0.7 (default)')
+plot(x, sx, 'b')
+
+subplot(2, 2, 3)
+grid('on')
+gridwidth(1.5)
+title('gridwidth 1.5')
+plot(x, sx, 'b')
+
+subplot(2, 2, 4)
+grid('on')
+gridwidth(3)
+title('gridwidth 3 (bold)')
+plot(x, sx, 'b')
+
+savefig(strcat(out, 'gridwidth_comparison.svg'))
+
+% --- Combined: dark theme + colored grid ---
+fprintf('  Dark theme + colored grid  -> %sdark_colored_grid.svg\n', out)
+
+theme('dark')
+grid('on')
+gridcolor('#45475A')
+gridwidth(0.8)
+title('Dark theme + styled grid')
+xlabel('x')
+ylabel('amplitude')
+subplot(1, 1, 1)
+hold('on')
+plot(x, sx, 'orange')
+plot(x, cx, '#88CCEE')
+hold('off')
+savefig(strcat(out, 'dark_colored_grid.svg'))
+
+% ── Phase 30.6d: axis('equal' | 'tight' | 'off' | 'on') ──────────────────────
+
+fprintf('\n=== Phase 30.6d: axis() mode ===\n\n');
+
+t = linspace(0, 2*pi, 200);
+
+% --- axis('equal') — unit circle should appear as a true circle ---
+fprintf('  axis equal (unit circle)   -> %saxis_equal_circle.svg\n', out)
+
+axis('equal')
+title('Unit circle — axis(''equal'')')
+xlabel('x')
+ylabel('y')
+plot(cos(t), sin(t), 'b', strcat(out, 'axis_equal_circle.svg'))
+
+% Compare default (no axis mode) — same circle, may appear elliptical
+fprintf('  default axis (for compare) -> %saxis_default_circle.svg\n', out)
+
+title('Unit circle — default axis')
+xlabel('x')
+ylabel('y')
+plot(cos(t), sin(t), 'b', strcat(out, 'axis_default_circle.svg'))
+
+% axis('equal') side-by-side with default
+fprintf('  equal vs default           -> %saxis_equal_vs_default.svg\n', out)
+
+subplot(1, 2, 1)
+title('default axis')
+xlabel('x')
+ylabel('y')
+plot(cos(t), sin(t), 'b')
+
+subplot(1, 2, 2)
+axis('equal')
+title("axis('equal')")
+xlabel('x')
+ylabel('y')
+plot(cos(t), sin(t), 'r')
+
+savefig(strcat(out, 'axis_equal_vs_default.svg'))
+
+% --- axis('tight') — no margin, data touches the edges ---
+fprintf('  axis tight (bar)           -> %saxis_tight_bar.svg\n', out)
+
+subplot(1, 2, 1)
+title('default axis (5% margin)')
+bar([3 1 4 1 5 9 2 6])
+
+subplot(1, 2, 2)
+axis('tight')
+title("axis('tight') — no margin")
+bar([3 1 4 1 5 9 2 6])
+
+savefig(strcat(out, 'axis_tight_bar.svg'))
+
+% axis('tight') with line chart
+fprintf('  axis tight (line)          -> %saxis_tight_line.svg\n', out)
+
+subplot(1, 2, 1)
+title('default (5% margin)')
+plot(x, sx)
+
+subplot(1, 2, 2)
+axis('tight')
+title("axis('tight')")
+plot(x, sx)
+
+savefig(strcat(out, 'axis_tight_line.svg'))
+
+% --- axis('off') — no axis decorations; clean chart area ---
+fprintf('  axis off (line + bar)      -> %saxis_off.svg\n', out)
+
+subplot(2, 2, 1)
+title('default axes (line)')
+plot(x, sx, 'b')
+
+subplot(2, 2, 2)
+axis('off')
+title("axis('off') — line")
+plot(x, sx, 'b')
+
+subplot(2, 2, 3)
+title('default axes (bar)')
+bar([3 1 4 1 5 9 2 6])
+
+subplot(2, 2, 4)
+axis('off')
+title("axis('off') — bar")
+bar([3 1 4 1 5 9 2 6])
+
+savefig(strcat(out, 'axis_off.svg'))
+
+% --- axis('on') — restore after axis('off') ---
+fprintf('  axis on (restore)          -> %saxis_on_restore.svg\n', out)
+
+subplot(1, 3, 1)
+title('default (baseline)')
+plot(x, sx, 'b')
+
+subplot(1, 3, 2)
+axis('off')
+title("axis('off')")
+plot(x, sx, 'r')
+
+subplot(1, 3, 3)
+axis('on')
+title("axis('on') — restored")
+plot(x, sx, 'g')
+
+savefig(strcat(out, 'axis_on_restore.svg'))
+
+% --- axis modes ASCII (all are no-ops; should not error) ---
+fprintf('\n  ASCII axis modes (no-ops — parsed but ignored):\n')
+
+axis('equal')
+title("axis equal — ASCII (no effect)")
+plot(cos(t), sin(t))
+
+axis('tight')
+title("axis tight — ASCII (no effect)")
+plot(x, sx)
+
+axis('off')
+title("axis off — ASCII (no effect)")
+bar([1 3 2 5 4])
+
+axis('on')
+
+% ── All-features showcase ─────────────────────────────────────────────────────
+
+fprintf('\n=== Showcase: all Phase 30.6 features combined ===\n\n');
+fprintf('  Full showcase              -> %sshowcase.svg\n', out)
+
+subplot(2, 3, 1)
+theme('dark')
+title('30.6a: dark theme')
+xlabel('x')
+plot(x, sx, 'orange')
+
+subplot(2, 3, 2)
+theme('light')
+fontsize(13)
+linewidth(2)
+title('30.6b: thick + large font')
+xlabel('x')
+plot(x, sx, 'b--')
+
+subplot(2, 3, 3)
+grid('on')
+gridcolor('#4080FF')
+gridwidth(0.5)
+title('30.6c: blue grid')
+xlabel('x')
+plot(x, sx, 'r')
+
+subplot(2, 3, 4)
+axis('equal')
+title("30.6d: axis equal")
+xlabel('x')
+ylabel('y')
+plot(cos(t), sin(t), 'b')
+
+subplot(2, 3, 5)
+axis('tight')
+title("30.6d: axis tight")
+xlabel('x')
+bar(1:8, [3 1 4 1 5 9 2 6])
+
+subplot(2, 3, 6)
+axis('off')
+title("30.6d: axis off")
+scatter(x, sx, 'b')
+
+savefig(strcat(out, 'showcase.svg'))
+
+fprintf('\nDone. SVG files written to %s\n', out)

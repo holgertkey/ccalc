@@ -920,8 +920,9 @@ See `examples/plot_demo.calc` (ASCII), `examples/plot_file/plot_file.calc` (file
 `examples/plot3_demo.calc` (3D ASCII), `examples/plot3_file/plot3_file.calc` (3D file export),
 `examples/colormap/imagesc_demo.calc` (imagesc/colormap heat-maps),
 `examples/subplot_demo/subplot_demo.calc` (2×2 subplot grid),
-`examples/hold_demo/hold_demo.calc` (hold on/off overlay), and
-`examples/color_system_demo/color_system_demo.calc` (unified color system)
+`examples/hold_demo/hold_demo.calc` (hold on/off overlay),
+`examples/color_system_demo/color_system_demo.calc` (unified color system), and
+`examples/figure_appearance_demo/figure_appearance_demo.calc` (figure appearance — Phase 30.6)
 for full worked examples. Run `help plot` in the REPL for a quick reference.
 
 ---

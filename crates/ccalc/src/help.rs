@@ -3861,6 +3861,7 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/fill_area_polar_demo/fill_area_polar_demo.calc  (fill/area/polar demo)
           examples/quiver_demo/quiver_demo.calc    (quiver — rotational flow field)
           examples/annotations/annotations.calc   (text annotations with quiver)
-          examples/color_system_demo/color_system_demo.calc  (Phase 30.5 unified color system)"
+          examples/color_system_demo/color_system_demo.calc  (Phase 30.5 unified color system)
+          examples/figure_appearance_demo/figure_appearance_demo.calc  (Phase 30.6 figure appearance)"
     );
 }
