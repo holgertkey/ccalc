@@ -164,7 +164,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc"
-version = "0.41.0+006"
+version = "0.41.0+007"
 dependencies = [
  "ccalc-engine",
  "ccalc-plot",
@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc-engine"
-version = "0.41.0+006"
+version = "0.41.0+007"
 dependencies = [
  "blas-src",
  "criterion",
@@ -196,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "ccalc-plot"
-version = "0.41.0+006"
+version = "0.41.0+007"
 dependencies = [
  "ccalc-engine",
  "ndarray",
