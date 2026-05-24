@@ -215,11 +215,47 @@ thread_local! {
 // ── Exported names ─────────────────────────────────────────────────────────
 
 const EXPORTED: &[&str] = &[
-    "plot", "scatter", "bar", "stem", "hist", "stairs", "loglog", "semilogx", "semilogy", "plot3",
-    "scatter3", "xlabel", "ylabel", "zlabel", "title", "legend", "xlim", "ylim", "zlim", "grid",
-    "colormap", "colorbar", "imagesc", "surf", "mesh", "contour", "contourf", "subplot", "hold",
-    "savefig", "fill", "area", "polar", "quiver", "text", "figure", "theme", "bgcolor",
-    "fontsize", "linewidth", "markersize",
+    "plot",
+    "scatter",
+    "bar",
+    "stem",
+    "hist",
+    "stairs",
+    "loglog",
+    "semilogx",
+    "semilogy",
+    "plot3",
+    "scatter3",
+    "xlabel",
+    "ylabel",
+    "zlabel",
+    "title",
+    "legend",
+    "xlim",
+    "ylim",
+    "zlim",
+    "grid",
+    "colormap",
+    "colorbar",
+    "imagesc",
+    "surf",
+    "mesh",
+    "contour",
+    "contourf",
+    "subplot",
+    "hold",
+    "savefig",
+    "fill",
+    "area",
+    "polar",
+    "quiver",
+    "text",
+    "figure",
+    "theme",
+    "bgcolor",
+    "fontsize",
+    "linewidth",
+    "markersize",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -3854,7 +3890,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         plugin
             .call(
                 "plot",
@@ -3883,7 +3921,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         plugin
             .call(
                 "scatter",
@@ -3897,8 +3937,7 @@ mod tests {
             )
             .unwrap();
         let ms = FIGURE_STATE.with(|f| {
-            if let Some(PendingSeries::Scatter(_, _, Some(sp))) =
-                f.borrow().pending_series.first()
+            if let Some(PendingSeries::Scatter(_, _, Some(sp))) = f.borrow().pending_series.first()
             {
                 sp.marker_size
             } else {
@@ -3913,7 +3952,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+        plugin
+            .call("hold", &[Value::Str("on".into())], &env)
+            .unwrap();
         plugin
             .call(
                 "plot",
@@ -3945,7 +3986,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("fontsize", &[Value::Scalar(18.0)], &env).unwrap();
+        plugin
+            .call("fontsize", &[Value::Scalar(18.0)], &env)
+            .unwrap();
         let fs = FIGURE_STATE.with(|f| f.borrow().font_size);
         assert_eq!(fs, Some(18_u32));
     }
@@ -3955,7 +3998,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("linewidth", &[Value::Scalar(3.0)], &env).unwrap();
+        plugin
+            .call("linewidth", &[Value::Scalar(3.0)], &env)
+            .unwrap();
         let lw = FIGURE_STATE.with(|f| f.borrow().line_width);
         assert_eq!(lw, Some(3.0_f32));
     }
@@ -3965,7 +4010,9 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
-        plugin.call("markersize", &[Value::Scalar(5.0)], &env).unwrap();
+        plugin
+            .call("markersize", &[Value::Scalar(5.0)], &env)
+            .unwrap();
         let ms = FIGURE_STATE.with(|f| f.borrow().marker_size);
         assert_eq!(ms, Some(5_u32));
     }

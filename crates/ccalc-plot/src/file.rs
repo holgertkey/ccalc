@@ -460,7 +460,10 @@ fn eff_line_width(series_style: Option<&crate::style::StyleSpec>, session: Optio
 
 /// Effective marker radius (pixels): per-series → session override → 3.
 fn eff_marker_size(series_style: Option<&crate::style::StyleSpec>, session: Option<u32>) -> u32 {
-    series_style.and_then(|s| s.marker_size).or(session).unwrap_or(3)
+    series_style
+        .and_then(|s| s.marker_size)
+        .or(session)
+        .unwrap_or(3)
 }
 
 fn render_file(
