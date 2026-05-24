@@ -872,6 +872,14 @@ Set annotations **before** the render call — they are consumed and cleared by 
 | `xlim([lo, hi])` / `ylim([lo, hi])` / `zlim([lo, hi])` | Override axis range |
 | `legend(s1, s2, …)` | Series labels for multi-series SVG/PNG charts |
 | `grid` / `grid('on')` / `grid('off')` | Toggle grid (SVG/PNG only; default off) |
+| `theme('light'\|'dark')` | Colour theme — `'dark'` uses Catppuccin Mocha palette (SVG/PNG) |
+| `bgcolor(color)` | Override figure background color (beats theme) |
+| `fontsize(n)` | Override title and axis-label font size in pixels |
+| `linewidth(f)` | Override default line stroke width for all series |
+| `markersize(n)` | Override default marker radius for all series |
+| `gridcolor(color)` | Override grid line color (requires `grid('on')`) |
+| `gridwidth(n)` | Override grid line stroke width (requires `grid('on')`) |
+| `axis('equal'\|'tight'\|'off'\|'on')` | Axis scale mode: equal px/unit, no margin, hidden, or default |
 
 ```matlab
 x = linspace(0, 2*pi, 80);
@@ -887,22 +895,33 @@ legend('sin', 'cos')
 grid('on')
 plot(x, M, 'trig.svg')
 
+% Dark theme with custom line width
+theme('dark')
+linewidth(2)
+plot(x, sin(x), 'sin_dark.svg')
+
+% Equal-scale axes (circles appear as circles)
+t = linspace(0, 2*pi, 120);
+axis('equal')
+plot(cos(t), sin(t), 'circle.svg')
+
 % Histogram with explicit edges
 hist(randn(1, 500), -3:0.5:3, 'dist.png')
 
 % 3D helix to SVG
-t = linspace(0, 4*pi, 120);
+t2 = linspace(0, 4*pi, 120);
 title('3D helix')
 zlabel('z = t/(4π)')
-plot3(cos(t), sin(t), t/(4*pi), 'helix.svg')
+plot3(cos(t2), sin(t2), t2/(4*pi), 'helix.svg')
 ```
 
 See `examples/plot_demo.calc` (ASCII), `examples/plot_file/plot_file.calc` (file export),
 `examples/plot_extended.calc` (bar/stem/stairs/hist/loglog),
 `examples/plot3_demo.calc` (3D ASCII), `examples/plot3_file/plot3_file.calc` (3D file export),
 `examples/colormap/imagesc_demo.calc` (imagesc/colormap heat-maps),
-`examples/subplot_demo/subplot_demo.calc` (2×2 subplot grid), and
-`examples/hold_demo/hold_demo.calc` (hold on/off overlay)
+`examples/subplot_demo/subplot_demo.calc` (2×2 subplot grid),
+`examples/hold_demo/hold_demo.calc` (hold on/off overlay), and
+`examples/color_system_demo/color_system_demo.calc` (unified color system)
 for full worked examples. Run `help plot` in the REPL for a quick reference.
 
 ---

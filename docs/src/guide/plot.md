@@ -734,6 +734,100 @@ COLUMNS=120 LINES=40 ccalc -q myscript.calc
 
 ---
 
+## Figure appearance
+
+The following functions adjust the visual appearance of the next rendered figure.
+Like other annotations, they are stored in `FigureState` and consumed by the next render call.
+These settings apply to **SVG/PNG file output only**; ASCII charts are monochrome and their
+geometry is fixed by the terminal size.
+
+### Theme and background color
+
+| Function | Effect |
+|---|---|
+| `theme('light')` | Light theme: white background, black text and axes (default) |
+| `theme('dark')` | Dark theme: Catppuccin Mocha palette (`#1E1E2E` bg, `#CDD6F4` text) |
+| `bgcolor(color)` | Override the figure background color only (beats the theme) |
+
+`bgcolor` accepts any [color specification](#color-specification): a color name string,
+a hex code `'#RRGGBB'`, or a 1×3 RGB matrix with values in `[0, 1]`.
+
+```matlab
+theme('dark')
+plot(x, sin(x), 'sin_dark.svg')
+
+bgcolor('#F5F5F5')     % light grey background, keeps other defaults
+plot(x, cos(x), 'cos_grey.svg')
+```
+
+### Font and stroke sizes
+
+| Function | Effect |
+|---|---|
+| `fontsize(n)` | Override title and axis-label font size (pixels) |
+| `linewidth(f)` | Override default line stroke width for all series (pixels) |
+| `markersize(n)` | Override default marker radius for all series (pixels) |
+
+Per-series overrides are applied via named arguments appended to a single plot call:
+
+```matlab
+plot(x, y, 'r--', 'linewidth', 2)         % thick red dashed line
+scatter(x, y, 'markersize', 5)             % larger dot markers
+plot(x, y, 'linewidth', 1.5, 'markersize', 4)
+```
+
+Figure-level overrides apply to all series unless a per-series value is present:
+
+```matlab
+fontsize(14)
+linewidth(2)
+title('Thick lines')
+plot(x, sin(x), 'sin_thick.svg')
+```
+
+### Grid color and width
+
+| Function | Effect |
+|---|---|
+| `gridcolor(color)` | Override both bold and light grid line color |
+| `gridwidth(n)` | Override grid line stroke width (pixels) |
+
+Requires `grid('on')` to have any visible effect.
+
+```matlab
+grid('on')
+gridcolor('#4080FF')
+gridwidth(0.5)
+plot(x, sin(x), 'blue_grid.svg')
+```
+
+### Axis mode
+
+| Call | Effect |
+|---|---|
+| `axis('equal')` | Equal scaling — same data-units per pixel on both axes |
+| `axis('tight')` | No margin — data range fills the chart area exactly |
+| `axis('off')` | Hide all axis decorations (lines, ticks, labels) |
+| `axis('on')` | Restore default axis display (cancels a previous `axis` call) |
+
+```matlab
+t = linspace(0, 2*pi, 120);
+axis('equal')
+plot(cos(t), sin(t), 'circle.svg')    % unit circle appears as a circle
+
+axis('tight')
+bar([3 1 4 1 5], 'tight_bar.svg')    % bars fill the chart with no margin
+
+axis('off')
+imagesc(Z, 'clean.svg')              % image only, no axis decorations
+```
+
+`axis('equal')` expands the tighter axis so data-units-per-pixel are equal on both axes.
+`axis('tight')` removes the default 5 % margin around the data range.
+Both apply to SVG/PNG output; ASCII charts are unaffected.
+
+---
+
 ## File export
 
 Append a file path as the **last** string argument (after the optional style string):
@@ -791,6 +885,14 @@ plot(t, y)       % all annotations applied here, then cleared
 | `colorbar()` | Append colour-scale strip (file export only, `imagesc`) | Yes |
 | `figure(w, h)` | Set SVG/PNG canvas size in pixels (1–16384); ASCII ignores it | Yes |
 | `text(x, y, 's')` | Add label at data coordinate — flushed with next render | Yes |
+| `theme('light'\|'dark')` | Set colour theme (SVG/PNG only) | Yes |
+| `bgcolor(color)` | Override figure background color (beats theme) | Yes |
+| `fontsize(n)` | Override title and axis-label font size in pixels | Yes |
+| `linewidth(f)` | Override default line stroke width for all series | Yes |
+| `markersize(n)` | Override default marker radius for all series | Yes |
+| `gridcolor(color)` | Override grid line color (requires `grid('on')`) | Yes |
+| `gridwidth(n)` | Override grid line stroke width (requires `grid('on')`) | Yes |
+| `axis('equal'\|'tight'\|'off'\|'on')` | Axis scale mode / visibility (SVG/PNG only) | Yes |
 
 Grid defaults to **off**. The grid is visible in SVG/PNG output only; ASCII charts
 ignore it.
@@ -824,7 +926,9 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **3D wireframe plots (`mesh`):** row-only `LineSeries` grid (sparser than `surf`).
 - **False-colour images (`imagesc`):** one `Rectangle` per matrix cell, RGB colour
   from the active colormap LUT; optional 80 px colorbar strip on the right.
-- **Axis range:** auto-computed from data with 5 % margin; single-point data uses ± 1.
+- **Axis range:** auto-computed from data with 5 % margin by default.
+  `axis('tight')` removes the margin; `axis('equal')` enforces equal data-units/pixel;
+  `axis('off')` hides all axis decorations. Single-point data uses ± 1.
 - **Legend:** shown when `legend(...)` is set; drawn in the upper-right corner with
   a black border.
 

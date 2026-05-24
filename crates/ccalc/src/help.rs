@@ -82,7 +82,9 @@ pub fn print(topic: Option<&str>) {
             | "svg" | "png" | "colormap" | "colorbar" | "imagesc" | "heatmap" | "surf" | "mesh"
             | "meshgrid" | "surface" | "wireframe" | "subplot" | "hold" | "savefig" | "multipanel"
             | "panels" | "fill" | "area" | "polar" | "style" | "linestyle" | "color" | "stylestr"
-            | "quiver" | "vectorfield" | "text" | "annotation" | "annotations",
+            | "quiver" | "vectorfield" | "text" | "annotation" | "annotations"
+            | "theme" | "bgcolor" | "background" | "fontsize" | "linewidth" | "markersize"
+            | "gridcolor" | "gridwidth" | "axis" | "axismode" | "equal" | "tight" | "appearance",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -198,6 +200,10 @@ Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features pl
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
         plot3(x,y,z,'f.svg')               3D file export via plotters build_cartesian_3d
         title('t')  xlabel('x')  ylabel('y')  zlabel('z')  set annotations
+        theme('dark')  bgcolor(color)       colour theme / background override
+        fontsize(n)  linewidth(f)  markersize(n)  figure-level size overrides
+        gridcolor(c)  gridwidth(n)          grid line color / stroke width
+        axis('equal'|'tight'|'off'|'on')    axis scale mode / visibility
 Bitwise bitand(a,b)  bitor(a,b)  bitxor(a,b)
         bitshift(a,n)  bitnot(a)  bitnot(a,bits)
 
@@ -3690,6 +3696,28 @@ Append a file path as the last string argument to save instead of print:
     grid('on')          enable grid (SVG/PNG only; ASCII ignored)
     grid('off')         disable grid
 
+── Figure appearance (SVG/PNG only) ─────────────────────────────────────────
+    theme('light')      light theme: white bg, black text and axes (default)
+    theme('dark')       dark theme: Catppuccin Mocha (#1E1E2E bg, #CDD6F4 text)
+    bgcolor(color)      override figure background only (beats theme)
+    fontsize(n)         override title and axis-label font size (pixels)
+    linewidth(f)        override default line stroke width for all series
+    markersize(n)       override default marker radius for all series
+    gridcolor(color)    override grid line color (requires grid('on'))
+    gridwidth(n)        override grid line stroke width (requires grid('on'))
+
+    color argument for bgcolor/gridcolor: name, '#RRGGBB', or [r g b] in [0,1]
+
+    Per-series size overrides via named arguments on the plot call:
+    plot(x, y, 'r--', 'linewidth', 2)      thick red dashed line
+    scatter(x, y, 'markersize', 5)          larger dot markers
+
+── Axis mode (SVG/PNG only) ─────────────────────────────────────────────────
+    axis('equal')   equal scaling — same data-units per pixel on both axes
+    axis('tight')   no margin — data range fills the chart area exactly
+    axis('off')     hide all axis decorations (lines, ticks, labels)
+    axis('on')      restore default axis display (cancels a previous axis call)
+
     Annotations are stored in a thread-local FigureState and consumed (cleared)
     by the next render call.  Set them immediately before the render call:
 
@@ -3801,6 +3829,24 @@ Append a file path as the last string argument to save instead of print:
     % Custom colormap
     colormap([0 0 1; 1 1 0; 1 0 0])
     imagesc(reshape(1:64, 8, 8), 'custom_cmap.svg')
+
+    % Dark theme with thick lines
+    theme('dark')
+    linewidth(2)
+    title('sin — dark theme')
+    plot(linspace(0, 2*pi, 80), sin(linspace(0, 2*pi, 80)), 'dark.svg')
+
+    % Equal-scale axes (unit circle)
+    t = linspace(0, 2*pi, 120);
+    axis('equal')
+    plot(cos(t), sin(t), 'circle.svg')
+
+    % Tight range — no padding
+    axis('tight')
+    bar([3 1 4 1 5], 'tight_bar.svg')
+
+    % Per-series line width and marker size
+    plot(xs, sin(xs), 'r--', 'linewidth', 2, 'markersize', 4)
 
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
