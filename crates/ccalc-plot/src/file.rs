@@ -99,7 +99,11 @@ where
     let lw = eff_line_width(None, state.line_width);
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| {
-        if axis_mode == Some(AxisMode::Tight) { range_exact(x) } else { range_with_margin(x) }
+        if axis_mode == Some(AxisMode::Tight) {
+            range_exact(x)
+        } else {
+            range_with_margin(x)
+        }
     });
 
     // Y range spans all series.
@@ -112,17 +116,19 @@ where
         }
     });
 
-    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
-        && state.xlim.is_none()
-        && state.ylim.is_none()
-    {
-        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
-        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
-    } else {
-        (x_min, x_max, y_min, y_max)
-    };
+    let (x_min, x_max, y_min, y_max) =
+        if axis_mode == Some(AxisMode::Equal) && state.xlim.is_none() && state.ylim.is_none() {
+            let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+            apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+        } else {
+            (x_min, x_max, y_min, y_max)
+        };
 
-    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) {
+        (0, 0)
+    } else {
+        (40, 50)
+    };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
@@ -255,20 +261,26 @@ where
     let max_count = counts.iter().copied().max().unwrap_or(1).max(1) as f64;
     let y_min = state.ylim.map(|(lo, _)| lo).unwrap_or(0.0);
     let y_max = state.ylim.map(|(_, hi)| hi).unwrap_or_else(|| {
-        if axis_mode == Some(AxisMode::Tight) { max_count } else { max_count * 1.05 }
+        if axis_mode == Some(AxisMode::Tight) {
+            max_count
+        } else {
+            max_count * 1.05
+        }
     });
 
-    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
-        && state.xlim.is_none()
-        && state.ylim.is_none()
-    {
-        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
-        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
-    } else {
-        (x_min, x_max, y_min, y_max)
-    };
+    let (x_min, x_max, y_min, y_max) =
+        if axis_mode == Some(AxisMode::Equal) && state.xlim.is_none() && state.ylim.is_none() {
+            let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+            apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+        } else {
+            (x_min, x_max, y_min, y_max)
+        };
 
-    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) {
+        (0, 0)
+    } else {
+        (40, 50)
+    };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
@@ -396,7 +408,11 @@ where
     let tick_sz = eff_axis_desc_size(state.font_size, 11);
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| {
-        if axis_mode == Some(AxisMode::Tight) { range_exact(x) } else { range_with_margin(x) }
+        if axis_mode == Some(AxisMode::Tight) {
+            range_exact(x)
+        } else {
+            range_with_margin(x)
+        }
     });
     let y_with_zero: Vec<f64> = y.iter().copied().chain(std::iter::once(0.0)).collect();
     let (y_min, y_max) = state.ylim.unwrap_or_else(|| {
@@ -407,17 +423,19 @@ where
         }
     });
 
-    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
-        && state.xlim.is_none()
-        && state.ylim.is_none()
-    {
-        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
-        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
-    } else {
-        (x_min, x_max, y_min, y_max)
-    };
+    let (x_min, x_max, y_min, y_max) =
+        if axis_mode == Some(AxisMode::Equal) && state.xlim.is_none() && state.ylim.is_none() {
+            let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+            apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+        } else {
+            (x_min, x_max, y_min, y_max)
+        };
 
-    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) {
+        (0, 0)
+    } else {
+        (40, 50)
+    };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
@@ -629,7 +647,11 @@ where
     let tick_sz = eff_axis_desc_size(state.font_size, 11);
 
     let (x_min, x_max) = state.xlim.unwrap_or_else(|| {
-        if axis_mode == Some(AxisMode::Tight) { range_exact(x) } else { range_with_margin(x) }
+        if axis_mode == Some(AxisMode::Tight) {
+            range_exact(x)
+        } else {
+            range_with_margin(x)
+        }
     });
     let (y_min, y_max) = state.ylim.unwrap_or_else(|| {
         if zero_baseline {
@@ -645,17 +667,19 @@ where
         }
     });
 
-    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
-        && state.xlim.is_none()
-        && state.ylim.is_none()
-    {
-        let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
-        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
-    } else {
-        (x_min, x_max, y_min, y_max)
-    };
+    let (x_min, x_max, y_min, y_max) =
+        if axis_mode == Some(AxisMode::Equal) && state.xlim.is_none() && state.ylim.is_none() {
+            let (pw, ph) = plot_area_px(canvas_w, canvas_h, 30, 40, 50, title_sz);
+            apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+        } else {
+            (x_min, x_max, y_min, y_max)
+        };
 
-    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (40, 50) };
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) {
+        (0, 0)
+    } else {
+        (40, 50)
+    };
     let mut chart = ChartBuilder::on(&root)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(30)
@@ -1021,17 +1045,19 @@ where
     let axis_desc_sz = eff_axis_desc_size(panel.font_size, 11);
     let tick_sz = eff_axis_desc_size(panel.font_size, 10);
 
-    let (x_min, x_max, y_min, y_max) = if axis_mode == Some(AxisMode::Equal)
-        && panel.xlim.is_none()
-        && panel.ylim.is_none()
-    {
-        let (pw, ph) = plot_area_px(area_w, area_h, 15, 30, 40, title_sz);
-        apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
-    } else {
-        (x_min, x_max, y_min, y_max)
-    };
+    let (x_min, x_max, y_min, y_max) =
+        if axis_mode == Some(AxisMode::Equal) && panel.xlim.is_none() && panel.ylim.is_none() {
+            let (pw, ph) = plot_area_px(area_w, area_h, 15, 30, 40, title_sz);
+            apply_equal_scale(x_min, x_max, y_min, y_max, pw, ph)
+        } else {
+            (x_min, x_max, y_min, y_max)
+        };
 
-    let (xa, ya) = if axis_mode == Some(AxisMode::Off) { (0, 0) } else { (30, 40) };
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) {
+        (0, 0)
+    } else {
+        (30, 40)
+    };
     let mut chart = ChartBuilder::on(area)
         .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
         .margin(15)
@@ -1284,7 +1310,11 @@ fn range_exact(vals: &[f64]) -> (f64, f64) {
 /// Tight range that always includes y = 0 — used by `axis('tight')` on bar/stem.
 fn range_exact_zero_baseline(vals: &[f64]) -> (f64, f64) {
     let lo = vals.iter().copied().fold(f64::INFINITY, f64::min).min(0.0);
-    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max).max(0.0);
+    let hi = vals
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max)
+        .max(0.0);
     if (hi - lo).abs() < f64::EPSILON {
         (lo - 1.0, lo + 1.0)
     } else {

@@ -4230,12 +4230,7 @@ mod tests {
                 &env,
             )
             .unwrap();
-        let mode = FIGURE_STATE.with(|f| {
-            f.borrow()
-                .panels
-                .first()
-                .and_then(|p| p.axis_mode)
-        });
+        let mode = FIGURE_STATE.with(|f| f.borrow().panels.first().and_then(|p| p.axis_mode));
         assert_eq!(
             mode,
             Some(style::AxisMode::Tight),
