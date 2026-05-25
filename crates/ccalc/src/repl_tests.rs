@@ -1050,6 +1050,13 @@ fn test_pipe_save_selective_vars() {
 }
 
 // --- render_prompt tests ---
+//
+// render_prompt returns (plain, colored):
+//   plain   — no ANSI codes; used by rustyline for cursor width
+//   colored — ANSI codes included; used by highlight_prompt for display
+//
+// Content placeholders appear in BOTH strings.
+// Color/style placeholders appear in `colored` only; `plain` is unaffected.
 
 fn make_env_with_ans(v: Value) -> Env {
     let mut env = new_env();
@@ -1060,57 +1067,61 @@ fn make_env_with_ans(v: Value) -> Env {
 #[test]
 fn test_render_prompt_literal() {
     let env = new_env();
-    let result = render_prompt("$ ", &env, 1, Base::Dec, &FormatMode::Short);
-    assert_eq!(result, "$ ");
+    let (plain, colored) = render_prompt("$ ", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "$ ");
+    assert_eq!(colored, "$ ");
 }
 
 #[test]
 fn test_render_prompt_ans_scalar() {
     let env = make_env_with_ans(Value::Scalar(42.0));
-    let result = render_prompt("[{ans}] ", &env, 1, Base::Dec, &FormatMode::Short);
-    assert!(result.contains("42"), "expected '42' in '{result}'");
+    let (plain, colored) = render_prompt("[{ans}] ", &env, 1, Base::Dec, &FormatMode::Short);
+    assert!(plain.contains("42"), "expected '42' in plain '{plain}'");
+    assert!(colored.contains("42"), "expected '42' in colored '{colored}'");
 }
 
 #[test]
 fn test_render_prompt_line_counter() {
     let env = new_env();
-    let result = render_prompt("({line}) ", &env, 7, Base::Dec, &FormatMode::Short);
-    assert_eq!(result, "(7) ");
+    let (plain, colored) = render_prompt("({line}) ", &env, 7, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "(7) ");
+    assert_eq!(colored, "(7) ");
 }
 
 #[test]
 fn test_render_prompt_unknown_placeholder() {
     let env = new_env();
-    let result = render_prompt("{foo}", &env, 1, Base::Dec, &FormatMode::Short);
-    assert_eq!(result, "{foo}");
+    let (plain, colored) = render_prompt("{foo}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "{foo}");
+    assert_eq!(colored, "{foo}");
 }
 
 #[test]
 fn test_render_prompt_ansi_escape_passthrough() {
-    // \e is no longer converted — users should use {reset}, {red}, etc. instead
+    // \e is plain text — pass through unchanged to both strings
     let env = new_env();
-    let result = render_prompt(r"\e[0m", &env, 1, Base::Dec, &FormatMode::Short);
-    assert_eq!(result, r"\e[0m");
+    let (plain, colored) = render_prompt(r"\e[0m", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, r"\e[0m");
+    assert_eq!(colored, r"\e[0m");
 }
 
 #[test]
 fn test_render_prompt_color_reset() {
     let env = new_env();
-    let result = render_prompt("{reset}", &env, 1, Base::Dec, &FormatMode::Short);
-    assert_eq!(result, "\x1b[0m");
+    let (plain, colored) = render_prompt("{reset}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "");           // no visible text in plain
+    assert_eq!(colored, "\x1b[0m"); // ANSI code in colored
 }
 
 #[test]
 fn test_render_prompt_color_bold_and_dim() {
     let env = new_env();
-    assert_eq!(
-        render_prompt("{bold}", &env, 1, Base::Dec, &FormatMode::Short),
-        "\x1b[1m"
-    );
-    assert_eq!(
-        render_prompt("{dim}", &env, 1, Base::Dec, &FormatMode::Short),
-        "\x1b[2m"
-    );
+    let (p, c) = render_prompt("{bold}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(p, "");
+    assert_eq!(c, "\x1b[1m");
+    let (p, c) = render_prompt("{dim}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(p, "");
+    assert_eq!(c, "\x1b[2m");
 }
 
 #[test]
@@ -1126,12 +1137,10 @@ fn test_render_prompt_standard_colors() {
         ("{cyan}",    "\x1b[36m"),
         ("{white}",   "\x1b[37m"),
     ];
-    for (tmpl, expected) in cases {
-        assert_eq!(
-            render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short),
-            expected,
-            "failed for {tmpl}"
-        );
+    for (tmpl, expected_ansi) in cases {
+        let (plain, colored) = render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short);
+        assert_eq!(plain, "", "plain should be empty for {tmpl}");
+        assert_eq!(colored, expected_ansi, "wrong ANSI for {tmpl}");
     }
 }
 
@@ -1139,54 +1148,80 @@ fn test_render_prompt_standard_colors() {
 fn test_render_prompt_bright_colors() {
     let env = new_env();
     let cases = [
-        ("{gray}",          "\x1b[90m"),
-        ("{bright_red}",    "\x1b[91m"),
-        ("{bright_green}",  "\x1b[92m"),
-        ("{bright_yellow}", "\x1b[93m"),
-        ("{bright_blue}",   "\x1b[94m"),
-        ("{bright_magenta}","\x1b[95m"),
-        ("{bright_cyan}",   "\x1b[96m"),
-        ("{bright_white}",  "\x1b[97m"),
+        ("{gray}",           "\x1b[90m"),
+        ("{bright_red}",     "\x1b[91m"),
+        ("{bright_green}",   "\x1b[92m"),
+        ("{bright_yellow}",  "\x1b[93m"),
+        ("{bright_blue}",    "\x1b[94m"),
+        ("{bright_magenta}", "\x1b[95m"),
+        ("{bright_cyan}",    "\x1b[96m"),
+        ("{bright_white}",   "\x1b[97m"),
     ];
-    for (tmpl, expected) in cases {
-        assert_eq!(
-            render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short),
-            expected,
-            "failed for {tmpl}"
-        );
+    for (tmpl, expected_ansi) in cases {
+        let (plain, colored) = render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short);
+        assert_eq!(plain, "", "plain should be empty for {tmpl}");
+        assert_eq!(colored, expected_ansi, "wrong ANSI for {tmpl}");
     }
 }
 
 #[test]
-fn test_render_prompt_color_composition() {
-    // Realistic prompt: colored line counter + ans
+fn test_render_prompt_rgb_color() {
+    let env = new_env();
+    // {#FF8800} → truecolor orange foreground
+    let (plain, colored) = render_prompt("{#FF8800}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "");
+    assert_eq!(colored, "\x1b[38;2;255;136;0m");
+    // lowercase hex also works
+    let (_, colored2) = render_prompt("{#ff8800}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(colored2, "\x1b[38;2;255;136;0m");
+}
+
+#[test]
+fn test_render_prompt_rgb_invalid_passthrough() {
+    let env = new_env();
+    // Too short — treated as unknown placeholder, passed through to both
+    let (plain, colored) = render_prompt("{#FFF}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "{#FFF}");
+    assert_eq!(colored, "{#FFF}");
+}
+
+#[test]
+fn test_render_prompt_color_splits_plain_and_colored() {
+    // Key property: plain has no ANSI, colored has all content + ANSI
     let env = make_env_with_ans(Value::Scalar(1.0));
-    let result = render_prompt("{gray}({line}){reset} [ {ans} ]: ", &env, 3, Base::Dec, &FormatMode::Short);
-    assert!(result.starts_with("\x1b[90m(3)\x1b[0m"), "got: {result:?}");
-    assert!(result.contains("1"), "ans missing: {result:?}");
+    let (plain, colored) = render_prompt(
+        "{gray}({line}){reset} [ {ans} ]: ",
+        &env, 3, Base::Dec, &FormatMode::Short,
+    );
+    // plain: only visible text
+    assert_eq!(plain, "(3) [ 1 ]: ");
+    // colored: ANSI codes + same visible text
+    assert!(colored.starts_with("\x1b[90m(3)\x1b[0m"), "got: {colored:?}");
+    assert!(colored.contains("1"), "ans missing in colored: {colored:?}");
 }
 
 #[test]
 fn test_render_prompt_cwd_short_nonempty() {
     let env = new_env();
-    let result = render_prompt("{cwd_short}", &env, 1, Base::Dec, &FormatMode::Short);
-    assert!(!result.is_empty());
+    let (plain, _) = render_prompt("{cwd_short}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert!(!plain.is_empty());
 }
 
 #[test]
 fn test_render_prompt_time_format() {
     let env = new_env();
-    let result = render_prompt("{time}", &env, 1, Base::Dec, &FormatMode::Short);
+    let (plain, _) = render_prompt("{time}", &env, 1, Base::Dec, &FormatMode::Short);
     // HH:MM:SS — exactly 8 chars
-    assert_eq!(result.len(), 8, "time should be HH:MM:SS, got '{result}'");
-    assert_eq!(&result[2..3], ":");
-    assert_eq!(&result[5..6], ":");
+    assert_eq!(plain.len(), 8, "time should be HH:MM:SS, got '{plain}'");
+    assert_eq!(&plain[2..3], ":");
+    assert_eq!(&plain[5..6], ":");
 }
 
 #[test]
 fn test_render_prompt_unclosed_brace() {
     let env = new_env();
-    // Unclosed brace is passed through literally
-    let result = render_prompt("{ans", &env, 1, Base::Dec, &FormatMode::Short);
-    assert_eq!(result, "{ans");
+    // Unclosed brace is passed through literally to both
+    let (plain, colored) = render_prompt("{ans", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "{ans");
+    assert_eq!(colored, "{ans");
 }

@@ -57,6 +57,7 @@ base = "dec"
 #   {bright_magenta} — bright magenta foreground
 #   {bright_cyan}    — bright cyan foreground
 #   {bright_white}   — bright white foreground
+#   {#RRGGBB}        — 24-bit truecolor foreground  (e.g. {#FF8800} for orange)
 #
 # Examples:
 # prompt1 = "[ {ans} ]: "
@@ -64,6 +65,7 @@ base = "dec"
 # prompt1 = "{gray}({line}){reset} [ {ans} ]: "
 # prompt1 = "{green}{user}@{host}{reset}:{cyan}{cwd_short}{reset}$ "
 # prompt1 = "{bold}{blue}ccalc{reset} {gray}[{line}]{reset} {ans} > "
+# prompt1 = "{#FF8800}ccalc{reset} [{line}] {ans} > "
 # prompt2 = "  >> "
 "#;
 

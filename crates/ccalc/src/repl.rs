@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::io::{BufRead, Write};
 
 use rustyline::Editor;
@@ -29,6 +30,8 @@ struct CcalcHelper {
     candidates: Vec<String>,
     /// Number of fixed entries (builtins + plugins) at the front of `candidates`.
     fixed_count: usize,
+    /// Colored prompt for the current readline call (returned by `highlight_prompt`).
+    colored_prompt: String,
 }
 
 impl CcalcHelper {
@@ -39,7 +42,12 @@ impl CcalcHelper {
         Self {
             candidates,
             fixed_count,
+            colored_prompt: String::new(),
         }
+    }
+
+    fn update_prompt(&mut self, colored: String) {
+        self.colored_prompt = colored;
     }
 
     fn update_env(&mut self, env: &Env) {
@@ -84,7 +92,19 @@ impl Hinter for CcalcHelper {
     type Hint = String;
 }
 
-impl Highlighter for CcalcHelper {}
+impl Highlighter for CcalcHelper {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
+        prompt: &'p str,
+        _default: bool,
+    ) -> Cow<'b, str> {
+        if self.colored_prompt.is_empty() {
+            Cow::Borrowed(prompt)
+        } else {
+            Cow::Borrowed(&self.colored_prompt)
+        }
+    }
+}
 
 impl Validator for CcalcHelper {}
 
@@ -332,15 +352,48 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
 /// Renders a prompt template string, replacing `{var}` placeholders and
 /// converting `\e` escape sequences to ANSI escape codes.
 ///
-/// Supported placeholders: `{ans}`, `{line}`, `{user}`, `{host}`,
+/// Renders a prompt template into a `(plain, colored)` pair.
+///
+/// - `plain`   — visible text only, no ANSI codes; passed to `readline()` so
+///               rustyline calculates cursor width correctly.
+/// - `colored` — same text plus ANSI codes; returned by `highlight_prompt` for
+///               display.
+///
+/// Content placeholders expand into both strings.  Colour/style placeholders
+/// expand into `colored` only and produce nothing in `plain`.
+///
+/// Supported content placeholders: `{ans}`, `{line}`, `{user}`, `{host}`,
 /// `{cwd}`, `{cwd_short}`, `{time}`.
-/// Color/style: `{reset}`, `{bold}`, `{dim}`, `{black}`, `{red}`, `{green}`,
-/// `{yellow}`, `{blue}`, `{magenta}`, `{cyan}`, `{white}`, `{gray}`,
-/// `{bright_red}`, `{bright_green}`, `{bright_yellow}`, `{bright_blue}`,
-/// `{bright_magenta}`, `{bright_cyan}`, `{bright_white}`.
-/// Unknown `{foo}` tokens are passed through unchanged.
-fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &FormatMode) -> String {
-    let mut out = String::with_capacity(template.len() + 16);
+///
+/// Colour/style placeholders: `{reset}`, `{bold}`, `{dim}`, `{black}`,
+/// `{red}`, `{green}`, `{yellow}`, `{blue}`, `{magenta}`, `{cyan}`, `{white}`,
+/// `{gray}`, `{bright_red}`, `{bright_green}`, `{bright_yellow}`,
+/// `{bright_blue}`, `{bright_magenta}`, `{bright_cyan}`, `{bright_white}`,
+/// and `{#RRGGBB}` for 24-bit truecolor foreground.
+///
+/// Unknown `{foo}` tokens are passed through unchanged into both strings.
+fn render_prompt(
+    template: &str,
+    env: &Env,
+    line_no: usize,
+    base: Base,
+    fmt: &FormatMode,
+) -> (String, String) {
+    let mut plain = String::with_capacity(template.len() + 16);
+    let mut colored = String::with_capacity(template.len() + 64);
+
+    macro_rules! content {
+        ($s:expr) => {{
+            plain.push_str($s);
+            colored.push_str($s);
+        }};
+    }
+    macro_rules! color {
+        ($s:expr) => {{
+            colored.push_str($s);
+        }};
+    }
+
     let mut chars = template.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '{' {
@@ -355,33 +408,34 @@ fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &Fo
                 key.push(k);
             }
             if !closed {
-                // No closing brace — emit literally
-                out.push('{');
-                out.push_str(&key);
+                // No closing brace — emit literally into both
+                plain.push('{');
+                colored.push('{');
+                plain.push_str(&key);
+                colored.push_str(&key);
                 continue;
             }
             match key.as_str() {
-                "ans" => out.push_str(&format_prompt_ans(env, base, fmt)),
-                "line" => out.push_str(&line_no.to_string()),
+                "ans"  => content!(&format_prompt_ans(env, base, fmt)),
+                "line" => content!(&line_no.to_string()),
                 "user" => {
                     let u = std::env::var("USER")
                         .or_else(|_| std::env::var("USERNAME"))
                         .unwrap_or_else(|_| "user".to_string());
-                    out.push_str(&u);
+                    content!(&u);
                 }
                 "host" => {
                     let h = std::env::var("HOSTNAME")
                         .or_else(|_| std::env::var("COMPUTERNAME"))
                         .unwrap_or_else(|_| "localhost".to_string());
-                    // Keep only short hostname (before first dot)
-                    let short = h.split('.').next().unwrap_or(&h);
-                    out.push_str(short);
+                    let short = h.split('.').next().unwrap_or(&h).to_string();
+                    content!(&short);
                 }
                 "cwd" => {
                     let cwd = std::env::current_dir()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_else(|_| ".".to_string());
-                    out.push_str(&cwd);
+                    content!(&cwd);
                 }
                 "cwd_short" => {
                     let cwd = std::env::current_dir().unwrap_or_else(|_| ".".into());
@@ -389,7 +443,7 @@ fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &Fo
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| ".".to_string());
-                    out.push_str(&last);
+                    content!(&last);
                 }
                 "time" => {
                     use std::time::{SystemTime, UNIX_EPOCH};
@@ -400,42 +454,60 @@ fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &Fo
                     let h = (secs / 3600) % 24;
                     let m = (secs / 60) % 60;
                     let s = secs % 60;
-                    out.push_str(&format!("{h:02}:{m:02}:{s:02}"));
+                    content!(&format!("{h:02}:{m:02}:{s:02}"));
                 }
-                // ANSI styles / colours
-                "reset"         => out.push_str("\x1b[0m"),
-                "bold"          => out.push_str("\x1b[1m"),
-                "dim"           => out.push_str("\x1b[2m"),
-                // Standard foreground colours
-                "black"         => out.push_str("\x1b[30m"),
-                "red"           => out.push_str("\x1b[31m"),
-                "green"         => out.push_str("\x1b[32m"),
-                "yellow"        => out.push_str("\x1b[33m"),
-                "blue"          => out.push_str("\x1b[34m"),
-                "magenta"       => out.push_str("\x1b[35m"),
-                "cyan"          => out.push_str("\x1b[36m"),
-                "white"         => out.push_str("\x1b[37m"),
-                // Bright foreground colours
-                "gray"          => out.push_str("\x1b[90m"),
-                "bright_red"    => out.push_str("\x1b[91m"),
-                "bright_green"  => out.push_str("\x1b[92m"),
-                "bright_yellow" => out.push_str("\x1b[93m"),
-                "bright_blue"   => out.push_str("\x1b[94m"),
-                "bright_magenta"=> out.push_str("\x1b[95m"),
-                "bright_cyan"   => out.push_str("\x1b[96m"),
-                "bright_white"  => out.push_str("\x1b[97m"),
+                // ANSI styles / colours — colored only, nothing in plain
+                "reset"          => color!("\x1b[0m"),
+                "bold"           => color!("\x1b[1m"),
+                "dim"            => color!("\x1b[2m"),
+                "black"          => color!("\x1b[30m"),
+                "red"            => color!("\x1b[31m"),
+                "green"          => color!("\x1b[32m"),
+                "yellow"         => color!("\x1b[33m"),
+                "blue"           => color!("\x1b[34m"),
+                "magenta"        => color!("\x1b[35m"),
+                "cyan"           => color!("\x1b[36m"),
+                "white"          => color!("\x1b[37m"),
+                "gray"           => color!("\x1b[90m"),
+                "bright_red"     => color!("\x1b[91m"),
+                "bright_green"   => color!("\x1b[92m"),
+                "bright_yellow"  => color!("\x1b[93m"),
+                "bright_blue"    => color!("\x1b[94m"),
+                "bright_magenta" => color!("\x1b[95m"),
+                "bright_cyan"    => color!("\x1b[96m"),
+                "bright_white"   => color!("\x1b[97m"),
                 other => {
-                    // Unknown placeholder — pass through literally
-                    out.push('{');
-                    out.push_str(other);
-                    out.push('}');
+                    // {#RRGGBB} — 24-bit truecolor foreground
+                    if let Some(ansi) = parse_rgb_placeholder(other) {
+                        color!(&ansi);
+                    } else {
+                        // Unknown placeholder — pass through literally
+                        let lit = format!("{{{other}}}");
+                        content!(&lit);
+                    }
                 }
             }
         } else {
-            out.push(c);
+            plain.push(c);
+            colored.push(c);
         }
     }
-    out
+    (plain, colored)
+}
+
+/// Parses `#RRGGBB` and returns an ANSI 24-bit foreground escape, or `None`.
+fn parse_rgb_placeholder(s: &str) -> Option<String> {
+    if s.len() == 7
+        && s.starts_with('#')
+        && s[1..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        let r = u8::from_str_radix(&s[1..3], 16).ok()?;
+        let g = u8::from_str_radix(&s[3..5], 16).ok()?;
+        let b = u8::from_str_radix(&s[5..7], 16).ok()?;
+        Some(format!("\x1b[38;2;{r};{g};{b}m"))
+    } else {
+        None
+    }
 }
 
 pub fn run() {
@@ -484,7 +556,7 @@ pub fn run() {
         if block_depth == 0 && cont_buf.is_empty() {
             line_count += 1;
         }
-        let prompt = if block_depth > 0 || !cont_buf.is_empty() {
+        let (plain_prompt, colored_prompt) = if block_depth > 0 || !cont_buf.is_empty() {
             render_prompt(&prompt2_tpl, &env, line_count, base, &fmt)
         } else {
             render_prompt(&prompt1_tpl, &env, line_count, base, &fmt)
@@ -492,9 +564,10 @@ pub fn run() {
 
         if let Some(h) = rl.helper_mut() {
             h.update_env(&env);
+            h.update_prompt(colored_prompt);
         }
 
-        let input = match rl.readline(&prompt) {
+        let input = match rl.readline(&plain_prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) => {
                 if block_depth > 0 || !cont_buf.is_empty() {
