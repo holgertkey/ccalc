@@ -26,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `help prompt` topic added (`help.rs`).
 - 11 new `render_prompt` tests in `repl_tests.rs`.
 
+### Fixed
+
+- Empty Enter in the REPL no longer increments the `{line}` session counter.
+  The prompt now shows the prospective next command number and only commits
+  the increment when the first non-empty line of a top-level command is received.
+
 - **Phase 30.6 — Figure appearance (complete)**
 - **Phase 30.6a** — `theme('light'|'dark')` and `bgcolor(color)`: coordinated
   colour presets (Catppuccin Mocha for dark theme); per-figure background override.
