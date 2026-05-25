@@ -546,17 +546,21 @@ pub fn run() {
     let mut block_depth: i32 = 0;
     // Line continuation (`...`) buffer
     let mut cont_buf: String = String::new();
-    // Session command counter (increments at start of each new top-level input)
+    // Session command counter (increments on the first non-empty line of each top-level command)
     let mut line_count: usize = 0;
 
     'repl: loop {
-        if block_depth == 0 && cont_buf.is_empty() {
-            line_count += 1;
-        }
-        let (plain_prompt, colored_prompt) = if block_depth > 0 || !cont_buf.is_empty() {
-            render_prompt(&prompt2_tpl, &env, line_count, base, &fmt)
+        // Show the prospective next command number in the prompt; only commit
+        // the increment once we know the input is non-empty (see below).
+        let show_line = if block_depth == 0 && cont_buf.is_empty() {
+            line_count + 1
         } else {
-            render_prompt(&prompt1_tpl, &env, line_count, base, &fmt)
+            line_count
+        };
+        let (plain_prompt, colored_prompt) = if block_depth > 0 || !cont_buf.is_empty() {
+            render_prompt(&prompt2_tpl, &env, show_line, base, &fmt)
+        } else {
+            render_prompt(&prompt1_tpl, &env, show_line, base, &fmt)
         };
 
         if let Some(h) = rl.helper_mut() {
@@ -587,6 +591,10 @@ pub fn run() {
         let trimmed = input.trim();
         if trimmed.is_empty() {
             continue;
+        }
+        // Commit the line counter only for the first non-empty line of a command.
+        if block_depth == 0 && cont_buf.is_empty() {
+            line_count += 1;
         }
         let _ = rl.add_history_entry(trimmed);
 
