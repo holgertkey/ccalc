@@ -329,6 +329,90 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
     }
 }
 
+/// Renders a prompt template string, replacing `{var}` placeholders and
+/// converting `\e` escape sequences to ANSI escape codes.
+///
+/// Supported placeholders: `{ans}`, `{line}`, `{user}`, `{host}`,
+/// `{cwd}`, `{cwd_short}`, `{time}`.  Unknown `{foo}` tokens are passed
+/// through unchanged.
+fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &FormatMode) -> String {
+    let mut out = String::with_capacity(template.len() + 16);
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            // Collect until matching `}` or end of string
+            let mut key = String::new();
+            let mut closed = false;
+            for k in chars.by_ref() {
+                if k == '}' {
+                    closed = true;
+                    break;
+                }
+                key.push(k);
+            }
+            if !closed {
+                // No closing brace — emit literally
+                out.push('{');
+                out.push_str(&key);
+                continue;
+            }
+            match key.as_str() {
+                "ans" => out.push_str(&format_prompt_ans(env, base, fmt)),
+                "line" => out.push_str(&line_no.to_string()),
+                "user" => {
+                    let u = std::env::var("USER")
+                        .or_else(|_| std::env::var("USERNAME"))
+                        .unwrap_or_else(|_| "user".to_string());
+                    out.push_str(&u);
+                }
+                "host" => {
+                    let h = std::env::var("HOSTNAME")
+                        .or_else(|_| std::env::var("COMPUTERNAME"))
+                        .unwrap_or_else(|_| "localhost".to_string());
+                    // Keep only short hostname (before first dot)
+                    let short = h.split('.').next().unwrap_or(&h);
+                    out.push_str(short);
+                }
+                "cwd" => {
+                    let cwd = std::env::current_dir()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_else(|_| ".".to_string());
+                    out.push_str(&cwd);
+                }
+                "cwd_short" => {
+                    let cwd = std::env::current_dir().unwrap_or_else(|_| ".".into());
+                    let last = cwd
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| ".".to_string());
+                    out.push_str(&last);
+                }
+                "time" => {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let secs = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let h = (secs / 3600) % 24;
+                    let m = (secs / 60) % 60;
+                    let s = secs % 60;
+                    out.push_str(&format!("{h:02}:{m:02}:{s:02}"));
+                }
+                other => {
+                    // Unknown placeholder — pass through literally
+                    out.push('{');
+                    out.push_str(other);
+                    out.push('}');
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    // Convert \e escape sequences to ANSI codes
+    out.replace(r"\e", "\x1b")
+}
+
 pub fn run() {
     let mut env = new_env();
     let mut io = IoContext::new();
@@ -337,6 +421,14 @@ pub fn run() {
     let mut fmt = FormatMode::Custom(cfg.precision());
     let mut compact = false;
     let mut base = cfg.base();
+    let mut prompt1_tpl: String = cfg
+        .prompt1()
+        .map(str::to_string)
+        .unwrap_or_else(|| "[ {ans} ]: ".to_string());
+    let mut prompt2_tpl: String = cfg
+        .prompt2()
+        .map(str::to_string)
+        .unwrap_or_else(|| "  >> ".to_string());
     ccalc_engine::exec::session_path_init(cfg.search_path());
     let rl_config = rustyline::Config::builder()
         .completion_type(rustyline::CompletionType::List)
@@ -360,12 +452,17 @@ pub fn run() {
     let mut block_depth: i32 = 0;
     // Line continuation (`...`) buffer
     let mut cont_buf: String = String::new();
+    // Session command counter (increments at start of each new top-level input)
+    let mut line_count: usize = 0;
 
     'repl: loop {
+        if block_depth == 0 && cont_buf.is_empty() {
+            line_count += 1;
+        }
         let prompt = if block_depth > 0 || !cont_buf.is_empty() {
-            "  >> ".to_string()
+            render_prompt(&prompt2_tpl, &env, line_count, base, &fmt)
         } else {
-            format!("[ {} ]: ", format_prompt_ans(&env, base, &fmt))
+            render_prompt(&prompt1_tpl, &env, line_count, base, &fmt)
         };
 
         if let Some(h) = rl.helper_mut() {
@@ -571,6 +668,14 @@ pub fn run() {
                     Ok(cfg) => {
                         fmt = FormatMode::Custom(cfg.precision());
                         base = cfg.base();
+                        prompt1_tpl = cfg
+                            .prompt1()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| "[ {ans} ]: ".to_string());
+                        prompt2_tpl = cfg
+                            .prompt2()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| "  >> ".to_string());
                         println!("Config reloaded.");
                         println!("format:      {}", fmt.name());
                         println!("base:        {}", format_base_name(base));

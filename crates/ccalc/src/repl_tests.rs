@@ -1048,3 +1048,71 @@ fn test_pipe_save_selective_vars() {
 
     std::fs::remove_file(&tmp).ok();
 }
+
+// --- render_prompt tests ---
+
+fn make_env_with_ans(v: Value) -> Env {
+    let mut env = new_env();
+    env.insert("ans".to_string(), v);
+    env
+}
+
+#[test]
+fn test_render_prompt_literal() {
+    let env = new_env();
+    let result = render_prompt("$ ", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(result, "$ ");
+}
+
+#[test]
+fn test_render_prompt_ans_scalar() {
+    let env = make_env_with_ans(Value::Scalar(42.0));
+    let result = render_prompt("[{ans}] ", &env, 1, Base::Dec, &FormatMode::Short);
+    assert!(result.contains("42"), "expected '42' in '{result}'");
+}
+
+#[test]
+fn test_render_prompt_line_counter() {
+    let env = new_env();
+    let result = render_prompt("({line}) ", &env, 7, Base::Dec, &FormatMode::Short);
+    assert_eq!(result, "(7) ");
+}
+
+#[test]
+fn test_render_prompt_unknown_placeholder() {
+    let env = new_env();
+    let result = render_prompt("{foo}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(result, "{foo}");
+}
+
+#[test]
+fn test_render_prompt_ansi_escape() {
+    let env = new_env();
+    let result = render_prompt(r"\e[0m", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(result, "\x1b[0m");
+}
+
+#[test]
+fn test_render_prompt_cwd_short_nonempty() {
+    let env = new_env();
+    let result = render_prompt("{cwd_short}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert!(!result.is_empty());
+}
+
+#[test]
+fn test_render_prompt_time_format() {
+    let env = new_env();
+    let result = render_prompt("{time}", &env, 1, Base::Dec, &FormatMode::Short);
+    // HH:MM:SS — exactly 8 chars
+    assert_eq!(result.len(), 8, "time should be HH:MM:SS, got '{result}'");
+    assert_eq!(&result[2..3], ":");
+    assert_eq!(&result[5..6], ":");
+}
+
+#[test]
+fn test_render_prompt_unclosed_brace() {
+    let env = new_env();
+    // Unclosed brace is passed through literally
+    let result = render_prompt("{ans", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(result, "{ans");
+}

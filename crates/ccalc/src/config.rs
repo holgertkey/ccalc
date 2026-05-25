@@ -24,6 +24,22 @@ precision = 10
 
 # Default number base for output: "dec", "hex", "bin", "oct"
 base = "dec"
+
+# [repl]
+# Prompt templates. Supported substitutions:
+#   {ans}       — formatted value of ans (current default prompt content)
+#   {line}      — session command counter (increments after each input)
+#   {user}      — current OS username
+#   {host}      — short hostname
+#   {cwd}       — full current working directory
+#   {cwd_short} — last path component of cwd
+#   {time}      — current time as HH:MM:SS (UTC)
+# ANSI colours: use \e[CODEm ... \e[0m (same syntax as bash PS1).
+# Examples:
+#   prompt1 = "\e[90m({line})\e[0m [ {ans} ]: "
+#   prompt1 = "\e[32m{user}@{host}\e[0m:{cwd_short}$ "
+# prompt1 = "[ {ans} ]: "
+# prompt2 = "  >> "
 "#;
 
 // ---------------------------------------------------------------------------
@@ -33,6 +49,9 @@ base = "dec"
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub display: DisplayConfig,
+    /// REPL prompt templates.
+    #[serde(default)]
+    pub repl: ReplConfig,
     /// Directories added to the script search path at startup.
     #[serde(default)]
     pub path: Vec<String>,
@@ -42,6 +61,15 @@ pub struct Config {
 pub struct DisplayConfig {
     pub precision: usize,
     pub base: String,
+}
+
+/// REPL prompt configuration.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ReplConfig {
+    /// Primary prompt template (shown when ready for new input).
+    pub prompt1: Option<String>,
+    /// Secondary prompt template (shown inside multi-line blocks).
+    pub prompt2: Option<String>,
 }
 
 impl Default for Config {
@@ -65,6 +93,16 @@ impl Config {
             "oct" => Base::Oct,
             _ => Base::Dec,
         }
+    }
+
+    /// Primary prompt template from `[repl] prompt1`, or `None` if unset.
+    pub fn prompt1(&self) -> Option<&str> {
+        self.repl.prompt1.as_deref()
+    }
+
+    /// Secondary prompt template from `[repl] prompt2`, or `None` if unset.
+    pub fn prompt2(&self) -> Option<&str> {
+        self.repl.prompt2.as_deref()
     }
 
     /// Returns the search path as `PathBuf`s with `~` expanded.
@@ -316,5 +354,40 @@ mod tests {
             sp[0],
             std::path::PathBuf::from("e:/github.com/holgertkey/ccalc/examples")
         );
+    }
+
+    #[test]
+    fn repl_prompts_absent_by_default() {
+        let cfg = Config::default();
+        assert!(cfg.prompt1().is_none());
+        assert!(cfg.prompt2().is_none());
+    }
+
+    #[test]
+    fn repl_prompts_loaded_from_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[display]\nprecision = 10\nbase = \"dec\"\n\n[repl]\nprompt1 = \"({line}) \"\nprompt2 = \"... \"\n",
+        )
+        .unwrap();
+        let cfg = load(&path).unwrap();
+        assert_eq!(cfg.prompt1(), Some("({line}) "));
+        assert_eq!(cfg.prompt2(), Some("... "));
+    }
+
+    #[test]
+    fn repl_prompts_partial_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[display]\nprecision = 10\nbase = \"dec\"\n\n[repl]\nprompt1 = \">> \"\n",
+        )
+        .unwrap();
+        let cfg = load(&path).unwrap();
+        assert_eq!(cfg.prompt1(), Some(">> "));
+        assert!(cfg.prompt2().is_none());
     }
 }
