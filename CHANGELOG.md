@@ -6,9 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.42.0] - 2026-05-24
+## [0.42.0] - 2026-05-25
 
 ### Added
+
+- **Phase 31a — Configurable REPL prompt with colour support**
+- `[repl]` section in `config.toml` with `prompt1` / `prompt2` template keys.
+- Template placeholders: `{ans}`, `{line}` (session counter), `{user}`, `{host}`,
+  `{cwd}`, `{cwd_short}`, `{time}`.
+- Named colour placeholders: `{red}`, `{green}`, `{reset}`, `{bold}`, `{dim}`,
+  all 8 standard and 8 bright ANSI colours, plus `{gray}`.
+- 24-bit truecolor via `{#RRGGBB}` syntax (e.g. `{#FF8800}` for orange).
+- Dual-output `render_prompt()` — returns `(plain, colored)` tuple: plain text
+  is passed to `readline()` for correct cursor-width math; the colored version
+  is returned by `highlight_prompt()` (rustyline `Highlighter` trait) so ANSI
+  codes are rendered without shifting the cursor.
+- `CcalcHelper.colored_prompt` field + `update_prompt()` method in `repl.rs`.
+- `parse_rgb_placeholder()` helper for `{#RRGGBB}` truecolor parsing.
+- `help prompt` topic added (`help.rs`).
+- 11 new `render_prompt` tests in `repl_tests.rs`.
 
 - **Phase 30.6 — Figure appearance (complete)**
 - **Phase 30.6a** — `theme('light'|'dark')` and `bgcolor(color)`: coordinated

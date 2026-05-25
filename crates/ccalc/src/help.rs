@@ -70,6 +70,7 @@ pub fn print(topic: Option<&str>) {
             "poly" | "polyfit" | "polyval" | "roots" | "conv" | "deconv" | "interp1" | "polynomial"
             | "polynomials" | "interpolation",
         ) => print_poly(),
+        Some("prompt" | "prompt1" | "prompt2" | "ps1" | "ps2") => print_prompt(),
         Some("eval" | "tic" | "toc" | "dynamic" | "timing" | "metaprogramming") => print_eval(),
         Some(
             "fft" | "ifft" | "fftshift" | "ifftshift" | "fftfreq" | "signal" | "spectrum"
@@ -89,7 +90,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  prompt  examples"
             );
         }
     }
@@ -278,6 +279,9 @@ Format  format short   5 sig digits (default)   format long    15 sig digits
         format N       N decimal places (e.g. format 4)
 Config  config                show config path and active settings
         config reload         re-read config.toml and apply changes
+Prompt  [repl] prompt1/prompt2 in config.toml — template with {{ans}} {{line}}
+        {{user}} {{host}} {{cwd}} {{cwd_short}} {{time}} and colour placeholders
+        {{red}} {{green}} {{reset}} ... {{#RRGGBB}}   (help prompt for details)
 REPL    exit  quit  cls  Ctrl+L (clear screen)
 Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
         Ctrl+W del word  Ctrl+U del to start  Ctrl+K del to end
@@ -313,6 +317,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help poly        polyval/polyfit/roots/poly, conv/deconv, interp1
   help fft         fft/ifft, fftshift/ifftshift, fftfreq — FFT & signal processing
   help plot        plot/scatter/fill/area/polar, style strings, file export (SVG/PNG)
+  help prompt      configurable REPL prompt — placeholders, colours, examples
   help examples    practical usage examples",
         ver = env!("CARGO_PKG_VERSION")
     );
@@ -3409,6 +3414,71 @@ Notes:
   - Both tic and toc can be written without parentheses: tic  toc
 
 See also: help control  help script  help errors"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help prompt
+// ---------------------------------------------------------------------------
+
+fn print_prompt() {
+    println!(
+        "\
+CONFIGURABLE REPL PROMPT  (help prompt)
+
+Set custom prompt templates in ~/.config/ccalc/config.toml:
+
+    [repl]
+    prompt1 = \"[ {{ans}} ]: \"    # primary prompt  (default)
+    prompt2 = \"  >> \"            # continuation prompt  (default)
+
+After editing, apply without restarting:
+
+    [ 0 ]: config reload
+
+── Content placeholders ──────────────────────────────────────────────────────
+
+    {{ans}}       formatted value of ans  (current default prompt content)
+    {{line}}      session command counter  (increments after each input)
+    {{user}}      current OS username
+    {{host}}      short hostname  (before the first dot)
+    {{cwd}}       full current working directory
+    {{cwd_short}} last path component of cwd
+    {{time}}      current time as HH:MM:SS  (UTC)
+
+── Colour placeholders ───────────────────────────────────────────────────────
+
+    {{reset}}          turn off all colour / style
+    {{bold}}           bold text
+    {{dim}}            dim / faint text
+    {{black}}          black foreground
+    {{red}}            red foreground
+    {{green}}          green foreground
+    {{yellow}}         yellow foreground
+    {{blue}}           blue foreground
+    {{magenta}}        magenta foreground
+    {{cyan}}           cyan foreground
+    {{white}}          white foreground
+    {{gray}}           bright black  (dark gray) foreground
+    {{bright_red}}     bright red foreground
+    {{bright_green}}   bright green foreground
+    {{bright_yellow}}  bright yellow foreground
+    {{bright_blue}}    bright blue foreground
+    {{bright_magenta}} bright magenta foreground
+    {{bright_cyan}}    bright cyan foreground
+    {{bright_white}}   bright white foreground
+    {{#RRGGBB}}        24-bit truecolor  (e.g. {{#FF8800}} for orange)
+
+Colour codes affect only the displayed prompt; cursor-position math uses the
+plain text so the prompt never shifts input sideways.
+
+── Examples ──────────────────────────────────────────────────────────────────
+
+    prompt1 = \"{{line}} [ {{ans}} ]: \"
+    prompt1 = \"{{gray}}({{line}}){{reset}} [ {{ans}} ]: \"
+    prompt1 = \"{{green}}{{user}}@{{host}}{{reset}}:{{cyan}}{{cwd_short}}{{reset}}$ \"
+    prompt1 = \"{{bold}}{{blue}}ccalc{{reset}} {{gray}}[{{line}}]{{reset}} {{ans}} > \"
+    prompt1 = \"{{#FF8800}}ccalc{{reset}} [{{line}}] {{ans}} > \""
     );
 }
 

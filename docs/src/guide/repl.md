@@ -140,7 +140,7 @@ b = 2
 
 ## Configuration
 
-Settings that persist across sessions (precision, default base) live in
+Settings that persist across sessions (precision, default base, prompt) live in
 [`config.toml`](./configuration.md). The `config` command shows the active
 values; `config reload` applies any edits without restarting.
 
@@ -150,6 +150,20 @@ config file: /home/user/.config/ccalc/config.toml
 precision:   10
 base:        dec
 ```
+
+### Custom prompt
+
+Edit `~/.config/ccalc/config.toml` to customise the prompt:
+
+```toml
+[repl]
+prompt1 = "{gray}({line}){reset} [ {ans} ]: "
+```
+
+Supported placeholders: `{ans}`, `{line}`, `{user}`, `{host}`, `{cwd}`,
+`{cwd_short}`, `{time}`, color names (`{red}`, `{green}`, `{reset}`, …), and
+24-bit truecolor (`{#FF8800}`). See [Configuration](./configuration.md) for the
+full placeholder reference and examples.
 
 ## History
 

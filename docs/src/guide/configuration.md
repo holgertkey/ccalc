@@ -22,6 +22,11 @@ precision = 10
 
 # Default number base for output: "dec", "hex", "bin", "oct"
 base = "dec"
+
+[repl]
+# Prompt templates — see the "Prompt customization" section below.
+# prompt1 = "[ {ans} ]: "
+# prompt2 = "  >> "
 ```
 
 ## Settings
@@ -41,6 +46,85 @@ Default output base. Accepted values: `"dec"`, `"hex"`, `"bin"`, `"oct"`.
 Default: `"dec"`.
 
 Unknown values fall back to `"dec"` without error.
+
+## Prompt customization
+
+The `[repl]` section lets you set custom prompt templates for `prompt1` (the
+primary prompt, shown when ready for new input) and `prompt2` (the secondary
+prompt, shown inside multi-line blocks such as `if`/`for`/`while`).
+
+```toml
+[repl]
+prompt1 = "[ {ans} ]: "    # default
+prompt2 = "  >> "           # default
+```
+
+### Content placeholders
+
+| Placeholder | Expands to |
+|-------------|------------|
+| `{ans}` | Formatted value of `ans` — the default prompt content |
+| `{line}` | Session command counter (increments after each input) |
+| `{user}` | Current OS username |
+| `{host}` | Short hostname (before the first dot) |
+| `{cwd}` | Full current working directory |
+| `{cwd_short}` | Last path component of the current directory |
+| `{time}` | Current time as `HH:MM:SS` (UTC) |
+
+### Color placeholders
+
+Color codes are emitted only for the displayed prompt and do not affect cursor
+positioning. Any number of color/style placeholders can be combined.
+
+| Placeholder | Effect |
+|-------------|--------|
+| `{reset}` | Turn off all colour/style |
+| `{bold}` | Bold text |
+| `{dim}` | Dim/faint text |
+| `{black}` | Black foreground |
+| `{red}` | Red foreground |
+| `{green}` | Green foreground |
+| `{yellow}` | Yellow foreground |
+| `{blue}` | Blue foreground |
+| `{magenta}` | Magenta foreground |
+| `{cyan}` | Cyan foreground |
+| `{white}` | White foreground |
+| `{gray}` | Bright black (dark gray) foreground |
+| `{bright_red}` | Bright red foreground |
+| `{bright_green}` | Bright green foreground |
+| `{bright_yellow}` | Bright yellow foreground |
+| `{bright_blue}` | Bright blue foreground |
+| `{bright_magenta}` | Bright magenta foreground |
+| `{bright_cyan}` | Bright cyan foreground |
+| `{bright_white}` | Bright white foreground |
+| `{#RRGGBB}` | 24-bit truecolor foreground (e.g. `{#FF8800}` for orange) |
+
+### Examples
+
+```toml
+[repl]
+# Minimal: show counter and ans
+prompt1 = "{line} [ {ans} ]: "
+
+# Counter dimmed, ans in default colour
+prompt1 = "{gray}({line}){reset} [ {ans} ]: "
+
+# Shell-style: user@host:dir$
+prompt1 = "{green}{user}@{host}{reset}:{cyan}{cwd_short}{reset}$ "
+
+# Bold blue name, dimmed counter, ans
+prompt1 = "{bold}{blue}ccalc{reset} {gray}[{line}]{reset} {ans} > "
+
+# 24-bit orange accent colour
+prompt1 = "{#FF8800}ccalc{reset} [{line}] {ans} > "
+```
+
+After editing `config.toml`, apply changes without restarting:
+
+```
+[ 0 ]: config reload
+Config reloaded.
+```
 
 ## REPL commands
 

@@ -1866,9 +1866,25 @@ All forms desugar at parse time — no performance penalty.
 | `save('path')`                    | Save to explicit file                   |
 | `save('path', 'x', 'y')`          | Save specific variables                 |
 | `load('path')`                    | Load from explicit file                 |
+| `config`                          | Show config file path and active settings |
+| `config reload`                   | Re-read `config.toml` and apply changes |
 | Ctrl+C / Ctrl+D                   | Quit                                    |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `prompt`  `examples`
+
+### Prompt customization
+
+The prompt is fully customizable via `~/.config/ccalc/config.toml`:
+
+```toml
+[repl]
+# Content: {ans} {line} {user} {host} {cwd} {cwd_short} {time}
+# Colours: {red} {green} {blue} {cyan} {gray} {reset} {bold} {#RRGGBB} …
+prompt1 = "{gray}({line}){reset} [ {ans} ]: "
+prompt2 = "  >> "
+```
+
+Run `config reload` to apply changes without restarting. Run `help prompt` for the full placeholder reference.
 
 ## Keyboard shortcuts
 
