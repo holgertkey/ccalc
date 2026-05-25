@@ -1086,10 +1086,84 @@ fn test_render_prompt_unknown_placeholder() {
 }
 
 #[test]
-fn test_render_prompt_ansi_escape() {
+fn test_render_prompt_ansi_escape_passthrough() {
+    // \e is no longer converted — users should use {reset}, {red}, etc. instead
     let env = new_env();
     let result = render_prompt(r"\e[0m", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(result, r"\e[0m");
+}
+
+#[test]
+fn test_render_prompt_color_reset() {
+    let env = new_env();
+    let result = render_prompt("{reset}", &env, 1, Base::Dec, &FormatMode::Short);
     assert_eq!(result, "\x1b[0m");
+}
+
+#[test]
+fn test_render_prompt_color_bold_and_dim() {
+    let env = new_env();
+    assert_eq!(
+        render_prompt("{bold}", &env, 1, Base::Dec, &FormatMode::Short),
+        "\x1b[1m"
+    );
+    assert_eq!(
+        render_prompt("{dim}", &env, 1, Base::Dec, &FormatMode::Short),
+        "\x1b[2m"
+    );
+}
+
+#[test]
+fn test_render_prompt_standard_colors() {
+    let env = new_env();
+    let cases = [
+        ("{black}",   "\x1b[30m"),
+        ("{red}",     "\x1b[31m"),
+        ("{green}",   "\x1b[32m"),
+        ("{yellow}",  "\x1b[33m"),
+        ("{blue}",    "\x1b[34m"),
+        ("{magenta}", "\x1b[35m"),
+        ("{cyan}",    "\x1b[36m"),
+        ("{white}",   "\x1b[37m"),
+    ];
+    for (tmpl, expected) in cases {
+        assert_eq!(
+            render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short),
+            expected,
+            "failed for {tmpl}"
+        );
+    }
+}
+
+#[test]
+fn test_render_prompt_bright_colors() {
+    let env = new_env();
+    let cases = [
+        ("{gray}",          "\x1b[90m"),
+        ("{bright_red}",    "\x1b[91m"),
+        ("{bright_green}",  "\x1b[92m"),
+        ("{bright_yellow}", "\x1b[93m"),
+        ("{bright_blue}",   "\x1b[94m"),
+        ("{bright_magenta}","\x1b[95m"),
+        ("{bright_cyan}",   "\x1b[96m"),
+        ("{bright_white}",  "\x1b[97m"),
+    ];
+    for (tmpl, expected) in cases {
+        assert_eq!(
+            render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short),
+            expected,
+            "failed for {tmpl}"
+        );
+    }
+}
+
+#[test]
+fn test_render_prompt_color_composition() {
+    // Realistic prompt: colored line counter + ans
+    let env = make_env_with_ans(Value::Scalar(1.0));
+    let result = render_prompt("{gray}({line}){reset} [ {ans} ]: ", &env, 3, Base::Dec, &FormatMode::Short);
+    assert!(result.starts_with("\x1b[90m(3)\x1b[0m"), "got: {result:?}");
+    assert!(result.contains("1"), "ans missing: {result:?}");
 }
 
 #[test]

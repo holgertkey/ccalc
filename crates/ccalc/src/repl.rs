@@ -333,8 +333,12 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
 /// converting `\e` escape sequences to ANSI escape codes.
 ///
 /// Supported placeholders: `{ans}`, `{line}`, `{user}`, `{host}`,
-/// `{cwd}`, `{cwd_short}`, `{time}`.  Unknown `{foo}` tokens are passed
-/// through unchanged.
+/// `{cwd}`, `{cwd_short}`, `{time}`.
+/// Color/style: `{reset}`, `{bold}`, `{dim}`, `{black}`, `{red}`, `{green}`,
+/// `{yellow}`, `{blue}`, `{magenta}`, `{cyan}`, `{white}`, `{gray}`,
+/// `{bright_red}`, `{bright_green}`, `{bright_yellow}`, `{bright_blue}`,
+/// `{bright_magenta}`, `{bright_cyan}`, `{bright_white}`.
+/// Unknown `{foo}` tokens are passed through unchanged.
 fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &FormatMode) -> String {
     let mut out = String::with_capacity(template.len() + 16);
     let mut chars = template.chars().peekable();
@@ -398,6 +402,28 @@ fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &Fo
                     let s = secs % 60;
                     out.push_str(&format!("{h:02}:{m:02}:{s:02}"));
                 }
+                // ANSI styles / colours
+                "reset"         => out.push_str("\x1b[0m"),
+                "bold"          => out.push_str("\x1b[1m"),
+                "dim"           => out.push_str("\x1b[2m"),
+                // Standard foreground colours
+                "black"         => out.push_str("\x1b[30m"),
+                "red"           => out.push_str("\x1b[31m"),
+                "green"         => out.push_str("\x1b[32m"),
+                "yellow"        => out.push_str("\x1b[33m"),
+                "blue"          => out.push_str("\x1b[34m"),
+                "magenta"       => out.push_str("\x1b[35m"),
+                "cyan"          => out.push_str("\x1b[36m"),
+                "white"         => out.push_str("\x1b[37m"),
+                // Bright foreground colours
+                "gray"          => out.push_str("\x1b[90m"),
+                "bright_red"    => out.push_str("\x1b[91m"),
+                "bright_green"  => out.push_str("\x1b[92m"),
+                "bright_yellow" => out.push_str("\x1b[93m"),
+                "bright_blue"   => out.push_str("\x1b[94m"),
+                "bright_magenta"=> out.push_str("\x1b[95m"),
+                "bright_cyan"   => out.push_str("\x1b[96m"),
+                "bright_white"  => out.push_str("\x1b[97m"),
                 other => {
                     // Unknown placeholder — pass through literally
                     out.push('{');
@@ -409,8 +435,7 @@ fn render_prompt(template: &str, env: &Env, line_no: usize, base: Base, fmt: &Fo
             out.push(c);
         }
     }
-    // Convert \e escape sequences to ANSI codes
-    out.replace(r"\e", "\x1b")
+    out
 }
 
 pub fn run() {

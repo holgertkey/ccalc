@@ -25,20 +25,45 @@ precision = 10
 # Default number base for output: "dec", "hex", "bin", "oct"
 base = "dec"
 
-# [repl]
-# Prompt templates. Supported substitutions:
-#   {ans}       — formatted value of ans (current default prompt content)
+[repl]
+# Prompt templates. Supported placeholders:
+#
+#   Content
+#   {ans}       — formatted value of ans (the default prompt content)
 #   {line}      — session command counter (increments after each input)
 #   {user}      — current OS username
-#   {host}      — short hostname
+#   {host}      — short hostname (before the first dot)
 #   {cwd}       — full current working directory
 #   {cwd_short} — last path component of cwd
 #   {time}      — current time as HH:MM:SS (UTC)
-# ANSI colours: use \e[CODEm ... \e[0m (same syntax as bash PS1).
+#
+#   Colours and styles (ANSI terminal — wrap text you want coloured)
+#   {reset}          — turn off all colour/style
+#   {bold}           — bold text
+#   {dim}            — dim/faint text
+#   {black}          — black foreground
+#   {red}            — red foreground
+#   {green}          — green foreground
+#   {yellow}         — yellow foreground
+#   {blue}           — blue foreground
+#   {magenta}        — magenta foreground
+#   {cyan}           — cyan foreground
+#   {white}          — white foreground
+#   {gray}           — bright black (dark gray) foreground
+#   {bright_red}     — bright red foreground
+#   {bright_green}   — bright green foreground
+#   {bright_yellow}  — bright yellow foreground
+#   {bright_blue}    — bright blue foreground
+#   {bright_magenta} — bright magenta foreground
+#   {bright_cyan}    — bright cyan foreground
+#   {bright_white}   — bright white foreground
+#
 # Examples:
-#   prompt1 = "\e[90m({line})\e[0m [ {ans} ]: "
-#   prompt1 = "\e[32m{user}@{host}\e[0m:{cwd_short}$ "
 # prompt1 = "[ {ans} ]: "
+# prompt1 = "{line} [ {ans} ]: "
+# prompt1 = "{gray}({line}){reset} [ {ans} ]: "
+# prompt1 = "{green}{user}@{host}{reset}:{cyan}{cwd_short}{reset}$ "
+# prompt1 = "{bold}{blue}ccalc{reset} {gray}[{line}]{reset} {ans} > "
 # prompt2 = "  >> "
 "#;
 
