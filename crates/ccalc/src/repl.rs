@@ -355,9 +355,9 @@ fn format_prompt_ans(env: &Env, base: Base, fmt: &FormatMode) -> String {
 /// Renders a prompt template into a `(plain, colored)` pair.
 ///
 /// - `plain`   — visible text only, no ANSI codes; passed to `readline()` so
-///               rustyline calculates cursor width correctly.
+///   rustyline calculates cursor width correctly.
 /// - `colored` — same text plus ANSI codes; returned by `highlight_prompt` for
-///               display.
+///   display.
 ///
 /// Content placeholders expand into both strings.  Colour/style placeholders
 /// expand into `colored` only and produce nothing in `plain`.
@@ -416,7 +416,7 @@ fn render_prompt(
                 continue;
             }
             match key.as_str() {
-                "ans"  => content!(&format_prompt_ans(env, base, fmt)),
+                "ans" => content!(&format_prompt_ans(env, base, fmt)),
                 "line" => content!(&line_no.to_string()),
                 "user" => {
                     let u = std::env::var("USER")
@@ -457,25 +457,25 @@ fn render_prompt(
                     content!(&format!("{h:02}:{m:02}:{s:02}"));
                 }
                 // ANSI styles / colours — colored only, nothing in plain
-                "reset"          => color!("\x1b[0m"),
-                "bold"           => color!("\x1b[1m"),
-                "dim"            => color!("\x1b[2m"),
-                "black"          => color!("\x1b[30m"),
-                "red"            => color!("\x1b[31m"),
-                "green"          => color!("\x1b[32m"),
-                "yellow"         => color!("\x1b[33m"),
-                "blue"           => color!("\x1b[34m"),
-                "magenta"        => color!("\x1b[35m"),
-                "cyan"           => color!("\x1b[36m"),
-                "white"          => color!("\x1b[37m"),
-                "gray"           => color!("\x1b[90m"),
-                "bright_red"     => color!("\x1b[91m"),
-                "bright_green"   => color!("\x1b[92m"),
-                "bright_yellow"  => color!("\x1b[93m"),
-                "bright_blue"    => color!("\x1b[94m"),
+                "reset" => color!("\x1b[0m"),
+                "bold" => color!("\x1b[1m"),
+                "dim" => color!("\x1b[2m"),
+                "black" => color!("\x1b[30m"),
+                "red" => color!("\x1b[31m"),
+                "green" => color!("\x1b[32m"),
+                "yellow" => color!("\x1b[33m"),
+                "blue" => color!("\x1b[34m"),
+                "magenta" => color!("\x1b[35m"),
+                "cyan" => color!("\x1b[36m"),
+                "white" => color!("\x1b[37m"),
+                "gray" => color!("\x1b[90m"),
+                "bright_red" => color!("\x1b[91m"),
+                "bright_green" => color!("\x1b[92m"),
+                "bright_yellow" => color!("\x1b[93m"),
+                "bright_blue" => color!("\x1b[94m"),
                 "bright_magenta" => color!("\x1b[95m"),
-                "bright_cyan"    => color!("\x1b[96m"),
-                "bright_white"   => color!("\x1b[97m"),
+                "bright_cyan" => color!("\x1b[96m"),
+                "bright_white" => color!("\x1b[97m"),
                 other => {
                     // {#RRGGBB} — 24-bit truecolor foreground
                     if let Some(ansi) = parse_rgb_placeholder(other) {
@@ -497,10 +497,7 @@ fn render_prompt(
 
 /// Parses `#RRGGBB` and returns an ANSI 24-bit foreground escape, or `None`.
 fn parse_rgb_placeholder(s: &str) -> Option<String> {
-    if s.len() == 7
-        && s.starts_with('#')
-        && s[1..].chars().all(|c| c.is_ascii_hexdigit())
-    {
+    if s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit()) {
         let r = u8::from_str_radix(&s[1..3], 16).ok()?;
         let g = u8::from_str_radix(&s[3..5], 16).ok()?;
         let b = u8::from_str_radix(&s[5..7], 16).ok()?;

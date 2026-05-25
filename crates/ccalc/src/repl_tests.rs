@@ -1077,7 +1077,10 @@ fn test_render_prompt_ans_scalar() {
     let env = make_env_with_ans(Value::Scalar(42.0));
     let (plain, colored) = render_prompt("[{ans}] ", &env, 1, Base::Dec, &FormatMode::Short);
     assert!(plain.contains("42"), "expected '42' in plain '{plain}'");
-    assert!(colored.contains("42"), "expected '42' in colored '{colored}'");
+    assert!(
+        colored.contains("42"),
+        "expected '42' in colored '{colored}'"
+    );
 }
 
 #[test]
@@ -1109,7 +1112,7 @@ fn test_render_prompt_ansi_escape_passthrough() {
 fn test_render_prompt_color_reset() {
     let env = new_env();
     let (plain, colored) = render_prompt("{reset}", &env, 1, Base::Dec, &FormatMode::Short);
-    assert_eq!(plain, "");           // no visible text in plain
+    assert_eq!(plain, ""); // no visible text in plain
     assert_eq!(colored, "\x1b[0m"); // ANSI code in colored
 }
 
@@ -1128,14 +1131,14 @@ fn test_render_prompt_color_bold_and_dim() {
 fn test_render_prompt_standard_colors() {
     let env = new_env();
     let cases = [
-        ("{black}",   "\x1b[30m"),
-        ("{red}",     "\x1b[31m"),
-        ("{green}",   "\x1b[32m"),
-        ("{yellow}",  "\x1b[33m"),
-        ("{blue}",    "\x1b[34m"),
+        ("{black}", "\x1b[30m"),
+        ("{red}", "\x1b[31m"),
+        ("{green}", "\x1b[32m"),
+        ("{yellow}", "\x1b[33m"),
+        ("{blue}", "\x1b[34m"),
         ("{magenta}", "\x1b[35m"),
-        ("{cyan}",    "\x1b[36m"),
-        ("{white}",   "\x1b[37m"),
+        ("{cyan}", "\x1b[36m"),
+        ("{white}", "\x1b[37m"),
     ];
     for (tmpl, expected_ansi) in cases {
         let (plain, colored) = render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short);
@@ -1148,14 +1151,14 @@ fn test_render_prompt_standard_colors() {
 fn test_render_prompt_bright_colors() {
     let env = new_env();
     let cases = [
-        ("{gray}",           "\x1b[90m"),
-        ("{bright_red}",     "\x1b[91m"),
-        ("{bright_green}",   "\x1b[92m"),
-        ("{bright_yellow}",  "\x1b[93m"),
-        ("{bright_blue}",    "\x1b[94m"),
+        ("{gray}", "\x1b[90m"),
+        ("{bright_red}", "\x1b[91m"),
+        ("{bright_green}", "\x1b[92m"),
+        ("{bright_yellow}", "\x1b[93m"),
+        ("{bright_blue}", "\x1b[94m"),
         ("{bright_magenta}", "\x1b[95m"),
-        ("{bright_cyan}",    "\x1b[96m"),
-        ("{bright_white}",   "\x1b[97m"),
+        ("{bright_cyan}", "\x1b[96m"),
+        ("{bright_white}", "\x1b[97m"),
     ];
     for (tmpl, expected_ansi) in cases {
         let (plain, colored) = render_prompt(tmpl, &env, 1, Base::Dec, &FormatMode::Short);
@@ -1191,12 +1194,18 @@ fn test_render_prompt_color_splits_plain_and_colored() {
     let env = make_env_with_ans(Value::Scalar(1.0));
     let (plain, colored) = render_prompt(
         "{gray}({line}){reset} [ {ans} ]: ",
-        &env, 3, Base::Dec, &FormatMode::Short,
+        &env,
+        3,
+        Base::Dec,
+        &FormatMode::Short,
     );
     // plain: only visible text
     assert_eq!(plain, "(3) [ 1 ]: ");
     // colored: ANSI codes + same visible text
-    assert!(colored.starts_with("\x1b[90m(3)\x1b[0m"), "got: {colored:?}");
+    assert!(
+        colored.starts_with("\x1b[90m(3)\x1b[0m"),
+        "got: {colored:?}"
+    );
     assert!(colored.contains("1"), "ans missing in colored: {colored:?}");
 }
 
