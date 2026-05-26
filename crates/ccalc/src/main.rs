@@ -34,7 +34,9 @@ fn run() {
     if args.len() > 1 {
         match args[1].as_str() {
             "-v" | "--version" => {
-                println!("ccalc v{}", env!("CARGO_PKG_VERSION"));
+                let ver = env!("CARGO_PKG_VERSION");
+                let ver = ver.strip_suffix("+000").unwrap_or(ver);
+                println!("ccalc v{ver}");
                 return;
             }
             "-h" | "--help" => {

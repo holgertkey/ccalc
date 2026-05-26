@@ -31,8 +31,8 @@ plot-all = ["ccalc-plot/plot-all"]
 
 [dependencies]
 rustyline = "14"
-ccalc-engine = { path = "../ccalc-engine", version = "0.42.0" }
-ccalc-plot = { path = "../ccalc-plot", version = "0.42.0" }
+ccalc-engine = { path = "../ccalc-engine", version = "0.43.0" }
+ccalc-plot = { path = "../ccalc-plot", version = "0.43.0" }
 toml = "0.8"
 serde = { version = "1", features = ["derive"] }
 
