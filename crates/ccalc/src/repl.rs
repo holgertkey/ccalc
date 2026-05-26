@@ -534,7 +534,6 @@ fn render_prompt(
     (plain, colored)
 }
 
-
 pub fn run() {
     let mut env = new_env();
     let mut io = IoContext::new();
