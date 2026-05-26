@@ -57,6 +57,7 @@ base = "dec"
 #   {bright_magenta} — bright magenta foreground
 #   {bright_cyan}    — bright cyan foreground
 #   {bright_white}   — bright white foreground
+#   {color256(N)}    — 8-bit palette foreground      (e.g. {color256(220)} for gold)
 #   {#RRGGBB}        — 24-bit truecolor foreground  (e.g. {#FF8800} for orange)
 #
 # Examples:

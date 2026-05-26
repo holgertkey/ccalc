@@ -1180,6 +1180,20 @@ fn test_render_prompt_rgb_color() {
 }
 
 #[test]
+fn test_render_prompt_color256() {
+    let env = new_env();
+    // {color256(220)} → 8-bit palette gold
+    let (plain, colored) = render_prompt("{color256(220)}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain, "");
+    assert_eq!(colored, "\x1b[38;5;220m");
+    // out-of-range N → unknown placeholder, passed through literally
+    let (plain2, colored2) =
+        render_prompt("{color256(999)}", &env, 1, Base::Dec, &FormatMode::Short);
+    assert_eq!(plain2, "{color256(999)}");
+    assert_eq!(colored2, "{color256(999)}");
+}
+
+#[test]
 fn test_render_prompt_rgb_invalid_passthrough() {
     let env = new_env();
     // Too short — treated as unknown placeholder, passed through to both

@@ -516,8 +516,8 @@ fn render_prompt(
                 "bright_cyan" => color!("\x1b[96m"),
                 "bright_white" => color!("\x1b[97m"),
                 other => {
-                    // {#RRGGBB} — 24-bit truecolor foreground
-                    if let Some(ansi) = parse_rgb_placeholder(other) {
+                    // {#RRGGBB} — 24-bit truecolor, {color256(N)} — 8-bit palette
+                    if let Some(ansi) = crate::highlight::resolve_color(other) {
                         color!(&ansi);
                     } else {
                         // Unknown placeholder — pass through literally
@@ -534,17 +534,6 @@ fn render_prompt(
     (plain, colored)
 }
 
-/// Parses `#RRGGBB` and returns an ANSI 24-bit foreground escape, or `None`.
-fn parse_rgb_placeholder(s: &str) -> Option<String> {
-    if s.len() == 7 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_hexdigit()) {
-        let r = u8::from_str_radix(&s[1..3], 16).ok()?;
-        let g = u8::from_str_radix(&s[3..5], 16).ok()?;
-        let b = u8::from_str_radix(&s[5..7], 16).ok()?;
-        Some(format!("\x1b[38;2;{r};{g};{b}m"))
-    } else {
-        None
-    }
-}
 
 pub fn run() {
     let mut env = new_env();
