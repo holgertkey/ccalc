@@ -8,8 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.43.0] - 2026-05-26
 
-## [0.42.0] - 2026-05-25
-
 ### Added
 
 - **Phase 31b — Syntax highlighting in the REPL**
@@ -64,6 +62,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Empty Enter in the REPL no longer increments the `{line}` session counter.
   The prompt now shows the prospective next command number and only commits
   the increment when the first non-empty line of a top-level command is received.
+
+## [0.42.0] - 2026-05-25
+
+### Added
 
 - **Phase 30.6 — Figure appearance (complete)**
 - **Phase 30.6a** — `theme('light'|'dark')` and `bgcolor(color)`: coordinated
