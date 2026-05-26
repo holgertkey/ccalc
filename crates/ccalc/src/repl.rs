@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 
 use rustyline::Editor;
@@ -32,6 +33,14 @@ struct CcalcHelper {
     fixed_count: usize,
     /// Colored prompt for the current readline call (returned by `highlight_prompt`).
     colored_prompt: String,
+    /// All built-in function names (engine + plugins) for syntax highlighting.
+    builtin_keys: HashSet<String>,
+    /// All variable names currently in the workspace.
+    env_keys: HashSet<String>,
+    /// Resolved ANSI colour scheme for syntax highlighting.
+    colors: crate::highlight::ColorScheme,
+    /// Whether syntax highlighting is enabled.
+    highlight_enabled: bool,
 }
 
 impl CcalcHelper {
@@ -39,10 +48,17 @@ impl CcalcHelper {
         let mut candidates: Vec<String> = builtin_names().iter().map(|s| s.to_string()).collect();
         candidates.extend(ccalc_engine::plugin::plugin_names());
         let fixed_count = candidates.len();
+        let mut builtin_keys: HashSet<String> =
+            builtin_names().iter().map(|s| s.to_string()).collect();
+        builtin_keys.extend(ccalc_engine::plugin::plugin_names());
         Self {
             candidates,
             fixed_count,
             colored_prompt: String::new(),
+            builtin_keys,
+            env_keys: HashSet::new(),
+            colors: crate::highlight::ColorScheme::default(),
+            highlight_enabled: true,
         }
     }
 
@@ -52,11 +68,18 @@ impl CcalcHelper {
 
     fn update_env(&mut self, env: &Env) {
         self.candidates.truncate(self.fixed_count);
+        self.env_keys.clear();
         for key in env.keys() {
+            self.env_keys.insert(key.clone());
             if key != "ans" && key != "i" && key != "j" {
                 self.candidates.push(key.clone());
             }
         }
+    }
+
+    fn update_highlight(&mut self, colors: crate::highlight::ColorScheme, enabled: bool) {
+        self.colors = colors;
+        self.highlight_enabled = enabled;
     }
 }
 
@@ -103,6 +126,22 @@ impl Highlighter for CcalcHelper {
         } else {
             Cow::Borrowed(&self.colored_prompt)
         }
+    }
+
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+        if !self.highlight_enabled || line.is_empty() {
+            return Cow::Borrowed(line);
+        }
+        Cow::Owned(crate::highlight::highlight_line(
+            line,
+            &self.env_keys,
+            &self.builtin_keys,
+            &self.colors,
+        ))
+    }
+
+    fn highlight_char(&self, _line: &str, _pos: usize, _forced: bool) -> bool {
+        self.highlight_enabled
     }
 }
 
@@ -529,7 +568,9 @@ pub fn run() {
         .build();
     let mut rl: Editor<CcalcHelper, DefaultHistory> =
         Editor::with_config(rl_config).expect("Failed to initialize line editor");
-    rl.set_helper(Some(CcalcHelper::new()));
+    let mut helper = CcalcHelper::new();
+    helper.update_highlight(cfg.color_scheme(), cfg.highlight_enabled());
+    rl.set_helper(Some(helper));
 
     let history_path = config_dir().join("history");
     append_session_marker(&history_path);
@@ -779,6 +820,9 @@ pub fn run() {
                             .prompt2()
                             .map(str::to_string)
                             .unwrap_or_else(|| "  >> ".to_string());
+                        if let Some(h) = rl.helper_mut() {
+                            h.update_highlight(cfg.color_scheme(), cfg.highlight_enabled());
+                        }
                         println!("Config reloaded.");
                         println!("format:      {}", fmt.name());
                         println!("base:        {}", format_base_name(base));

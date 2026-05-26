@@ -67,6 +67,26 @@ base = "dec"
 # prompt1 = "{bold}{blue}ccalc{reset} {gray}[{line}]{reset} {ans} > "
 # prompt1 = "{#FF8800}ccalc{reset} [{line}] {ans} > "
 # prompt2 = "  >> "
+
+[highlight]
+# Set to false to disable all input syntax highlighting.
+enabled = true
+
+# Colour formats (uncomment and edit to customise):
+#   Named 4-bit — standard: black, red, green, yellow, blue, magenta, cyan, white
+#                  bright:  bright_black (dark_gray), bright_red, bright_green,
+#                           bright_yellow, bright_blue, bright_magenta,
+#                           bright_cyan, bright_white
+#   8-bit        — color256(N)   where N = 0..255
+#   True color   — #RRGGBB       (hex, requires a true-color terminal)
+#   Bold prefix  — "bold:yellow" enables bold rendering for any format
+#
+# keywords = "yellow"
+# numbers  = "cyan"
+# strings  = "green"
+# comments = "dark_gray"
+# builtins = "bright_cyan"
+# errors   = "red"
 "#;
 
 // ---------------------------------------------------------------------------
@@ -82,6 +102,41 @@ pub struct Config {
     /// Directories added to the script search path at startup.
     #[serde(default)]
     pub path: Vec<String>,
+    /// Syntax-highlighting settings.
+    #[serde(default)]
+    pub highlight: HighlightConfig,
+}
+
+/// Syntax-highlighting colour configuration.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HighlightConfig {
+    /// Whether to highlight REPL input. Defaults to `true`.
+    #[serde(default = "default_highlight_enabled")]
+    pub enabled: bool,
+    pub keywords: Option<String>,
+    pub numbers: Option<String>,
+    pub strings: Option<String>,
+    pub comments: Option<String>,
+    pub builtins: Option<String>,
+    pub errors: Option<String>,
+}
+
+fn default_highlight_enabled() -> bool {
+    true
+}
+
+impl Default for HighlightConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            keywords: None,
+            numbers: None,
+            strings: None,
+            comments: None,
+            builtins: None,
+            errors: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -130,6 +185,57 @@ impl Config {
     /// Secondary prompt template from `[repl] prompt2`, or `None` if unset.
     pub fn prompt2(&self) -> Option<&str> {
         self.repl.prompt2.as_deref()
+    }
+
+    /// Whether REPL syntax highlighting is enabled (defaults to `true`).
+    pub fn highlight_enabled(&self) -> bool {
+        self.highlight.enabled
+    }
+
+    /// Resolves the `[highlight]` colour settings into a `ColorScheme`.
+    ///
+    /// Each key that is absent or malformed falls back to `ColorScheme::default()`.
+    pub fn color_scheme(&self) -> crate::highlight::ColorScheme {
+        use crate::highlight::{ColorScheme, resolve_color};
+        let def = ColorScheme::default();
+        ColorScheme {
+            keywords: self
+                .highlight
+                .keywords
+                .as_deref()
+                .and_then(resolve_color)
+                .unwrap_or(def.keywords),
+            numbers: self
+                .highlight
+                .numbers
+                .as_deref()
+                .and_then(resolve_color)
+                .unwrap_or(def.numbers),
+            strings: self
+                .highlight
+                .strings
+                .as_deref()
+                .and_then(resolve_color)
+                .unwrap_or(def.strings),
+            comments: self
+                .highlight
+                .comments
+                .as_deref()
+                .and_then(resolve_color)
+                .unwrap_or(def.comments),
+            builtins: self
+                .highlight
+                .builtins
+                .as_deref()
+                .and_then(resolve_color)
+                .unwrap_or(def.builtins),
+            errors: self
+                .highlight
+                .errors
+                .as_deref()
+                .and_then(resolve_color)
+                .unwrap_or(def.errors),
+        }
     }
 
     /// Returns the search path as `PathBuf`s with `~` expanded.

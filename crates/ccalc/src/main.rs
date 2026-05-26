@@ -5,6 +5,7 @@
 
 mod config;
 mod help;
+mod highlight;
 mod repl;
 
 use std::io::IsTerminal;
