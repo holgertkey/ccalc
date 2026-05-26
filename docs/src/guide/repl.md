@@ -49,7 +49,7 @@ an operator use `ans` as the left-hand operand (**partial expressions**):
 | `config reload` | Re-read `config.toml` and apply changes |
 
 Help topics for `help <topic>`:
-`syntax` `functions` `userfuncs` `testing` `bases` `vars` `script` `matrices` `examples`
+`syntax` `functions` `userfuncs` `testing` `bases` `vars` `script` `matrices` `highlight` `prompt` `examples`
 
 ## Tab completion
 
@@ -150,6 +150,41 @@ config file: /home/user/.config/ccalc/config.toml
 precision:   10
 base:        dec
 ```
+
+### Syntax highlighting
+
+ccalc highlights the current input line in real time as you type:
+
+| Token type | Default colour | Examples |
+|------------|---------------|---------|
+| Keywords | yellow | `if`, `for`, `while`, `end`, `function`, `else`, … |
+| Numbers | cyan | `42`, `3.14`, `1e-3`, `0xFF` |
+| Strings | green | `'hello'`, `"world"` |
+| Comments | dark gray | `% a comment`, `# also a comment` |
+| Built-ins | bright cyan | `sin`, `plot`, `zeros`, `reshape`, … |
+| Errors | red | Unclosed `'`, `"`, `[`, `(` |
+| User variables / operators | default | everything else |
+
+Highlighting is active by default. To disable it, set `enabled = false` in the
+`[highlight]` section of `config.toml`:
+
+```toml
+[highlight]
+enabled = false
+```
+
+To change a colour, add the corresponding key:
+
+```toml
+[highlight]
+keywords = "bold:blue"
+numbers  = "color256(208)"
+comments = "#808080"
+```
+
+Supported formats: named (`"yellow"`), 8-bit (`"color256(N)"`), 24-bit truecolor
+(`"#RRGGBB"`), and a `"bold:"` prefix for any of them. See
+[Configuration](./configuration.md#syntax-highlighting) for the full reference.
 
 ### Custom prompt
 

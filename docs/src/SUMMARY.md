@@ -86,3 +86,4 @@
   - [Phase 28 — Plugin Architecture](./ccalc/phase28-plugins.md)
   - [Phase 29 — Plot Engine](./ccalc/phase29-plot.md)
   - [Phase 30 — Colormaps & imagesc](./ccalc/phase30-colormap.md)
+  - [Phase 31 — Configurable Prompt & Syntax Highlighting](./ccalc/phase31-repl-ux.md)

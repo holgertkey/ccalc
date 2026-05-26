@@ -71,6 +71,9 @@ pub fn print(topic: Option<&str>) {
             | "polynomials" | "interpolation",
         ) => print_poly(),
         Some("prompt" | "prompt1" | "prompt2" | "ps1" | "ps2") => print_prompt(),
+        Some("highlight" | "colors" | "colours" | "color-scheme" | "theme-colors") => {
+            print_highlight()
+        }
         Some("eval" | "tic" | "toc" | "dynamic" | "timing" | "metaprogramming") => print_eval(),
         Some(
             "fft" | "ifft" | "fftshift" | "ifftshift" | "fftfreq" | "signal" | "spectrum"
@@ -90,7 +93,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  prompt  examples"
+                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  prompt  highlight  examples"
             );
         }
     }
@@ -3479,6 +3482,59 @@ plain text so the prompt never shifts input sideways.
     prompt1 = \"{{green}}{{user}}@{{host}}{{reset}}:{{cyan}}{{cwd_short}}{{reset}}$ \"
     prompt1 = \"{{bold}}{{blue}}ccalc{{reset}} {{gray}}[{{line}}]{{reset}} {{ans}} > \"
     prompt1 = \"{{#FF8800}}ccalc{{reset}} [{{line}}] {{ans}} > \""
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help highlight
+// ---------------------------------------------------------------------------
+
+fn print_highlight() {
+    println!(
+        "\
+SYNTAX HIGHLIGHTING  (help highlight)
+
+ccalc highlights input in real time as you type in the REPL.
+
+── Colour categories ─────────────────────────────────────────────────────────
+
+    Keywords     (yellow)       if, for, while, end, function, else, elseif,
+                                return, break, continue, do, until, switch,
+                                case, otherwise, try, catch, global, persistent
+    Numbers      (cyan)         42  3.14  1e-3  0xFF
+    Strings      (green)        'hello'  \"world\"
+    Comments     (dark gray)    % comment  # also a comment
+    Built-ins    (bright cyan)  sin, plot, zeros, reshape, …
+    Errors       (red)          unclosed '  \"  [  (
+
+User-defined variables and operators use the terminal default colour.
+
+If a keyword or built-in name is shadowed by a user variable (e.g. end = 42),
+it is shown in default colour — matching evaluation semantics.
+
+── config.toml ───────────────────────────────────────────────────────────────
+
+    [highlight]
+    enabled  = true        # set to false to disable highlighting
+
+    # Uncomment and set to override defaults:
+    # keywords = \"yellow\"
+    # numbers  = \"cyan\"
+    # strings  = \"green\"
+    # comments = \"dark_gray\"
+    # builtins = \"bright_cyan\"
+    # errors   = \"red\"
+
+── Colour formats ────────────────────────────────────────────────────────────
+
+    Named 4-bit    \"yellow\", \"bright_cyan\", \"dark_gray\", \"red\", …
+    8-bit palette  \"color256(N)\"    N = 0..255
+    24-bit         \"#RRGGBB\"        requires a true-color terminal
+    Bold prefix    \"bold:yellow\"    combines bold with any of the above
+
+── Apply changes without restarting ─────────────────────────────────────────
+
+    [ 0 ]: config reload"
     );
 }
 

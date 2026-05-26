@@ -1870,7 +1870,7 @@ All forms desugar at parse time — no performance penalty.
 | `config reload`                   | Re-read `config.toml` and apply changes |
 | Ctrl+C / Ctrl+D                   | Quit                                    |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `prompt`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `prompt`  `highlight`  `examples`
 
 ### Prompt customization
 
@@ -1885,6 +1885,29 @@ prompt2 = "  >> "
 ```
 
 Run `config reload` to apply changes without restarting. Run `help prompt` for the full placeholder reference.
+
+### Syntax highlighting
+
+The REPL highlights input in real time. Keywords appear in yellow, numbers in
+cyan, strings in green, comments in dark gray, and built-in function names in
+bright cyan. Unclosed strings or brackets are shown in red.
+
+Colours can be overridden in `config.toml`:
+
+```toml
+[highlight]
+enabled  = true         # set to false to disable
+# keywords = "yellow"
+# numbers  = "cyan"
+# strings  = "green"
+# comments = "dark_gray"
+# builtins = "bright_cyan"
+# errors   = "red"
+```
+
+Colour formats: named (`"yellow"`), 8-bit (`"color256(220)"`), 24-bit truecolor
+(`"#FFD700"`), and `"bold:<colour>"` for bold rendering. Run `help highlight`
+for the full reference.
 
 ## Keyboard shortcuts
 

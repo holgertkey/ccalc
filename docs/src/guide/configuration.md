@@ -27,6 +27,18 @@ base = "dec"
 # Prompt templates — see the "Prompt customization" section below.
 # prompt1 = "[ {ans} ]: "
 # prompt2 = "  >> "
+
+[highlight]
+# Set to false to disable real-time syntax highlighting.
+enabled = true
+# Uncomment and set to override default colours.  Formats: named ("yellow"),
+# 8-bit ("color256(220)"), truecolor ("#FFD700"), or "bold:<colour>".
+# keywords = "yellow"
+# numbers  = "cyan"
+# strings  = "green"
+# comments = "dark_gray"
+# builtins = "bright_cyan"
+# errors   = "red"
 ```
 
 ## Settings
@@ -125,6 +137,61 @@ After editing `config.toml`, apply changes without restarting:
 [ 0 ]: config reload
 Config reloaded.
 ```
+
+## Syntax highlighting
+
+The `[highlight]` section controls real-time input highlighting in the REPL.
+
+```toml
+[highlight]
+enabled = true      # set to false to disable highlighting entirely
+
+# Colour formats:
+#   Named 4-bit  — black, red, green, yellow, blue, magenta, cyan, white
+#                  bright_black (dark_gray), bright_red, bright_green,
+#                  bright_yellow, bright_blue, bright_magenta,
+#                  bright_cyan, bright_white
+#   8-bit        — color256(N)  where N = 0..255
+#   True color   — #RRGGBB     (hex, requires a true-color terminal)
+#
+# Prefix any value with "bold:" for bold text, e.g. "bold:yellow"
+
+# keywords = "yellow"
+# numbers  = "cyan"
+# strings  = "green"
+# comments = "dark_gray"
+# builtins = "bright_cyan"
+# errors   = "red"
+```
+
+### Colour categories
+
+| Key | Default | Highlighted tokens |
+|-----|---------|-------------------|
+| `keywords` | yellow | `if`, `for`, `while`, `end`, `function`, `else`, `elseif`, `return`, `break`, `continue`, `do`, `until`, `switch`, `case`, `otherwise`, `try`, `catch`, `global`, `persistent` |
+| `numbers` | cyan | Integer, decimal, scientific, and hex literals (`42`, `3.14`, `1e-3`, `0xFF`) |
+| `strings` | green | Single-quoted `'...'` and double-quoted `"..."` string literals |
+| `comments` | dark gray | `%` and `#` to end of line |
+| `builtins` | bright cyan | All built-in function names (`sin`, `plot`, `zeros`, …) and plugin functions |
+| `errors` | red | Unclosed string literals or brackets |
+
+User-defined variables and operators are shown in the terminal's default colour.
+
+### Shadowing rules
+
+If a name from a keyword or built-in list is assigned as a variable (e.g. `end = 42`),
+the highlighting uses default colour for that name — matching evaluation semantics.
+
+### Colour format reference
+
+| Format | Example | Notes |
+|--------|---------|-------|
+| Named 4-bit | `"yellow"`, `"bright_cyan"` | 16 standard terminal colours |
+| 8-bit palette | `"color256(220)"` | 256-colour extended palette |
+| 24-bit truecolor | `"#FFD700"` | Requires a true-color terminal |
+| Bold prefix | `"bold:yellow"` | Combines bold with any colour |
+
+Unknown values are silently ignored and the built-in default is used instead.
 
 ## REPL commands
 

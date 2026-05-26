@@ -10,6 +10,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 31b — Syntax highlighting in the REPL**
+- Real-time syntax highlighting via `rustyline::Highlighter` implemented in new
+  `crates/ccalc/src/highlight.rs`.
+- Keyword highlighting (`if`, `for`, `while`, `end`, `function`, …) in yellow.
+- Number literals (decimal, hex `0xFF`, scientific `1e-3`) in cyan.
+- Single- and double-quoted strings in green; unclosed strings/brackets in red.
+- Comments (`%` to end-of-line, `#` to end-of-line) in dark gray.
+- Built-in function names (`sin`, `plot`, `zeros`, …) in bright cyan.
+- User-defined variable names use default terminal colour.
+- Keyword/built-in shadowing: if the user assigns `end = 42`, `end` is shown in
+  default colour, not keyword colour.
+- `highlight_line(line, env_keys, builtin_keys, colors) -> String` — standalone
+  pure function; character-level scanner tracking `Prev` state for `'`
+  disambiguation (transpose vs. char-array string literal).
+- 27 unit tests in `highlight.rs` covering all token categories, `'`
+  disambiguation, environment shadowing, unclosed strings, and all `resolve_color`
+  variants.
+- **Phase 31c — Configurable colour scheme in `config.toml`**
+- `[highlight]` section added to `config.toml` with `enabled` key (default: `true`)
+  and optional per-category colour keys: `keywords`, `numbers`, `strings`,
+  `comments`, `builtins`, `errors`.
+- Three colour formats supported: named 4-bit (`"yellow"`), 8-bit palette
+  (`"color256(220)"`), and 24-bit truecolor (`"#FFD700"`).
+- `bold:` prefix on any value enables bold rendering (`"bold:yellow"`).
+- `pub fn resolve_color(s: &str) -> Option<String>` — color parser with silent
+  `None` fallback for unknown values.
+- `HighlightConfig` struct with `#[serde(default)]`; `Config::color_scheme()` and
+  `Config::highlight_enabled()` accessors in `config.rs`.
+- `config reload` in the REPL applies colour scheme changes immediately.
+- `help highlight` topic added to the REPL help system.
+
 - **Phase 31a — Configurable REPL prompt with colour support**
 - `[repl]` section in `config.toml` with `prompt1` / `prompt2` template keys.
 - Template placeholders: `{ans}`, `{line}` (session counter), `{user}`, `{host}`,
