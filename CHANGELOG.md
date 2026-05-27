@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 32b — Statistical extensions: `errorbar` + per-point scatter color**
+- `errorbar(x, y, e[, style[, path]])` — symmetric error bars; each point gets
+  a vertical cap spanning `[y-e, y+e]`.
+- `errorbar(x, y, e_low, e_high[, style[, path]])` — asymmetric form with
+  independent lower and upper extents.
+- `scatter(x, y, sz, c[, path])` — 4-argument numeric form drives a colormap
+  lookup so each point gets an individual color; `sz` may be a scalar or a
+  per-point vector; `c` is normalized to `[min(c), max(c)]` automatically.
+- New `PendingSeries` variants: `ErrorBar` and `ColorScatter`.
+- `Panel.colormap` field carries the active colormap into deferred `draw_panel`.
+- ASCII tier: `errorbar` prints a compact `x | y ± e` table; `ColorScatter`
+  degrades to monochrome `textplots` scatter.
+- File tier: `draw_error_bars` (shaft + caps as `PathElement`, centre `Circle`);
+  `draw_color_scatter_chart` (per-point `Circle` colored by `apply_colormap_spec`).
+- 7 new integration tests in `svg_png_tests.rs`.
+- Example scripts `examples/errorbar_demo/errorbar_demo.calc` and
+  `examples/scatter_color_demo/scatter_color_demo.calc`.
+
 - **Phase 32a — Drawing primitives: `line`, `patch`, `rectangle`**
 - `line(x, y[, style[, path]])` — polyline alias for `plot`; identical semantics
   (style strings, hold mode, file export).

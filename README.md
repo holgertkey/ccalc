@@ -804,6 +804,9 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `polar(theta, r)` | `plot` | Polar chart — coordinate transform then `render_line_xy` |
 | `quiver(x, y, u, v)` | `plot` | Vector field: Unicode arrows (ASCII) / shaft+arrowhead polygons (SVG/PNG) |
 | `text(x, y, 'label')` | `plot` | Text annotation at data coordinate — flushed with next render |
+| `errorbar(x, y, e)` | `plot` | Symmetric error bars; ASCII compact table, SVG/PNG shaft+cap elements |
+| `errorbar(x, y, e_low, e_high)` | `plot` | Asymmetric error bars with independent lower/upper extents |
+| `scatter(x, y, sz, c)` | `plot` | Per-point color scatter: `c` drives colormap lookup; `sz` scalar or vector |
 | `imagesc(Z)` | `plot` | False-colour heat-map of matrix Z (ASCII density chars) |
 | `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG (800 × 600 px) |
 | `imagesc(Z, 'f.png', W, H)` | `plot-svg` | False-colour image at custom W × H pixels |
@@ -2179,6 +2182,9 @@ The `examples/` directory contains annotated formula files ready to run:
 | `fill_area_polar_demo/fill_area_polar_demo.calc` | Phase 30e: `fill`/`area` ASCII+SVG, `polar` circle + rose curve, all 8 style colors, all 4 line styles, color+linestyle combos |
 | `quiver_demo/quiver_demo.calc` | Rotational flow field `u = -y, v = x` — ASCII Unicode arrows + SVG export |
 | `annotations/annotations.calc` | `text()` labels placed at data coordinates, flushed with `quiver()` |
+| `primitives_demo/primitives_demo.calc` | Phase 32a: `line`, `patch`, `rectangle` in standalone and hold mode |
+| `errorbar_demo/errorbar_demo.calc` | Phase 32b: symmetric + asymmetric `errorbar`, hold-mode overlay with `plot` |
+| `scatter_color_demo/scatter_color_demo.calc` | Phase 32b: per-point color `scatter(x,y,sz,c)` with viridis/jet colormaps and hold mode |
 
 ```bash
 ccalc < examples/mortgage.calc

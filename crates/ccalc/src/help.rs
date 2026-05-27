@@ -89,7 +89,8 @@ pub fn print(topic: Option<&str>) {
             | "quiver" | "vectorfield" | "text" | "annotation" | "annotations" | "theme"
             | "bgcolor" | "background" | "fontsize" | "linewidth" | "markersize" | "gridcolor"
             | "gridwidth" | "axis" | "axismode" | "equal" | "tight" | "appearance" | "line"
-            | "patch" | "rectangle" | "primitives" | "drawingprimitives",
+            | "patch" | "rectangle" | "primitives" | "drawingprimitives"
+            | "errorbar" | "errorbars" | "statisticalextensions" | "colorscatter",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -3730,6 +3731,37 @@ Two rendering tiers; both use the same annotation API.
     title('sine + bounding box')
     savefig('sine_box.svg')
 
+── Statistical extensions ───────────────────────────────────────────────────
+    errorbar(x, y, e)                    symmetric error bars (y ± e)
+    errorbar(x, y, e_low, e_high)        asymmetric error bars
+    errorbar(x, y, e, 'b', 'out.svg')   color + file export
+    errorbar(x, y, e_l, e_h, 'r', 'out.svg')
+
+    All arrays must have the same length.  Optional style string (before path)
+    accepts the same color codes as plot().
+
+    ASCII tier:  compact table  x | y ± e  (or  x | y +e_h -e_l)
+    File tier:   three PathElement segments per point (shaft + two caps)
+                 + Circle centre dot; cap half-width = 3% of x-range.
+
+    scatter(x, y, sz, c)                 per-point color scatter
+    scatter(x, y, sz, c, 'out.svg')      with file export
+
+    When four numeric arguments are given, c drives a colormap lookup so
+    each point gets an individual color.  sz may be a scalar (broadcast)
+    or a per-point vector.  Use colormap('name') before the call to choose
+    a palette; default is viridis.
+
+    ASCII tier:  degrades to monochrome textplots scatter.
+    File tier:   Circle elements; fill from apply_colormap_spec(c_norm).
+
+    x = 1:5;  y = [2.1 3.4 2.8 4.2 3.7];
+    errorbar(x, y, [0.3 0.2 0.4 0.25 0.35], 'b', 'bars.svg')
+
+    n = 20;  x = linspace(0, 2*pi, n);
+    colormap('viridis')
+    scatter(x, sin(x), 6, cos(x), 'scatter_color.svg')
+
 ── Polar plots ──────────────────────────────────────────────────────────────
     polar(theta, r)              polar chart; theta in radians
     polar(theta, r, 'out.svg')   save polar chart to SVG/PNG
@@ -4018,6 +4050,8 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/quiver_demo/quiver_demo.calc    (quiver — rotational flow field)
           examples/annotations/annotations.calc   (text annotations with quiver)
           examples/color_system_demo/color_system_demo.calc  (Phase 30.5 unified color system)
-          examples/figure_appearance_demo/figure_appearance_demo.calc  (Phase 30.6 figure appearance)"
+          examples/figure_appearance_demo/figure_appearance_demo.calc  (Phase 30.6 figure appearance)
+          examples/errorbar_demo/errorbar_demo.calc           (Phase 32b: symmetric + asymmetric errorbar)
+          examples/scatter_color_demo/scatter_color_demo.calc (Phase 32b: per-point color scatter)"
     );
 }

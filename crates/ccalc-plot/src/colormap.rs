@@ -208,7 +208,6 @@ const JET: [(u8, u8, u8); 8] = [
 
 /// Returns `(min, max)` of finite values in `z`.  Falls back to `(0, 1)` on
 /// all-NaN input; expands a degenerate range by 1.
-#[cfg(any(feature = "plot", feature = "plot-svg"))]
 pub(crate) fn data_range(z: &[f64]) -> (f64, f64) {
     let mut lo = f64::INFINITY;
     let mut hi = f64::NEG_INFINITY;

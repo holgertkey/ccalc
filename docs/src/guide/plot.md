@@ -638,6 +638,99 @@ See also: `examples/primitives_demo/primitives_demo.calc`
 
 ---
 
+## Statistical extensions
+
+Phase 32b adds two statistical chart functions.
+
+### `errorbar(x, y, e)` / `errorbar(x, y, e, style)` / `errorbar(x, y, e, style, 'file')`
+
+Draws a line plot with **symmetric** error bars: each point `(x[i], y[i])` gets
+a vertical cap spanning `[y[i] - e[i], y[i] + e[i]]`.
+
+### `errorbar(x, y, e_low, e_high)` / `errorbar(x, y, e_low, e_high, style)` / `errorbar(x, y, e_low, e_high, style, 'file')`
+
+**Asymmetric** form: the lower extent is `y[i] - e_low[i]` and the upper extent
+is `y[i] + e_high[i]`, allowing different uncertainties in each direction.
+
+All arrays must have the same length. The optional style argument accepts the
+same color/line-style strings as `plot`. Without a file path the result is
+printed as a compact ASCII table with `±` notation.
+
+**ASCII tier:** compact table `x | y ± e` (or `x | y + e_high - e_low`).
+
+**File tier:** three `PathElement` segments per point (vertical shaft, lower cap,
+upper cap) plus a `Circle` centre dot. Cap width = 3 % of the x-axis range.
+
+```matlab
+x = 1:5;
+y = [2.1, 3.4, 2.8, 4.2, 3.7];
+
+% Symmetric — same error on each side
+e = [0.3, 0.2, 0.4, 0.25, 0.35];
+xlabel('Sample')
+ylabel('Value')
+title('Symmetric error bars')
+errorbar(x, y, e, 'b', 'errorbar_sym.svg')
+
+% Asymmetric
+e_low  = [0.1, 0.3, 0.2, 0.15, 0.4];
+e_high = [0.4, 0.1, 0.5, 0.3,  0.2];
+errorbar(x, y, e_low, e_high, 'r', 'errorbar_asym.svg')
+
+% Overlay errorbar on a line plot (hold mode)
+hold('on')
+plot(1:5, 0.8*(1:5) + 0.5, 'k--')
+errorbar(x, y, e, 'b')
+title('Line + error bars')
+savefig('errorbar_with_line.svg')
+```
+
+### `scatter(x, y, sz, c)` — per-point color form
+
+When `scatter` receives **four numeric arguments** `(x, y, sz, c)`, each point
+is colored individually by mapping the scalar `c[i]` through the active colormap
+(default: `viridis`).
+
+- `sz` — marker radius in pixels. Either a scalar (broadcast to all points) or a
+  vector of the same length as `x`.
+- `c` — scalar color values; automatically normalized to `[min(c), max(c)]` before
+  the colormap lookup.
+- Change the colormap with `colormap(name)` before the `scatter` call.
+
+**ASCII tier:** degrades gracefully to a monochrome `textplots` scatter chart.
+
+**File tier:** each point is a `Circle` element whose fill color comes from
+`apply_colormap_spec(c_normalized)`.
+
+```matlab
+n  = 20;
+x  = linspace(0, 2*pi, n);
+y  = sin(x);
+c  = cos(x);          % values drive the colormap
+
+% Uniform size, viridis (default)
+scatter(x, y, 6, c, 'scatter_viridis.svg')
+
+% Per-point size, jet colormap
+colormap('jet')
+sz = 3 + 7 * (c - min(c)) / (max(c) - min(c));
+scatter(x, y, sz, c, 'scatter_jet.svg')
+
+% Two ColorScatter series in hold mode
+x2 = linspace(0, 2*pi, n);
+y2 = cos(x2);
+hold('on')
+scatter(x,  y,  5, c)
+scatter(x2, y2, 5, sin(x2))
+title('Two ColorScatter series')
+savefig('scatter_hold.svg')
+```
+
+See also: `examples/errorbar_demo/errorbar_demo.calc`,
+`examples/scatter_color_demo/scatter_color_demo.calc`
+
+---
+
 ## Polar plots
 
 ### `polar(theta, r)` / `polar(theta, r, style)` / `polar(theta, r, 'file')`
@@ -973,6 +1066,8 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
   green, cyan, dark red — cycling as needed.
 - **Line plots:** `LineSeries` (1 px, series colour).
 - **Scatter plots:** filled circles, 3 px radius.
+- **Per-point color scatter (`scatter(x,y,sz,c)`):** `Circle` elements; each fill color mapped through the active colormap; radius from `sz` (scalar or per-point vector).
+- **Error bars (`errorbar`):** three `PathElement` segments (shaft + two caps) plus a `Circle` centre dot per data point; cap width = 3 % of x-range.
 - **Bar charts:** edge-to-edge `Rectangle` series; negative bars extend below baseline.
 - **Stem plots:** `PathElement` vertical lines + `Circle` tip markers (4 px).
 - **Histograms:** edge-to-edge `Rectangle` bins (blue fill).
@@ -1014,6 +1109,9 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/quiver_demo/quiver_demo.calc` — vector field with Unicode arrow grid
 - `examples/color_system_demo/color_system_demo.calc` — Phase 30.5 unified color system: custom colormaps, full names, hex, RGB matrix, `'color'` named arg for bar/stem/hist/quiver
 - `examples/figure_appearance_demo/figure_appearance_demo.calc` — Phase 30.6 figure appearance: `theme`, `bgcolor`, `fontsize`, `linewidth`, `markersize`, `gridcolor`, `gridwidth`, `axis`
+- `examples/primitives_demo/primitives_demo.calc` — Phase 32a: `line`, `patch`, `rectangle` in hold mode and standalone
+- `examples/errorbar_demo/errorbar_demo.calc` — Phase 32b: symmetric and asymmetric `errorbar`, hold-mode overlay with `plot`
+- `examples/scatter_color_demo/scatter_color_demo.calc` — Phase 32b: per-point color `scatter(x,y,sz,c)` with viridis/jet colormaps and hold mode
 
 ---
 
