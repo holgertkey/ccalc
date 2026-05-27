@@ -1045,7 +1045,12 @@ where
                 }
             }
             PendingSeries::ColorScatter {
-                x, y, sz: _, c: _, c_min: _, c_max: _
+                x,
+                y,
+                sz: _,
+                c: _,
+                c_min: _,
+                c_max: _,
             } => {
                 all_x.extend_from_slice(x);
                 all_y.extend_from_slice(y);

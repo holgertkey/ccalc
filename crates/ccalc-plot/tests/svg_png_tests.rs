@@ -957,7 +957,10 @@ fn errorbar_asymmetric_writes_svg() {
         )
         .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("<svg"), "asymmetric errorbar should write SVG");
+    assert!(
+        content.contains("<svg"),
+        "asymmetric errorbar should write SVG"
+    );
 }
 
 #[test]
@@ -972,13 +975,7 @@ fn errorbar_with_style_string() {
     plugin
         .call(
             "errorbar",
-            &[
-                x,
-                y,
-                e,
-                Value::Str("r".into()),
-                Value::Str(path.clone()),
-            ],
+            &[x, y, e, Value::Str("r".into()), Value::Str(path.clone())],
             &env,
         )
         .unwrap();
@@ -994,11 +991,7 @@ fn errorbar_length_mismatch_errors() {
     let x = row_vec(&[1.0, 2.0, 3.0]);
     let y = row_vec(&[1.0, 2.0, 3.0]);
     let e = row_vec(&[0.1, 0.2]); // wrong length
-    let result = plugin.call(
-        "errorbar",
-        &[x, y, e, Value::Str("dummy.svg".into())],
-        &env,
-    );
+    let result = plugin.call("errorbar", &[x, y, e, Value::Str("dummy.svg".into())], &env);
     assert!(result.is_err(), "mismatched lengths should return an error");
     assert!(result.unwrap_err().contains("same length"));
 }
@@ -1038,7 +1031,10 @@ fn scatter_color_per_point_size() {
         .call("scatter", &[x, y, sz, c, Value::Str(path.clone())], &env)
         .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("<circle"), "per-point size scatter should have circles");
+    assert!(
+        content.contains("<circle"),
+        "per-point size scatter should have circles"
+    );
 }
 
 #[test]
@@ -1059,5 +1055,8 @@ fn scatter_color_hold_accumulates() {
         .call("savefig", &[Value::Str(path.clone())], &env)
         .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("<circle"), "hold ColorScatter should render circles");
+    assert!(
+        content.contains("<circle"),
+        "hold ColorScatter should render circles"
+    );
 }

@@ -511,8 +511,14 @@ impl Plugin for PlotPlugin {
                         Ok(Value::Void)
                     } else {
                         let state = FIGURE_STATE.with(|f| f.take());
-                        if let PendingSeries::ColorScatter { x, y, sz, c, c_min, c_max } =
-                            series
+                        if let PendingSeries::ColorScatter {
+                            x,
+                            y,
+                            sz,
+                            c,
+                            c_min,
+                            c_max,
+                        } = series
                         {
                             render_color_scatter(
                                 &x,
@@ -612,9 +618,8 @@ impl Plugin for PlotPlugin {
                             .map_err(|_| "errorbar: y must be a numeric vector".to_string())?;
                         let el = extract_vector(elv)
                             .map_err(|_| "errorbar: e_low must be a numeric vector".to_string())?;
-                        let eh = extract_vector(ehv).map_err(|_| {
-                            "errorbar: e_high must be a numeric vector".to_string()
-                        })?;
+                        let eh = extract_vector(ehv)
+                            .map_err(|_| "errorbar: e_high must be a numeric vector".to_string())?;
                         if x.len() != y.len() || x.len() != el.len() || x.len() != eh.len() {
                             return Err(format!(
                                 "errorbar: x, y, e_low, e_high must have the same length \
@@ -2308,9 +2313,11 @@ fn render_color_scatter_ascii(
     _y: &[f64],
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("scatter: ASCII rendering requires the 'plot' feature flag — \
+    Err(
+        "scatter: ASCII rendering requires the 'plot' feature flag — \
          rebuild with: cargo build --features plot"
-        .into())
+            .into(),
+    )
 }
 
 /// Returns `true` when `v` is a numeric `Value` (Scalar or Matrix).
@@ -2381,9 +2388,11 @@ fn render_errorbar_file(
     _style: Option<StyleSpec>,
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("errorbar: SVG/PNG export requires the 'plot-svg' feature — \
+    Err(
+        "errorbar: SVG/PNG export requires the 'plot-svg' feature — \
          rebuild with: cargo build --features plot-svg"
-        .into())
+            .into(),
+    )
 }
 
 // ── color_scatter dispatch ─────────────────────────────────────────────────
