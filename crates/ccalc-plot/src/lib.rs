@@ -1,11 +1,11 @@
-//! Plot plugin for ccalc — Phase 32a.
+//! Plot plugin for ccalc — Phase 32b.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
 //! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
-//! `polar`, `quiver`, `text`, `axis`, `line`, `patch`, `rectangle`, and
-//! annotation functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`,
-//! `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
+//! `polar`, `quiver`, `text`, `axis`, `line`, `patch`, `rectangle`,
+//! `errorbar`, and annotation functions (`xlabel`, `ylabel`, `zlabel`,
+//! `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -70,6 +70,37 @@ pub enum PendingSeries {
     Area(Vec<f64>, Vec<f64>, Option<StyleSpec>),
     /// Vector field: origin coordinates `(x, y)` and displacement vectors `(u, v)`, with optional style override.
     Quiver(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Option<StyleSpec>),
+    /// Vertical error bars with symmetric or asymmetric half-lengths.
+    ///
+    /// `e_low` and `e_high` store the downward and upward half-extents
+    /// respectively (both are non-negative distances from `y[i]`).
+    ErrorBar {
+        /// X positions.
+        x: Vec<f64>,
+        /// Y centre positions.
+        y: Vec<f64>,
+        /// Downward half-extents (≥ 0).
+        e_low: Vec<f64>,
+        /// Upward half-extents (≥ 0).
+        e_high: Vec<f64>,
+        /// Optional style override.
+        style: Option<StyleSpec>,
+    },
+    /// Per-point color scatter plot mapped through the active colormap.
+    ColorScatter {
+        /// X positions.
+        x: Vec<f64>,
+        /// Y positions.
+        y: Vec<f64>,
+        /// Per-point marker radii in pixels.
+        sz: Vec<f64>,
+        /// Scalar values that drive the colormap lookup.
+        c: Vec<f64>,
+        /// Minimum `c` value (for normalisation).
+        c_min: f64,
+        /// Maximum `c` value (for normalisation).
+        c_max: f64,
+    },
 }
 
 /// A committed subplot panel ready for file rendering.
@@ -107,6 +138,8 @@ pub struct Panel {
     pub grid_width: Option<f32>,
     /// Axis display mode override carried into this panel.
     pub axis_mode: Option<AxisMode>,
+    /// Active colormap specification carried into this panel (for `ColorScatter`).
+    pub colormap: Option<ColormapSpec>,
 }
 
 // ── FigureState ────────────────────────────────────────────────────────────
@@ -279,6 +312,8 @@ const EXPORTED: &[&str] = &[
     "line",
     "patch",
     "rectangle",
+    // Phase 32b — statistical extensions
+    "errorbar",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -311,6 +346,7 @@ fn commit_current_panel(st: &mut FigureState) {
             grid_color: st.grid_color,
             grid_width: st.grid_width,
             axis_mode: st.axis_mode,
+            colormap: st.colormap.clone(),
         };
         st.panels.push(panel);
     }
@@ -425,7 +461,92 @@ impl Plugin for PlotPlugin {
                 }
             }
 
-            "scatter" | "bar" | "stem" | "stairs" => {
+            // ── scatter: 4-arg per-point color form, or regular 2-arg ──
+            "scatter" => {
+                // Check for 4-arg ColorScatter form: scatter(x, y, sz, c)
+                // Use extract_file_arg first to isolate data args, then branch.
+                let (data_peek, path_peek) = extract_file_arg(args);
+                if data_peek.len() == 4
+                    && is_numeric_value(&data_peek[2])
+                    && is_numeric_value(&data_peek[3])
+                {
+                    let x = extract_flat(&data_peek[0])
+                        .map_err(|_| "scatter: x must be a numeric array".to_string())?;
+                    let y = extract_flat(&data_peek[1])
+                        .map_err(|_| "scatter: y must be a numeric array".to_string())?;
+                    let sz_raw = extract_flat(&data_peek[2])
+                        .map_err(|_| "scatter: sz must be a numeric scalar or array".to_string())?;
+                    let c = extract_flat(&data_peek[3])
+                        .map_err(|_| "scatter: c must be a numeric array".to_string())?;
+                    if x.len() != y.len() || x.len() != c.len() {
+                        return Err(format!(
+                            "scatter: x, y, c must have the same length ({}, {}, {})",
+                            x.len(),
+                            y.len(),
+                            c.len()
+                        ));
+                    }
+                    let sz = if sz_raw.len() == 1 {
+                        vec![sz_raw[0]; x.len()]
+                    } else if sz_raw.len() == x.len() {
+                        sz_raw
+                    } else {
+                        return Err(format!(
+                            "scatter: sz must be scalar or same length as x ({} vs {})",
+                            sz_raw.len(),
+                            x.len()
+                        ));
+                    };
+                    let (c_min, c_max) = colormap::data_range(&c);
+                    let series = PendingSeries::ColorScatter {
+                        x,
+                        y,
+                        sz,
+                        c,
+                        c_min,
+                        c_max,
+                    };
+                    if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                        FIGURE_STATE.with(|f| f.borrow_mut().pending_series.push(series));
+                        Ok(Value::Void)
+                    } else {
+                        let state = FIGURE_STATE.with(|f| f.take());
+                        if let PendingSeries::ColorScatter { x, y, sz, c, c_min, c_max } =
+                            series
+                        {
+                            render_color_scatter(
+                                &x,
+                                &y,
+                                &sz,
+                                &c,
+                                c_min,
+                                c_max,
+                                path_peek.as_deref(),
+                                state,
+                            )
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                } else {
+                    // Regular scatter(x, y) or scatter(x, y, 'style')
+                    let (data_args, style, path) = extract_style_and_file_arg(args)?;
+                    if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                        let (x, y) = extract_xy("scatter", &data_args)?;
+                        FIGURE_STATE.with(|f| {
+                            f.borrow_mut()
+                                .pending_series
+                                .push(PendingSeries::Scatter(x, y, style));
+                        });
+                        Ok(Value::Void)
+                    } else {
+                        let state = FIGURE_STATE.with(|f| f.take());
+                        render_ascii_or_file("scatter", &data_args, path.as_deref(), state)
+                    }
+                }
+            }
+
+            "bar" | "stem" | "stairs" => {
                 let (data_args, style, path) = extract_style_and_file_arg(args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (x, y) = extract_xy(name, &data_args)?;
@@ -435,7 +556,6 @@ impl Plugin for PlotPlugin {
                         (x, y)
                     };
                     let series = match name {
-                        "scatter" => PendingSeries::Scatter(x, y, style),
                         "bar" | "stairs" => PendingSeries::Bar(x, y, style),
                         "stem" => PendingSeries::Stem(x, y, style),
                         _ => unreachable!(),
@@ -455,6 +575,79 @@ impl Plugin for PlotPlugin {
                         }
                         _ => render_ascii_or_file(name, &data_args, path.as_deref(), state),
                     }
+                }
+            }
+
+            // ── errorbar ───────────────────────────────────────────────
+            "errorbar" => {
+                // Forms:
+                //   errorbar(x, y, e)             — symmetric bars
+                //   errorbar(x, y, e_low, e_high) — asymmetric bars
+                // Optional trailing style string and/or file path.
+                let (data_args, style, path) = extract_style_and_file_arg_min(args, 3)?;
+                let (x, y, e_low, e_high) = match data_args.as_slice() {
+                    [xv, yv, ev] => {
+                        let x = extract_vector(xv)
+                            .map_err(|_| "errorbar: x must be a numeric vector".to_string())?;
+                        let y = extract_vector(yv)
+                            .map_err(|_| "errorbar: y must be a numeric vector".to_string())?;
+                        let e = extract_vector(ev)
+                            .map_err(|_| "errorbar: e must be a numeric vector".to_string())?;
+                        if x.len() != y.len() || x.len() != e.len() {
+                            return Err(format!(
+                                "errorbar: x, y, e must have the same length \
+                                 ({}, {}, {})",
+                                x.len(),
+                                y.len(),
+                                e.len()
+                            ));
+                        }
+                        let e2 = e.clone();
+                        (x, y, e, e2)
+                    }
+                    [xv, yv, elv, ehv] => {
+                        let x = extract_vector(xv)
+                            .map_err(|_| "errorbar: x must be a numeric vector".to_string())?;
+                        let y = extract_vector(yv)
+                            .map_err(|_| "errorbar: y must be a numeric vector".to_string())?;
+                        let el = extract_vector(elv)
+                            .map_err(|_| "errorbar: e_low must be a numeric vector".to_string())?;
+                        let eh = extract_vector(ehv).map_err(|_| {
+                            "errorbar: e_high must be a numeric vector".to_string()
+                        })?;
+                        if x.len() != y.len() || x.len() != el.len() || x.len() != eh.len() {
+                            return Err(format!(
+                                "errorbar: x, y, e_low, e_high must have the same length \
+                                 ({}, {}, {}, {})",
+                                x.len(),
+                                y.len(),
+                                el.len(),
+                                eh.len()
+                            ));
+                        }
+                        (x, y, el, eh)
+                    }
+                    other => {
+                        return Err(format!(
+                            "errorbar: expected 3 or 4 data arguments, got {}",
+                            other.len()
+                        ));
+                    }
+                };
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut().pending_series.push(PendingSeries::ErrorBar {
+                            x,
+                            y,
+                            e_low,
+                            e_high,
+                            style,
+                        });
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_errorbar(&x, &y, &e_low, &e_high, path.as_deref(), style, state)
                 }
             }
 
@@ -899,6 +1092,7 @@ impl Plugin for PlotPlugin {
                                 grid_color: st.grid_color,
                                 grid_width: st.grid_width,
                                 axis_mode: st.axis_mode,
+                                colormap: st.colormap.clone(),
                             })
                         } else {
                             None
@@ -2102,6 +2296,152 @@ fn render_quiver_ascii(xs: &[f64], ys: &[f64], us: &[f64], vs: &[f64], state: &F
     }
 }
 
+#[cfg(feature = "plot")]
+fn render_color_scatter_ascii(x: &[f64], y: &[f64], state: FigureState) -> Result<Value, String> {
+    ascii::render_scatter(x, y, state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_color_scatter_ascii(
+    _x: &[f64],
+    _y: &[f64],
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("scatter: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+/// Returns `true` when `v` is a numeric `Value` (Scalar or Matrix).
+fn is_numeric_value(v: &Value) -> bool {
+    matches!(v, Value::Scalar(_) | Value::Matrix(_))
+}
+
+// ── errorbar dispatch ──────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn render_errorbar(
+    x: &[f64],
+    y: &[f64],
+    e_low: &[f64],
+    e_high: &[f64],
+    path: Option<&str>,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => {
+            render_errorbar_ascii(x, y, e_low, e_high);
+            Ok(Value::Void)
+        }
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_errorbar_file(x, y, e_low, e_high, p, style, state)
+        }
+        Some(p) => Err(format!("errorbar: unknown output target '{p}'")),
+    }
+}
+
+/// ASCII tier for `errorbar`: prints a compact table with ± notation.
+fn render_errorbar_ascii(x: &[f64], y: &[f64], e_low: &[f64], e_high: &[f64]) {
+    println!(" {:>10}  {:>12}  {:>12}", "x", "y", "error");
+    println!(" {:->10}  {:->12}  {:->12}", "", "", "");
+    for i in 0..x.len() {
+        let err_str = if (e_low[i] - e_high[i]).abs() < 1e-12 {
+            format!("±{:.4}", e_low[i])
+        } else {
+            format!("-{:.4}/+{:.4}", e_low[i], e_high[i])
+        };
+        println!(" {:>10.4}  {:>12.4}  {:>12}", x[i], y[i], err_str);
+    }
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_errorbar_file(
+    x: &[f64],
+    y: &[f64],
+    e_low: &[f64],
+    e_high: &[f64],
+    path: &str,
+    style: Option<StyleSpec>,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_errorbar(x, y, e_low, e_high, path, style, state)
+        .map_err(|e| format!("errorbar: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_errorbar_file(
+    _x: &[f64],
+    _y: &[f64],
+    _e_low: &[f64],
+    _e_high: &[f64],
+    _path: &str,
+    _style: Option<StyleSpec>,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("errorbar: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+// ── color_scatter dispatch ─────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn render_color_scatter(
+    x: &[f64],
+    y: &[f64],
+    sz: &[f64],
+    c: &[f64],
+    c_min: f64,
+    c_max: f64,
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_color_scatter_ascii(x, y, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_color_scatter_file(x, y, sz, c, c_min, c_max, p, state)
+        }
+        Some(p) => Err(format!("scatter: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot-svg")]
+#[allow(clippy::too_many_arguments)]
+fn render_color_scatter_file(
+    x: &[f64],
+    y: &[f64],
+    sz: &[f64],
+    c: &[f64],
+    c_min: f64,
+    c_max: f64,
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_color_scatter(x, y, sz, c, c_min, c_max, path, state)
+        .map_err(|e| format!("scatter: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+#[allow(clippy::too_many_arguments)]
+fn render_color_scatter_file(
+    _x: &[f64],
+    _y: &[f64],
+    _sz: &[f64],
+    _c: &[f64],
+    _c_min: f64,
+    _c_max: f64,
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("scatter: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
 /// Maps an angle in radians to one of 8 Unicode directional arrow characters.
 fn arrow_char(angle: f64) -> char {
     use std::f64::consts::PI;
@@ -2244,6 +2584,25 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
             PendingSeries::Area(x, y, _style) => ascii::render_area(x, y, base_state.clone()),
             PendingSeries::Quiver(x, y, u, v, _style) => {
                 render_quiver_ascii(x, y, u, v, &base_state);
+            }
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                style: _,
+            } => {
+                render_errorbar_ascii(x, y, e_low, e_high);
+            }
+            PendingSeries::ColorScatter {
+                x,
+                y,
+                sz: _,
+                c: _,
+                c_min: _,
+                c_max: _,
+            } => {
+                ascii::render_scatter(x, y, base_state.clone());
             }
         }
     }

@@ -1031,6 +1031,25 @@ where
                 all_y.extend_from_slice(y);
                 all_y.extend(y.iter().zip(v.iter()).map(|(&yi, &vi)| yi + vi));
             }
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                style: _,
+            } => {
+                all_x.extend_from_slice(x);
+                for i in 0..y.len() {
+                    all_y.push(y[i] - e_low[i]);
+                    all_y.push(y[i] + e_high[i]);
+                }
+            }
+            PendingSeries::ColorScatter {
+                x, y, sz: _, c: _, c_min: _, c_max: _
+            } => {
+                all_x.extend_from_slice(x);
+                all_y.extend_from_slice(y);
+            }
         }
     }
 
@@ -1287,6 +1306,46 @@ where
                             )))
                             .map_err(|e| e.to_string())?;
                     }
+                }
+            }
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                style,
+            } => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                draw_error_bars(&mut chart, x, y, e_low, e_high, color)?;
+            }
+            PendingSeries::ColorScatter {
+                x,
+                y,
+                sz,
+                c,
+                c_min,
+                c_max,
+            } => {
+                let colormap = panel
+                    .colormap
+                    .clone()
+                    .unwrap_or_else(|| crate::colormap::ColormapSpec::Named("viridis".into()));
+                for j in 0..x.len() {
+                    let t = if (c_max - c_min).abs() < f64::EPSILON {
+                        0.5
+                    } else {
+                        ((c[j] - c_min) / (c_max - c_min)).clamp(0.0, 1.0)
+                    };
+                    let (r, g, b) = crate::colormap::apply_colormap_spec(t, &colormap);
+                    let pt_color = RGBColor(r, g, b);
+                    let radius = sz[j].max(1.0) as i32;
+                    chart
+                        .draw_series(std::iter::once(Circle::new(
+                            (x[j], y[j]),
+                            radius,
+                            pt_color.filled(),
+                        )))
+                        .map_err(|e| e.to_string())?;
                 }
             }
         }
@@ -1564,6 +1623,250 @@ fn min_vec_spacing(vals: &[f64]) -> f64 {
     } else {
         min_sp.max(1e-6)
     }
+}
+
+// ── errorbar rendering ─────────────────────────────────────────────────────
+
+/// Writes an SVG or PNG error-bar plot to `path`.
+pub(crate) fn render_errorbar(
+    x: &[f64],
+    y: &[f64],
+    e_low: &[f64],
+    e_high: &[f64],
+    path: &str,
+    style: Option<crate::style::StyleSpec>,
+    state: FigureState,
+) -> Result<(), String> {
+    let canvas = state.canvas_size();
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
+        draw_errorbar_chart(x, y, e_low, e_high, &style, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
+        draw_errorbar_chart(x, y, e_low, e_high, &style, &state, root)
+    } else {
+        Err(format!("errorbar: unsupported format '{path}'"))
+    }
+}
+
+fn draw_errorbar_chart<DB: DrawingBackend>(
+    x: &[f64],
+    y: &[f64],
+    e_low: &[f64],
+    e_high: &[f64],
+    style: &Option<crate::style::StyleSpec>,
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
+
+    let all_y: Vec<f64> = y
+        .iter()
+        .zip(e_low.iter())
+        .zip(e_high.iter())
+        .flat_map(|((&yi, &el), &eh)| [yi - el, yi + eh])
+        .collect();
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| range_with_margin(&all_y));
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .margin(20)
+        .x_label_area_size(40)
+        .y_label_area_size(50)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .x_desc(xlabel)
+        .y_desc(ylabel)
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    let color = style_to_rgb(style).unwrap_or(SERIES_COLORS[0]);
+    draw_error_bars(&mut chart, x, y, e_low, e_high, color)?;
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Renders error bars (vertical shaft + horizontal end caps) onto a chart.
+///
+/// Each bar is drawn with 3 `PathElement`s:
+/// 1. Vertical shaft from `y - e_low` to `y + e_high`.
+/// 2. Lower horizontal end cap.
+/// 3. Upper horizontal end cap.
+fn draw_error_bars<DB: DrawingBackend>(
+    chart: &mut plotters::prelude::ChartContext<
+        '_,
+        DB,
+        plotters::coord::cartesian::Cartesian2d<
+            plotters::coord::types::RangedCoordf64,
+            plotters::coord::types::RangedCoordf64,
+        >,
+    >,
+    x: &[f64],
+    y: &[f64],
+    e_low: &[f64],
+    e_high: &[f64],
+    color: RGBColor,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    // Cap half-width in data coordinates: 3% of x-range.
+    let (x_lo, x_hi) = range_with_margin(x);
+    let cap_half = (x_hi - x_lo) * 0.015;
+
+    for i in 0..x.len() {
+        let xi = x[i];
+        let yi = y[i];
+        let y_lo = yi - e_low[i].abs();
+        let y_hi = yi + e_high[i].abs();
+
+        // Vertical shaft.
+        chart
+            .draw_series(std::iter::once(PathElement::new(
+                vec![(xi, y_lo), (xi, y_hi)],
+                color,
+            )))
+            .map_err(|e| e.to_string())?;
+
+        // Centre dot.
+        chart
+            .draw_series(std::iter::once(Circle::new((xi, yi), 3, color.filled())))
+            .map_err(|e| e.to_string())?;
+
+        // Lower end cap.
+        chart
+            .draw_series(std::iter::once(PathElement::new(
+                vec![(xi - cap_half, y_lo), (xi + cap_half, y_lo)],
+                color,
+            )))
+            .map_err(|e| e.to_string())?;
+
+        // Upper end cap.
+        chart
+            .draw_series(std::iter::once(PathElement::new(
+                vec![(xi - cap_half, y_hi), (xi + cap_half, y_hi)],
+                color,
+            )))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ── color_scatter rendering ─────────────────────────────────────────────────
+
+/// Writes an SVG or PNG per-point-color scatter plot to `path`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn render_color_scatter(
+    x: &[f64],
+    y: &[f64],
+    sz: &[f64],
+    c: &[f64],
+    c_min: f64,
+    c_max: f64,
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    let canvas = state.canvas_size();
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
+        draw_color_scatter_chart(x, y, sz, c, c_min, c_max, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
+        draw_color_scatter_chart(x, y, sz, c, c_min, c_max, &state, root)
+    } else {
+        Err(format!("scatter: unsupported format '{path}'"))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_color_scatter_chart<DB: DrawingBackend>(
+    x: &[f64],
+    y: &[f64],
+    sz: &[f64],
+    c: &[f64],
+    c_min: f64,
+    c_max: f64,
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    let (bg_c, text_c, axis_c, grid_bold_c, grid_light_c) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
+
+    let (x_min, x_max) = state.xlim.unwrap_or_else(|| range_with_margin(x));
+    let (y_min, y_max) = state.ylim.unwrap_or_else(|| range_with_margin(y));
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
+        .margin(20)
+        .x_label_area_size(40)
+        .y_label_area_size(50)
+        .build_cartesian_2d(x_min..x_max, y_min..y_max)
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .axis_style(ShapeStyle::from(&axis_c))
+        .axis_desc_style(("sans-serif", 12).into_font().color(&text_c))
+        .label_style(("sans-serif", 11).into_font().color(&text_c))
+        .bold_line_style(ShapeStyle::from(&grid_bold_c))
+        .light_line_style(ShapeStyle::from(&grid_light_c))
+        .x_desc(xlabel)
+        .y_desc(ylabel)
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    let colormap = state
+        .colormap
+        .clone()
+        .unwrap_or_else(|| crate::colormap::ColormapSpec::Named("viridis".into()));
+
+    for i in 0..x.len() {
+        let t = if (c_max - c_min).abs() < f64::EPSILON {
+            0.5
+        } else {
+            ((c[i] - c_min) / (c_max - c_min)).clamp(0.0, 1.0)
+        };
+        let (r, g, b) = crate::colormap::apply_colormap_spec(t, &colormap);
+        let pt_color = RGBColor(r, g, b);
+        let radius = sz[i].max(1.0) as i32;
+        chart
+            .draw_series(std::iter::once(Circle::new(
+                (x[i], y[i]),
+                radius,
+                pt_color.filled(),
+            )))
+            .map_err(|e| e.to_string())?;
+    }
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Draws text annotations onto a 2-D chart using data coordinates.

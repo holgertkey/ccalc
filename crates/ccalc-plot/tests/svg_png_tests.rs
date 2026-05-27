@@ -1,4 +1,4 @@
-//! Integration tests for SVG/PNG file export (Phase 29b + 29c + 29d).
+//! Integration tests for SVG/PNG file export (Phase 29b + 29c + 29d + 32b).
 //! Run with: cargo test -p ccalc-plot --features plot-svg
 
 #![cfg(feature = "plot-svg")]
@@ -914,4 +914,150 @@ fn line_hold_accumulates() {
         poly_count >= 2,
         "expected ≥2 polyline elements for two line series, got {poly_count}"
     );
+}
+
+// ── Phase 32b — errorbar + per-point scatter color ───────────────────────────
+
+#[test]
+fn errorbar_symmetric_writes_svg() {
+    // errorbar(x, y, e) — symmetric bars → SVG with path elements.
+    let path = svg_path("test_errorbar_sym.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0]);
+    let y = row_vec(&[2.0, 3.5, 2.8, 4.1]);
+    let e = row_vec(&[0.2, 0.3, 0.15, 0.4]);
+    plugin
+        .call("errorbar", &[x, y, e, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "errorbar SVG should contain <svg");
+    // PathElement renders as <polyline> in plotters SVG backend.
+    assert!(
+        content.contains("<polyline"),
+        "errorbar SVG should contain polyline elements for the bars"
+    );
+}
+
+#[test]
+fn errorbar_asymmetric_writes_svg() {
+    // errorbar(x, y, e_low, e_high) — asymmetric bars.
+    let path = svg_path("test_errorbar_asym.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 2.0, 1.5]);
+    let e_low = row_vec(&[0.1, 0.2, 0.05]);
+    let e_high = row_vec(&[0.3, 0.1, 0.4]);
+    plugin
+        .call(
+            "errorbar",
+            &[x, y, e_low, e_high, Value::Str(path.clone())],
+            &env,
+        )
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "asymmetric errorbar should write SVG");
+}
+
+#[test]
+fn errorbar_with_style_string() {
+    // errorbar(x, y, e, 'r--') — style string is accepted.
+    let path = svg_path("test_errorbar_style.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 2.0]);
+    let y = row_vec(&[0.0, 1.0, 0.5]);
+    let e = row_vec(&[0.1, 0.2, 0.1]);
+    plugin
+        .call(
+            "errorbar",
+            &[
+                x,
+                y,
+                e,
+                Value::Str("r".into()),
+                Value::Str(path.clone()),
+            ],
+            &env,
+        )
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "styled errorbar should write SVG");
+}
+
+#[test]
+fn errorbar_length_mismatch_errors() {
+    // x and y must have the same length as e.
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 2.0, 3.0]);
+    let e = row_vec(&[0.1, 0.2]); // wrong length
+    let result = plugin.call(
+        "errorbar",
+        &[x, y, e, Value::Str("dummy.svg".into())],
+        &env,
+    );
+    assert!(result.is_err(), "mismatched lengths should return an error");
+    assert!(result.unwrap_err().contains("same length"));
+}
+
+#[test]
+fn scatter_color_4arg_writes_svg() {
+    // scatter(x, y, sz, c) — per-point color scatter writes SVG with circle elements.
+    let path = svg_path("test_scatter_color.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+    let y = row_vec(&[2.0, 1.0, 3.0, 2.5, 4.0]);
+    let sz = Value::Scalar(5.0); // uniform radius
+    let c = row_vec(&[0.1, 0.5, 0.8, 0.3, 1.0]);
+    plugin
+        .call("scatter", &[x, y, sz, c, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "color scatter should write SVG");
+    assert!(
+        content.contains("<circle"),
+        "color scatter SVG should contain circle elements"
+    );
+}
+
+#[test]
+fn scatter_color_per_point_size() {
+    // scatter(x, y, sz_vec, c) — per-point size vector.
+    let path = svg_path("test_scatter_color_szv.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 2.0, 1.5]);
+    let sz = row_vec(&[3.0, 6.0, 9.0]);
+    let c = row_vec(&[0.0, 0.5, 1.0]);
+    plugin
+        .call("scatter", &[x, y, sz, c, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<circle"), "per-point size scatter should have circles");
+}
+
+#[test]
+fn scatter_color_hold_accumulates() {
+    // ColorScatter series accumulate in hold mode and render via savefig.
+    let path = svg_path("test_scatter_color_hold.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call("hold", &[Value::Str("on".into())], &env)
+        .unwrap();
+    let x = row_vec(&[1.0, 2.0, 3.0]);
+    let y = row_vec(&[1.0, 2.0, 1.5]);
+    let sz = Value::Scalar(4.0);
+    let c = row_vec(&[0.2, 0.6, 0.9]);
+    plugin.call("scatter", &[x, y, sz, c], &env).unwrap();
+    plugin
+        .call("savefig", &[Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<circle"), "hold ColorScatter should render circles");
 }

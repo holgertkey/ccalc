@@ -1,0 +1,40 @@
+% scatter_color_demo.calc — Phase 32b: scatter with per-point color (4-arg form)
+%
+% Demonstrates `scatter(x, y, sz, c)` where `c` drives a colormap lookup
+% so each point gets an individual color based on its scalar value.
+%
+% Usage: ccalc examples/scatter_color_demo/scatter_color_demo.calc
+
+% ── uniform marker size, viridis colormap (default) ──────────────────────────
+n  = 20;
+x  = linspace(0, 2*pi, n);
+y  = sin(x);
+sz = 6;                  % scalar — same radius for all points
+c  = cos(x);             % color values: range [-1, 1]
+
+xlabel('x')
+ylabel('sin(x)')
+title('scatter with per-point color (viridis)')
+scatter(x, y, sz, c, 'examples/scatter_color_demo/output/scatter_color_viridis.svg')
+
+% ── per-point size, jet colormap ──────────────────────────────────────────────
+colormap('jet')
+sz_vec = 3 + 7 * (c - min(c)) / (max(c) - min(c));  % sizes from 3 to 10
+
+xlabel('x')
+ylabel('sin(x)')
+title('scatter with per-point size + jet colormap')
+scatter(x, y, sz_vec, c, 'examples/scatter_color_demo/output/scatter_color_jet.svg')
+
+% ── two ColorScatter series side by side via hold ────────────────────────────
+x2 = linspace(0, 2*pi, n);
+y2 = cos(x2);
+c2 = sin(x2);
+
+hold('on')
+scatter(x,  y,  5, c,  )
+scatter(x2, y2, 5, c2, )
+title('Two ColorScatter series in hold mode')
+savefig('examples/scatter_color_demo/output/scatter_color_hold.svg')
+
+fprintf('scatter_color demo complete. SVGs written to examples/scatter_color_demo/output/\n')
