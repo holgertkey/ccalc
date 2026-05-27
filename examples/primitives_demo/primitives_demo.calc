@@ -1,45 +1,41 @@
 % primitives_demo.calc — Phase 32a: line, patch, rectangle
 %
 % Demonstrates the three new drawing primitives added in Phase 32a.
-% These are ccalc-specific wrappers; line and patch are MATLAB-compatible
-% aliases for plot and fill respectively.
+% `line` and `patch` are MATLAB-compatible aliases for `plot` and `fill`.
+%
+% Usage: ccalc examples/primitives_demo/primitives_demo.calc
 
 % ── line ─────────────────────────────────────────────────────────────────────
-% line(x, y) is identical to plot(x, y): adds a connected polyline.
+% Annotations must be set before the render call (render consumes state).
+% Pass the file path as the last argument to export directly.
 x = linspace(0, 2*pi, 64);
-line(x, sin(x), 'b-')
 title('sin(x) via line()')
 xlabel('x')
 ylabel('y')
-savefig('.debug/primitives_line.svg')
+line(x, sin(x), 'b-', 'examples/primitives_demo/output/primitives_line.svg')
 
 % ── patch ─────────────────────────────────────────────────────────────────────
-% patch(x, y) is identical to fill(x, y): draws a filled closed polygon.
-% Draw a cyan triangle.
+% patch(x, y, color, path) — filled closed polygon.
 tx = [0, 1, 0.5];
 ty = [0, 0, 1];
-patch(tx, ty, 'c')
 title('triangle via patch()')
-savefig('.debug/primitives_patch.svg')
+patch(tx, ty, 'c', 'examples/primitives_demo/output/primitives_patch.svg')
 
-% ── rectangle ─────────────────────────────────────────────────────────────────
-% 4-argument form: rectangle(x, y, width, height)
-rectangle(0.1, 0.2, 0.6, 0.4, 'g')
-title('rectangle via rectangle()')
-savefig('.debug/primitives_rect_4arg.svg')
+% ── rectangle — 4-argument form ───────────────────────────────────────────────
+title('rectangle(x, y, w, h)')
+rectangle(0.1, 0.2, 0.6, 0.4, 'g', 'examples/primitives_demo/output/primitives_rect_4arg.svg')
 
-% 1-argument vector form: rectangle([x, y, width, height])
-rectangle([0.1, 0.2, 0.6, 0.4], 'm')
-title('rectangle via vector form')
-savefig('.debug/primitives_rect_vec.svg')
+% ── rectangle — vector form ───────────────────────────────────────────────────
+title('rectangle([x y w h])')
+rectangle([0.1, 0.2, 0.6, 0.4], 'm', 'examples/primitives_demo/output/primitives_rect_vec.svg')
 
 % ── combined hold demo ────────────────────────────────────────────────────────
-% Mix line and rectangle on the same axes using hold.
+% In hold mode, series accumulate and are all rendered by savefig.
 hold('on')
 line([0, 1], [0, 1], 'r-')
 line([0, 1], [1, 0], 'b-')
 rectangle(0.2, 0.2, 0.6, 0.6)
-hold('off')
-savefig('.debug/primitives_combined.svg')
+title('line + rectangle via hold')
+savefig('examples/primitives_demo/output/primitives_combined.svg')
 
-fprintf('Primitives demo complete. SVG files written to .debug/\n')
+fprintf('Primitives demo complete. SVGs written to examples/primitives_demo/output/\n')
