@@ -32,8 +32,8 @@ y2 = cos(x2);
 c2 = sin(x2);
 
 hold('on')
-scatter(x,  y,  5, c,  )
-scatter(x2, y2, 5, c2, )
+scatter(x,  y,  5, c)
+scatter(x2, y2, 5, c2)
 title('Two ColorScatter series in hold mode')
 savefig('examples/scatter_color_demo/output/scatter_color_hold.svg')
 
