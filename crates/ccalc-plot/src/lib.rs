@@ -1,11 +1,11 @@
-//! Plot plugin for ccalc — Phase 30f.
+//! Plot plugin for ccalc — Phase 32a.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
 //! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
-//! `polar`, `quiver`, `text`, `axis`, and annotation functions (`xlabel`,
-//! `ylabel`, `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`,
-//! `colormap`, `colorbar`).
+//! `polar`, `quiver`, `text`, `axis`, `line`, `patch`, `rectangle`, and
+//! annotation functions (`xlabel`, `ylabel`, `zlabel`, `title`, `legend`,
+//! `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -275,6 +275,10 @@ const EXPORTED: &[&str] = &[
     "gridcolor",
     "gridwidth",
     "axis",
+    // Phase 32a — drawing primitives
+    "line",
+    "patch",
+    "rectangle",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -394,10 +398,11 @@ impl Plugin for PlotPlugin {
             }
 
             // ── Render calls ───────────────────────────────────────────
-            "plot" => {
+            // `line` is a MATLAB alias for `plot` — identical behaviour.
+            "plot" | "line" => {
                 let (data_args, style, path) = extract_style_and_file_arg(args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
-                    let (x, ys) = extract_xy_multi("plot", &data_args)?;
+                    let (x, ys) = extract_xy_multi(name, &data_args)?;
                     FIGURE_STATE.with(|f| {
                         let mut st = f.borrow_mut();
                         for y in ys {
@@ -411,9 +416,9 @@ impl Plugin for PlotPlugin {
                     Ok(Value::Void)
                 } else {
                     let state = FIGURE_STATE.with(|f| f.take());
-                    let (x, ys) = extract_xy_multi("plot", &data_args)?;
+                    let (x, ys) = extract_xy_multi(name, &data_args)?;
                     if ys.len() == 1 {
-                        render_line_xy("plot", &x, &ys[0], path.as_deref(), state)
+                        render_line_xy(name, &x, &ys[0], path.as_deref(), state)
                     } else {
                         render_multi_series(&x, &ys, path.as_deref(), state)
                     }
@@ -930,10 +935,11 @@ impl Plugin for PlotPlugin {
                 render_panels_file(&panels, &path, canvas, &theme, bg_override)
             }
 
-            // ── fill ──────────────────────────────────────────────────
-            "fill" => {
+            // ── fill / patch ───────────────────────────────────────────
+            // `patch` is a MATLAB alias for `fill` — identical behaviour.
+            "fill" | "patch" => {
                 let (data_args, style, path) = extract_style_and_file_arg(args)?;
-                let (x, y) = extract_xy("fill", &data_args)?;
+                let (x, y) = extract_xy(name, &data_args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
@@ -944,6 +950,58 @@ impl Plugin for PlotPlugin {
                 } else {
                     let state = FIGURE_STATE.with(|f| f.take());
                     render_fill_xy(&x, &y, path.as_deref(), style, state)
+                }
+            }
+
+            // ── rectangle ─────────────────────────────────────────────
+            "rectangle" => {
+                let (data_args, style, path) = extract_style_and_file_arg(args)?;
+                let (rx, ry, rw, rh) = match data_args.as_slice() {
+                    [vec_arg] => {
+                        let v = extract_vector(vec_arg).map_err(|_| {
+                            "rectangle: single argument must be a numeric [x y w h] vector"
+                                .to_string()
+                        })?;
+                        if v.len() != 4 {
+                            return Err(format!(
+                                "rectangle: [x y w h] vector must have 4 elements, got {}",
+                                v.len()
+                            ));
+                        }
+                        (v[0], v[1], v[2], v[3])
+                    }
+                    [xv, yv, wv, hv] => {
+                        let to_scalar = |v: &Value, field: &'static str| match v {
+                            Value::Scalar(f) => Ok(*f),
+                            _ => Err(format!("rectangle: {field} must be a scalar")),
+                        };
+                        (
+                            to_scalar(xv, "x")?,
+                            to_scalar(yv, "y")?,
+                            to_scalar(wv, "w")?,
+                            to_scalar(hv, "h")?,
+                        )
+                    }
+                    other => {
+                        return Err(format!(
+                            "rectangle: expected 1 (vector) or 4 (x,y,w,h) data arguments, got {}",
+                            other.len()
+                        ));
+                    }
+                };
+                // Build closed axis-aligned polygon.
+                let x_pts = vec![rx, rx + rw, rx + rw, rx];
+                let y_pts = vec![ry, ry, ry + rh, ry + rh];
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut()
+                            .pending_series
+                            .push(PendingSeries::Fill(x_pts, y_pts, style));
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_fill_xy(&x_pts, &y_pts, path.as_deref(), style, state)
                 }
             }
 

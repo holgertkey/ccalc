@@ -709,3 +709,163 @@ fn test_plot_with_style_string() {
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("<svg"));
 }
+
+// ── Phase 32a — line / patch / rectangle ────────────────────────────────────
+
+#[test]
+fn line_ascii_matches_plot() {
+    // `line` is an alias for `plot` — both should produce a valid SVG with
+    // path elements for the same data.
+    let path_plot = svg_path("test_line_via_plot.svg");
+    let path_line = svg_path("test_line_alias.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0]);
+    let y = row_vec(&[0.0, 1.0]);
+    plugin
+        .call("plot", &[x.clone(), y.clone(), Value::Str(path_plot.clone())], &env)
+        .unwrap();
+    plugin
+        .call("line", &[x, y, Value::Str(path_line.clone())], &env)
+        .unwrap();
+    let plot_svg = std::fs::read_to_string(&path_plot).unwrap();
+    let line_svg = std::fs::read_to_string(&path_line).unwrap();
+    assert!(plot_svg.contains("<svg"), "plot should produce SVG");
+    assert!(line_svg.contains("<svg"), "line should produce SVG");
+    // plotters renders line series as <polyline> elements.
+    assert!(plot_svg.contains("<polyline"), "plot SVG should have polyline elements");
+    assert!(line_svg.contains("<polyline"), "line SVG should have polyline elements");
+}
+
+#[test]
+fn patch_svg_matches_fill() {
+    // `patch` is an alias for `fill` — both should produce a polygon element.
+    let path_fill = svg_path("test_patch_via_fill.svg");
+    let path_patch = svg_path("test_patch_alias.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let x = row_vec(&[0.0, 1.0, 0.5]);
+    let y = row_vec(&[0.0, 0.0, 1.0]);
+    plugin
+        .call(
+            "fill",
+            &[x.clone(), y.clone(), Value::Str("r".into()), Value::Str(path_fill.clone())],
+            &env,
+        )
+        .unwrap();
+    plugin
+        .call(
+            "patch",
+            &[x, y, Value::Str("r".into()), Value::Str(path_patch.clone())],
+            &env,
+        )
+        .unwrap();
+    let fill_svg = std::fs::read_to_string(&path_fill).unwrap();
+    let patch_svg = std::fs::read_to_string(&path_patch).unwrap();
+    assert!(fill_svg.contains("<polygon"), "fill SVG should have polygon");
+    assert!(patch_svg.contains("<polygon"), "patch SVG should have polygon");
+}
+
+#[test]
+fn rectangle_4arg_svg() {
+    // rectangle(x, y, w, h) — four scalar arguments produce a polygon.
+    let path = svg_path("test_rectangle_4arg.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call(
+            "rectangle",
+            &[
+                Value::Scalar(0.2),
+                Value::Scalar(0.3),
+                Value::Scalar(0.5),
+                Value::Scalar(0.4),
+                Value::Str(path.clone()),
+            ],
+            &env,
+        )
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "rectangle SVG should contain <svg");
+    assert!(content.contains("<polygon"), "rectangle SVG should contain a polygon");
+}
+
+#[test]
+fn rectangle_vec_arg_svg() {
+    // rectangle([x, y, w, h]) — 1×4 vector form produces same polygon structure.
+    let path_4arg = svg_path("test_rectangle_vec_4arg.svg");
+    let path_vec = svg_path("test_rectangle_vec_form.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call(
+            "rectangle",
+            &[
+                Value::Scalar(0.2),
+                Value::Scalar(0.3),
+                Value::Scalar(0.5),
+                Value::Scalar(0.4),
+                Value::Str(path_4arg.clone()),
+            ],
+            &env,
+        )
+        .unwrap();
+    let vec_arg = row_vec(&[0.2, 0.3, 0.5, 0.4]);
+    plugin
+        .call("rectangle", &[vec_arg, Value::Str(path_vec.clone())], &env)
+        .unwrap();
+    let svg_4arg = std::fs::read_to_string(&path_4arg).unwrap();
+    let svg_vec = std::fs::read_to_string(&path_vec).unwrap();
+    assert!(svg_4arg.contains("<polygon"), "4-arg form should have polygon");
+    assert!(svg_vec.contains("<polygon"), "vector form should have polygon");
+}
+
+#[test]
+fn rectangle_with_color() {
+    // rectangle(..., 'b') — color argument is applied to the polygon fill.
+    let path = svg_path("test_rectangle_color.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin
+        .call(
+            "rectangle",
+            &[
+                Value::Scalar(0.1),
+                Value::Scalar(0.1),
+                Value::Scalar(0.4),
+                Value::Scalar(0.3),
+                Value::Str("b".into()),
+                Value::Str(path.clone()),
+            ],
+            &env,
+        )
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "colored rectangle SVG should contain <svg");
+    assert!(content.contains("<polygon"), "colored rectangle SVG should contain polygon");
+}
+
+#[test]
+fn line_hold_accumulates() {
+    // In hold mode, `line` appends a PendingSeries::Line just like `plot`.
+    // Both series are rendered when savefig is called.
+    let path = svg_path("test_line_hold.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+    let x1 = row_vec(&[0.0, 1.0]);
+    let y1 = row_vec(&[0.0, 1.0]);
+    plugin.call("line", &[x1, y1], &env).unwrap();
+    let x2 = row_vec(&[0.0, 1.0]);
+    let y2 = row_vec(&[1.0, 0.0]);
+    plugin.call("plot", &[x2, y2], &env).unwrap();
+    plugin.call("savefig", &[Value::Str(path.clone())], &env).unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "hold+line SVG should contain <svg");
+    // Two line series → two or more polyline elements.
+    let poly_count = content.matches("<polyline").count();
+    assert!(
+        poly_count >= 2,
+        "expected ≥2 polyline elements for two line series, got {poly_count}"
+    );
+}
