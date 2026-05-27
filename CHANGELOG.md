@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 32a — Drawing primitives: `line`, `patch`, `rectangle`**
+- `line(x, y[, style[, path]])` — polyline alias for `plot`; identical semantics
+  (style strings, hold mode, file export).
+- `patch(x, y[, color[, path]])` — filled-polygon alias for `fill`.
+- `rectangle(x, y, w, h[, color[, path]])` — axis-aligned filled rectangle;
+  also accepts 1-argument `[x y w h]` vector form.
+- All three functions participate in `hold`/`subplot` accumulation and `savefig`.
+- 6 new integration tests in `svg_png_tests.rs`.
+- Example script `examples/primitives_demo/primitives_demo.calc`.
+
 ## [0.43.0] - 2026-05-26
 
 ### Added

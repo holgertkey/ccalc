@@ -580,6 +580,64 @@ area(x, sin(x) + 1, 'b', 'area_sine.svg')
 
 ---
 
+## Drawing primitives
+
+Phase 32a adds three low-level drawing functions that complement `fill` and `area`.
+All three participate in `hold`/`subplot` accumulation and `savefig` exactly like
+the other chart functions.
+
+### `line(x, y)` / `line(x, y, style)` / `line(x, y, style, 'file')`
+
+MATLAB-compatible alias for [`plot`](#plotxy--plotxy-style--plotxy-style-file).
+Accepts the same arguments, style strings, and file-export path.
+
+```matlab
+x = linspace(0, 2*pi, 64);
+line(x, sin(x), 'b-', 'sine.svg')
+```
+
+### `patch(x, y)` / `patch(x, y, color)` / `patch(x, y, color, 'file')`
+
+MATLAB-compatible alias for [`fill`](#fillx-y--fillx-y-style--fillx-y-style-file).
+Draws a filled polygon from vertex vectors `x` and `y`.
+
+```matlab
+% Cyan-filled triangle → SVG
+patch([0, 1, 0.5], [0, 0, 1], 'c', 'triangle.svg')
+```
+
+### `rectangle(x, y, w, h)` / `rectangle([x y w h])` / `rectangle(..., color)` / `rectangle(..., color, 'file')`
+
+Draws an axis-aligned filled rectangle defined by its origin `(x, y)`,
+`width`, and `height`. The bounding box is converted to a 4-vertex polygon
+`[x, x+w, x+w, x] × [y, y, y+h, y+h]` and rendered via `render_fill_xy`.
+
+**Two input forms:**
+
+| Form | Syntax |
+|------|--------|
+| 4-scalar | `rectangle(x, y, w, h)` |
+| vector   | `rectangle([x y w h])` |
+
+```matlab
+% Green rectangle (4-scalar form) → SVG
+rectangle(0.1, 0.2, 0.6, 0.4, 'g', 'rect.svg')
+
+% Magenta rectangle (vector form) → SVG
+rectangle([0.1, 0.2, 0.6, 0.4], 'm', 'rect_vec.svg')
+
+% Combined: sine curve inside a bounding box
+hold('on')
+line(x, sin(x), 'b-')
+rectangle(0, -1, 2*pi, 2, 'k--')
+title('sine + bounding box')
+savefig('sine_box.svg')
+```
+
+See also: `examples/primitives_demo/primitives_demo.calc`
+
+---
+
 ## Polar plots
 
 ### `polar(theta, r)` / `polar(theta, r, style)` / `polar(theta, r, 'file')`

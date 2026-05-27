@@ -88,7 +88,8 @@ pub fn print(topic: Option<&str>) {
             | "panels" | "fill" | "area" | "polar" | "style" | "linestyle" | "color" | "stylestr"
             | "quiver" | "vectorfield" | "text" | "annotation" | "annotations" | "theme"
             | "bgcolor" | "background" | "fontsize" | "linewidth" | "markersize" | "gridcolor"
-            | "gridwidth" | "axis" | "axismode" | "equal" | "tight" | "appearance",
+            | "gridwidth" | "axis" | "axismode" | "equal" | "tight" | "appearance"
+            | "line" | "patch" | "rectangle" | "primitives" | "drawingprimitives",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -197,6 +198,9 @@ FFT     fft(x)  fft(x,n)  ifft(X)              (requires --features fft)
 Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features plot)
         plot3(x,y,z)  scatter3(x,y,z)       3D line/scatter (orthographic projection)
         fill(x,y)  area(x,y)               filled polygon / filled area under curve
+        line(x,y)  patch(x,y)              MATLAB aliases: line=plot, patch=fill
+        rectangle(x,y,w,h)                 axis-aligned filled rectangle
+        rectangle([x y w h])               same, vector form
         polar(theta,r)                      polar coordinate line chart
         quiver(x,y,u,v)                     vector field arrows (Unicode / SVG)
         text(x,y,'label')                   text annotation at data coordinates
@@ -3699,6 +3703,32 @@ Two rendering tiers; both use the same annotation API.
     ASCII tier:  bounding-box density grid using ░ characters with
                  ray-casting point-in-polygon (even-odd rule) test.
     File tier:   plotters Polygon element at 40% opacity + full-opacity outline.
+
+── Drawing primitives ───────────────────────────────────────────────────────
+    line(x, y)                   polyline — MATLAB alias for plot()
+    line(x, y, 'r--')            line with style string
+    line(x, y, 'out.svg')        save line to SVG/PNG
+
+    patch(x, y)                  filled polygon — MATLAB alias for fill()
+    patch(x, y, 'c')             filled polygon with color string
+    patch(x, y, 'c', 'out.svg') style + file
+
+    rectangle(x, y, w, h)        axis-aligned filled rectangle (4 scalars)
+    rectangle([x y w h])         same, 1×4 vector form
+    rectangle(x, y, w, h, 'g')  rectangle with fill color
+    rectangle(x, y, w, h, 'out.svg')  save rectangle to SVG/PNG
+
+    line() and patch() are transparent aliases — they share FigureState and
+    hold/subplot accumulation with plot() and fill().  rectangle() converts
+    the bounding box to a 4-vertex polygon: x_pts=[x, x+w, x+w, x],
+    y_pts=[y, y, y+h, y+h], then routes to render_fill_xy.
+
+    % Example: draw a sine curve + bounding box in hold mode
+    hold('on')
+    line(x, sin(x), 'b-')
+    rectangle(0, -1, 2*pi, 2, 'k--')
+    title('sine + bounding box')
+    savefig('sine_box.svg')
 
 ── Polar plots ──────────────────────────────────────────────────────────────
     polar(theta, r)              polar chart; theta in radians
