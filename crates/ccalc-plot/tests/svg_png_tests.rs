@@ -723,7 +723,11 @@ fn line_ascii_matches_plot() {
     let x = row_vec(&[0.0, 1.0]);
     let y = row_vec(&[0.0, 1.0]);
     plugin
-        .call("plot", &[x.clone(), y.clone(), Value::Str(path_plot.clone())], &env)
+        .call(
+            "plot",
+            &[x.clone(), y.clone(), Value::Str(path_plot.clone())],
+            &env,
+        )
         .unwrap();
     plugin
         .call("line", &[x, y, Value::Str(path_line.clone())], &env)
@@ -733,8 +737,14 @@ fn line_ascii_matches_plot() {
     assert!(plot_svg.contains("<svg"), "plot should produce SVG");
     assert!(line_svg.contains("<svg"), "line should produce SVG");
     // plotters renders line series as <polyline> elements.
-    assert!(plot_svg.contains("<polyline"), "plot SVG should have polyline elements");
-    assert!(line_svg.contains("<polyline"), "line SVG should have polyline elements");
+    assert!(
+        plot_svg.contains("<polyline"),
+        "plot SVG should have polyline elements"
+    );
+    assert!(
+        line_svg.contains("<polyline"),
+        "line SVG should have polyline elements"
+    );
 }
 
 #[test]
@@ -749,7 +759,12 @@ fn patch_svg_matches_fill() {
     plugin
         .call(
             "fill",
-            &[x.clone(), y.clone(), Value::Str("r".into()), Value::Str(path_fill.clone())],
+            &[
+                x.clone(),
+                y.clone(),
+                Value::Str("r".into()),
+                Value::Str(path_fill.clone()),
+            ],
             &env,
         )
         .unwrap();
@@ -762,8 +777,14 @@ fn patch_svg_matches_fill() {
         .unwrap();
     let fill_svg = std::fs::read_to_string(&path_fill).unwrap();
     let patch_svg = std::fs::read_to_string(&path_patch).unwrap();
-    assert!(fill_svg.contains("<polygon"), "fill SVG should have polygon");
-    assert!(patch_svg.contains("<polygon"), "patch SVG should have polygon");
+    assert!(
+        fill_svg.contains("<polygon"),
+        "fill SVG should have polygon"
+    );
+    assert!(
+        patch_svg.contains("<polygon"),
+        "patch SVG should have polygon"
+    );
 }
 
 #[test]
@@ -786,8 +807,14 @@ fn rectangle_4arg_svg() {
         )
         .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("<svg"), "rectangle SVG should contain <svg");
-    assert!(content.contains("<polygon"), "rectangle SVG should contain a polygon");
+    assert!(
+        content.contains("<svg"),
+        "rectangle SVG should contain <svg"
+    );
+    assert!(
+        content.contains("<polygon"),
+        "rectangle SVG should contain a polygon"
+    );
 }
 
 #[test]
@@ -816,8 +843,14 @@ fn rectangle_vec_arg_svg() {
         .unwrap();
     let svg_4arg = std::fs::read_to_string(&path_4arg).unwrap();
     let svg_vec = std::fs::read_to_string(&path_vec).unwrap();
-    assert!(svg_4arg.contains("<polygon"), "4-arg form should have polygon");
-    assert!(svg_vec.contains("<polygon"), "vector form should have polygon");
+    assert!(
+        svg_4arg.contains("<polygon"),
+        "4-arg form should have polygon"
+    );
+    assert!(
+        svg_vec.contains("<polygon"),
+        "vector form should have polygon"
+    );
 }
 
 #[test]
@@ -841,8 +874,14 @@ fn rectangle_with_color() {
         )
         .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("<svg"), "colored rectangle SVG should contain <svg");
-    assert!(content.contains("<polygon"), "colored rectangle SVG should contain polygon");
+    assert!(
+        content.contains("<svg"),
+        "colored rectangle SVG should contain <svg"
+    );
+    assert!(
+        content.contains("<polygon"),
+        "colored rectangle SVG should contain polygon"
+    );
 }
 
 #[test]
@@ -852,16 +891,23 @@ fn line_hold_accumulates() {
     let path = svg_path("test_line_hold.svg");
     let plugin = PlotPlugin;
     let env = Env::new();
-    plugin.call("hold", &[Value::Str("on".into())], &env).unwrap();
+    plugin
+        .call("hold", &[Value::Str("on".into())], &env)
+        .unwrap();
     let x1 = row_vec(&[0.0, 1.0]);
     let y1 = row_vec(&[0.0, 1.0]);
     plugin.call("line", &[x1, y1], &env).unwrap();
     let x2 = row_vec(&[0.0, 1.0]);
     let y2 = row_vec(&[1.0, 0.0]);
     plugin.call("plot", &[x2, y2], &env).unwrap();
-    plugin.call("savefig", &[Value::Str(path.clone())], &env).unwrap();
+    plugin
+        .call("savefig", &[Value::Str(path.clone())], &env)
+        .unwrap();
     let content = std::fs::read_to_string(&path).unwrap();
-    assert!(content.contains("<svg"), "hold+line SVG should contain <svg");
+    assert!(
+        content.contains("<svg"),
+        "hold+line SVG should contain <svg"
+    );
     // Two line series → two or more polyline elements.
     let poly_count = content.matches("<polyline").count();
     assert!(
