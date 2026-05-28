@@ -2653,8 +2653,7 @@ fn render_pie_file(
     path: &str,
     state: FigureState,
 ) -> Result<Value, String> {
-    file::render_pie(values, labels, explode, path, state)
-        .map_err(|e| format!("pie: {e}"))?;
+    file::render_pie(values, labels, explode, path, state).map_err(|e| format!("pie: {e}"))?;
     Ok(Value::Void)
 }
 
@@ -5011,9 +5010,7 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let err = plugin
-            .call("pie", &[f64_vec(&[])], &env)
-            .unwrap_err();
+        let err = plugin.call("pie", &[f64_vec(&[])], &env).unwrap_err();
         assert!(
             err.contains("empty") || err.contains("positive") || err.contains("non-negative"),
             "expected meaningful error, got: {err}"
@@ -5041,10 +5038,7 @@ mod tests {
         let env = Env::new();
         let values = f64_vec(&[30.0, 30.0, 40.0]);
         // Cell array with wrong number of labels.
-        let cell = Value::Cell(vec![
-            Value::Str("A".into()),
-            Value::Str("B".into()),
-        ]);
+        let cell = Value::Cell(vec![Value::Str("A".into()), Value::Str("B".into())]);
         let err = plugin.call("pie", &[values, cell], &env).unwrap_err();
         assert!(
             err.contains("length"),
@@ -5061,11 +5055,7 @@ mod tests {
         let path = ".debug/test_pie_polygon_count.svg".to_string();
         let _ = std::fs::remove_file(&path);
         let values = f64_vec(&[25.0, 50.0, 25.0]);
-        let result = plugin.call(
-            "pie",
-            &[values, Value::Str(path.clone())],
-            &env,
-        );
+        let result = plugin.call("pie", &[values, Value::Str(path.clone())], &env);
         assert!(result.is_ok(), "pie SVG should succeed: {result:?}");
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         // One polygon per slice — 3 slices.
@@ -5087,19 +5077,21 @@ mod tests {
         let path = ".debug/test_pie_labels.svg".to_string();
         let _ = std::fs::remove_file(&path);
         let values = f64_vec(&[30.0, 70.0]);
-        let cell = Value::Cell(vec![
-            Value::Str("Small".into()),
-            Value::Str("Large".into()),
-        ]);
-        let result = plugin.call(
-            "pie",
-            &[values, cell, Value::Str(path.clone())],
-            &env,
+        let cell = Value::Cell(vec![Value::Str("Small".into()), Value::Str("Large".into())]);
+        let result = plugin.call("pie", &[values, cell, Value::Str(path.clone())], &env);
+        assert!(
+            result.is_ok(),
+            "pie with labels SVG should succeed: {result:?}"
         );
-        assert!(result.is_ok(), "pie with labels SVG should succeed: {result:?}");
         let content = std::fs::read_to_string(&path).unwrap_or_default();
-        assert!(content.contains("Small"), "SVG should contain label 'Small'");
-        assert!(content.contains("Large"), "SVG should contain label 'Large'");
+        assert!(
+            content.contains("Small"),
+            "SVG should contain label 'Small'"
+        );
+        assert!(
+            content.contains("Large"),
+            "SVG should contain label 'Large'"
+        );
         let _ = std::fs::remove_file(&path);
         FIGURE_STATE.with(|f| f.take());
     }
@@ -5114,12 +5106,11 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let values = f64_vec(&[40.0, 30.0, 30.0]);
         let explode = f64_vec(&[0.1, 0.0, 0.0]);
-        let result = plugin.call(
-            "pie",
-            &[values, explode, Value::Str(path.clone())],
-            &env,
+        let result = plugin.call("pie", &[values, explode, Value::Str(path.clone())], &env);
+        assert!(
+            result.is_ok(),
+            "pie with explode SVG should succeed: {result:?}"
         );
-        assert!(result.is_ok(), "pie with explode SVG should succeed: {result:?}");
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         assert!(content.contains("<polygon"), "SVG should contain polygons");
         let _ = std::fs::remove_file(&path);
@@ -5136,10 +5127,16 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let values = f64_vec(&[100.0]);
         let result = plugin.call("pie", &[values, Value::Str(path.clone())], &env);
-        assert!(result.is_ok(), "pie single-slice SVG should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "pie single-slice SVG should succeed: {result:?}"
+        );
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         let count = content.matches("<polygon").count();
-        assert_eq!(count, 1, "single-slice pie should have exactly 1 polygon, got {count}");
+        assert_eq!(
+            count, 1,
+            "single-slice pie should have exactly 1 polygon, got {count}"
+        );
         let _ = std::fs::remove_file(&path);
         FIGURE_STATE.with(|f| f.take());
     }
