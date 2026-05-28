@@ -1,0 +1,27 @@
+% pie_demo.calc — Phase 32c: pie chart examples
+
+% Basic pie chart (ASCII)
+v = [30, 20, 15, 25, 10];
+pie(v);
+fprintf('\n');
+% Pie chart with labels
+labels = {'Work', 'Sleep', 'Exercise', 'Leisure', 'Eating'};
+pie(v, labels);
+fprintf('\n');
+% Pie chart with explode (first slice pulled out)
+explode = [0.1, 0, 0, 0, 0];
+pie(v, explode, labels);
+
+% SVG output — basic
+pie(v, 'examples/pie_demo/output/pie_basic.svg');
+
+% SVG output — with labels
+pie(v, labels, 'examples/pie_demo/output/pie_labels.svg');
+
+% SVG output — with explode and labels
+pie(v, explode, labels, 'examples/pie_demo/output/pie_explode.svg');
+
+% Single-slice (100%) edge case
+pie([1]);
+
+fprintf('pie_demo done\n');

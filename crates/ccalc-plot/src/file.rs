@@ -990,6 +990,19 @@ where
         return Ok(());
     }
 
+    // Pie charts have their own coordinate system — route them separately.
+    if let Some(PendingSeries::Pie {
+        values,
+        labels,
+        explode,
+    }) = panel.series.first()
+    {
+        let bg_c = sc_to_rgb(theme.bg);
+        let title = panel.title.as_deref().unwrap_or("");
+        let _ = (axis_c, grid_bold_style, grid_light_style);
+        return draw_pie_chart(values, labels, explode, title, bg_c, text_c, area.clone());
+    }
+
     let axis_mode = panel.axis_mode;
     let (area_w, area_h) = area.dim_in_pixel();
 
@@ -1055,6 +1068,8 @@ where
                 all_x.extend_from_slice(x);
                 all_y.extend_from_slice(y);
             }
+            // Pie was already handled above — this arm is unreachable in practice.
+            PendingSeries::Pie { .. } => {}
         }
     }
 
@@ -1353,6 +1368,8 @@ where
                         .map_err(|e| e.to_string())?;
                 }
             }
+            // Pie was already handled above via draw_pie_chart — unreachable here.
+            PendingSeries::Pie { .. } => {}
         }
     }
 
@@ -1868,6 +1885,131 @@ where
                 pt_color.filled(),
             )))
             .map_err(|e| e.to_string())?;
+    }
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── pie rendering ──────────────────────────────────────────────────────────
+
+/// Writes an SVG or PNG pie chart to `path`.
+pub(crate) fn render_pie(
+    values: &[f64],
+    labels: &[String],
+    explode: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    let canvas = state.canvas_size();
+    let (bg_c, text_c, _, _, _) = resolve_colors(&state);
+    let title = state.title.clone().unwrap_or_default();
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, canvas).into_drawing_area();
+        draw_pie_chart(values, labels, explode, &title, bg_c, text_c, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, canvas).into_drawing_area();
+        draw_pie_chart(values, labels, explode, &title, bg_c, text_c, root)
+    } else {
+        Err(format!("pie: unsupported format '{path}'"))
+    }
+}
+
+/// Draws a pie chart into `area` using a synthetic `(-1..1) × (-1..1)` cartesian space.
+pub(crate) fn draw_pie_chart<DB: DrawingBackend>(
+    values: &[f64],
+    labels: &[String],
+    explode: &[f64],
+    title: &str,
+    bg_c: RGBColor,
+    text_c: RGBColor,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    use std::f64::consts::PI;
+
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
+
+    let title_sz = 16u32;
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
+        .margin(20)
+        .x_label_area_size(0)
+        .y_label_area_size(0)
+        .build_cartesian_2d(-1.0_f64..1.0_f64, -1.0_f64..1.0_f64)
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .disable_axes()
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    let total: f64 = values.iter().sum();
+    if total <= 0.0 {
+        return Ok(());
+    }
+
+    // N arc points per wedge.
+    const ARC_PTS: usize = 64;
+    let radius = 0.38_f64;
+    let label_r = radius * 1.18;
+
+    // Angles start at π/2 (12-o'clock) and proceed clockwise.
+    // In a standard cartesian system clockwise = decreasing angle.
+    let mut start_angle = PI / 2.0;
+
+    for (i, &v) in values.iter().enumerate() {
+        let sweep = v / total * 2.0 * PI;
+        let end_angle = start_angle - sweep;
+        let mid_angle = (start_angle + end_angle) / 2.0;
+
+        let color = SERIES_COLORS[i % SERIES_COLORS.len()];
+
+        // Explode offset: move the wedge outward along the bisector.
+        let ex = if i < explode.len() { explode[i] } else { 0.0 };
+        let (cx, cy) = if ex.abs() > 1e-9 {
+            (ex * radius * mid_angle.cos(), ex * radius * mid_angle.sin())
+        } else {
+            (0.0, 0.0)
+        };
+
+        // Build polygon: center + ARC_PTS arc points (closed back to center).
+        // Total = 1 (center) + (ARC_PTS + 1) arc points = ARC_PTS + 2 vertices.
+        let mut pts: Vec<(f64, f64)> = Vec::with_capacity(ARC_PTS + 2);
+        pts.push((cx, cy));
+        for k in 0..=ARC_PTS {
+            let a = start_angle - sweep * (k as f64 / ARC_PTS as f64);
+            pts.push((cx + radius * a.cos(), cy + radius * a.sin()));
+        }
+
+        chart
+            .draw_series(std::iter::once(Polygon::new(pts, color.mix(0.85))))
+            .map_err(|e| e.to_string())?;
+
+        // Label at label_r along the mid-angle bisector.
+        let label = if i < labels.len() && !labels[i].is_empty() {
+            labels[i].as_str()
+        } else {
+            ""
+        };
+        if !label.is_empty() {
+            let lx = cx + label_r * mid_angle.cos();
+            let ly = cy + label_r * mid_angle.sin();
+            chart
+                .draw_series(std::iter::once(Text::new(
+                    label.to_owned(),
+                    (lx, ly),
+                    ("sans-serif", 11).into_font().color(&text_c),
+                )))
+                .map_err(|e| e.to_string())?;
+        }
+
+        start_angle = end_angle;
     }
 
     root.present().map_err(|e| e.to_string())?;

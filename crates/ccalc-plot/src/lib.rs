@@ -1,10 +1,10 @@
-//! Plot plugin for ccalc — Phase 32b.
+//! Plot plugin for ccalc — Phase 32c.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
 //! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
 //! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
 //! `polar`, `quiver`, `text`, `axis`, `line`, `patch`, `rectangle`,
-//! `errorbar`, and annotation functions (`xlabel`, `ylabel`, `zlabel`,
+//! `errorbar`, `pie`, and annotation functions (`xlabel`, `ylabel`, `zlabel`,
 //! `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
@@ -100,6 +100,15 @@ pub enum PendingSeries {
         c_min: f64,
         /// Maximum `c` value (for normalisation).
         c_max: f64,
+    },
+    /// Pie chart with optional per-slice labels and explode offsets.
+    Pie {
+        /// Slice magnitudes (will be normalised to 100 % internally).
+        values: Vec<f64>,
+        /// Optional per-slice text labels (empty `String` = no label for that slice).
+        labels: Vec<String>,
+        /// Per-slice explode offsets as a fraction of the radius (0.0 = no offset).
+        explode: Vec<f64>,
     },
 }
 
@@ -314,6 +323,8 @@ const EXPORTED: &[&str] = &[
     "rectangle",
     // Phase 32b — statistical extensions
     "errorbar",
+    // Phase 32c — pie chart
+    "pie",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -653,6 +664,118 @@ impl Plugin for PlotPlugin {
                 } else {
                     let state = FIGURE_STATE.with(|f| f.take());
                     render_errorbar(&x, &y, &e_low, &e_high, path.as_deref(), style, state)
+                }
+            }
+
+            // ── pie ────────────────────────────────────────────────────
+            "pie" => {
+                // Supported forms:
+                //   pie(v)
+                //   pie(v, path)
+                //   pie(v, {'A','B','C'})
+                //   pie(v, {'A','B','C'}, path)
+                //   pie(v, [0 1 0])
+                //   pie(v, [0 1 0], {'A','B','C'})
+                //   pie(v, [0 1 0], {'A','B','C'}, path)
+                //
+                // Detection order (type-based, not positional):
+                //  1. Trailing string = path (.svg/.png/ascii).
+                //  2. Cell array anywhere after v = labels.
+                //  3. Numeric vector (not the first arg) = explode.
+                let mut rest = args.to_vec();
+
+                // Extract trailing path.
+                let path = if let Some(last) = rest.last()
+                    && let Value::Str(s) | Value::StringObj(s) = last
+                    && (s == "ascii" || s.ends_with(".svg") || s.ends_with(".png"))
+                {
+                    let p = s.clone();
+                    rest.pop();
+                    Some(p)
+                } else {
+                    None
+                };
+
+                if rest.is_empty() {
+                    return Err("pie: expected at least one argument (values vector)".into());
+                }
+
+                // First argument is the values vector.
+                let values = extract_vector(&rest[0])
+                    .map_err(|_| "pie: first argument must be a numeric vector".to_string())?;
+                if values.is_empty() {
+                    return Err("pie: values vector must not be empty".into());
+                }
+                if values.iter().any(|&v| v < 0.0) {
+                    return Err("pie: all values must be non-negative".into());
+                }
+                let total: f64 = values.iter().sum();
+                if total <= 0.0 {
+                    return Err("pie: sum of values must be positive".into());
+                }
+
+                // Parse remaining optional args (labels Cell, explode vector).
+                let mut labels: Vec<String> = Vec::new();
+                let mut explode: Vec<f64> = Vec::new();
+                for arg in &rest[1..] {
+                    match arg {
+                        Value::Cell(cells) => {
+                            labels = cells
+                                .iter()
+                                .map(|v| match v {
+                                    Value::Str(s) | Value::StringObj(s) => s.clone(),
+                                    _ => String::new(),
+                                })
+                                .collect();
+                            if labels.len() != values.len() {
+                                return Err(format!(
+                                    "pie: labels cell array length ({}) must match \
+                                     values length ({})",
+                                    labels.len(),
+                                    values.len()
+                                ));
+                            }
+                        }
+                        _ => {
+                            // Treat as explode vector.
+                            let ex = extract_vector(arg).map_err(|_| {
+                                "pie: unrecognised argument — expected labels cell \
+                                 array or explode vector"
+                                    .to_string()
+                            })?;
+                            if ex.len() != values.len() {
+                                return Err(format!(
+                                    "pie: explode vector length ({}) must match \
+                                     values length ({})",
+                                    ex.len(),
+                                    values.len()
+                                ));
+                            }
+                            explode = ex;
+                        }
+                    }
+                }
+
+                // Default empty labels / zero explode.
+                if labels.is_empty() {
+                    labels = vec![String::new(); values.len()];
+                }
+                if explode.is_empty() {
+                    explode = vec![0.0_f64; values.len()];
+                }
+
+                if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
+                    FIGURE_STATE.with(|f| {
+                        f.borrow_mut().pending_series.push(PendingSeries::Pie {
+                            values,
+                            labels,
+                            explode,
+                        });
+                    });
+                    Ok(Value::Void)
+                } else {
+                    let state = FIGURE_STATE.with(|f| f.take());
+                    render_pie(&values, &labels, &explode, path.as_deref(), state)
                 }
             }
 
@@ -2451,6 +2574,94 @@ fn render_color_scatter_file(
         .into())
 }
 
+// ── pie dispatch ──────────────────────────────────────────────────────────
+
+fn render_pie(
+    values: &[f64],
+    labels: &[String],
+    explode: &[f64],
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => {
+            print!("{}", format_pie_ascii(values, labels));
+            Ok(Value::Void)
+        }
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_pie_file(values, labels, explode, p, state)
+        }
+        Some(p) => Err(format!("pie: unknown output target '{p}'")),
+    }
+}
+
+/// Formats a pie chart as a horizontal bar-art table.
+///
+/// Returns the formatted string so callers (including tests) can inspect it.
+pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String]) -> String {
+    use std::fmt::Write;
+    let total: f64 = values.iter().sum();
+    let bar_width: usize = 20;
+    let block_chars = [' ', '\u{258f}', '\u{258e}', '\u{258d}', '\u{258c}',
+                       '\u{258b}', '\u{258a}', '\u{2589}', '\u{2588}'];
+    let mut out = String::new();
+    for (i, &v) in values.iter().enumerate() {
+        let pct = v / total * 100.0;
+        let label = if i < labels.len() && !labels[i].is_empty() {
+            labels[i].as_str()
+        } else {
+            ""
+        };
+        // Build block-character bar.
+        let filled = (pct / 100.0 * bar_width as f64 * 8.0).round() as usize;
+        let full_blocks = filled / 8;
+        let partial = filled % 8;
+        let mut bar = String::new();
+        for _ in 0..full_blocks {
+            bar.push('\u{2588}'); // full block
+        }
+        if partial > 0 && full_blocks < bar_width {
+            bar.push(block_chars[partial]);
+        }
+        let pad = bar_width.saturating_sub(full_blocks + if partial > 0 { 1 } else { 0 });
+        for _ in 0..pad {
+            bar.push(' ');
+        }
+        if label.is_empty() {
+            let _ = writeln!(out, " [{bar}] {pct:5.1}%");
+        } else {
+            let _ = writeln!(out, " [{bar}] {pct:5.1}%  {label}");
+        }
+    }
+    out
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_pie_file(
+    values: &[f64],
+    labels: &[String],
+    explode: &[f64],
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    file::render_pie(values, labels, explode, path, state)
+        .map_err(|e| format!("pie: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_pie_file(
+    _values: &[f64],
+    _labels: &[String],
+    _explode: &[f64],
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("pie: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
 /// Maps an angle in radians to one of 8 Unicode directional arrow characters.
 fn arrow_char(angle: f64) -> char {
     use std::f64::consts::PI;
@@ -2612,6 +2823,13 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
                 c_max: _,
             } => {
                 ascii::render_scatter(x, y, base_state.clone());
+            }
+            PendingSeries::Pie {
+                values,
+                labels,
+                explode: _,
+            } => {
+                print!("{}", format_pie_ascii(values, labels));
             }
         }
     }
@@ -4723,5 +4941,175 @@ mod tests {
         });
         assert_eq!(gc, Some(StyleColor(0, 0, 255)));
         assert_eq!(gw, Some(3.0_f32));
+    }
+
+    // ── Phase 32c: pie ─────────────────────────────────────────────────────
+
+    #[test]
+    fn pie_ascii_sums_100pct() {
+        // Each bar line should show a percentage that adds up to ~100%.
+        let values = vec![25.0_f64, 50.0, 25.0];
+        let labels: Vec<String> = vec!["A".into(), "B".into(), "C".into()];
+        let out = format_pie_ascii(&values, &labels);
+        // Extract percentages from lines like " [██...] 25.0%  A"
+        let pct_sum: f64 = out
+            .lines()
+            .filter_map(|line| {
+                let pct_part = line.split('%').next()?;
+                let num = pct_part.rsplit_once(']')?.1.trim();
+                num.parse::<f64>().ok()
+            })
+            .sum();
+        assert!(
+            (pct_sum - 100.0).abs() < 0.1,
+            "percentages should sum to ~100, got {pct_sum}"
+        );
+    }
+
+    #[test]
+    fn pie_ascii_contains_labels() {
+        let values = vec![60.0_f64, 40.0];
+        let labels: Vec<String> = vec!["Alpha".into(), "Beta".into()];
+        let out = format_pie_ascii(&values, &labels);
+        assert!(out.contains("Alpha"), "output should contain label 'Alpha'");
+        assert!(out.contains("Beta"), "output should contain label 'Beta'");
+    }
+
+    #[test]
+    fn pie_dispatch_empty_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let err = plugin
+            .call("pie", &[f64_vec(&[])], &env)
+            .unwrap_err();
+        assert!(
+            err.contains("empty") || err.contains("positive") || err.contains("non-negative"),
+            "expected meaningful error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn pie_dispatch_negative_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let err = plugin
+            .call("pie", &[f64_vec(&[1.0, -2.0, 3.0])], &env)
+            .unwrap_err();
+        assert!(
+            err.contains("non-negative"),
+            "expected non-negative error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn pie_dispatch_label_length_mismatch_error() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let values = f64_vec(&[30.0, 30.0, 40.0]);
+        // Cell array with wrong number of labels.
+        let cell = Value::Cell(vec![
+            Value::Str("A".into()),
+            Value::Str("B".into()),
+        ]);
+        let err = plugin.call("pie", &[values, cell], &env).unwrap_err();
+        assert!(
+            err.contains("length"),
+            "expected length mismatch error, got: {err}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn pie_svg_polygon_count() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_pie_polygon_count.svg".to_string();
+        let _ = std::fs::remove_file(&path);
+        let values = f64_vec(&[25.0, 50.0, 25.0]);
+        let result = plugin.call(
+            "pie",
+            &[values, Value::Str(path.clone())],
+            &env,
+        );
+        assert!(result.is_ok(), "pie SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        // One polygon per slice — 3 slices.
+        let count = content.matches("<polygon").count();
+        assert_eq!(
+            count, 3,
+            "expected exactly 3 <polygon> elements for 3 slices, got {count}"
+        );
+        let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn pie_with_labels_svg() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_pie_labels.svg".to_string();
+        let _ = std::fs::remove_file(&path);
+        let values = f64_vec(&[30.0, 70.0]);
+        let cell = Value::Cell(vec![
+            Value::Str("Small".into()),
+            Value::Str("Large".into()),
+        ]);
+        let result = plugin.call(
+            "pie",
+            &[values, cell, Value::Str(path.clone())],
+            &env,
+        );
+        assert!(result.is_ok(), "pie with labels SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(content.contains("Small"), "SVG should contain label 'Small'");
+        assert!(content.contains("Large"), "SVG should contain label 'Large'");
+        let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn pie_explode_svg() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_pie_explode.svg".to_string();
+        let _ = std::fs::remove_file(&path);
+        let values = f64_vec(&[40.0, 30.0, 30.0]);
+        let explode = f64_vec(&[0.1, 0.0, 0.0]);
+        let result = plugin.call(
+            "pie",
+            &[values, explode, Value::Str(path.clone())],
+            &env,
+        );
+        assert!(result.is_ok(), "pie with explode SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(content.contains("<polygon"), "SVG should contain polygons");
+        let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn pie_single_slice() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_pie_single.svg".to_string();
+        let _ = std::fs::remove_file(&path);
+        let values = f64_vec(&[100.0]);
+        let result = plugin.call("pie", &[values, Value::Str(path.clone())], &env);
+        assert!(result.is_ok(), "pie single-slice SVG should succeed: {result:?}");
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let count = content.matches("<polygon").count();
+        assert_eq!(count, 1, "single-slice pie should have exactly 1 polygon, got {count}");
+        let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
     }
 }
