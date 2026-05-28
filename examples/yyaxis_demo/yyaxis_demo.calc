@@ -1,0 +1,51 @@
+% yyaxis_demo.calc — Phase 32d: dual Y-axis examples
+
+% Basic dual-axis: temperature (°C) vs humidity (%) over 6 hours
+t = [0, 1, 2, 3, 4, 5];
+temp_C  = [18, 19, 21, 23, 22, 20];
+humid_p = [60, 62, 65, 70, 68, 64];
+
+yyaxis('left');
+ylabel('Temperature (C)');
+plot(t, temp_C, 'b-');
+
+yyaxis('right');
+ylabel('Humidity (%)');
+plot(t, humid_p, 'r--');
+
+xlabel('Time (h)');
+title('Temperature and Humidity');
+
+fprintf('ASCII dual-axis output above\n\n');
+
+% SVG output — dual-axis chart
+yyaxis('left');
+ylabel('Temperature (C)');
+plot(t, temp_C, 'b-');
+
+yyaxis('right');
+ylabel('Humidity (%)');
+plot(t, humid_p, 'r--');
+
+xlabel('Time (h)');
+title('Temperature and Humidity');
+savefig('examples/yyaxis_demo/output/yyaxis_basic.svg');
+
+% Second example: population (millions) vs growth rate (%)
+years   = [2018, 2019, 2020, 2021, 2022, 2023];
+pop_M   = [7.6, 7.7, 7.75, 7.8, 7.9, 8.0];
+growth  = [1.1, 1.0, 0.9, 0.8, 1.0, 1.2];
+
+yyaxis('left');
+ylabel('Population (billions)');
+plot(years, pop_M, 'k-');
+
+yyaxis('right');
+ylabel('Growth rate (%)');
+plot(years, growth, 'g--');
+
+xlabel('Year');
+title('World Population');
+savefig('examples/yyaxis_demo/output/yyaxis_population.svg');
+
+fprintf('yyaxis_demo done\n');

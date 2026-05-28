@@ -986,8 +986,13 @@ where
         panel.grid_width,
     );
 
-    if panel.series.is_empty() {
+    if panel.series.is_empty() && panel.right_series.is_empty() {
         return Ok(());
+    }
+
+    // Dual-axis: delegate when there are right-axis series.
+    if !panel.right_series.is_empty() {
+        return draw_dual_axis_panel(panel, theme, area);
     }
 
     // Pie charts have their own coordinate system — route them separately.
@@ -1374,6 +1379,734 @@ where
     }
 
     draw_text_annotations(&mut chart, &panel.annotations)?;
+
+    Ok(())
+}
+
+// ── Dual-axis panel rendering ──────────────────────────────────────────────
+
+/// Renders a panel that has both left and right Y-axis series.
+///
+/// Called from [`draw_panel`] when `panel.right_series` is non-empty.
+#[allow(clippy::too_many_lines)]
+fn draw_dual_axis_panel<DB: DrawingBackend>(
+    panel: &crate::Panel,
+    theme: &Theme,
+    area: &DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    use crate::PendingSeries;
+    let (text_c, axis_c, grid_bold_c, grid_light_c) = theme_to_colors(theme);
+    let (grid_bold_style, grid_light_style) = resolve_grid_styles(
+        grid_bold_c,
+        grid_light_c,
+        panel.grid_color,
+        panel.grid_width,
+    );
+    let axis_mode = panel.axis_mode;
+
+    // ── collect bounds ────────────────────────────────────────────────────
+
+    let mut left_x: Vec<f64> = Vec::new();
+    let mut left_y: Vec<f64> = Vec::new();
+    let mut left_zero_baseline = false;
+    for s in &panel.series {
+        match s {
+            PendingSeries::Line(x, y, _) | PendingSeries::Scatter(x, y, _) => {
+                left_x.extend_from_slice(x);
+                left_y.extend_from_slice(y);
+            }
+            PendingSeries::Bar(x, y, _) | PendingSeries::Stem(x, y, _) => {
+                left_x.extend_from_slice(x);
+                left_y.extend_from_slice(y);
+                left_zero_baseline = true;
+            }
+            PendingSeries::Hist { counts, edges, .. } => {
+                left_x.extend_from_slice(edges);
+                left_y.push(0.0);
+                left_y.push(counts.iter().copied().max().unwrap_or(0) as f64);
+                left_zero_baseline = true;
+            }
+            PendingSeries::Fill(x, y, _) | PendingSeries::Area(x, y, _) => {
+                left_x.extend_from_slice(x);
+                left_y.extend_from_slice(y);
+                left_y.push(0.0);
+                left_zero_baseline = true;
+            }
+            PendingSeries::Quiver(x, y, u, v, _) => {
+                left_x.extend_from_slice(x);
+                left_x.extend(x.iter().zip(u.iter()).map(|(&xi, &ui)| xi + ui));
+                left_y.extend_from_slice(y);
+                left_y.extend(y.iter().zip(v.iter()).map(|(&yi, &vi)| yi + vi));
+            }
+            PendingSeries::ErrorBar { x, y, e_low, e_high, .. } => {
+                left_x.extend_from_slice(x);
+                for i in 0..y.len() {
+                    left_y.push(y[i] - e_low[i]);
+                    left_y.push(y[i] + e_high[i]);
+                }
+            }
+            PendingSeries::ColorScatter { x, y, .. } => {
+                left_x.extend_from_slice(x);
+                left_y.extend_from_slice(y);
+            }
+            PendingSeries::Pie { .. } => {}
+        }
+    }
+
+    let mut right_x: Vec<f64> = Vec::new();
+    let mut right_y: Vec<f64> = Vec::new();
+    let mut right_zero_baseline = false;
+    for s in &panel.right_series {
+        match s {
+            PendingSeries::Line(x, y, _) | PendingSeries::Scatter(x, y, _) => {
+                right_x.extend_from_slice(x);
+                right_y.extend_from_slice(y);
+            }
+            PendingSeries::Bar(x, y, _) | PendingSeries::Stem(x, y, _) => {
+                right_x.extend_from_slice(x);
+                right_y.extend_from_slice(y);
+                right_zero_baseline = true;
+            }
+            PendingSeries::Hist { counts, edges, .. } => {
+                right_x.extend_from_slice(edges);
+                right_y.push(0.0);
+                right_y.push(counts.iter().copied().max().unwrap_or(0) as f64);
+                right_zero_baseline = true;
+            }
+            PendingSeries::Fill(x, y, _) | PendingSeries::Area(x, y, _) => {
+                right_x.extend_from_slice(x);
+                right_y.extend_from_slice(y);
+                right_y.push(0.0);
+                right_zero_baseline = true;
+            }
+            PendingSeries::Quiver(x, y, u, v, _) => {
+                right_x.extend_from_slice(x);
+                right_x.extend(x.iter().zip(u.iter()).map(|(&xi, &ui)| xi + ui));
+                right_y.extend_from_slice(y);
+                right_y.extend(y.iter().zip(v.iter()).map(|(&yi, &vi)| yi + vi));
+            }
+            PendingSeries::ErrorBar { x, y, e_low, e_high, .. } => {
+                right_x.extend_from_slice(x);
+                for i in 0..y.len() {
+                    right_y.push(y[i] - e_low[i]);
+                    right_y.push(y[i] + e_high[i]);
+                }
+            }
+            PendingSeries::ColorScatter { x, y, .. } => {
+                right_x.extend_from_slice(x);
+                right_y.extend_from_slice(y);
+            }
+            PendingSeries::Pie { .. } => {}
+        }
+    }
+
+    // ── compute ranges ────────────────────────────────────────────────────
+
+    let all_x: Vec<f64> = left_x.iter().chain(right_x.iter()).copied().collect();
+    let (x_min, x_max) = if all_x.is_empty() {
+        (0.0_f64, 1.0_f64)
+    } else {
+        panel.xlim.unwrap_or_else(|| {
+            if axis_mode == Some(AxisMode::Tight) {
+                range_exact(&all_x)
+            } else {
+                range_with_margin(&all_x)
+            }
+        })
+    };
+
+    let (y_left_min, y_left_max) = if left_y.is_empty() {
+        panel.ylim.unwrap_or((0.0, 1.0))
+    } else {
+        panel.ylim.unwrap_or_else(|| {
+            if left_zero_baseline {
+                if axis_mode == Some(AxisMode::Tight) {
+                    range_exact_zero_baseline(&left_y)
+                } else {
+                    range_with_zero_baseline(&left_y)
+                }
+            } else if axis_mode == Some(AxisMode::Tight) {
+                range_exact(&left_y)
+            } else {
+                range_with_margin(&left_y)
+            }
+        })
+    };
+
+    let (y_right_min, y_right_max) = if right_y.is_empty() {
+        panel.right_ylim.unwrap_or((0.0, 1.0))
+    } else {
+        panel.right_ylim.unwrap_or_else(|| {
+            if right_zero_baseline {
+                if axis_mode == Some(AxisMode::Tight) {
+                    range_exact_zero_baseline(&right_y)
+                } else {
+                    range_with_zero_baseline(&right_y)
+                }
+            } else if axis_mode == Some(AxisMode::Tight) {
+                range_exact(&right_y)
+            } else {
+                range_with_margin(&right_y)
+            }
+        })
+    };
+
+    // ── build chart ────────────────────────────────────────────────────────
+
+    let title = panel.title.as_deref().unwrap_or("");
+    let xlabel = panel.xlabel.as_deref().unwrap_or("");
+    let left_ylabel = panel.ylabel.as_deref().unwrap_or("");
+    let right_ylabel_str = panel.right_ylabel.as_deref().unwrap_or("");
+
+    let title_sz = eff_title_size(panel.font_size, 16);
+    let axis_desc_sz = eff_axis_desc_size(panel.font_size, 11);
+    let tick_sz = eff_axis_desc_size(panel.font_size, 10);
+    let lw = eff_line_width(None, panel.line_width);
+
+    let (xa, ya) = if axis_mode == Some(AxisMode::Off) {
+        (0, 0)
+    } else {
+        (30, 40)
+    };
+
+    let mut chart = ChartBuilder::on(area)
+        .caption(title, ("sans-serif", title_sz).into_font().color(&text_c))
+        .margin(15)
+        .x_label_area_size(xa)
+        .y_label_area_size(ya)
+        .right_y_label_area_size(ya)
+        .build_cartesian_2d(x_min..x_max, y_left_min..y_left_max)
+        .map_err(|e| e.to_string())?
+        .set_secondary_coord(x_min..x_max, y_right_min..y_right_max);
+
+    if axis_mode != Some(AxisMode::Off) {
+        let mut mesh_binding = chart.configure_mesh();
+        let mut mesh = mesh_binding
+            .axis_style(ShapeStyle::from(&axis_c))
+            .axis_desc_style(("sans-serif", axis_desc_sz).into_font().color(&text_c))
+            .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
+            .bold_line_style(grid_bold_style)
+            .light_line_style(grid_light_style)
+            .x_desc(xlabel)
+            .y_desc(left_ylabel);
+        if !panel.grid {
+            mesh = mesh.disable_mesh();
+        }
+        mesh.draw().map_err(|e| e.to_string())?;
+
+        chart
+            .configure_secondary_axes()
+            .axis_style(ShapeStyle::from(&axis_c))
+            .label_style(("sans-serif", tick_sz).into_font().color(&text_c))
+            .y_desc(right_ylabel_str)
+            .draw()
+            .map_err(|e| e.to_string())?;
+    }
+
+    // ── draw left series ──────────────────────────────────────────────────
+
+    for (i, series) in panel.series.iter().enumerate() {
+        let default_color = SERIES_COLORS[i % SERIES_COLORS.len()];
+        match series {
+            PendingSeries::Line(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let slw = eff_line_width(style.as_ref(), panel.line_width);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
+                let linestyle = style
+                    .as_ref()
+                    .map(|s| s.linestyle)
+                    .unwrap_or(crate::style::LinestyleKind::Solid);
+                let pts: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                let n = pts.len();
+                let line_style = ShapeStyle::from(&color).stroke_width(slw);
+                match linestyle {
+                    crate::style::LinestyleKind::Solid => {
+                        chart
+                            .draw_series(LineSeries::new(pts.iter().copied(), line_style))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    crate::style::LinestyleKind::Dashed => {
+                        let dash = (n / 8).max(3);
+                        let gap = (n / 16).max(2);
+                        let mut j = 0;
+                        while j < n {
+                            let end = (j + dash).min(n);
+                            if end > j + 1 {
+                                chart
+                                    .draw_series(LineSeries::new(
+                                        pts[j..end].iter().copied(),
+                                        line_style,
+                                    ))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            j = end + gap;
+                        }
+                    }
+                    crate::style::LinestyleKind::DashDot => {
+                        let dash = (n / 8).max(3);
+                        let gap = (n / 25).max(1);
+                        let mut j = 0;
+                        while j < n {
+                            let end = (j + dash).min(n);
+                            if end > j + 1 {
+                                chart
+                                    .draw_series(LineSeries::new(
+                                        pts[j..end].iter().copied(),
+                                        line_style,
+                                    ))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            j = end + gap;
+                            if j < n {
+                                chart
+                                    .draw_series(std::iter::once(Circle::new(
+                                        pts[j],
+                                        ms,
+                                        color.filled(),
+                                    )))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            j += gap + 1;
+                        }
+                    }
+                    crate::style::LinestyleKind::Dotted => {
+                        let step = (n / 25).max(1);
+                        chart
+                            .draw_series(
+                                pts.iter()
+                                    .step_by(step)
+                                    .map(|&p| Circle::new(p, ms, color.filled())),
+                            )
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+            PendingSeries::Scatter(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
+                chart
+                    .draw_series(
+                        x.iter()
+                            .zip(y.iter())
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), ms, color.filled())),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Bar(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let bar_w = bar_half_width(x, x_min, x_max);
+                chart
+                    .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
+                        let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
+                        Rectangle::new(
+                            [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
+                            color.filled(),
+                        )
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Stem(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let slw = eff_line_width(style.as_ref(), panel.line_width);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
+                for (&xi, &yi) in x.iter().zip(y.iter()) {
+                    chart
+                        .draw_series(std::iter::once(PathElement::new(
+                            vec![(xi, 0.0), (xi, yi)],
+                            ShapeStyle::from(&color).stroke_width(slw),
+                        )))
+                        .map_err(|e| e.to_string())?;
+                }
+                chart
+                    .draw_series(
+                        x.iter()
+                            .zip(y.iter())
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), ms, color.filled())),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::ErrorBar { x, y, e_low, e_high, style } => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let (x_lo, x_hi) = range_with_margin(x);
+                let cap_half = (x_hi - x_lo) * 0.015;
+                for j in 0..x.len() {
+                    let xi = x[j];
+                    let yi = y[j];
+                    let y_lo = yi - e_low[j].abs();
+                    let y_hi = yi + e_high[j].abs();
+                    for seg in [
+                        vec![(xi, y_lo), (xi, y_hi)],
+                        vec![(xi - cap_half, y_lo), (xi + cap_half, y_lo)],
+                        vec![(xi - cap_half, y_hi), (xi + cap_half, y_hi)],
+                    ] {
+                        chart
+                            .draw_series(std::iter::once(PathElement::new(seg, color)))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    chart
+                        .draw_series(std::iter::once(Circle::new((xi, yi), 3, color.filled())))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            PendingSeries::Fill(x, y, style) | PendingSeries::Area(x, y, style) => {
+                let is_area = matches!(series, PendingSeries::Area(..));
+                let fill_color = style_to_rgb(style).unwrap_or(default_color);
+                let mut pts: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                if is_area && !pts.is_empty() {
+                    pts.push((*x.last().unwrap(), 0.0));
+                    pts.push((x[0], 0.0));
+                }
+                chart
+                    .draw_series(std::iter::once(Polygon::new(pts, fill_color.mix(0.4))))
+                    .map_err(|e| e.to_string())?;
+                let outline: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                chart
+                    .draw_series(LineSeries::new(outline, &fill_color))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::ColorScatter { x, y, sz, c, c_min, c_max } => {
+                let colormap = panel
+                    .colormap
+                    .clone()
+                    .unwrap_or_else(|| crate::colormap::ColormapSpec::Named("viridis".into()));
+                for j in 0..x.len() {
+                    let t = if (c_max - c_min).abs() < f64::EPSILON {
+                        0.5
+                    } else {
+                        ((c[j] - c_min) / (c_max - c_min)).clamp(0.0, 1.0)
+                    };
+                    let (r, g, b) = crate::colormap::apply_colormap_spec(t, &colormap);
+                    let radius = sz[j].max(1.0) as i32;
+                    chart
+                        .draw_series(std::iter::once(Circle::new(
+                            (x[j], y[j]),
+                            radius,
+                            RGBColor(r, g, b).filled(),
+                        )))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            PendingSeries::Hist { counts, edges, style } => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                chart
+                    .draw_series((0..counts.len()).map(|j| {
+                        Rectangle::new(
+                            [(edges[j], 0.0), (edges[j + 1], counts[j] as f64)],
+                            color.filled(),
+                        )
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Quiver(x, y, u, v, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let scale = arrow_scale(x, y, u, v);
+                for j in 0..x.len() {
+                    let x0 = x[j];
+                    let y0 = y[j];
+                    let dx = u[j] * scale;
+                    let dy = v[j] * scale;
+                    let x1 = x0 + dx;
+                    let y1 = y0 + dy;
+                    chart
+                        .draw_series(std::iter::once(PathElement::new(
+                            vec![(x0, y0), (x1, y1)],
+                            color,
+                        )))
+                        .map_err(|e| e.to_string())?;
+                    let len = (dx * dx + dy * dy).sqrt();
+                    if len > 1e-12 {
+                        let ux = dx / len;
+                        let uy = dy / len;
+                        let head_len = len * 0.3;
+                        let head_w = len * 0.15;
+                        let bx = x1 - ux * head_len;
+                        let by = y1 - uy * head_len;
+                        chart
+                            .draw_series(std::iter::once(Polygon::new(
+                                vec![
+                                    (x1, y1),
+                                    (bx - uy * head_w, by + ux * head_w),
+                                    (bx + uy * head_w, by - ux * head_w),
+                                ],
+                                color.filled(),
+                            )))
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+            PendingSeries::Pie { .. } => {}
+        }
+    }
+
+    // ── draw right series ─────────────────────────────────────────────────
+    // Color index continues from where left series left off.
+
+    let color_offset = panel.series.len();
+    for (i, series) in panel.right_series.iter().enumerate() {
+        let default_color = SERIES_COLORS[(i + color_offset) % SERIES_COLORS.len()];
+        match series {
+            PendingSeries::Line(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let slw = eff_line_width(style.as_ref(), panel.line_width);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
+                let linestyle = style
+                    .as_ref()
+                    .map(|s| s.linestyle)
+                    .unwrap_or(crate::style::LinestyleKind::Solid);
+                let pts: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                let n = pts.len();
+                let line_style = ShapeStyle::from(&color).stroke_width(slw);
+                match linestyle {
+                    crate::style::LinestyleKind::Solid => {
+                        chart
+                            .draw_secondary_series(LineSeries::new(
+                                pts.iter().copied(),
+                                line_style,
+                            ))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    crate::style::LinestyleKind::Dashed => {
+                        let dash = (n / 8).max(3);
+                        let gap = (n / 16).max(2);
+                        let mut j = 0;
+                        while j < n {
+                            let end = (j + dash).min(n);
+                            if end > j + 1 {
+                                chart
+                                    .draw_secondary_series(LineSeries::new(
+                                        pts[j..end].iter().copied(),
+                                        line_style,
+                                    ))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            j = end + gap;
+                        }
+                    }
+                    crate::style::LinestyleKind::DashDot => {
+                        let dash = (n / 8).max(3);
+                        let gap = (n / 25).max(1);
+                        let mut j = 0;
+                        while j < n {
+                            let end = (j + dash).min(n);
+                            if end > j + 1 {
+                                chart
+                                    .draw_secondary_series(LineSeries::new(
+                                        pts[j..end].iter().copied(),
+                                        line_style,
+                                    ))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            j = end + gap;
+                            if j < n {
+                                chart
+                                    .draw_secondary_series(std::iter::once(Circle::new(
+                                        pts[j],
+                                        ms,
+                                        color.filled(),
+                                    )))
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            j += gap + 1;
+                        }
+                    }
+                    crate::style::LinestyleKind::Dotted => {
+                        let step = (n / 25).max(1);
+                        chart
+                            .draw_secondary_series(
+                                pts.iter()
+                                    .step_by(step)
+                                    .map(|&p| Circle::new(p, ms, color.filled())),
+                            )
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+            PendingSeries::Scatter(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
+                chart
+                    .draw_secondary_series(
+                        x.iter()
+                            .zip(y.iter())
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), ms, color.filled())),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Bar(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let bar_w = bar_half_width(x, x_min, x_max);
+                chart
+                    .draw_secondary_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
+                        let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
+                        Rectangle::new(
+                            [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
+                            color.filled(),
+                        )
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Stem(x, y, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let slw = eff_line_width(style.as_ref(), panel.line_width);
+                let ms = eff_marker_size(style.as_ref(), panel.marker_size) as i32;
+                for (&xi, &yi) in x.iter().zip(y.iter()) {
+                    chart
+                        .draw_secondary_series(std::iter::once(PathElement::new(
+                            vec![(xi, 0.0), (xi, yi)],
+                            ShapeStyle::from(&color).stroke_width(slw),
+                        )))
+                        .map_err(|e| e.to_string())?;
+                }
+                chart
+                    .draw_secondary_series(
+                        x.iter()
+                            .zip(y.iter())
+                            .map(|(&xi, &yi)| Circle::new((xi, yi), ms, color.filled())),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::ErrorBar { x, y, e_low, e_high, style } => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let (x_lo, x_hi) = range_with_margin(x);
+                let cap_half = (x_hi - x_lo) * 0.015;
+                for j in 0..x.len() {
+                    let xi = x[j];
+                    let yi = y[j];
+                    let y_lo = yi - e_low[j].abs();
+                    let y_hi = yi + e_high[j].abs();
+                    for seg in [
+                        vec![(xi, y_lo), (xi, y_hi)],
+                        vec![(xi - cap_half, y_lo), (xi + cap_half, y_lo)],
+                        vec![(xi - cap_half, y_hi), (xi + cap_half, y_hi)],
+                    ] {
+                        chart
+                            .draw_secondary_series(std::iter::once(PathElement::new(
+                                seg, color,
+                            )))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    chart
+                        .draw_secondary_series(std::iter::once(Circle::new(
+                            (xi, yi),
+                            3,
+                            color.filled(),
+                        )))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            PendingSeries::Fill(x, y, style) | PendingSeries::Area(x, y, style) => {
+                let is_area = matches!(series, PendingSeries::Area(..));
+                let fill_color = style_to_rgb(style).unwrap_or(default_color);
+                let mut pts: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                if is_area && !pts.is_empty() {
+                    pts.push((*x.last().unwrap(), 0.0));
+                    pts.push((x[0], 0.0));
+                }
+                chart
+                    .draw_secondary_series(std::iter::once(Polygon::new(
+                        pts,
+                        fill_color.mix(0.4),
+                    )))
+                    .map_err(|e| e.to_string())?;
+                let outline: Vec<(f64, f64)> =
+                    x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
+                chart
+                    .draw_secondary_series(LineSeries::new(outline, &fill_color))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::ColorScatter { x, y, sz, c, c_min, c_max } => {
+                let colormap = panel
+                    .colormap
+                    .clone()
+                    .unwrap_or_else(|| crate::colormap::ColormapSpec::Named("viridis".into()));
+                for j in 0..x.len() {
+                    let t = if (c_max - c_min).abs() < f64::EPSILON {
+                        0.5
+                    } else {
+                        ((c[j] - c_min) / (c_max - c_min)).clamp(0.0, 1.0)
+                    };
+                    let (r, g, b) = crate::colormap::apply_colormap_spec(t, &colormap);
+                    let radius = sz[j].max(1.0) as i32;
+                    chart
+                        .draw_secondary_series(std::iter::once(Circle::new(
+                            (x[j], y[j]),
+                            radius,
+                            RGBColor(r, g, b).filled(),
+                        )))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            PendingSeries::Hist { counts, edges, style } => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                chart
+                    .draw_secondary_series((0..counts.len()).map(|j| {
+                        Rectangle::new(
+                            [(edges[j], 0.0), (edges[j + 1], counts[j] as f64)],
+                            color.filled(),
+                        )
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+            PendingSeries::Quiver(x, y, u, v, style) => {
+                let color = style_to_rgb(style).unwrap_or(default_color);
+                let scale = arrow_scale(x, y, u, v);
+                for j in 0..x.len() {
+                    let x0 = x[j];
+                    let y0 = y[j];
+                    let dx = u[j] * scale;
+                    let dy = v[j] * scale;
+                    let x1 = x0 + dx;
+                    let y1 = y0 + dy;
+                    chart
+                        .draw_secondary_series(std::iter::once(PathElement::new(
+                            vec![(x0, y0), (x1, y1)],
+                            color,
+                        )))
+                        .map_err(|e| e.to_string())?;
+                    let len = (dx * dx + dy * dy).sqrt();
+                    if len > 1e-12 {
+                        let ux = dx / len;
+                        let uy = dy / len;
+                        let head_len = len * 0.3;
+                        let head_w = len * 0.15;
+                        let bx = x1 - ux * head_len;
+                        let by = y1 - uy * head_len;
+                        chart
+                            .draw_secondary_series(std::iter::once(Polygon::new(
+                                vec![
+                                    (x1, y1),
+                                    (bx - uy * head_w, by + ux * head_w),
+                                    (bx + uy * head_w, by - ux * head_w),
+                                ],
+                                color.filled(),
+                            )))
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+            PendingSeries::Pie { .. } => {}
+        }
+    }
+
+    // Text annotations on the primary coordinate system.
+    let _ = lw; // suppress unused warning if no series uses it
+    for (ax, ay, label) in &panel.annotations {
+        chart
+            .draw_series(std::iter::once(Text::new(
+                label.clone(),
+                (*ax, *ay),
+                ("sans-serif", 12),
+            )))
+            .map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }

@@ -110,6 +110,16 @@ pub enum AxisMode {
     Off,
 }
 
+/// Active Y axis for new series in a dual-axis (`yyaxis`) figure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum YAxis {
+    /// Primary (left) Y axis — the default.
+    #[default]
+    Left,
+    /// Secondary (right) Y axis.
+    Right,
+}
+
 /// Combined plot style parsed from a MATLAB-style format string.
 #[derive(Clone, Debug, PartialEq)]
 pub struct StyleSpec {

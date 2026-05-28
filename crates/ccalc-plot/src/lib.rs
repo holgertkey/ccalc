@@ -43,7 +43,7 @@ use dispatch::{
     extract_file_arg, extract_flat, extract_matrix, extract_style_and_file_arg,
     extract_style_and_file_arg_min, extract_vector,
 };
-use style::{AxisMode, StyleColor, StyleSpec, Theme};
+use style::{AxisMode, StyleColor, StyleSpec, Theme, YAxis};
 
 // ── PendingSeries / Panel ──────────────────────────────────────────────────
 
@@ -149,6 +149,13 @@ pub struct Panel {
     pub axis_mode: Option<AxisMode>,
     /// Active colormap specification carried into this panel (for `ColorScatter`).
     pub colormap: Option<ColormapSpec>,
+    // ── Phase 32d — dual Y axis ────────────────────────────────────────────
+    /// Series on the secondary (right) Y axis.
+    pub right_series: Vec<PendingSeries>,
+    /// Override for the right Y axis range `[min, max]`.
+    pub right_ylim: Option<(f64, f64)>,
+    /// Label for the right Y axis.
+    pub right_ylabel: Option<String>,
 }
 
 // ── FigureState ────────────────────────────────────────────────────────────
@@ -225,6 +232,16 @@ pub struct FigureState {
     /// `None` falls back to the default `800×600`. Set via `figure(w, h)`.
     /// Persists across panels; cleared only when the whole state is reset.
     pub figure_size: Option<(u32, u32)>,
+
+    // ── Phase 32d — dual Y axis ────────────────────────────────────────────
+    /// Which Y axis receives new series and annotation calls.
+    pub active_yaxis: YAxis,
+    /// Series accumulated for the right (secondary) Y axis.
+    pub right_pending_series: Vec<PendingSeries>,
+    /// Override for the right Y axis range.
+    pub right_ylim: Option<(f64, f64)>,
+    /// Label for the right Y axis.
+    pub right_ylabel: Option<String>,
 }
 
 impl FigureState {
@@ -244,6 +261,15 @@ impl FigureState {
     pub fn effective_bg_rgb(&self) -> (u8, u8, u8) {
         let c = self.bg_color.unwrap_or_else(|| self.resolve_theme().bg);
         (c.0, c.1, c.2)
+    }
+
+    /// Pushes `series` to the left or right pending queue based on [`Self::active_yaxis`].
+    pub fn push_series(&mut self, series: PendingSeries) {
+        if self.active_yaxis == YAxis::Right {
+            self.right_pending_series.push(series);
+        } else {
+            self.pending_series.push(series);
+        }
     }
 }
 
@@ -325,6 +351,8 @@ const EXPORTED: &[&str] = &[
     "errorbar",
     // Phase 32c — pie chart
     "pie",
+    // Phase 32d — dual Y axis
+    "yyaxis",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -336,10 +364,10 @@ fn is_accumulating(st: &FigureState) -> bool {
 
 /// Commits the current in-progress panel to `st.panels`.
 ///
-/// Only commits when there are pending series to avoid creating empty panels.
-/// Clears annotations and `pending_series` after committing.
+/// Only commits when there are pending series (left or right) to avoid empty panels.
+/// Clears annotations and all pending series after committing.
 fn commit_current_panel(st: &mut FigureState) {
-    if !st.pending_series.is_empty() {
+    if !st.pending_series.is_empty() || !st.right_pending_series.is_empty() {
         let panel = Panel {
             layout: st.subplot,
             xlabel: st.xlabel.take(),
@@ -358,6 +386,9 @@ fn commit_current_panel(st: &mut FigureState) {
             grid_width: st.grid_width,
             axis_mode: st.axis_mode,
             colormap: st.colormap.clone(),
+            right_series: std::mem::take(&mut st.right_pending_series),
+            right_ylim: st.right_ylim.take(),
+            right_ylabel: st.right_ylabel.take(),
         };
         st.panels.push(panel);
     }
@@ -386,7 +417,13 @@ impl Plugin for PlotPlugin {
                     let mut st = f.borrow_mut();
                     match name {
                         "xlabel" => st.xlabel = Some(s),
-                        "ylabel" => st.ylabel = Some(s),
+                        "ylabel" => {
+                            if st.active_yaxis == YAxis::Right {
+                                st.right_ylabel = Some(s);
+                            } else {
+                                st.ylabel = Some(s);
+                            }
+                        }
                         "title" => st.title = Some(s),
                         _ => unreachable!(),
                     }
@@ -436,7 +473,13 @@ impl Plugin for PlotPlugin {
                     let mut st = f.borrow_mut();
                     match name {
                         "xlim" => st.xlim = Some((lo, hi)),
-                        "ylim" => st.ylim = Some((lo, hi)),
+                        "ylim" => {
+                            if st.active_yaxis == YAxis::Right {
+                                st.right_ylim = Some((lo, hi));
+                            } else {
+                                st.ylim = Some((lo, hi));
+                            }
+                        }
                         "zlim" => st.zlim = Some((lo, hi)),
                         _ => unreachable!(),
                     }
@@ -453,7 +496,7 @@ impl Plugin for PlotPlugin {
                     FIGURE_STATE.with(|f| {
                         let mut st = f.borrow_mut();
                         for y in ys {
-                            st.pending_series.push(PendingSeries::Line(
+                            st.push_series(PendingSeries::Line(
                                 x.clone(),
                                 y,
                                 style.clone(),
@@ -518,7 +561,7 @@ impl Plugin for PlotPlugin {
                         c_max,
                     };
                     if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
-                        FIGURE_STATE.with(|f| f.borrow_mut().pending_series.push(series));
+                        FIGURE_STATE.with(|f| f.borrow_mut().push_series(series));
                         Ok(Value::Void)
                     } else {
                         let state = FIGURE_STATE.with(|f| f.take());
@@ -552,8 +595,7 @@ impl Plugin for PlotPlugin {
                         let (x, y) = extract_xy("scatter", &data_args)?;
                         FIGURE_STATE.with(|f| {
                             f.borrow_mut()
-                                .pending_series
-                                .push(PendingSeries::Scatter(x, y, style));
+                                .push_series(PendingSeries::Scatter(x, y, style));
                         });
                         Ok(Value::Void)
                     } else {
@@ -577,7 +619,7 @@ impl Plugin for PlotPlugin {
                         "stem" => PendingSeries::Stem(x, y, style),
                         _ => unreachable!(),
                     };
-                    FIGURE_STATE.with(|f| f.borrow_mut().pending_series.push(series));
+                    FIGURE_STATE.with(|f| f.borrow_mut().push_series(series));
                     Ok(Value::Void)
                 } else {
                     let state = FIGURE_STATE.with(|f| f.take());
@@ -652,7 +694,7 @@ impl Plugin for PlotPlugin {
                 };
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
-                        f.borrow_mut().pending_series.push(PendingSeries::ErrorBar {
+                        f.borrow_mut().push_series(PendingSeries::ErrorBar {
                             x,
                             y,
                             e_low,
@@ -766,7 +808,7 @@ impl Plugin for PlotPlugin {
 
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
-                        f.borrow_mut().pending_series.push(PendingSeries::Pie {
+                        f.borrow_mut().push_series(PendingSeries::Pie {
                             values,
                             labels,
                             explode,
@@ -785,7 +827,7 @@ impl Plugin for PlotPlugin {
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     let (counts, edges) = parse_and_compute_hist(&data_args)?;
                     FIGURE_STATE.with(|f| {
-                        f.borrow_mut().pending_series.push(PendingSeries::Hist {
+                        f.borrow_mut().push_series(PendingSeries::Hist {
                             counts,
                             edges,
                             style,
@@ -1048,6 +1090,28 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
+            // ── yyaxis — dual Y axis ───────────────────────────────────
+            "yyaxis" => {
+                let s = require_string("yyaxis", args)?;
+                match s.as_str() {
+                    "left" | "right" => {
+                        let is_right = s == "right";
+                        FIGURE_STATE.with(|f| {
+                            let mut st = f.borrow_mut();
+                            st.active_yaxis =
+                                if is_right { YAxis::Right } else { YAxis::Left };
+                            st.hold = true;
+                        });
+                    }
+                    other => {
+                        return Err(format!(
+                            "yyaxis: expected 'left' or 'right', got '{other}'"
+                        ));
+                    }
+                }
+                Ok(Value::Void)
+            }
+
             // ── imagesc ────────────────────────────────────────────────
             "imagesc" => {
                 if args.is_empty() {
@@ -1202,7 +1266,9 @@ impl Plugin for PlotPlugin {
                         let mut st = f.borrow_mut();
                         st.hold = false;
                         // When not in subplot mode: extract panel for ASCII flush.
-                        if st.subplot.is_none() && !st.pending_series.is_empty() {
+                        let has_series = !st.pending_series.is_empty()
+                            || !st.right_pending_series.is_empty();
+                        if st.subplot.is_none() && has_series {
                             Some(Panel {
                                 layout: None,
                                 xlabel: st.xlabel.take(),
@@ -1221,6 +1287,9 @@ impl Plugin for PlotPlugin {
                                 grid_width: st.grid_width,
                                 axis_mode: st.axis_mode,
                                 colormap: st.colormap.clone(),
+                                right_series: std::mem::take(&mut st.right_pending_series),
+                                right_ylim: st.right_ylim.take(),
+                                right_ylabel: st.right_ylabel.take(),
                             })
                         } else {
                             None
@@ -1265,8 +1334,7 @@ impl Plugin for PlotPlugin {
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
-                            .pending_series
-                            .push(PendingSeries::Fill(x, y, style));
+                            .push_series(PendingSeries::Fill(x, y, style));
                     });
                     Ok(Value::Void)
                 } else {
@@ -1317,8 +1385,7 @@ impl Plugin for PlotPlugin {
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
-                            .pending_series
-                            .push(PendingSeries::Fill(x_pts, y_pts, style));
+                            .push_series(PendingSeries::Fill(x_pts, y_pts, style));
                     });
                     Ok(Value::Void)
                 } else {
@@ -1334,8 +1401,7 @@ impl Plugin for PlotPlugin {
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
-                            .pending_series
-                            .push(PendingSeries::Area(x, y, style));
+                            .push_series(PendingSeries::Area(x, y, style));
                     });
                     Ok(Value::Void)
                 } else {
@@ -1387,8 +1453,7 @@ impl Plugin for PlotPlugin {
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
                         f.borrow_mut()
-                            .pending_series
-                            .push(PendingSeries::Quiver(x, y, u, v, style));
+                            .push_series(PendingSeries::Quiver(x, y, u, v, style));
                     });
                     Ok(Value::Void)
                 } else {
@@ -2777,12 +2842,83 @@ fn render_3d_file(
 /// Renders all series in a panel to ASCII stdout (used by `hold('off')`).
 ///
 /// Each series is printed sequentially; a `---` divider separates them.
+/// If the panel has right-axis series, they are printed after a `[right axis]` header.
 #[cfg(feature = "plot")]
 fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
-    if panel.series.is_empty() {
+    if panel.series.is_empty() && panel.right_series.is_empty() {
         return Ok(Value::Void);
     }
-    let base_state = FigureState {
+
+    let render_series = |series_list: &[PendingSeries], base_state: &FigureState| {
+        for (i, series) in series_list.iter().enumerate() {
+            if i > 0 {
+                println!("---");
+            }
+            match series {
+                PendingSeries::Line(x, y, _style) => {
+                    ascii::render_line(x, y, base_state.clone());
+                }
+                PendingSeries::Scatter(x, y, _style) => {
+                    ascii::render_scatter(x, y, base_state.clone());
+                }
+                PendingSeries::Bar(x, y, _style) => {
+                    ascii::render_bar(x, y, base_state.clone());
+                }
+                PendingSeries::Stem(x, y, _style) => {
+                    ascii::render_stem(x, y, base_state.clone());
+                }
+                PendingSeries::Hist {
+                    counts,
+                    edges,
+                    style: _,
+                } => {
+                    render_hist_ascii(counts, edges, base_state);
+                }
+                PendingSeries::Fill(x, y, _style) => {
+                    ascii::render_fill(x, y, base_state.clone());
+                }
+                PendingSeries::Area(x, y, _style) => {
+                    ascii::render_area(x, y, base_state.clone());
+                }
+                PendingSeries::Quiver(x, y, u, v, _style) => {
+                    render_quiver_ascii(x, y, u, v, base_state);
+                }
+                PendingSeries::ErrorBar {
+                    x,
+                    y,
+                    e_low,
+                    e_high,
+                    style: _,
+                } => {
+                    render_errorbar_ascii(x, y, e_low, e_high);
+                }
+                PendingSeries::ColorScatter {
+                    x,
+                    y,
+                    sz: _,
+                    c: _,
+                    c_min: _,
+                    c_max: _,
+                } => {
+                    ascii::render_scatter(x, y, base_state.clone());
+                }
+                PendingSeries::Pie {
+                    values,
+                    labels,
+                    explode,
+                } => {
+                    print!("{}", format_pie_ascii(values, labels, explode));
+                }
+            }
+        }
+    };
+
+    let has_dual = !panel.right_series.is_empty();
+    if has_dual {
+        println!("[left axis]");
+    }
+
+    let left_state = FigureState {
         xlabel: panel.xlabel.clone(),
         ylabel: panel.ylabel.clone(),
         title: panel.title.clone(),
@@ -2790,60 +2926,24 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
         ylim: panel.ylim,
         ..FigureState::default()
     };
-    for (i, series) in panel.series.iter().enumerate() {
-        if i > 0 {
-            println!("---");
-        }
-        match series {
-            PendingSeries::Line(x, y, _style) => ascii::render_line(x, y, base_state.clone()),
-            PendingSeries::Scatter(x, y, _style) => {
-                ascii::render_scatter(x, y, base_state.clone());
-            }
-            PendingSeries::Bar(x, y, _style) => ascii::render_bar(x, y, base_state.clone()),
-            PendingSeries::Stem(x, y, _style) => ascii::render_stem(x, y, base_state.clone()),
-            PendingSeries::Hist {
-                counts,
-                edges,
-                style: _,
-            } => {
-                render_hist_ascii(counts, edges, &base_state);
-            }
-            PendingSeries::Fill(x, y, _style) => ascii::render_fill(x, y, base_state.clone()),
-            PendingSeries::Area(x, y, _style) => ascii::render_area(x, y, base_state.clone()),
-            PendingSeries::Quiver(x, y, u, v, _style) => {
-                render_quiver_ascii(x, y, u, v, &base_state);
-            }
-            PendingSeries::ErrorBar {
-                x,
-                y,
-                e_low,
-                e_high,
-                style: _,
-            } => {
-                render_errorbar_ascii(x, y, e_low, e_high);
-            }
-            PendingSeries::ColorScatter {
-                x,
-                y,
-                sz: _,
-                c: _,
-                c_min: _,
-                c_max: _,
-            } => {
-                ascii::render_scatter(x, y, base_state.clone());
-            }
-            PendingSeries::Pie {
-                values,
-                labels,
-                explode,
-            } => {
-                print!("{}", format_pie_ascii(values, labels, explode));
-            }
-        }
-    }
+    render_series(&panel.series, &left_state);
+
     for (ax, ay, label) in &panel.annotations {
         println!("  ({ax:.4}, {ay:.4}): {label}");
     }
+
+    if has_dual {
+        println!("\n[right axis]");
+        let right_state = FigureState {
+            xlabel: panel.xlabel.clone(),
+            ylabel: panel.right_ylabel.clone(),
+            xlim: panel.xlim,
+            ylim: panel.right_ylim,
+            ..FigureState::default()
+        };
+        render_series(&panel.right_series, &right_state);
+    }
+
     Ok(Value::Void)
 }
 
@@ -5138,6 +5238,188 @@ mod tests {
             "single-slice pie should have exactly 1 polygon, got {count}"
         );
         let _ = std::fs::remove_file(&path);
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    // ── Phase 32d — yyaxis ────────────────────────────────────────────
+
+    #[test]
+    fn yyaxis_right_sets_active() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            assert_eq!(
+                st.active_yaxis,
+                style::YAxis::Right,
+                "active_yaxis should be Right after yyaxis('right')"
+            );
+            assert!(st.hold, "yyaxis should enable hold");
+        });
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn yyaxis_series_routing() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        // Activate left axis first (also enables hold so series are not flushed).
+        plugin
+            .call("yyaxis", &[Value::Str("left".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0]), f64_vec(&[1.0, 2.0])],
+                &env,
+            )
+            .unwrap();
+        // Switch to right axis and add another series.
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0]), f64_vec(&[10.0, 20.0])],
+                &env,
+            )
+            .unwrap();
+        FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            assert_eq!(st.pending_series.len(), 1, "one series on the left axis");
+            assert_eq!(
+                st.right_pending_series.len(),
+                1,
+                "one series on the right axis"
+            );
+        });
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn yyaxis_ylabel_routing() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        plugin
+            .call("ylabel", &[Value::Str("left label".into())], &env)
+            .unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        plugin
+            .call("ylabel", &[Value::Str("right label".into())], &env)
+            .unwrap();
+        FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            assert_eq!(
+                st.ylabel.as_deref(),
+                Some("left label"),
+                "left ylabel must be unchanged"
+            );
+            assert_eq!(
+                st.right_ylabel.as_deref(),
+                Some("right label"),
+                "right ylabel must be set"
+            );
+        });
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn yyaxis_svg_has_two_axis_labels() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let path = ".debug/test_yyaxis.svg";
+        let _ = std::fs::remove_file(path);
+
+        // Activate left axis first so the first plot is held instead of flushed.
+        plugin
+            .call("yyaxis", &[Value::Str("left".into())], &env)
+            .unwrap();
+        plugin
+            .call("ylabel", &[Value::Str("Left Y".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0, 3.0]), f64_vec(&[1.0, 2.0, 3.0])],
+                &env,
+            )
+            .unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        plugin
+            .call("ylabel", &[Value::Str("Right Y".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0, 3.0]), f64_vec(&[100.0, 200.0, 300.0])],
+                &env,
+            )
+            .unwrap();
+        plugin
+            .call("savefig", &[Value::Str(path.into())], &env)
+            .unwrap();
+
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        assert!(
+            content.contains("Left Y"),
+            "SVG must contain the left y-axis label"
+        );
+        assert!(
+            content.contains("Right Y"),
+            "SVG must contain the right y-axis label"
+        );
+        std::fs::remove_file(path).ok();
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn yyaxis_ascii_two_blocks() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+
+        // Activate left axis first so the series is held.
+        plugin
+            .call("yyaxis", &[Value::Str("left".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0, 3.0]), f64_vec(&[1.0, 2.0, 3.0])],
+                &env,
+            )
+            .unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0, 3.0]), f64_vec(&[100.0, 200.0, 300.0])],
+                &env,
+            )
+            .unwrap();
+
+        FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            // Both series should still be in pending state (hold is on).
+            assert_eq!(st.pending_series.len(), 1, "one left series");
+            assert_eq!(st.right_pending_series.len(), 1, "one right series");
+        });
         FIGURE_STATE.with(|f| f.take());
     }
 }
