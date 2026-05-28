@@ -2620,15 +2620,20 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64
         };
         let is_exploded = explode.get(i).copied().unwrap_or(0.0) > 1e-9;
         let fill = SLICE_FILLS[i % SLICE_FILLS.len()];
-        // Build bar using this slice's fill character.
+        // Build bar: filled part uses slice fill char; empty part uses `·`
+        // with a single `─` (U+2500) exactly at the midpoint.
         let filled = (pct / 100.0 * bar_width as f64).round() as usize;
         let filled = filled.min(bar_width);
+        let mid = bar_width / 2;
         let mut bar = String::new();
-        for _ in 0..filled {
-            bar.push(fill);
-        }
-        for _ in filled..bar_width {
-            bar.push(' ');
+        for j in 0..bar_width {
+            if j < filled {
+                bar.push(fill);
+            } else if j == mid && filled <= mid {
+                bar.push('\u{250a}'); // ┊
+            } else {
+                bar.push('\u{00b7}'); // ·
+            }
         }
         let explode_marker = if is_exploded { " \u{25c4}" } else { "" }; // ◄ or nothing
         if label.is_empty() {
