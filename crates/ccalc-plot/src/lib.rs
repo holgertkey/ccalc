@@ -2914,34 +2914,86 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
     };
 
     let has_dual = !panel.right_series.is_empty();
-    if has_dual {
-        println!("[left axis]");
-    }
-
-    let left_state = FigureState {
-        xlabel: panel.xlabel.clone(),
-        ylabel: panel.ylabel.clone(),
-        title: panel.title.clone(),
-        xlim: panel.xlim,
-        ylim: panel.ylim,
-        ..FigureState::default()
-    };
-    render_series(&panel.series, &left_state);
-
-    for (ax, ay, label) in &panel.annotations {
-        println!("  ({ax:.4}, {ay:.4}): {label}");
-    }
 
     if has_dual {
-        println!("\n[right axis]");
-        let right_state = FigureState {
+        // Use combined chart when both sides consist only of Line / Scatter series.
+        let is_xy = |s: &PendingSeries| {
+            matches!(s, PendingSeries::Line(..) | PendingSeries::Scatter(..))
+        };
+        let can_combine = !panel.series.is_empty()
+            && panel.series.iter().all(is_xy)
+            && panel.right_series.iter().all(is_xy);
+
+        if can_combine {
+            let to_f32 = |series: &[PendingSeries]| -> Vec<(Vec<f32>, Vec<f32>, bool)> {
+                series
+                    .iter()
+                    .map(|s| match s {
+                        PendingSeries::Line(x, y, _) => (
+                            x.iter().map(|&v| v as f32).collect(),
+                            y.iter().map(|&v| v as f32).collect(),
+                            true,
+                        ),
+                        PendingSeries::Scatter(x, y, _) => (
+                            x.iter().map(|&v| v as f32).collect(),
+                            y.iter().map(|&v| v as f32).collect(),
+                            false,
+                        ),
+                        _ => unreachable!(),
+                    })
+                    .collect()
+            };
+            ascii::render_dual_axis(
+                &to_f32(&panel.series),
+                &to_f32(&panel.right_series),
+                panel.ylim.map(|(lo, hi)| (lo as f32, hi as f32)),
+                panel.right_ylim.map(|(lo, hi)| (lo as f32, hi as f32)),
+                panel.xlim.map(|(lo, hi)| (lo as f32, hi as f32)),
+                panel.title.as_deref(),
+                panel.xlabel.as_deref(),
+                panel.ylabel.as_deref(),
+                panel.right_ylabel.as_deref(),
+            );
+        } else {
+            // Mixed series types: fall back to two-block rendering.
+            println!("[left axis]");
+            let left_state = FigureState {
+                xlabel: panel.xlabel.clone(),
+                ylabel: panel.ylabel.clone(),
+                title: panel.title.clone(),
+                xlim: panel.xlim,
+                ylim: panel.ylim,
+                ..FigureState::default()
+            };
+            render_series(&panel.series, &left_state);
+            println!("\n[right axis]");
+            let right_state = FigureState {
+                xlabel: panel.xlabel.clone(),
+                ylabel: panel.right_ylabel.clone(),
+                xlim: panel.xlim,
+                ylim: panel.right_ylim,
+                ..FigureState::default()
+            };
+            render_series(&panel.right_series, &right_state);
+        }
+
+        for (ax, ay, label) in &panel.annotations {
+            println!("  ({ax:.4}, {ay:.4}): {label}");
+        }
+    } else {
+        let left_state = FigureState {
             xlabel: panel.xlabel.clone(),
-            ylabel: panel.right_ylabel.clone(),
+            ylabel: panel.ylabel.clone(),
+            title: panel.title.clone(),
             xlim: panel.xlim,
-            ylim: panel.right_ylim,
+            ylim: panel.ylim,
             ..FigureState::default()
         };
-        render_series(&panel.right_series, &right_state);
+        render_series(&panel.series, &left_state);
+
+        for (ax, ay, label) in &panel.annotations {
+            println!("  ({ax:.4}, {ay:.4}): {label}");
+        }
     }
 
     Ok(Value::Void)
@@ -5387,7 +5439,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "plot")]
-    fn yyaxis_ascii_two_blocks() {
+    fn yyaxis_ascii_combined_state() {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
@@ -5421,5 +5473,48 @@ mod tests {
             assert_eq!(st.right_pending_series.len(), 1, "one right series");
         });
         FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn yyaxis_ascii_combined_no_panic() {
+        // hold('off') must flush both sides onto one combined chart without panic.
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+
+        plugin
+            .call("yyaxis", &[Value::Str("left".into())], &env)
+            .unwrap();
+        plugin
+            .call("ylabel", &[Value::Str("Left Y".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[0.0, 1.0, 2.0, 3.0]), f64_vec(&[18.0, 19.0, 21.0, 23.0])],
+                &env,
+            )
+            .unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        plugin
+            .call("ylabel", &[Value::Str("Right Y".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[0.0, 1.0, 2.0, 3.0]), f64_vec(&[60.0, 65.0, 70.0, 68.0])],
+                &env,
+            )
+            .unwrap();
+        plugin
+            .call("title", &[Value::Str("Dual".into())], &env)
+            .unwrap();
+        // Flushing via hold('off') must not panic.
+        plugin
+            .call("hold", &[Value::Str("off".into())], &env)
+            .unwrap();
     }
 }

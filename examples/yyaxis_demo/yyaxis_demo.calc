@@ -15,8 +15,9 @@ plot(t, humid_p, 'r--');
 
 xlabel('Time (h)');
 title('Temperature and Humidity');
+hold('off');
 
-fprintf('ASCII dual-axis output above\n\n');
+fprintf('\n');
 
 % SVG output — dual-axis chart
 yyaxis('left');
@@ -31,14 +32,14 @@ xlabel('Time (h)');
 title('Temperature and Humidity');
 savefig('examples/yyaxis_demo/output/yyaxis_basic.svg');
 
-% Second example: population (millions) vs growth rate (%)
+% Second example: population (billions) vs growth rate (%)
 years   = [2018, 2019, 2020, 2021, 2022, 2023];
-pop_M   = [7.6, 7.7, 7.75, 7.8, 7.9, 8.0];
+pop_B   = [7.6, 7.7, 7.75, 7.8, 7.9, 8.0];
 growth  = [1.1, 1.0, 0.9, 0.8, 1.0, 1.2];
 
 yyaxis('left');
 ylabel('Population (billions)');
-plot(years, pop_M, 'k-');
+plot(years, pop_B, 'k-');
 
 yyaxis('right');
 ylabel('Growth rate (%)');

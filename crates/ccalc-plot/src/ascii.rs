@@ -18,7 +18,7 @@ use crate::FigureState;
 ///
 /// textplots encodes 2 dots per terminal column and 4 dots per terminal row, so
 /// `(cols * 2, rows * 2)` fills roughly half the terminal height with the chart.
-fn chart_canvas() -> (u32, u32) {
+pub(crate) fn chart_canvas() -> (u32, u32) {
     let cols = crate::term_cols();
     let rows = crate::term_rows();
     ((cols * 2) as u32, ((rows * 2).clamp(20, 120)) as u32)
@@ -156,6 +156,157 @@ fn point_in_polygon(px: f32, py: f32, polygon: &[(f32, f32)]) -> bool {
         j = i;
     }
     inside
+}
+
+/// Renders dual-axis XY series on one combined character-grid chart.
+///
+/// Each side's Y values are normalised to `[0, 1]` so both curves fill the
+/// full chart height.  Left series are drawn with `*`, right series with `+`.
+/// Actual Y scales are printed in the footer.
+///
+/// `left` / `right` — tuples of `(x_values, y_values, use_lines)`.
+pub(crate) fn render_dual_axis(
+    left: &[(Vec<f32>, Vec<f32>, bool)],
+    right: &[(Vec<f32>, Vec<f32>, bool)],
+    left_ylim: Option<(f32, f32)>,
+    right_ylim: Option<(f32, f32)>,
+    xlim: Option<(f32, f32)>,
+    title: Option<&str>,
+    xlabel: Option<&str>,
+    left_ylabel: Option<&str>,
+    right_ylabel: Option<&str>,
+) {
+    let cols = crate::term_cols().saturating_sub(4).max(20);
+    let rows = (crate::term_rows() / 2).clamp(6, 30);
+
+    // ── Y range helpers ──────────────────────────────────────────────────
+    let y_range =
+        |series: &[(Vec<f32>, Vec<f32>, bool)], ovr: Option<(f32, f32)>| -> (f32, f32) {
+            if let Some(r) = ovr {
+                return r;
+            }
+            let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+            for (_, y, _) in series {
+                for &v in y {
+                    if v < lo { lo = v; }
+                    if v > hi { hi = v; }
+                }
+            }
+            if lo.is_infinite() {
+                return (0.0, 1.0);
+            }
+            if (hi - lo).abs() < f32::EPSILON { (lo - 1.0, lo + 1.0) } else { (lo, hi) }
+        };
+
+    let (ly_min, ly_max) = y_range(left, left_ylim);
+    let (ry_min, ry_max) = y_range(right, right_ylim);
+
+    // ── X range ─────────────────────────────────────────────────────────
+    let (x_min, x_max) = xlim.unwrap_or_else(|| {
+        let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+        for (x, _, _) in left.iter().chain(right.iter()) {
+            for &v in x {
+                if v < lo { lo = v; }
+                if v > hi { hi = v; }
+            }
+        }
+        if lo.is_infinite() {
+            return (-1.0, 1.0);
+        }
+        if (hi - lo).abs() < f32::EPSILON { (lo - 1.0, lo + 1.0) } else { (lo, hi) }
+    });
+
+    // ── Build character grid ─────────────────────────────────────────────
+    let mut grid: Vec<Vec<char>> = vec![vec![' '; cols]; rows];
+
+    let to_col = |x: f32| -> usize {
+        ((x - x_min) / (x_max - x_min) * (cols - 1) as f32)
+            .round()
+            .clamp(0.0, (cols - 1) as f32) as usize
+    };
+    let to_row = |yn: f32| -> usize {
+        (yn * (rows - 1) as f32)
+            .round()
+            .clamp(0.0, (rows - 1) as f32) as usize
+    };
+
+    let plot_series = |grid: &mut Vec<Vec<char>>,
+                       series: &[(Vec<f32>, Vec<f32>, bool)],
+                       y_min: f32,
+                       y_max: f32,
+                       ch: char| {
+        let span = y_max - y_min;
+        for (xv, yv, use_lines) in series {
+            let pts: Vec<(usize, usize)> = xv
+                .iter()
+                .zip(yv.iter())
+                .map(|(&xi, &yi)| {
+                    let yn = if span.abs() < f32::EPSILON { 0.5 } else { (yi - y_min) / span };
+                    (to_col(xi), to_row(yn))
+                })
+                .collect();
+            if *use_lines {
+                for w in pts.windows(2) {
+                    bresenham(grid, w[0], w[1], ch);
+                }
+            } else {
+                for (c, r) in pts {
+                    grid[r][c] = ch;
+                }
+            }
+        }
+    };
+
+    plot_series(&mut grid, left, ly_min, ly_max, '*');
+    plot_series(&mut grid, right, ry_min, ry_max, '+');
+
+    // ── Print grid ───────────────────────────────────────────────────────
+    if let Some(t) = title {
+        println!("{t}");
+    }
+    println!("+{}+", "-".repeat(cols + 2));
+    for row in grid.iter().rev() {
+        let s: String = row.iter().collect();
+        println!("| {s} |");
+    }
+    println!("+{}+", "-".repeat(cols + 2));
+
+    // ── Footer ───────────────────────────────────────────────────────────
+    if let Some(xl) = xlabel {
+        println!("x: {xl}");
+    }
+    let fmt_r = |lo: f32, hi: f32| format!("[{lo} .. {hi}]");
+    match left_ylabel {
+        Some(yl) => println!("y (left)  * : {yl}  {}", fmt_r(ly_min, ly_max)),
+        None => println!("y (left)  * : {}", fmt_r(ly_min, ly_max)),
+    }
+    match right_ylabel {
+        Some(yr) => println!("y (right) + : {yr}  {}", fmt_r(ry_min, ry_max)),
+        None => println!("y (right) + : {}", fmt_r(ry_min, ry_max)),
+    }
+}
+
+/// Bresenham line-draw into a character grid.
+fn bresenham(grid: &mut Vec<Vec<char>>, (x0, y0): (usize, usize), (x1, y1): (usize, usize), ch: char) {
+    let rows = grid.len() as i32;
+    let cols = if rows > 0 { grid[0].len() as i32 } else { 0 };
+    let (mut x, mut y) = (x0 as i32, y0 as i32);
+    let dx = (x1 as i32 - x0 as i32).abs();
+    let dy = (y1 as i32 - y0 as i32).abs();
+    let sx: i32 = if x0 < x1 { 1 } else { -1 };
+    let sy: i32 = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx - dy;
+    loop {
+        if x >= 0 && x < cols && y >= 0 && y < rows {
+            grid[y as usize][x as usize] = ch;
+        }
+        if x == x1 as i32 && y == y1 as i32 {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 > -dy { err -= dy; x += sx; }
+        if e2 < dx  { err += dx; y += sy; }
+    }
 }
 
 fn print_labels(state: &FigureState) {
