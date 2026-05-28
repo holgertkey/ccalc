@@ -2613,7 +2613,6 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64
             ""
         };
         let is_exploded = explode.get(i).copied().unwrap_or(0.0) > 1e-9;
-        let prefix = if is_exploded { "\u{2192} " } else { "  " }; // → or spaces
         // Build block-character bar.
         let filled = (pct / 100.0 * bar_width as f64 * 8.0).round() as usize;
         let full_blocks = filled / 8;
@@ -2629,10 +2628,11 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64
         for _ in 0..pad {
             bar.push(' ');
         }
+        let explode_marker = if is_exploded { " \u{25c4}" } else { "" }; // ◄ or nothing
         if label.is_empty() {
-            let _ = writeln!(out, "{prefix}[{bar}] {pct:5.1}%");
+            let _ = writeln!(out, " [{bar}] {pct:5.1}%{explode_marker}");
         } else {
-            let _ = writeln!(out, "{prefix}[{bar}] {pct:5.1}%  {label}");
+            let _ = writeln!(out, " [{bar}] {pct:5.1}%  {label}{explode_marker}");
         }
     }
     out
@@ -4984,18 +4984,18 @@ mod tests {
         let explode = vec![0.0_f64, 0.1, 0.0];
         let out = format_pie_ascii(&values, &labels, &explode);
         let lines: Vec<&str> = out.lines().collect();
-        // Second slice (index 1) should have → prefix, others should not.
+        // Second slice (index 1) should have ◄ suffix, others should not.
         assert!(
-            !lines[0].starts_with('\u{2192}'),
-            "non-exploded slice 0 should not have arrow"
+            !lines[0].ends_with('\u{25c4}'),
+            "non-exploded slice 0 should not have ◄"
         );
         assert!(
-            lines[1].starts_with('\u{2192}'),
-            "exploded slice 1 should start with →"
+            lines[1].ends_with('\u{25c4}'),
+            "exploded slice 1 should end with ◄"
         );
         assert!(
-            !lines[2].starts_with('\u{2192}'),
-            "non-exploded slice 2 should not have arrow"
+            !lines[2].ends_with('\u{25c4}'),
+            "non-exploded slice 2 should not have ◄"
         );
     }
 
