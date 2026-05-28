@@ -496,11 +496,7 @@ impl Plugin for PlotPlugin {
                     FIGURE_STATE.with(|f| {
                         let mut st = f.borrow_mut();
                         for y in ys {
-                            st.push_series(PendingSeries::Line(
-                                x.clone(),
-                                y,
-                                style.clone(),
-                            ));
+                            st.push_series(PendingSeries::Line(x.clone(), y, style.clone()));
                         }
                     });
                     Ok(Value::Void)
@@ -1103,9 +1099,7 @@ impl Plugin for PlotPlugin {
                         let panel_to_flush = if !is_right {
                             FIGURE_STATE.with(|f| {
                                 let mut st = f.borrow_mut();
-                                if !st.right_pending_series.is_empty()
-                                    && st.subplot.is_none()
-                                {
+                                if !st.right_pending_series.is_empty() && st.subplot.is_none() {
                                     Some(Panel {
                                         layout: None,
                                         xlabel: st.xlabel.take(),
@@ -1124,9 +1118,7 @@ impl Plugin for PlotPlugin {
                                         grid_width: st.grid_width,
                                         axis_mode: st.axis_mode,
                                         colormap: st.colormap.clone(),
-                                        right_series: std::mem::take(
-                                            &mut st.right_pending_series,
-                                        ),
+                                        right_series: std::mem::take(&mut st.right_pending_series),
                                         right_ylim: st.right_ylim.take(),
                                         right_ylabel: st.right_ylabel.take(),
                                     })
@@ -1144,15 +1136,12 @@ impl Plugin for PlotPlugin {
 
                         FIGURE_STATE.with(|f| {
                             let mut st = f.borrow_mut();
-                            st.active_yaxis =
-                                if is_right { YAxis::Right } else { YAxis::Left };
+                            st.active_yaxis = if is_right { YAxis::Right } else { YAxis::Left };
                             st.hold = true;
                         });
                     }
                     other => {
-                        return Err(format!(
-                            "yyaxis: expected 'left' or 'right', got '{other}'"
-                        ));
+                        return Err(format!("yyaxis: expected 'left' or 'right', got '{other}'"));
                     }
                 }
                 Ok(Value::Void)
@@ -1312,8 +1301,8 @@ impl Plugin for PlotPlugin {
                         let mut st = f.borrow_mut();
                         st.hold = false;
                         // When not in subplot mode: extract panel for ASCII flush.
-                        let has_series = !st.pending_series.is_empty()
-                            || !st.right_pending_series.is_empty();
+                        let has_series =
+                            !st.pending_series.is_empty() || !st.right_pending_series.is_empty();
                         if st.subplot.is_none() && has_series {
                             Some(Panel {
                                 layout: None,
@@ -1379,8 +1368,7 @@ impl Plugin for PlotPlugin {
                 let (x, y) = extract_xy(name, &data_args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
-                        f.borrow_mut()
-                            .push_series(PendingSeries::Fill(x, y, style));
+                        f.borrow_mut().push_series(PendingSeries::Fill(x, y, style));
                     });
                     Ok(Value::Void)
                 } else {
@@ -1446,8 +1434,7 @@ impl Plugin for PlotPlugin {
                 let (x, y) = extract_xy("area", &data_args)?;
                 if FIGURE_STATE.with(|f| is_accumulating(&f.borrow())) {
                     FIGURE_STATE.with(|f| {
-                        f.borrow_mut()
-                            .push_series(PendingSeries::Area(x, y, style));
+                        f.borrow_mut().push_series(PendingSeries::Area(x, y, style));
                     });
                     Ok(Value::Void)
                 } else {
@@ -2963,9 +2950,8 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
 
     if has_dual {
         // Use combined chart when both sides consist only of Line / Scatter series.
-        let is_xy = |s: &PendingSeries| {
-            matches!(s, PendingSeries::Line(..) | PendingSeries::Scatter(..))
-        };
+        let is_xy =
+            |s: &PendingSeries| matches!(s, PendingSeries::Line(..) | PendingSeries::Scatter(..));
         let can_combine = !panel.series.is_empty()
             && panel.series.iter().all(is_xy)
             && panel.right_series.iter().all(is_xy);
@@ -5371,11 +5357,7 @@ mod tests {
             .call("yyaxis", &[Value::Str("left".into())], &env)
             .unwrap();
         plugin
-            .call(
-                "plot",
-                &[f64_vec(&[1.0, 2.0]), f64_vec(&[1.0, 2.0])],
-                &env,
-            )
+            .call("plot", &[f64_vec(&[1.0, 2.0]), f64_vec(&[1.0, 2.0])], &env)
             .unwrap();
         // Switch to right axis and add another series.
         plugin
@@ -5530,10 +5512,26 @@ mod tests {
         let plugin = PlotPlugin;
         let env = Env::new();
 
-        plugin.call("yyaxis", &[Value::Str("left".into())], &env).unwrap();
-        plugin.call("plot", &[f64_vec(&[1.0, 2.0]), f64_vec(&[10.0, 20.0])], &env).unwrap();
-        plugin.call("yyaxis", &[Value::Str("right".into())], &env).unwrap();
-        plugin.call("plot", &[f64_vec(&[1.0, 2.0]), f64_vec(&[100.0, 200.0])], &env).unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("left".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0]), f64_vec(&[10.0, 20.0])],
+                &env,
+            )
+            .unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("right".into())], &env)
+            .unwrap();
+        plugin
+            .call(
+                "plot",
+                &[f64_vec(&[1.0, 2.0]), f64_vec(&[100.0, 200.0])],
+                &env,
+            )
+            .unwrap();
 
         // State: both sides pending.
         FIGURE_STATE.with(|f| {
@@ -5543,12 +5541,22 @@ mod tests {
         });
 
         // Starting a new session via yyaxis('left') must flush the previous one.
-        plugin.call("yyaxis", &[Value::Str("left".into())], &env).unwrap();
+        plugin
+            .call("yyaxis", &[Value::Str("left".into())], &env)
+            .unwrap();
 
         FIGURE_STATE.with(|f| {
             let st = f.borrow();
-            assert_eq!(st.pending_series.len(), 0, "left queue must be empty after auto-flush");
-            assert_eq!(st.right_pending_series.len(), 0, "right queue must be empty after auto-flush");
+            assert_eq!(
+                st.pending_series.len(),
+                0,
+                "left queue must be empty after auto-flush"
+            );
+            assert_eq!(
+                st.right_pending_series.len(),
+                0,
+                "right queue must be empty after auto-flush"
+            );
         });
         FIGURE_STATE.with(|f| f.take());
     }
@@ -5570,7 +5578,10 @@ mod tests {
         plugin
             .call(
                 "plot",
-                &[f64_vec(&[0.0, 1.0, 2.0, 3.0]), f64_vec(&[18.0, 19.0, 21.0, 23.0])],
+                &[
+                    f64_vec(&[0.0, 1.0, 2.0, 3.0]),
+                    f64_vec(&[18.0, 19.0, 21.0, 23.0]),
+                ],
                 &env,
             )
             .unwrap();
@@ -5583,7 +5594,10 @@ mod tests {
         plugin
             .call(
                 "plot",
-                &[f64_vec(&[0.0, 1.0, 2.0, 3.0]), f64_vec(&[60.0, 65.0, 70.0, 68.0])],
+                &[
+                    f64_vec(&[0.0, 1.0, 2.0, 3.0]),
+                    f64_vec(&[60.0, 65.0, 70.0, 68.0]),
+                ],
                 &env,
             )
             .unwrap();

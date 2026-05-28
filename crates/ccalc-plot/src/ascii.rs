@@ -180,23 +180,30 @@ pub(crate) fn render_dual_axis(
     let rows = (crate::term_rows() / 2).clamp(6, 30);
 
     // ── Y range helpers ──────────────────────────────────────────────────
-    let y_range =
-        |series: &[(Vec<f32>, Vec<f32>, bool)], ovr: Option<(f32, f32)>| -> (f32, f32) {
-            if let Some(r) = ovr {
-                return r;
-            }
-            let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
-            for (_, y, _) in series {
-                for &v in y {
-                    if v < lo { lo = v; }
-                    if v > hi { hi = v; }
+    let y_range = |series: &[(Vec<f32>, Vec<f32>, bool)], ovr: Option<(f32, f32)>| -> (f32, f32) {
+        if let Some(r) = ovr {
+            return r;
+        }
+        let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+        for (_, y, _) in series {
+            for &v in y {
+                if v < lo {
+                    lo = v;
+                }
+                if v > hi {
+                    hi = v;
                 }
             }
-            if lo.is_infinite() {
-                return (0.0, 1.0);
-            }
-            if (hi - lo).abs() < f32::EPSILON { (lo - 1.0, lo + 1.0) } else { (lo, hi) }
-        };
+        }
+        if lo.is_infinite() {
+            return (0.0, 1.0);
+        }
+        if (hi - lo).abs() < f32::EPSILON {
+            (lo - 1.0, lo + 1.0)
+        } else {
+            (lo, hi)
+        }
+    };
 
     let (ly_min, ly_max) = y_range(left, left_ylim);
     let (ry_min, ry_max) = y_range(right, right_ylim);
@@ -206,14 +213,22 @@ pub(crate) fn render_dual_axis(
         let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
         for (x, _, _) in left.iter().chain(right.iter()) {
             for &v in x {
-                if v < lo { lo = v; }
-                if v > hi { hi = v; }
+                if v < lo {
+                    lo = v;
+                }
+                if v > hi {
+                    hi = v;
+                }
             }
         }
         if lo.is_infinite() {
             return (-1.0, 1.0);
         }
-        if (hi - lo).abs() < f32::EPSILON { (lo - 1.0, lo + 1.0) } else { (lo, hi) }
+        if (hi - lo).abs() < f32::EPSILON {
+            (lo - 1.0, lo + 1.0)
+        } else {
+            (lo, hi)
+        }
     });
 
     // ── Build character grid ─────────────────────────────────────────────
@@ -241,7 +256,11 @@ pub(crate) fn render_dual_axis(
                 .iter()
                 .zip(yv.iter())
                 .map(|(&xi, &yi)| {
-                    let yn = if span.abs() < f32::EPSILON { 0.5 } else { (yi - y_min) / span };
+                    let yn = if span.abs() < f32::EPSILON {
+                        0.5
+                    } else {
+                        (yi - y_min) / span
+                    };
                     (to_col(xi), to_row(yn))
                 })
                 .collect();
@@ -287,7 +306,12 @@ pub(crate) fn render_dual_axis(
 }
 
 /// Bresenham line-draw into a character grid.
-fn bresenham(grid: &mut Vec<Vec<char>>, (x0, y0): (usize, usize), (x1, y1): (usize, usize), ch: char) {
+fn bresenham(
+    grid: &mut Vec<Vec<char>>,
+    (x0, y0): (usize, usize),
+    (x1, y1): (usize, usize),
+    ch: char,
+) {
     let rows = grid.len() as i32;
     let cols = if rows > 0 { grid[0].len() as i32 } else { 0 };
     let (mut x, mut y) = (x0 as i32, y0 as i32);
@@ -304,8 +328,14 @@ fn bresenham(grid: &mut Vec<Vec<char>>, (x0, y0): (usize, usize), (x1, y1): (usi
             break;
         }
         let e2 = 2 * err;
-        if e2 > -dy { err -= dy; x += sx; }
-        if e2 < dx  { err += dx; y += sy; }
+        if e2 > -dy {
+            err -= dy;
+            x += sx;
+        }
+        if e2 < dx {
+            err += dx;
+            y += sy;
+        }
     }
 }
 

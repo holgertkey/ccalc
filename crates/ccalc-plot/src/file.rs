@@ -1441,7 +1441,13 @@ where
                 left_y.extend_from_slice(y);
                 left_y.extend(y.iter().zip(v.iter()).map(|(&yi, &vi)| yi + vi));
             }
-            PendingSeries::ErrorBar { x, y, e_low, e_high, .. } => {
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                ..
+            } => {
                 left_x.extend_from_slice(x);
                 for i in 0..y.len() {
                     left_y.push(y[i] - e_low[i]);
@@ -1488,7 +1494,13 @@ where
                 right_y.extend_from_slice(y);
                 right_y.extend(y.iter().zip(v.iter()).map(|(&yi, &vi)| yi + vi));
             }
-            PendingSeries::ErrorBar { x, y, e_low, e_high, .. } => {
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                ..
+            } => {
                 right_x.extend_from_slice(x);
                 for i in 0..y.len() {
                     right_y.push(y[i] - e_low[i]);
@@ -1702,10 +1714,7 @@ where
                 chart
                     .draw_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                         let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
-                        Rectangle::new(
-                            [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
-                            color.filled(),
-                        )
+                        Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], color.filled())
                     }))
                     .map_err(|e| e.to_string())?;
             }
@@ -1729,7 +1738,13 @@ where
                     )
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::ErrorBar { x, y, e_low, e_high, style } => {
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                style,
+            } => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
                 let (x_lo, x_hi) = range_with_margin(x);
                 let cap_half = (x_hi - x_lo) * 0.015;
@@ -1770,7 +1785,14 @@ where
                     .draw_series(LineSeries::new(outline, &fill_color))
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::ColorScatter { x, y, sz, c, c_min, c_max } => {
+            PendingSeries::ColorScatter {
+                x,
+                y,
+                sz,
+                c,
+                c_min,
+                c_max,
+            } => {
                 let colormap = panel
                     .colormap
                     .clone()
@@ -1792,7 +1814,11 @@ where
                         .map_err(|e| e.to_string())?;
                 }
             }
-            PendingSeries::Hist { counts, edges, style } => {
+            PendingSeries::Hist {
+                counts,
+                edges,
+                style,
+            } => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
                 chart
                     .draw_series((0..counts.len()).map(|j| {
@@ -1866,10 +1892,7 @@ where
                 match linestyle {
                     crate::style::LinestyleKind::Solid => {
                         chart
-                            .draw_secondary_series(LineSeries::new(
-                                pts.iter().copied(),
-                                line_style,
-                            ))
+                            .draw_secondary_series(LineSeries::new(pts.iter().copied(), line_style))
                             .map_err(|e| e.to_string())?;
                     }
                     crate::style::LinestyleKind::Dashed => {
@@ -1945,10 +1968,7 @@ where
                 chart
                     .draw_secondary_series(x.iter().zip(y.iter()).map(|(&xi, &yi)| {
                         let (y_lo, y_hi) = if yi >= 0.0 { (0.0, yi) } else { (yi, 0.0) };
-                        Rectangle::new(
-                            [(xi - bar_w, y_lo), (xi + bar_w, y_hi)],
-                            color.filled(),
-                        )
+                        Rectangle::new([(xi - bar_w, y_lo), (xi + bar_w, y_hi)], color.filled())
                     }))
                     .map_err(|e| e.to_string())?;
             }
@@ -1972,7 +1992,13 @@ where
                     )
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::ErrorBar { x, y, e_low, e_high, style } => {
+            PendingSeries::ErrorBar {
+                x,
+                y,
+                e_low,
+                e_high,
+                style,
+            } => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
                 let (x_lo, x_hi) = range_with_margin(x);
                 let cap_half = (x_hi - x_lo) * 0.015;
@@ -1987,9 +2013,7 @@ where
                         vec![(xi - cap_half, y_hi), (xi + cap_half, y_hi)],
                     ] {
                         chart
-                            .draw_secondary_series(std::iter::once(PathElement::new(
-                                seg, color,
-                            )))
+                            .draw_secondary_series(std::iter::once(PathElement::new(seg, color)))
                             .map_err(|e| e.to_string())?;
                     }
                     chart
@@ -2011,10 +2035,7 @@ where
                     pts.push((x[0], 0.0));
                 }
                 chart
-                    .draw_secondary_series(std::iter::once(Polygon::new(
-                        pts,
-                        fill_color.mix(0.4),
-                    )))
+                    .draw_secondary_series(std::iter::once(Polygon::new(pts, fill_color.mix(0.4))))
                     .map_err(|e| e.to_string())?;
                 let outline: Vec<(f64, f64)> =
                     x.iter().zip(y.iter()).map(|(&xi, &yi)| (xi, yi)).collect();
@@ -2022,7 +2043,14 @@ where
                     .draw_secondary_series(LineSeries::new(outline, &fill_color))
                     .map_err(|e| e.to_string())?;
             }
-            PendingSeries::ColorScatter { x, y, sz, c, c_min, c_max } => {
+            PendingSeries::ColorScatter {
+                x,
+                y,
+                sz,
+                c,
+                c_min,
+                c_max,
+            } => {
                 let colormap = panel
                     .colormap
                     .clone()
@@ -2044,7 +2072,11 @@ where
                         .map_err(|e| e.to_string())?;
                 }
             }
-            PendingSeries::Hist { counts, edges, style } => {
+            PendingSeries::Hist {
+                counts,
+                edges,
+                style,
+            } => {
                 let color = style_to_rgb(style).unwrap_or(default_color);
                 chart
                     .draw_secondary_series((0..counts.len()).map(|j| {
