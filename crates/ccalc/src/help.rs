@@ -153,7 +153,9 @@ pub fn print(topic: Option<&str>) {
             | "errorbar"
             | "errorbars"
             | "statisticalextensions"
-            | "colorscatter",
+            | "colorscatter"
+            | "pie"
+            | "piechart",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -267,6 +269,8 @@ Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features pl
         rectangle([x y w h])               same, vector form
         polar(theta,r)                      polar coordinate line chart
         quiver(x,y,u,v)                     vector field arrows (Unicode / SVG)
+        pie(v)                              pie chart (ASCII bar-art / SVG wedge polygons)
+        pie(v,labels)  pie(v,explode,labels,'f.svg')  with labels / explode / file
         text(x,y,'label')                   text annotation at data coordinates
         plot(x,y,'r--')                     style string: color + linestyle (MATLAB)
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
@@ -3825,6 +3829,30 @@ Two rendering tiers; both use the same annotation API.
     colormap('viridis')
     scatter(x, sin(x), 6, cos(x), 'scatter_color.svg')
 
+── Pie charts ───────────────────────────────────────────────────────────────
+    pie(v)                               pie chart from numeric vector v
+    pie(v, labels)                       with explicit slice labels (cell array)
+    pie(v, explode)                      radially shift slices where explode(i) > 0
+    pie(v, explode, labels)              explode + labels
+    pie(v, 'out.svg')                    save to SVG/PNG (requires plot-svg)
+    pie(v, labels, 'out.svg')            labels + file
+    pie(v, explode, labels, 'out.svg')   explode + labels + file
+
+    Argument type detection: Cell → labels; numeric vector → explode; string → path.
+    Values need not sum to 100; each slice is proportional to its share of the total.
+    Values must be non-negative with a positive sum.
+
+    ASCII tier:  horizontal bar-art table, 20-char bar, 4 rotating fill chars (█▓▒░),
+                 dot fill (·) for empty space, : midpoint marker, ◄ suffix for exploded slices.
+    File tier:   one Polygon wedge per slice (64 arc-points + center) drawn into a
+                 (-1..1)×(-1..1) Cartesian space with axes hidden; labels at r×1.18;
+                 slices colored with the 7-color Octave palette.
+
+    v = [30, 20, 15, 25, 10];
+    labels = {{'Work', 'Sleep', 'Exercise', 'Leisure', 'Eating'}};
+    explode = [0.1, 0, 0, 0, 0];
+    pie(v, explode, labels, 'schedule.svg')
+
 ── Polar plots ──────────────────────────────────────────────────────────────
     polar(theta, r)              polar chart; theta in radians
     polar(theta, r, 'out.svg')   save polar chart to SVG/PNG
@@ -4099,6 +4127,11 @@ Append a file path as the last string argument to save instead of print:
     % Per-series line width and marker size
     plot(xs, sin(xs), 'r--', 'linewidth', 2, 'markersize', 4)
 
+    % Pie chart with explode and labels
+    v = [30, 20, 15, 25, 10];
+    labels = {{'Work', 'Sleep', 'Exercise', 'Leisure', 'Eating'}};
+    pie(v, [0.1, 0, 0, 0, 0], labels, 'schedule.svg')
+
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
           examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
@@ -4115,6 +4148,7 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/color_system_demo/color_system_demo.calc  (Phase 30.5 unified color system)
           examples/figure_appearance_demo/figure_appearance_demo.calc  (Phase 30.6 figure appearance)
           examples/errorbar_demo/errorbar_demo.calc           (Phase 32b: symmetric + asymmetric errorbar)
-          examples/scatter_color_demo/scatter_color_demo.calc (Phase 32b: per-point color scatter)"
+          examples/scatter_color_demo/scatter_color_demo.calc (Phase 32b: per-point color scatter)
+          examples/pie_demo/pie_demo.calc                     (Phase 32c: pie chart with labels + explode)"
     );
 }

@@ -731,6 +731,66 @@ See also: `examples/errorbar_demo/errorbar_demo.calc`,
 
 ---
 
+## Pie charts
+
+Phase 32c adds pie chart support through the `pie` function.
+
+### `pie(v)` / `pie(v, labels)` / `pie(v, explode)` / `pie(v, explode, labels)` / `pie(v, ..., 'file')`
+
+Renders a proportional pie chart from the numeric vector `v`.  Each slice covers
+an angular fraction equal to `v[i] / sum(v)`.  Values must be non-negative and
+their sum must be positive.
+
+**Argument type detection** (flexible ordering):
+- `Cell` array of strings → slice labels.
+- Numeric vector (same length as `v`) → per-slice explode offsets (see below).
+- String ending in `.svg`/`.png` → output file path (requires `plot-svg`).
+
+**Explode:** when `explode[i] > 0`, slice `i` is shifted radially outward by
+`explode[i] × 0.08 × r` from the chart center.
+
+**ASCII tier:** horizontal bar-art table with a 20-character bar per slice.
+Four rotating fill characters (`█ ▓ ▒ ░`) visually distinguish slices; empty
+bar space is filled with `·`; a `:` marker appears at the midpoint (position 10)
+of every bar for scale reference; exploded slices get a `◄` suffix after the label.
+
+```
+pie chart:
+  Work      ████████··········:··········  30.0% ◄
+  Sleep     █████·············:··········  20.0%
+  Exercise  ████··············:··········  15.0%
+  Leisure   ██████████········:··········  25.0%
+  Eating    ██················:··········  10.0%
+```
+
+**File tier:** one `Polygon` wedge per slice built from 64 arc points plus the
+center point (65 vertices total).  The chart is drawn in a `(-1..1) × (-1..1)`
+Cartesian space with axes and mesh hidden.  Labels are placed at radius
+`r × 1.18` using `Text` elements.  Slices cycle through the 7-color Octave
+palette; set `colormap('name')` before calling `pie` to use a different palette.
+
+```matlab
+v = [30, 20, 15, 25, 10];
+labels = {'Work', 'Sleep', 'Exercise', 'Leisure', 'Eating'};
+
+% ASCII output
+pie(v)
+pie(v, labels)
+
+% Explode first slice outward
+explode = [0.1, 0, 0, 0, 0];
+pie(v, explode, labels)
+
+% File export
+pie(v, 'pie_basic.svg')
+pie(v, labels, 'pie_labels.svg')
+pie(v, explode, labels, 'pie_explode.svg')
+```
+
+See also: `examples/pie_demo/pie_demo.calc`
+
+---
+
 ## Polar plots
 
 ### `polar(theta, r)` / `polar(theta, r, style)` / `polar(theta, r, 'file')`
@@ -1068,6 +1128,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **Scatter plots:** filled circles, 3 px radius.
 - **Per-point color scatter (`scatter(x,y,sz,c)`):** `Circle` elements; each fill color mapped through the active colormap; radius from `sz` (scalar or per-point vector).
 - **Error bars (`errorbar`):** three `PathElement` segments (shaft + two caps) plus a `Circle` centre dot per data point; cap width = 3 % of x-range.
+- **Pie charts (`pie`):** one `Polygon` wedge per slice (64 arc points + center); axes and mesh disabled; labels via `Text` at radius × 1.18; explode offsets along slice bisector.
 - **Bar charts:** edge-to-edge `Rectangle` series; negative bars extend below baseline.
 - **Stem plots:** `PathElement` vertical lines + `Circle` tip markers (4 px).
 - **Histograms:** edge-to-edge `Rectangle` bins (blue fill).
@@ -1112,6 +1173,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/primitives_demo/primitives_demo.calc` — Phase 32a: `line`, `patch`, `rectangle` in hold mode and standalone
 - `examples/errorbar_demo/errorbar_demo.calc` — Phase 32b: symmetric and asymmetric `errorbar`, hold-mode overlay with `plot`
 - `examples/scatter_color_demo/scatter_color_demo.calc` — Phase 32b: per-point color `scatter(x,y,sz,c)` with viridis/jet colormaps and hold mode
+- `examples/pie_demo/pie_demo.calc` — Phase 32c: `pie` chart with labels, explode, and file export
 
 ---
 

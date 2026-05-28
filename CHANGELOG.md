@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 32c — Pie charts: `pie(v)`**
+- `pie(v)` — pie chart rendered from a numeric vector; slices are proportional to values.
+- `pie(v, labels)` — explicit slice labels supplied as a cell array of strings.
+- `pie(v, explode)` — numeric vector shifts selected slices radially outward.
+- `pie(v, explode, labels)` / `pie(v, labels, path)` / `pie(v, explode, labels, path)` —
+  flexible argument order: Cell → labels, numeric vector → explode, string → file path.
+- New `PendingSeries::Pie { values, labels, explode }` variant in `ccalc-plot`.
+- ASCII tier: horizontal bar-art table with 4 rotating fill characters (`█▓▒░`), dot fill
+  (`·`) for empty bar space, `:` midpoint marker, and `◄` suffix on exploded slices.
+- File tier: one `Polygon` wedge per slice (64 arc points + center) rendered into a
+  `(-1..1) × (-1..1)` Cartesian space with axes and mesh disabled; explode offset along
+  the slice bisector; labels placed at `r × 1.18` via `Text`.
+- 10 new tests in `lib.rs` (unit + integration).
+- Example script `examples/pie_demo/pie_demo.calc`.
+
 - **Phase 32b — Statistical extensions: `errorbar` + per-point scatter color**
 - `errorbar(x, y, e[, style[, path]])` — symmetric error bars; each point gets
   a vertical cap spanning `[y-e, y+e]`.
