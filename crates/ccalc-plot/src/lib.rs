@@ -2630,7 +2630,7 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64
             if j < filled {
                 bar.push(fill);
             } else if j == mid && filled <= mid {
-                bar.push('\u{250a}'); // ┊
+                bar.push(':');
             } else {
                 bar.push('\u{00b7}'); // ·
             }
