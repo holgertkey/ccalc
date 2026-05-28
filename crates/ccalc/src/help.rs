@@ -155,7 +155,10 @@ pub fn print(topic: Option<&str>) {
             | "statisticalextensions"
             | "colorscatter"
             | "pie"
-            | "piechart",
+            | "piechart"
+            | "yyaxis"
+            | "dualaxis"
+            | "secondyaxis",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -271,6 +274,7 @@ Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features pl
         quiver(x,y,u,v)                     vector field arrows (Unicode / SVG)
         pie(v)                              pie chart (ASCII bar-art / SVG wedge polygons)
         pie(v,labels)  pie(v,explode,labels,'f.svg')  with labels / explode / file
+        yyaxis('left')  yyaxis('right')     switch active Y axis for dual-axis charts
         text(x,y,'label')                   text annotation at data coordinates
         plot(x,y,'r--')                     style string: color + linestyle (MATLAB)
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
@@ -3852,6 +3856,37 @@ Two rendering tiers; both use the same annotation API.
     labels = {{'Work', 'Sleep', 'Exercise', 'Leisure', 'Eating'}};
     explode = [0.1, 0, 0, 0, 0];
     pie(v, explode, labels, 'schedule.svg')
+
+── Dual Y axis ──────────────────────────────────────────────────────────────
+    yyaxis('left')    make the left Y axis active for subsequent plot / ylabel / ylim
+    yyaxis('right')   make the right Y axis active
+
+    Both yyaxis calls implicitly enable hold mode so that series accumulate.
+    The chart is rendered (flushed) automatically when:
+      • yyaxis('left') is called again while right-axis series are pending, OR
+      • savefig('path.svg') is called.
+
+    ASCII tier:  single character-grid chart; left series drawn with '.',
+                 right series with '*'; footer shows actual Y ranges for both axes.
+    File tier:   plotters DualCoordChartContext with independent left and right
+                 Y-axis tick labels and grid lines.
+
+    t       = [0, 1, 2, 3, 4, 5];
+    temp_C  = [18, 19, 21, 23, 22, 20];
+    humid_p = [60, 62, 65, 70, 68, 64];
+
+    yyaxis('left');
+    ylabel('Temperature (C)');
+    plot(t, temp_C, 'b-');
+
+    yyaxis('right');
+    ylabel('Humidity (%)');
+    plot(t, humid_p, 'r--');
+
+    xlabel('Time (h)');
+    title('Temperature and Humidity');
+    % ASCII chart renders here automatically when the next yyaxis('left') or
+    % savefig is called.  Call hold('off') to render to the terminal immediately.
 
 ── Polar plots ──────────────────────────────────────────────────────────────
     polar(theta, r)              polar chart; theta in radians

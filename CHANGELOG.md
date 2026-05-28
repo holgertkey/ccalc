@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 32d — Dual Y axis: `yyaxis`**
+- `yyaxis('left')` / `yyaxis('right')` — switch the active Y axis; subsequent
+  `plot`, `scatter`, `ylabel`, and `ylim` calls are routed to that axis.
+- Combined ASCII chart: both curves rendered on one character grid; left series
+  drawn with `.`, right series with `*`; actual Y scales shown in the footer.
+- SVG/PNG file export via plotters `DualCoordChartContext` — left and right Y
+  axes rendered with independent tick labels.
+- Auto-flush: calling `yyaxis('left')` while the right series buffer is non-empty
+  automatically renders the previous dual-axis session; no explicit `hold('off')`
+  required between back-to-back `yyaxis` blocks.
+- New `YAxis` enum (`Left` / `Right`) in `style.rs`; `FigureState` and `Panel`
+  extended with `active_yaxis`, `right_pending_series`, `right_ylim`, `right_ylabel`.
+- 7 new tests (`yyaxis_right_sets_active`, `yyaxis_series_routing`,
+  `yyaxis_ylabel_routing`, `yyaxis_svg_has_two_axis_labels`,
+  `yyaxis_ascii_combined_state`, `yyaxis_ascii_combined_no_panic`,
+  `yyaxis_auto_flush_on_new_left`).
+- Example script `examples/yyaxis_demo/yyaxis_demo.calc`.
+
 - **Phase 32c — Pie charts: `pie(v)`**
 - `pie(v)` — pie chart rendered from a numeric vector; slices are proportional to values.
 - `pie(v, labels)` — explicit slice labels supplied as a cell array of strings.

@@ -810,6 +810,7 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 | `pie(v)` | `plot` | Pie chart; ASCII bar-art table, SVG/PNG wedge polygons |
 | `pie(v, labels)` | `plot` | Pie chart with explicit slice labels (cell array) |
 | `pie(v, explode, labels, 'f.svg')` | `plot-svg` | Pie with explode offsets, labels, and file export |
+| `yyaxis('left')` / `yyaxis('right')` | `plot` | Switch active Y axis; subsequent `plot`/`ylabel`/`ylim` apply to that axis |
 | `imagesc(Z)` | `plot` | False-colour heat-map of matrix Z (ASCII density chars) |
 | `imagesc(Z, 'f.svg')` | `plot-svg` | False-colour image saved to SVG/PNG (800 × 600 px) |
 | `imagesc(Z, 'f.png', W, H)` | `plot-svg` | False-colour image at custom W × H pixels |
@@ -2189,6 +2190,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `errorbar_demo/errorbar_demo.calc` | Phase 32b: symmetric + asymmetric `errorbar`, hold-mode overlay with `plot` |
 | `scatter_color_demo/scatter_color_demo.calc` | Phase 32b: per-point color `scatter(x,y,sz,c)` with viridis/jet colormaps and hold mode |
 | `pie_demo/pie_demo.calc` | Phase 32c: `pie` chart with explicit labels, explode offsets, and SVG file export |
+| `yyaxis_demo/yyaxis_demo.calc` | Phase 32d: dual Y-axis chart — temperature vs humidity (ASCII + SVG), population vs growth rate (SVG) |
 
 ```bash
 ccalc < examples/mortgage.calc

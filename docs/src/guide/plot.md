@@ -791,6 +791,80 @@ See also: `examples/pie_demo/pie_demo.calc`
 
 ---
 
+## Dual Y axis
+
+Phase 32d adds dual Y-axis support through `yyaxis`.
+
+### `yyaxis('left')` / `yyaxis('right')`
+
+Switches the **active Y axis**.  All subsequent `plot`, `scatter`, `ylabel`, and
+`ylim` calls are routed to that axis until the axis is switched again.
+
+Both calls implicitly enable hold mode so that series from both sides accumulate
+before rendering.  The chart is flushed automatically when:
+
+- `yyaxis('left')` is called again while right-axis series are pending
+  (i.e. at the start of the next dual-axis block), or
+- `savefig('path.svg')` commits all pending panels to a file.
+
+Call `hold('off')` to render the chart to the terminal immediately without
+starting a new block.
+
+**ASCII rendering** draws both curves on a single character grid; left-axis
+series use `.` and right-axis series use `*`.  The footer lines show the actual
+Y range for each axis:
+
+```
+Temperature and Humidity
++------------------------------------------------------------------------+
+|                                          *****                         |
+|                                      .***     ********                 |
+|                                  ..***                *****            |
+|                              ...***                        ***         |
++------------------------------------------------------------------------+
+x: Time (h)
+y (left)  . : Temperature (C)  [18 .. 23]
+y (right) * : Humidity (%)     [60 .. 70]
+```
+
+**SVG / PNG rendering** uses the plotters `DualCoordChartContext` so the left
+and right Y axes each carry independent tick labels and optional grid lines.
+
+```matlab
+t       = [0, 1, 2, 3, 4, 5];
+temp_C  = [18, 19, 21, 23, 22, 20];
+humid_p = [60, 62, 65, 70, 68, 64];
+
+% ASCII output — renders automatically when the next yyaxis block begins
+yyaxis('left');
+ylabel('Temperature (C)');
+plot(t, temp_C, 'b-');
+
+yyaxis('right');
+ylabel('Humidity (%)');
+plot(t, humid_p, 'r--');
+
+xlabel('Time (h)');
+title('Temperature and Humidity');
+
+% SVG output
+yyaxis('left');           % <-- also flushes the ASCII chart above
+ylabel('Temperature (C)');
+plot(t, temp_C, 'b-');
+
+yyaxis('right');
+ylabel('Humidity (%)');
+plot(t, humid_p, 'r--');
+
+xlabel('Time (h)');
+title('Temperature and Humidity');
+savefig('examples/yyaxis_demo/output/yyaxis_basic.svg');
+```
+
+See also: `examples/yyaxis_demo/yyaxis_demo.calc`
+
+---
+
 ## Polar plots
 
 ### `polar(theta, r)` / `polar(theta, r, style)` / `polar(theta, r, 'file')`
@@ -1174,6 +1248,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/errorbar_demo/errorbar_demo.calc` — Phase 32b: symmetric and asymmetric `errorbar`, hold-mode overlay with `plot`
 - `examples/scatter_color_demo/scatter_color_demo.calc` — Phase 32b: per-point color `scatter(x,y,sz,c)` with viridis/jet colormaps and hold mode
 - `examples/pie_demo/pie_demo.calc` — Phase 32c: `pie` chart with labels, explode, and file export
+- `examples/yyaxis_demo/yyaxis_demo.calc` — Phase 32d: dual Y-axis — temperature vs humidity (ASCII + SVG), population vs growth rate (SVG)
 
 ---
 
