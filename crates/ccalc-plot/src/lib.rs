@@ -2598,12 +2598,18 @@ fn render_pie(
 /// Formats a pie chart as a horizontal bar-art table.
 ///
 /// Returns the formatted string so callers (including tests) can inspect it.
+/// Fill characters cycled per slice so each slice is visually distinct.
+const SLICE_FILLS: [char; 4] = [
+    '\u{2588}', // █ full block
+    '\u{2593}', // ▓ dark shade
+    '\u{2592}', // ▒ medium shade
+    '\u{2591}', // ░ light shade
+];
+
 pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64]) -> String {
     use std::fmt::Write;
     let total: f64 = values.iter().sum();
     let bar_width: usize = 20;
-    let block_chars = [' ', '\u{258f}', '\u{258e}', '\u{258d}', '\u{258c}',
-                       '\u{258b}', '\u{258a}', '\u{2589}', '\u{2588}'];
     let mut out = String::new();
     for (i, &v) in values.iter().enumerate() {
         let pct = v / total * 100.0;
@@ -2613,19 +2619,15 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64
             ""
         };
         let is_exploded = explode.get(i).copied().unwrap_or(0.0) > 1e-9;
-        // Build block-character bar.
-        let filled = (pct / 100.0 * bar_width as f64 * 8.0).round() as usize;
-        let full_blocks = filled / 8;
-        let partial = filled % 8;
+        let fill = SLICE_FILLS[i % SLICE_FILLS.len()];
+        // Build bar using this slice's fill character.
+        let filled = (pct / 100.0 * bar_width as f64).round() as usize;
+        let filled = filled.min(bar_width);
         let mut bar = String::new();
-        for _ in 0..full_blocks {
-            bar.push('\u{2588}'); // full block
+        for _ in 0..filled {
+            bar.push(fill);
         }
-        if partial > 0 && full_blocks < bar_width {
-            bar.push(block_chars[partial]);
-        }
-        let pad = bar_width.saturating_sub(full_blocks + if partial > 0 { 1 } else { 0 });
-        for _ in 0..pad {
+        for _ in filled..bar_width {
             bar.push(' ');
         }
         let explode_marker = if is_exploded { " \u{25c4}" } else { "" }; // ◄ or nothing
