@@ -2585,7 +2585,7 @@ fn render_pie(
 ) -> Result<Value, String> {
     match path {
         None | Some("ascii") => {
-            print!("{}", format_pie_ascii(values, labels));
+            print!("{}", format_pie_ascii(values, labels, explode));
             Ok(Value::Void)
         }
         Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
@@ -2598,7 +2598,7 @@ fn render_pie(
 /// Formats a pie chart as a horizontal bar-art table.
 ///
 /// Returns the formatted string so callers (including tests) can inspect it.
-pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String]) -> String {
+pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String], explode: &[f64]) -> String {
     use std::fmt::Write;
     let total: f64 = values.iter().sum();
     let bar_width: usize = 20;
@@ -2612,6 +2612,8 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String]) -> String {
         } else {
             ""
         };
+        let is_exploded = explode.get(i).copied().unwrap_or(0.0) > 1e-9;
+        let prefix = if is_exploded { "\u{2192} " } else { "  " }; // → or spaces
         // Build block-character bar.
         let filled = (pct / 100.0 * bar_width as f64 * 8.0).round() as usize;
         let full_blocks = filled / 8;
@@ -2628,9 +2630,9 @@ pub(crate) fn format_pie_ascii(values: &[f64], labels: &[String]) -> String {
             bar.push(' ');
         }
         if label.is_empty() {
-            let _ = writeln!(out, " [{bar}] {pct:5.1}%");
+            let _ = writeln!(out, "{prefix}[{bar}] {pct:5.1}%");
         } else {
-            let _ = writeln!(out, " [{bar}] {pct:5.1}%  {label}");
+            let _ = writeln!(out, "{prefix}[{bar}] {pct:5.1}%  {label}");
         }
     }
     out
@@ -2827,9 +2829,9 @@ fn render_panel_ascii(panel: &Panel) -> Result<Value, String> {
             PendingSeries::Pie {
                 values,
                 labels,
-                explode: _,
+                explode,
             } => {
-                print!("{}", format_pie_ascii(values, labels));
+                print!("{}", format_pie_ascii(values, labels, explode));
             }
         }
     }
@@ -4950,7 +4952,7 @@ mod tests {
         // Each bar line should show a percentage that adds up to ~100%.
         let values = vec![25.0_f64, 50.0, 25.0];
         let labels: Vec<String> = vec!["A".into(), "B".into(), "C".into()];
-        let out = format_pie_ascii(&values, &labels);
+        let out = format_pie_ascii(&values, &labels, &[]);
         // Extract percentages from lines like " [██...] 25.0%  A"
         let pct_sum: f64 = out
             .lines()
@@ -4970,9 +4972,31 @@ mod tests {
     fn pie_ascii_contains_labels() {
         let values = vec![60.0_f64, 40.0];
         let labels: Vec<String> = vec!["Alpha".into(), "Beta".into()];
-        let out = format_pie_ascii(&values, &labels);
+        let out = format_pie_ascii(&values, &labels, &[]);
         assert!(out.contains("Alpha"), "output should contain label 'Alpha'");
         assert!(out.contains("Beta"), "output should contain label 'Beta'");
+    }
+
+    #[test]
+    fn pie_ascii_explode_marker() {
+        let values = vec![50.0_f64, 30.0, 20.0];
+        let labels: Vec<String> = vec![String::new(); 3];
+        let explode = vec![0.0_f64, 0.1, 0.0];
+        let out = format_pie_ascii(&values, &labels, &explode);
+        let lines: Vec<&str> = out.lines().collect();
+        // Second slice (index 1) should have → prefix, others should not.
+        assert!(
+            !lines[0].starts_with('\u{2192}'),
+            "non-exploded slice 0 should not have arrow"
+        );
+        assert!(
+            lines[1].starts_with('\u{2192}'),
+            "exploded slice 1 should start with →"
+        );
+        assert!(
+            !lines[2].starts_with('\u{2192}'),
+            "non-exploded slice 2 should not have arrow"
+        );
     }
 
     #[test]
