@@ -257,8 +257,8 @@ pub(crate) fn render_dual_axis(
         }
     };
 
-    plot_series(&mut grid, left, ly_min, ly_max, '*');
-    plot_series(&mut grid, right, ry_min, ry_max, '+');
+    plot_series(&mut grid, left, ly_min, ly_max, '.');
+    plot_series(&mut grid, right, ry_min, ry_max, '*');
 
     // ── Print grid ───────────────────────────────────────────────────────
     if let Some(t) = title {
@@ -277,12 +277,12 @@ pub(crate) fn render_dual_axis(
     }
     let fmt_r = |lo: f32, hi: f32| format!("[{lo} .. {hi}]");
     match left_ylabel {
-        Some(yl) => println!("y (left)  * : {yl}  {}", fmt_r(ly_min, ly_max)),
-        None => println!("y (left)  * : {}", fmt_r(ly_min, ly_max)),
+        Some(yl) => println!("y (left)  . : {yl}  {}", fmt_r(ly_min, ly_max)),
+        None => println!("y (left)  . : {}", fmt_r(ly_min, ly_max)),
     }
     match right_ylabel {
-        Some(yr) => println!("y (right) + : {yr}  {}", fmt_r(ry_min, ry_max)),
-        None => println!("y (right) + : {}", fmt_r(ry_min, ry_max)),
+        Some(yr) => println!("y (right) * : {yr}  {}", fmt_r(ry_min, ry_max)),
+        None => println!("y (right) * : {}", fmt_r(ry_min, ry_max)),
     }
 }
 

@@ -15,7 +15,6 @@ plot(t, humid_p, 'r--');
 
 xlabel('Time (h)');
 title('Temperature and Humidity');
-hold('off');
 
 fprintf('\n');
 

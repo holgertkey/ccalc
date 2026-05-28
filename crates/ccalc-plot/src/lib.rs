@@ -1096,6 +1096,52 @@ impl Plugin for PlotPlugin {
                 match s.as_str() {
                     "left" | "right" => {
                         let is_right = s == "right";
+
+                        // When switching back to 'left' while a dual-axis session is
+                        // pending (right side has series), auto-flush to ASCII so the
+                        // caller does not need an explicit hold('off').
+                        let panel_to_flush = if !is_right {
+                            FIGURE_STATE.with(|f| {
+                                let mut st = f.borrow_mut();
+                                if !st.right_pending_series.is_empty()
+                                    && st.subplot.is_none()
+                                {
+                                    Some(Panel {
+                                        layout: None,
+                                        xlabel: st.xlabel.take(),
+                                        ylabel: st.ylabel.take(),
+                                        title: st.title.take(),
+                                        legend: std::mem::take(&mut st.legend),
+                                        xlim: st.xlim.take(),
+                                        ylim: st.ylim.take(),
+                                        grid: std::mem::replace(&mut st.grid, false),
+                                        series: std::mem::take(&mut st.pending_series),
+                                        annotations: std::mem::take(&mut st.annotations),
+                                        font_size: st.font_size,
+                                        line_width: st.line_width,
+                                        marker_size: st.marker_size,
+                                        grid_color: st.grid_color,
+                                        grid_width: st.grid_width,
+                                        axis_mode: st.axis_mode,
+                                        colormap: st.colormap.clone(),
+                                        right_series: std::mem::take(
+                                            &mut st.right_pending_series,
+                                        ),
+                                        right_ylim: st.right_ylim.take(),
+                                        right_ylabel: st.right_ylabel.take(),
+                                    })
+                                } else {
+                                    None
+                                }
+                            })
+                        } else {
+                            None
+                        };
+
+                        if let Some(panel) = panel_to_flush {
+                            render_panel_ascii(&panel)?;
+                        }
+
                         FIGURE_STATE.with(|f| {
                             let mut st = f.borrow_mut();
                             st.active_yaxis =
@@ -5471,6 +5517,38 @@ mod tests {
             // Both series should still be in pending state (hold is on).
             assert_eq!(st.pending_series.len(), 1, "one left series");
             assert_eq!(st.right_pending_series.len(), 1, "one right series");
+        });
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot")]
+    fn yyaxis_auto_flush_on_new_left() {
+        // A second yyaxis('left') call must flush the previous dual-axis session
+        // without requiring an explicit hold('off').
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+
+        plugin.call("yyaxis", &[Value::Str("left".into())], &env).unwrap();
+        plugin.call("plot", &[f64_vec(&[1.0, 2.0]), f64_vec(&[10.0, 20.0])], &env).unwrap();
+        plugin.call("yyaxis", &[Value::Str("right".into())], &env).unwrap();
+        plugin.call("plot", &[f64_vec(&[1.0, 2.0]), f64_vec(&[100.0, 200.0])], &env).unwrap();
+
+        // State: both sides pending.
+        FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            assert_eq!(st.pending_series.len(), 1);
+            assert_eq!(st.right_pending_series.len(), 1);
+        });
+
+        // Starting a new session via yyaxis('left') must flush the previous one.
+        plugin.call("yyaxis", &[Value::Str("left".into())], &env).unwrap();
+
+        FIGURE_STATE.with(|f| {
+            let st = f.borrow();
+            assert_eq!(st.pending_series.len(), 0, "left queue must be empty after auto-flush");
+            assert_eq!(st.right_pending_series.len(), 0, "right queue must be empty after auto-flush");
         });
         FIGURE_STATE.with(|f| f.take());
     }
