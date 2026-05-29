@@ -109,6 +109,8 @@ pub fn print(topic: Option<&str>) {
             | "colormap"
             | "colorbar"
             | "imagesc"
+            | "image"
+            | "imshow"
             | "heatmap"
             | "surf"
             | "mesh"
@@ -3753,6 +3755,46 @@ Two rendering tiers; both use the same annotation API.
       colormap([0 0 1; 1 0 0])      % two-stop blue → red
       colormap([0 0 1; 1 1 0; 1 0 0])  % blue → yellow → red
 
+── Image display ────────────────────────────────────────────────────────────
+    image(Z)                 MATLAB alias for imagesc — min/max scaled colormap
+    image(Z, 'f.svg')        save to SVG (requires plot-svg)
+    image(Z, 'f.png')        save to PNG
+
+    imshow(Z)                grayscale display — values CLAMPED to [0,1]
+    imshow(Z, 'f.svg')       save grayscale image to SVG/PNG
+    imshow(Z, 'f.png')
+
+    imshow(R, G, B)          RGB image from three equal-dimension matrices
+    imshow(R, G, B, 'f.png') save RGB image to SVG/PNG
+
+    Key difference from imagesc:
+      imagesc(Z)  — always min/max scales the full data range to the colormap
+      imshow(Z)   — clamps each value to [0,1] without scaling;
+                    value > 1.0 → white,  value < 0.0 → black
+
+    ASCII tier (imshow gray):   same 10-char density palette as imagesc,
+                                but using v.clamp(0,1) directly.
+    ASCII tier (imshow R,G,B):  computes L = 0.299·R + 0.587·G + 0.114·B
+                                per pixel and renders as grayscale.
+    File tier  (imshow gray):   one gray Rectangle per cell;
+                                intensity = clamp(v, 0, 1) × 255.
+    File tier  (imshow R,G,B):  one Rectangle per pixel with exact RGB colour.
+                                Use PNG output for large images (SVG size =
+                                nrows × ncols rect elements).
+
+    % Grayscale: display a normalised depth map
+    Z = rand(64, 64);
+    imshow(Z, 'depth.png')
+
+    % RGB plasma pattern (128×128)
+    n = 128;
+    [X, Y] = meshgrid(linspace(0, 4*pi, n), linspace(0, 4*pi, n));
+    C = sqrt((X - 2*pi).^2 + (Y - 2*pi).^2);
+    R = 0.5 + 0.5 * sin(X + C);
+    G = 0.5 + 0.5 * sin(Y + C / 2);
+    B = 0.5 + 0.5 * sin(X/2 + Y/2 + C);
+    imshow(R, G, B, 'plasma.png')
+
 ── 3D surface plots ─────────────────────────────────────────────────────────
     meshgrid(x, y)            generate coordinate matrices X (M×N) and Y (M×N)
     meshgrid(x)               square N×N grid — x used for both axes
@@ -4226,6 +4268,7 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/scatter_color_demo/scatter_color_demo.calc (Phase 32b: per-point color scatter)
           examples/pie_demo/pie_demo.calc                     (Phase 32c: pie chart with labels + explode)
           examples/yyaxis_demo/yyaxis_demo.calc               (Phase 32d: dual Y-axis)
-          examples/contour_demo/contour_demo.calc             (Phase 32e: contour + clabel level labels)"
+          examples/contour_demo/contour_demo.calc             (Phase 32e: contour + clabel level labels)
+          examples/imshow_demo/imshow_demo.calc               (Phase 32f: image/imshow grayscale + RGB)"
     );
 }

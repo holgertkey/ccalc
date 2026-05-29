@@ -479,6 +479,73 @@ title('Mandelbrot set')
 imagesc(Z, 'mandelbrot.svg')
 ```
 
+### `image(Z)` / `image(Z, path)`
+
+MATLAB alias for `imagesc` — identical behaviour in every way. Use `image` when
+compatibility with MATLAB scripts is preferred.
+
+```matlab
+colormap('hot')
+image(Z, 'heat.svg')    % same as imagesc(Z, 'heat.svg') with hot colormap
+```
+
+### `imshow(Z)` / `imshow(Z, path)`
+
+Displays `Z` as a **grayscale** image using **clamp-to-[0,1]** normalisation.
+Unlike `imagesc`, the data is **not** min/max scaled: values above 1.0 map to
+white and values below 0.0 map to black.  Values in `[0, 1]` map directly to
+gray intensity.
+
+- Typical use: images already normalised to a `[0, 1]` intensity range.
+- ASCII tier: 10-level density palette `" .:-=+*#@█"`.
+- File tier: one gray `Rectangle` per cell; `gray = clamp(v, 0, 1) × 255`.
+
+```matlab
+% Load / generate a normalised grayscale image
+n = 64;
+Z = rand(n, n);           % random noise in [0,1]
+imshow(Z, 'noise.png')    % displayed as-is — no scaling applied
+
+% Values outside [0,1] are clamped, not scaled
+Z2 = 2 * rand(n, n);      % values in [0,2] — upper half maps to white
+imshow(Z2, 'bright.png')
+```
+
+### `imshow(R, G, B)` / `imshow(R, G, B, path)`
+
+Displays a colour image from three separate channel matrices.  `R`, `G`, and `B`
+must all have the same dimensions; each component is clamped to `[0, 1]`.
+
+- **ASCII tier:** computes luminance `L = 0.299·R + 0.587·G + 0.114·B` per
+  pixel and renders the equivalent grayscale with the density palette.  This
+  produces the same output as `imshow(L)`.
+- **File tier:** one filled `Rectangle` per pixel, RGB colour from the three
+  channel values.  For a 128×128 image this produces 16 384 rectangles — use
+  PNG output to keep file size reasonable.
+
+```matlab
+n = 128;
+[X, Y] = meshgrid(linspace(0, 4*pi, n), linspace(0, 4*pi, n));
+C = sqrt((X - 2*pi).^2 + (Y - 2*pi).^2);  % radial ripple component
+
+R = 0.5 + 0.5 * sin(X + C);
+G = 0.5 + 0.5 * sin(Y + C / 2);
+B = 0.5 + 0.5 * sin(X/2 + Y/2 + C);
+
+title('Plasma interference (128×128)')
+imshow(R, G, B, 'plasma.png')
+```
+
+**Comparison — `imagesc` vs `imshow`:**
+
+| Behaviour | `imagesc(Z)` | `imshow(Z)` |
+|---|---|---|
+| Normalisation | min/max scale to [0,1] | clamp to [0,1] |
+| Colormap | active colormap (default viridis) | gray only |
+| Values > 1.0 | map to colormap maximum | white |
+| Values < 0.0 | map to colormap minimum | black |
+| RGB channels | no | yes (`imshow(R, G, B)`) |
+
 ---
 
 ## Style strings and colors
@@ -1248,8 +1315,12 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **3D surface plots (`surf`):** colored row + column `LineSeries` grid on a 3D
   Cartesian chart; each line colored by local Z mean through the active colormap.
 - **3D wireframe plots (`mesh`):** row-only `LineSeries` grid (sparser than `surf`).
-- **False-colour images (`imagesc`):** one `Rectangle` per matrix cell, RGB colour
-  from the active colormap LUT; optional 80 px colorbar strip on the right.
+- **False-colour images (`imagesc` / `image`):** one `Rectangle` per matrix cell, RGB
+  colour from the active colormap LUT; optional 80 px colorbar strip on the right.
+- **Grayscale images (`imshow(Z)`):** one gray `Rectangle` per cell; intensity =
+  `clamp(v, 0, 1) × 255` — no min/max scaling.
+- **RGB images (`imshow(R, G, B)`):** one `Rectangle` per pixel; colour from the three
+  channel values clamped to `[0, 1]`.  PNG output recommended for large images.
 - **Axis range:** auto-computed from data with 5 % margin by default.
   `axis('tight')` removes the margin; `axis('equal')` enforces equal data-units/pixel;
   `axis('off')` hides all axis decorations. Single-point data uses ± 1.
@@ -1286,6 +1357,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/pie_demo/pie_demo.calc` — Phase 32c: `pie` chart with labels, explode, and file export
 - `examples/yyaxis_demo/yyaxis_demo.calc` — Phase 32d: dual Y-axis — temperature vs humidity (ASCII + SVG), population vs growth rate (SVG)
 - `examples/contour_demo/contour_demo.calc` already covers Phase 32e (`clabel()` calls included)
+- `examples/imshow_demo/imshow_demo.calc` — Phase 32f: `image`/`imshow` grayscale and RGB; includes a 128×128 plasma interference pattern saved as PNG
 
 ---
 

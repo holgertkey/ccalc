@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 32f — Matrix image display: `image`, `imshow`**
+- `image(Z)` / `image(Z, path)` — MATLAB alias for `imagesc`; identical behaviour
+  (min/max scaled, active colormap applied).
+- `imshow(Z)` / `imshow(Z, path)` — grayscale display with **clamp-to-[0,1]**
+  normalisation: values above 1.0 → white; values below 0.0 → black. Distinct from
+  `imagesc` which always min/max-scales the data range.
+- `imshow(R, G, B)` / `imshow(R, G, B, path)` — per-channel RGB rendering.
+  R, G, B must be equal-dimension matrices; each component is clamped to [0, 1].
+  ASCII tier computes luminance `L = 0.299·R + 0.587·G + 0.114·B` and renders
+  the grayscale equivalent with the 10-character density palette.
+  File tier draws one filled `Rectangle` per pixel with the exact RGB colour.
+- `compute_luminance(r, g, b)` — public helper in `colormap.rs` for tests and future use.
+- 5 new integration tests (`image_equals_imagesc_svg`, `imshow_gray_svg`,
+  `imshow_gray_clamps_not_scales`, `imshow_rgb_svg`, `imshow_rgb_mismatched_dims`)
+  plus 4 new unit tests in `colormap.rs`.
+- Example script `examples/imshow_demo/imshow_demo.calc` — includes a 128×128
+  plasma interference pattern that demonstrates true per-pixel colour rendering.
+
 - **Phase 32e — Contour level labels: `clabel`**
 - `clabel()` — sets a flag in `FigureState`; the next `contour` or `contourf` call
   places a text label at the midpoint of the longest marching-squares segment for
