@@ -12,10 +12,11 @@ xlabel('x')
 ylabel('y')
 contour(X, Y, Z, 8)
 
-% SVG line contour
-title('Gaussian bell — contour')
+% SVG line contour with level labels
+title('Gaussian bell — contour with labels')
 xlabel('x')
 ylabel('y')
+clabel()
 contour(X, Y, Z, 8, 'examples/contour_demo/output/contour_gauss.svg')
 fprintf('Wrote contour_gauss.svg\n')
 

@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Phase 32e — Contour level labels: `clabel`**
+- `clabel()` — sets a flag in `FigureState`; the next `contour` or `contourf` call
+  places a text label at the midpoint of the longest marching-squares segment for
+  each level (file tier) or prints a `Levels: ...` footer line (ASCII tier).
+- Label font size mirrors the axis-descriptor scale (`font_size * 0.65`, min 8 pt).
+- Flag is consumed (reset) by `f.take()` when the contour render fires, matching
+  the single-shot semantics of `grid`, `colorbar`, and similar state flags.
+- `clabel` field added to `FigureState` (default `false`).
+- 4 new tests (`clabel_sets_flag`, `clabel_without_contour_noop`,
+  `clabel_svg_has_text_elements`, `clabel_text_count_matches_levels`).
+- `examples/contour_demo/contour_demo.calc` updated to include `clabel()`.
+
 - **Phase 32d — Dual Y axis: `yyaxis`**
 - `yyaxis('left')` / `yyaxis('right')` — switch the active Y axis; subsequent
   `plot`, `scatter`, `ylabel`, and `ylim` calls are routed to that axis.

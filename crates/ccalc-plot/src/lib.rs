@@ -242,6 +242,10 @@ pub struct FigureState {
     pub right_ylim: Option<(f64, f64)>,
     /// Label for the right Y axis.
     pub right_ylabel: Option<String>,
+
+    // ── Phase 32e — contour level labels ──────────────────────────────────
+    /// When `true`, the next contour render places a text label at each level.
+    pub clabel: bool,
 }
 
 impl FigureState {
@@ -353,6 +357,8 @@ const EXPORTED: &[&str] = &[
     "pie",
     // Phase 32d — dual Y axis
     "yyaxis",
+    // Phase 32e — contour level labels
+    "clabel",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -1144,6 +1150,15 @@ impl Plugin for PlotPlugin {
                         return Err(format!("yyaxis: expected 'left' or 'right', got '{other}'"));
                     }
                 }
+                Ok(Value::Void)
+            }
+
+            // ── clabel — contour level labels ─────────────────────────
+            "clabel" => {
+                if !args.is_empty() {
+                    return Err("clabel: expected no arguments".into());
+                }
+                FIGURE_STATE.with(|f| f.borrow_mut().clabel = true);
                 Ok(Value::Void)
             }
 
@@ -5608,5 +5623,122 @@ mod tests {
         plugin
             .call("hold", &[Value::Str("off".into())], &env)
             .unwrap();
+    }
+
+    // ── Phase 32e — clabel ────────────────────────────────────────────
+
+    #[test]
+    fn clabel_sets_flag() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        assert!(!FIGURE_STATE.with(|f| f.borrow().clabel));
+        plugin.call("clabel", &[], &env).unwrap();
+        assert!(
+            FIGURE_STATE.with(|f| f.borrow().clabel),
+            "clabel() should set FigureState.clabel to true"
+        );
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    fn clabel_without_contour_noop() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        assert!(plugin.call("clabel", &[], &env).is_ok());
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn clabel_svg_has_text_elements() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let (x, y, z) = make_contour_xyz(20, 20);
+        let path = ".debug/test_clabel.svg";
+        std::fs::create_dir_all(".debug").ok();
+        plugin.call("clabel", &[], &env).unwrap();
+        plugin
+            .call(
+                "contour",
+                &[
+                    x,
+                    y,
+                    z,
+                    Value::Scalar(5.0),
+                    Value::Str(path.into()),
+                ],
+                &env,
+            )
+            .unwrap();
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(
+            content.contains("<text"),
+            "clabel SVG should contain <text elements"
+        );
+        std::fs::remove_file(path).ok();
+        FIGURE_STATE.with(|f| f.take());
+    }
+
+    #[test]
+    #[cfg(feature = "plot-svg")]
+    fn clabel_text_count_matches_levels() {
+        FIGURE_STATE.with(|f| f.take());
+        let plugin = PlotPlugin;
+        let env = Env::new();
+        let n_levels: usize = 5;
+        let path_base = ".debug/test_clabel_base.svg";
+        let path_labeled = ".debug/test_clabel_labeled.svg";
+        std::fs::create_dir_all(".debug").ok();
+
+        // Render without clabel to get baseline <text> count (title/axis labels).
+        let (x0, y0, z0) = make_contour_xyz(20, 20);
+        plugin
+            .call(
+                "contour",
+                &[
+                    x0,
+                    y0,
+                    z0,
+                    Value::Scalar(n_levels as f64),
+                    Value::Str(path_base.into()),
+                ],
+                &env,
+            )
+            .unwrap();
+        let base_count = std::fs::read_to_string(path_base).unwrap().matches("<text").count();
+
+        // Render with clabel — should add one label per level.
+        let (x, y, z) = make_contour_xyz(20, 20);
+        plugin.call("clabel", &[], &env).unwrap();
+        plugin
+            .call(
+                "contour",
+                &[
+                    x,
+                    y,
+                    z,
+                    Value::Scalar(n_levels as f64),
+                    Value::Str(path_labeled.into()),
+                ],
+                &env,
+            )
+            .unwrap();
+        let label_count = std::fs::read_to_string(path_labeled)
+            .unwrap()
+            .matches("<text")
+            .count();
+
+        assert!(
+            label_count >= base_count + n_levels,
+            "clabel should add at least {n_levels} <text> elements \
+             (base={base_count}, with labels={label_count})"
+        );
+
+        std::fs::remove_file(path_base).ok();
+        std::fs::remove_file(path_labeled).ok();
+        FIGURE_STATE.with(|f| f.take());
     }
 }

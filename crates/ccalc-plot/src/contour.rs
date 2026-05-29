@@ -187,6 +187,10 @@ pub fn render_contour_ascii(
     if let Some(yl) = &state.ylabel {
         println!("y: {yl}");
     }
+    if state.clabel && !levels.is_empty() {
+        let parts: Vec<String> = levels.iter().map(|l| format!("{l:.2}")).collect();
+        println!("Levels: {}", parts.join("  "));
+    }
 }
 
 // ── SVG/PNG renderers ──────────────────────────────────────────────────────
@@ -354,10 +358,33 @@ where
         let (rr, gg, bb) = apply_colormap_spec(t, cmap_spec);
         let color = RGBColor(rr, gg, bb);
 
-        for ((x0, y0), (x1, y1)) in marching_squares(x_vals, y_vals, z, nrows, ncols, level) {
+        let segs = marching_squares(x_vals, y_vals, z, nrows, ncols, level);
+        for &((x0, y0), (x1, y1)) in &segs {
             chart
                 .draw_series(LineSeries::new(vec![(x0, y0), (x1, y1)], color))
                 .map_err(|e| e.to_string())?;
+        }
+
+        if state.clabel {
+            if let Some(&((x0, y0), (x1, y1))) = segs.iter().max_by(|a, b| {
+                let la = (a.1.0 - a.0.0).powi(2) + (a.1.1 - a.0.1).powi(2);
+                let lb = (b.1.0 - b.0.0).powi(2) + (b.1.1 - b.0.1).powi(2);
+                la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
+            }) {
+                let mid = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
+                let label_sz = state
+                    .font_size
+                    .map(|f| ((f as f32 * 0.65).round() as u32).max(8))
+                    .unwrap_or(10) as i32;
+                let label_text = format!("{level:.2}");
+                chart
+                    .draw_series(std::iter::once(Text::new(
+                        label_text,
+                        mid,
+                        ("sans-serif", label_sz),
+                    )))
+                    .map_err(|e| e.to_string())?;
+            }
         }
     }
 
