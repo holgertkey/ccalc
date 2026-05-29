@@ -5660,13 +5660,7 @@ mod tests {
         plugin
             .call(
                 "contour",
-                &[
-                    x,
-                    y,
-                    z,
-                    Value::Scalar(5.0),
-                    Value::Str(path.into()),
-                ],
+                &[x, y, z, Value::Scalar(5.0), Value::Str(path.into())],
                 &env,
             )
             .unwrap();
@@ -5705,7 +5699,10 @@ mod tests {
                 &env,
             )
             .unwrap();
-        let base_count = std::fs::read_to_string(path_base).unwrap().matches("<text").count();
+        let base_count = std::fs::read_to_string(path_base)
+            .unwrap()
+            .matches("<text")
+            .count();
 
         // Render with clabel — should add one label per level.
         let (x, y, z) = make_contour_xyz(20, 20);
