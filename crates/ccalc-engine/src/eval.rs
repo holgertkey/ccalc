@@ -102,7 +102,7 @@ pub fn resolve_autoloaded(name: &str) -> Option<Value> {
 
 /// Executes a code string against an immutable snapshot of the env and returns `ans`.
 ///
-/// Used by [`call_builtin`] when `eval()` appears in expression context
+/// Used by `call_builtin` when `eval()` appears in expression context
 /// (e.g. `y = eval('2+2')`). Env mutations inside the string do **not** persist —
 /// the hook executes against a clone. For env-mutating eval, use `eval()` as a
 /// standalone statement.
@@ -2825,7 +2825,7 @@ fn call_function_value(
     }
 }
 
-/// Names of all built-in functions recognized by [`call_builtin`].
+/// Names of all built-in functions recognized by `call_builtin`.
 ///
 /// Used for REPL tab completion and "did you mean?" suggestions.
 pub fn builtin_names() -> &'static [&'static str] {

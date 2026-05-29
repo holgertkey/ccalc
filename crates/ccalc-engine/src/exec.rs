@@ -868,7 +868,7 @@ fn hoist_functions(stmts: &[StmtEntry], env: &mut Env) {
 
 /// Execute a top-level script block (REPL input, pipe/script mode, `eval()`).
 ///
-/// Identical to [`exec_stmts`] but first calls [`hoist_functions`] so that
+/// Identical to [`exec_stmts`] but first calls `hoist_functions` so that
 /// helper functions defined at the bottom of the script are visible to code
 /// above them — matching MATLAB/Octave script semantics.
 pub fn exec_script(

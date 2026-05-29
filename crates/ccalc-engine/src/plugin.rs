@@ -1,7 +1,7 @@
 //! Plugin system for extending ccalc with new built-in functions.
 //!
-//! Third-party crates implement the [`Plugin`] trait and register via
-//! [`register_plugin`]. The engine checks the registry before its own
+//! Third-party crates implement the [`plugin::Plugin`] trait and register via
+//! [`plugin::register_plugin`]. The engine checks the registry before its own
 //! built-in table, so plugins can shadow any existing built-in if needed.
 //!
 //! # Minimal plugin example
@@ -28,7 +28,7 @@
 //! ```
 //!
 //! Plugins that expose several names (e.g. a plot plugin with `plot`, `scatter`,
-//! `bar`, …) should also override [`Plugin::exported_names`] and return a
+//! `bar`, …) should also override [`plugin::Plugin::exported_names`] and return a
 //! `const`-backed slice. The `name` argument to `call` identifies which exported
 //! name was invoked, enabling a single plugin to dispatch multiple functions:
 //!
