@@ -158,7 +158,11 @@ pub fn print(topic: Option<&str>) {
             | "piechart"
             | "yyaxis"
             | "dualaxis"
-            | "secondyaxis",
+            | "secondyaxis"
+            | "clabel"
+            | "contourlabels"
+            | "contour"
+            | "contourf",
         ) => print_plot(),
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
@@ -275,6 +279,7 @@ Plot    plot(x,y)  scatter(x,y)              ASCII chart (requires --features pl
         pie(v)                              pie chart (ASCII bar-art / SVG wedge polygons)
         pie(v,labels)  pie(v,explode,labels,'f.svg')  with labels / explode / file
         yyaxis('left')  yyaxis('right')     switch active Y axis for dual-axis charts
+        clabel()                            enable level labels on next contour render
         text(x,y,'label')                   text annotation at data coordinates
         plot(x,y,'r--')                     style string: color + linestyle (MATLAB)
         plot(x,y,'f.svg')  plot(x,y,'f.png') file export (requires --features plot-svg)
@@ -3857,6 +3862,33 @@ Two rendering tiers; both use the same annotation API.
     explode = [0.1, 0, 0, 0, 0];
     pie(v, explode, labels, 'schedule.svg')
 
+── Contour plots ─────────────────────────────────────────────────────────────
+    contour(X, Y, Z)                    10 isolines from meshgrid matrices
+    contour(X, Y, Z, n)                 n evenly-spaced isolines inside [Z_min, Z_max]
+    contour(X, Y, Z, n, 'f.svg')       save to SVG/PNG (requires plot-svg)
+    contourf(X, Y, Z)                   filled-band version of contour
+    contourf(X, Y, Z, n, 'f.svg')
+
+    clabel()                            enable level labels on the NEXT contour render
+                                        (single-shot flag, consumed by the render)
+
+    ASCII tier:  character-art density map using palette \" .:-=+*#\";
+                 when clabel is set, prints \"Levels: v1  v2  ...\" footer.
+    File tier:   each isoline drawn as colored LineSeries (colormap);
+                 when clabel is set, places Text label at midpoint of
+                 the longest segment per level.
+
+    [X, Y] = meshgrid(-2:0.05:2, -2:0.05:2);
+    Z = exp(-X.^2 - Y.^2);
+
+    clabel()
+    contour(X, Y, Z, 6)                % ASCII with Levels footer
+
+    title('Gaussian')
+    colormap('viridis')
+    clabel()
+    contour(X, Y, Z, 8, 'gauss.svg')  % SVG with inline labels
+
 ── Dual Y axis ──────────────────────────────────────────────────────────────
     yyaxis('left')    make the left Y axis active for subsequent plot / ylabel / ylim
     yyaxis('right')   make the right Y axis active
@@ -4167,6 +4199,14 @@ Append a file path as the last string argument to save instead of print:
     labels = {{'Work', 'Sleep', 'Exercise', 'Leisure', 'Eating'}};
     pie(v, [0.1, 0, 0, 0, 0], labels, 'schedule.svg')
 
+    % Contour with level labels
+    [X, Y] = meshgrid(-2:0.05:2, -2:0.05:2);
+    Z = exp(-X.^2 - Y.^2);
+    title('Gaussian bell')
+    colormap('plasma')
+    clabel()
+    contour(X, Y, Z, 8, 'gauss.svg')
+
 See also: examples/plot_demo.calc               (ASCII demo)
           examples/plot_file/plot_file.calc      (SVG/PNG demo)
           examples/plot_extended.calc            (bar/stem/stairs/hist/loglog)
@@ -4184,6 +4224,8 @@ See also: examples/plot_demo.calc               (ASCII demo)
           examples/figure_appearance_demo/figure_appearance_demo.calc  (Phase 30.6 figure appearance)
           examples/errorbar_demo/errorbar_demo.calc           (Phase 32b: symmetric + asymmetric errorbar)
           examples/scatter_color_demo/scatter_color_demo.calc (Phase 32b: per-point color scatter)
-          examples/pie_demo/pie_demo.calc                     (Phase 32c: pie chart with labels + explode)"
+          examples/pie_demo/pie_demo.calc                     (Phase 32c: pie chart with labels + explode)
+          examples/yyaxis_demo/yyaxis_demo.calc               (Phase 32d: dual Y-axis)
+          examples/contour_demo/contour_demo.calc             (Phase 32e: contour + clabel level labels)"
     );
 }

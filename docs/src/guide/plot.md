@@ -280,6 +280,40 @@ contour(X, Y, Z2, 12, 'saddle.svg')
 Both functions accept `title`, `xlabel`, `ylabel`, `xlim`, `ylim`, and
 `colormap` annotations, which are consumed by the render call.
 
+### `clabel()`
+
+Enables **contour level labels** for the *next* `contour` or `contourf` call.
+The flag is consumed (cleared) by the render, matching the single-shot semantics
+of `grid`, `colorbar`, and similar state annotations.
+
+**ASCII tier:** prints a `Levels: …` footer line after the chart listing all level
+values formatted to 2 decimal places.
+
+**File tier:** places a text label at the midpoint of the longest marching-squares
+segment for each level. Label color matches the isoline color; font size scales with
+`fontsize(n)` (default 10 pt, proportional to the axis-label size).
+
+```matlab
+[X, Y] = meshgrid(-2:0.05:2, -2:0.05:2);
+Z = exp(-X .^ 2 - Y .^ 2);
+
+% ASCII with level footer
+clabel()
+contour(X, Y, Z, 6)
+
+% SVG with inline labels
+title('Gaussian bell — labeled contours')
+xlabel('x')
+ylabel('y')
+clabel()
+contour(X, Y, Z, 8, 'gauss_labeled.svg')
+
+% contourf also respects clabel()
+colormap('viridis')
+clabel()
+contourf(X, Y, Z, 8, 'gauss_filled_labeled.svg')
+```
+
 ---
 
 ## Multi-panel layout
@@ -1166,8 +1200,9 @@ plot(t, y)       % all annotations applied here, then cleared
 | `grid` | Toggle grid on/off | Yes |
 | `grid('on')` | Enable grid | Yes |
 | `grid('off')` | Disable grid | Yes |
-| `colormap('name')` | Set colormap for next `imagesc` / `surf` / `mesh` | Yes |
+| `colormap('name')` | Set colormap for next `imagesc` / `surf` / `mesh` / `contour` | Yes |
 | `colorbar()` | Append colour-scale strip (file export only, `imagesc`) | Yes |
+| `clabel()` | Enable level labels on the next `contour` / `contourf` render | Yes |
 | `figure(w, h)` | Set SVG/PNG canvas size in pixels (1–16384); ASCII ignores it | Yes |
 | `text(x, y, 's')` | Add label at data coordinate — flushed with next render | Yes |
 | `theme('light'\|'dark')` | Set colour theme (SVG/PNG only) | Yes |
@@ -1201,6 +1236,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - **Line plots:** `LineSeries` (1 px, series colour).
 - **Scatter plots:** filled circles, 3 px radius.
 - **Per-point color scatter (`scatter(x,y,sz,c)`):** `Circle` elements; each fill color mapped through the active colormap; radius from `sz` (scalar or per-point vector).
+- **Contour labels (`clabel()` before `contour`/`contourf`):** one `Text` element per level, placed at the midpoint of the longest segment; color matches the isoline; font size scales with `fontsize(n)`.
 - **Error bars (`errorbar`):** three `PathElement` segments (shaft + two caps) plus a `Circle` centre dot per data point; cap width = 3 % of x-range.
 - **Pie charts (`pie`):** one `Polygon` wedge per slice (64 arc points + center); axes and mesh disabled; labels via `Text` at radius × 1.18; explode offsets along slice bisector.
 - **Bar charts:** edge-to-edge `Rectangle` series; negative bars extend below baseline.
@@ -1237,7 +1273,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/colormap/julia.calc` — Julia set rendered with `colormap('magma')`
 - `examples/surf_demo/surf_demo.calc` — sine wave surface + Gaussian bell (`surf`)
 - `examples/surf_demo/mesh_demo.calc` — sine wave wireframe + saddle surface (`mesh`)
-- `examples/contour_demo/contour_demo.calc` — `contour` and `contourf` on Gaussian bell + saddle
+- `examples/contour_demo/contour_demo.calc` — `contour`, `contourf`, and `clabel()` level labels on Gaussian bell + saddle
 - `examples/subplot_demo/subplot_demo.calc` — 2×2 grid: sin, cos, bar, hist (SVG export)
 - `examples/hold_demo/hold_demo.calc` — overlaid sin and cos series using `hold on/off`
 - `examples/fill_area_polar_demo/fill_area_polar_demo.calc` — `fill`, `area`, `polar`, style strings
@@ -1249,6 +1285,7 @@ plot(x, y2, 'b.svg')    % no title — state was cleared by first render
 - `examples/scatter_color_demo/scatter_color_demo.calc` — Phase 32b: per-point color `scatter(x,y,sz,c)` with viridis/jet colormaps and hold mode
 - `examples/pie_demo/pie_demo.calc` — Phase 32c: `pie` chart with labels, explode, and file export
 - `examples/yyaxis_demo/yyaxis_demo.calc` — Phase 32d: dual Y-axis — temperature vs humidity (ASCII + SVG), population vs growth rate (SVG)
+- `examples/contour_demo/contour_demo.calc` already covers Phase 32e (`clabel()` calls included)
 
 ---
 
