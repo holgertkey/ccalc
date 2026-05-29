@@ -12,16 +12,16 @@ Z = X .* Y;
 
 % ── image(Z) — alias for imagesc, active colormap applied ────────────────────
 colormap('hot');
-image(Z, 'imshow_demo_image.svg');
+image(Z, 'examples/imshow_demo/output/imshow_demo_image.svg');
 
 % ── imshow(Z) — grayscale with clamp (no scaling) ────────────────────────────
-imshow(Z, 'imshow_demo_gray.svg');
+imshow(Z, 'examples/imshow_demo/output/imshow_demo_gray.svg');
 
 % ── RGB channels: R=X, G=1-X, B=Y ───────────────────────────────────────────
 R = X;
 G = 1 - X;
 B = Y;
-imshow(R, G, B, 'imshow_demo_rgb.svg');
+imshow(R, G, B, 'examples/imshow_demo/output/imshow_demo_rgb.svg');
 
 % ── ASCII mode (no file argument) ────────────────────────────────────────────
 title('Grayscale gradient (ASCII)');
