@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-05-29
+
 ### Added
 
 - **Phase 32f — Matrix image display: `image`, `imshow`**
@@ -98,6 +100,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - All three functions participate in `hold`/`subplot` accumulation and `savefig`.
 - 6 new integration tests in `svg_png_tests.rs`.
 - Example script `examples/primitives_demo/primitives_demo.calc`.
+
+---
 
 ## [0.43.0] - 2026-05-26
 
