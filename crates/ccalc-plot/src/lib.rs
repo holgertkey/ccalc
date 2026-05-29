@@ -1231,13 +1231,11 @@ impl Plugin for PlotPlugin {
                         let state = FIGURE_STATE.with(|f| f.take());
                         render_imshow_rgb(&r, &g, &b, r_rows, r_cols, path.as_deref(), state)
                     }
-                    other => {
-                        Err(format!(
-                            "imshow: expected imshow(Z), imshow(Z,path), imshow(R,G,B), \
+                    other => Err(format!(
+                        "imshow: expected imshow(Z), imshow(Z,path), imshow(R,G,B), \
                              or imshow(R,G,B,path) — got {} data arguments",
-                            other.len()
-                        ))
-                    }
+                        other.len()
+                    )),
                 }
             }
 
