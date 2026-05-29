@@ -1155,9 +1155,6 @@ impl Plugin for PlotPlugin {
 
             // ── clabel — contour level labels ─────────────────────────
             "clabel" => {
-                if !args.is_empty() {
-                    return Err("clabel: expected no arguments".into());
-                }
                 FIGURE_STATE.with(|f| f.borrow_mut().clabel = true);
                 Ok(Value::Void)
             }
