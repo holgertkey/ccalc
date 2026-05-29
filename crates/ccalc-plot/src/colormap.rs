@@ -559,7 +559,8 @@ where
     DB::ErrorType: std::fmt::Display,
 {
     let (rb, gb, bb) = state.effective_bg_rgb();
-    root.fill(&RGBColor(rb, gb, bb)).map_err(|e| e.to_string())?;
+    root.fill(&RGBColor(rb, gb, bb))
+        .map_err(|e| e.to_string())?;
 
     if nrows == 0 || ncols == 0 {
         return root.present().map_err(|e| e.to_string());
@@ -646,7 +647,8 @@ where
     DB::ErrorType: std::fmt::Display,
 {
     let (rb, gb, bb) = state.effective_bg_rgb();
-    root.fill(&RGBColor(rb, gb, bb)).map_err(|e| e.to_string())?;
+    root.fill(&RGBColor(rb, gb, bb))
+        .map_err(|e| e.to_string())?;
 
     if nrows == 0 || ncols == 0 {
         return root.present().map_err(|e| e.to_string());

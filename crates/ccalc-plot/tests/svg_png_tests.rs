@@ -1064,9 +1064,7 @@ fn scatter_color_hold_accumulates() {
 // ── Phase 32f — image / imshow ───────────────────────────────────────────────
 
 fn mat2x2(vals: [[f64; 2]; 2]) -> Value {
-    Value::Matrix(
-        Array2::from_shape_vec((2, 2), vals.iter().flatten().copied().collect()).unwrap(),
-    )
+    Value::Matrix(Array2::from_shape_vec((2, 2), vals.iter().flatten().copied().collect()).unwrap())
 }
 
 #[test]
@@ -1122,7 +1120,11 @@ fn imshow_gray_clamps_not_scales() {
     let has_white = content.contains("rgb(255, 255, 255)")
         || content.contains("rgb(255,255,255)")
         || content.to_lowercase().contains("#ffffff");
-    assert!(has_white, "imshow should clamp 2.0 to white, SVG snippet: {}", &content[..content.len().min(400)]);
+    assert!(
+        has_white,
+        "imshow should clamp 2.0 to white, SVG snippet: {}",
+        &content[..content.len().min(400)]
+    );
 }
 
 #[test]
@@ -1157,7 +1159,10 @@ fn imshow_rgb_mismatched_dims() {
     let g = row_vec(&[0.5, 0.5, 0.5]); // 1×3 — mismatch
     let b = mat2x2([[0.0, 0.0], [1.0, 0.0]]);
     let result = plugin.call("imshow", &[r, g, b], &env);
-    assert!(result.is_err(), "mismatched RGB dims should return an error");
+    assert!(
+        result.is_err(),
+        "mismatched RGB dims should return an error"
+    );
     let msg = result.unwrap_err();
     assert!(
         msg.contains("same dimensions"),

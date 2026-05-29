@@ -1209,14 +1209,20 @@ impl Plugin for PlotPlugin {
                         let state = FIGURE_STATE.with(|f| f.take());
                         render_imshow_gray(&z, nrows, ncols, path.as_deref(), state)
                     }
-                    [rv, gv, bv] if is_numeric_value(rv) && is_numeric_value(gv) && is_numeric_value(bv) => {
+                    [rv, gv, bv]
+                        if is_numeric_value(rv) && is_numeric_value(gv) && is_numeric_value(bv) =>
+                    {
                         let (r, r_rows, r_cols) = extract_matrix(rv)
                             .map_err(|_| "imshow: R must be a numeric matrix".to_string())?;
                         let (g, g_rows, g_cols) = extract_matrix(gv)
                             .map_err(|_| "imshow: G must be a numeric matrix".to_string())?;
                         let (b, b_rows, b_cols) = extract_matrix(bv)
                             .map_err(|_| "imshow: B must be a numeric matrix".to_string())?;
-                        if r_rows != g_rows || r_rows != b_rows || r_cols != g_cols || r_cols != b_cols {
+                        if r_rows != g_rows
+                            || r_rows != b_rows
+                            || r_cols != g_cols
+                            || r_cols != b_cols
+                        {
                             return Err(format!(
                                 "imshow: R ({r_rows}×{r_cols}), G ({g_rows}×{g_cols}), \
                                  B ({b_rows}×{b_cols}) must have the same dimensions"
@@ -1226,11 +1232,11 @@ impl Plugin for PlotPlugin {
                         render_imshow_rgb(&r, &g, &b, r_rows, r_cols, path.as_deref(), state)
                     }
                     other => {
-                        return Err(format!(
+                        Err(format!(
                             "imshow: expected imshow(Z), imshow(Z,path), imshow(R,G,B), \
                              or imshow(R,G,B,path) — got {} data arguments",
                             other.len()
-                        ));
+                        ))
                     }
                 }
             }
@@ -1920,9 +1926,11 @@ fn render_imshow_gray_ascii_tier(
     _ncols: usize,
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("imshow: ASCII rendering requires the 'plot' feature flag — \
+    Err(
+        "imshow: ASCII rendering requires the 'plot' feature flag — \
          rebuild with: cargo build --features plot"
-        .into())
+            .into(),
+    )
 }
 
 #[cfg(feature = "plot")]
@@ -1947,9 +1955,11 @@ fn render_imshow_rgb_ascii_tier(
     _ncols: usize,
     _state: FigureState,
 ) -> Result<Value, String> {
-    Err("imshow: ASCII rendering requires the 'plot' feature flag — \
+    Err(
+        "imshow: ASCII rendering requires the 'plot' feature flag — \
          rebuild with: cargo build --features plot"
-        .into())
+            .into(),
+    )
 }
 
 #[cfg(feature = "plot-svg")]
