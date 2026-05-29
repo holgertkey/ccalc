@@ -1,11 +1,12 @@
-//! Plot plugin for ccalc — Phase 32c.
+//! Plot plugin for ccalc — Phase 32f.
 //!
 //! Provides `plot`, `scatter`, `bar`, `stem`, `hist`, `stairs`, `loglog`,
-//! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `surf`, `mesh`,
-//! `contour`, `contourf`, `subplot`, `hold`, `savefig`, `fill`, `area`,
-//! `polar`, `quiver`, `text`, `axis`, `line`, `patch`, `rectangle`,
-//! `errorbar`, `pie`, and annotation functions (`xlabel`, `ylabel`, `zlabel`,
-//! `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`, `colormap`, `colorbar`).
+//! `semilogx`, `semilogy`, `plot3`, `scatter3`, `imagesc`, `image`, `imshow`,
+//! `surf`, `mesh`, `contour`, `contourf`, `subplot`, `hold`, `savefig`,
+//! `fill`, `area`, `polar`, `quiver`, `text`, `axis`, `line`, `patch`,
+//! `rectangle`, `errorbar`, `pie`, and annotation functions (`xlabel`,
+//! `ylabel`, `zlabel`, `title`, `legend`, `xlim`, `ylim`, `zlim`, `grid`,
+//! `colormap`, `colorbar`).
 //! Rendering requires the `plot` or `plot-svg` feature flags; annotation-only
 //! calls work in every build configuration.
 //!
@@ -359,6 +360,9 @@ const EXPORTED: &[&str] = &[
     "yyaxis",
     // Phase 32e — contour level labels
     "clabel",
+    // Phase 32f — image/imshow
+    "image",
+    "imshow",
 ];
 
 // ── subplot / hold helpers ─────────────────────────────────────────────────
@@ -1159,10 +1163,10 @@ impl Plugin for PlotPlugin {
                 Ok(Value::Void)
             }
 
-            // ── imagesc ────────────────────────────────────────────────
-            "imagesc" => {
+            // ── imagesc / image (image is an alias) ───────────────────
+            "imagesc" | "image" => {
                 if args.is_empty() {
-                    return Err("imagesc: at least one argument required".into());
+                    return Err(format!("{name}: at least one argument required"));
                 }
                 let (z, nrows, ncols) = extract_matrix(&args[0])?;
                 let state = FIGURE_STATE.with(|f| f.take());
@@ -1174,14 +1178,61 @@ impl Plugin for PlotPlugin {
                     2 => match &args[1] {
                         Value::Str(s) | Value::StringObj(s) => Some(s.clone()),
                         _ => {
-                            return Err(
-                                "imagesc: second argument must be a file path string".into()
-                            );
+                            return Err(format!(
+                                "{name}: second argument must be a file path string"
+                            ));
                         }
                     },
-                    n => return Err(format!("imagesc: expected 1 or 2 arguments, got {n}")),
+                    n => return Err(format!("{name}: expected 1 or 2 arguments, got {n}")),
                 };
                 render_imagesc(&z, nrows, ncols, path.as_deref(), state)
+            }
+
+            // ── imshow ────────────────────────────────────────────────
+            //
+            // Forms:
+            //   imshow(Z)              — grayscale, clamp-to-[0,1]
+            //   imshow(Z, path)        — grayscale file export
+            //   imshow(R, G, B)        — RGB channels, values in [0,1]
+            //   imshow(R, G, B, path)  — RGB file export
+            "imshow" => {
+                if args.is_empty() {
+                    return Err("imshow: at least one argument required".into());
+                }
+                // Detect RGB form: first three args are all matrices/scalars and
+                // (arg count is 3 or 4 with last being a string).
+                let (data_args, path) = extract_file_arg(args);
+                match data_args.as_slice() {
+                    [zv] => {
+                        let (z, nrows, ncols) = extract_matrix(zv)
+                            .map_err(|_| "imshow: Z must be a numeric matrix".to_string())?;
+                        let state = FIGURE_STATE.with(|f| f.take());
+                        render_imshow_gray(&z, nrows, ncols, path.as_deref(), state)
+                    }
+                    [rv, gv, bv] if is_numeric_value(rv) && is_numeric_value(gv) && is_numeric_value(bv) => {
+                        let (r, r_rows, r_cols) = extract_matrix(rv)
+                            .map_err(|_| "imshow: R must be a numeric matrix".to_string())?;
+                        let (g, g_rows, g_cols) = extract_matrix(gv)
+                            .map_err(|_| "imshow: G must be a numeric matrix".to_string())?;
+                        let (b, b_rows, b_cols) = extract_matrix(bv)
+                            .map_err(|_| "imshow: B must be a numeric matrix".to_string())?;
+                        if r_rows != g_rows || r_rows != b_rows || r_cols != g_cols || r_cols != b_cols {
+                            return Err(format!(
+                                "imshow: R ({r_rows}×{r_cols}), G ({g_rows}×{g_cols}), \
+                                 B ({b_rows}×{b_cols}) must have the same dimensions"
+                            ));
+                        }
+                        let state = FIGURE_STATE.with(|f| f.take());
+                        render_imshow_rgb(&r, &g, &b, r_rows, r_cols, path.as_deref(), state)
+                    }
+                    other => {
+                        return Err(format!(
+                            "imshow: expected imshow(Z), imshow(Z,path), imshow(R,G,B), \
+                             or imshow(R,G,B,path) — got {} data arguments",
+                            other.len()
+                        ));
+                    }
+                }
             }
 
             // ── surf / mesh ────────────────────────────────────────────
@@ -1813,6 +1864,150 @@ fn render_imagesc(
         }
         Some(p) => Err(format!("imagesc: unknown output target '{p}'")),
     }
+}
+
+// ── imshow dispatch ────────────────────────────────────────────────────────
+
+fn render_imshow_gray(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_imshow_gray_ascii_tier(z, nrows, ncols, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_imshow_gray_file_tier(z, nrows, ncols, p, state)
+        }
+        Some(p) => Err(format!("imshow: unknown output target '{p}'")),
+    }
+}
+
+fn render_imshow_rgb(
+    r: &[f64],
+    g: &[f64],
+    b: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: Option<&str>,
+    state: FigureState,
+) -> Result<Value, String> {
+    match path {
+        None | Some("ascii") => render_imshow_rgb_ascii_tier(r, g, b, nrows, ncols, state),
+        Some(p) if p.ends_with(".svg") || p.ends_with(".png") => {
+            render_imshow_rgb_file_tier(r, g, b, nrows, ncols, p, state)
+        }
+        Some(p) => Err(format!("imshow: unknown output target '{p}'")),
+    }
+}
+
+#[cfg(feature = "plot")]
+fn render_imshow_gray_ascii_tier(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: FigureState,
+) -> Result<Value, String> {
+    colormap::render_imshow_gray_ascii(z, nrows, ncols, &state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_imshow_gray_ascii_tier(
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("imshow: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot")]
+fn render_imshow_rgb_ascii_tier(
+    r: &[f64],
+    g: &[f64],
+    b: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: FigureState,
+) -> Result<Value, String> {
+    colormap::render_imshow_rgb_ascii(r, g, b, nrows, ncols, &state);
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot"))]
+fn render_imshow_rgb_ascii_tier(
+    _r: &[f64],
+    _g: &[f64],
+    _b: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("imshow: ASCII rendering requires the 'plot' feature flag — \
+         rebuild with: cargo build --features plot"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+fn render_imshow_gray_file_tier(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    colormap::render_imshow_gray_file(z, nrows, ncols, path, state)
+        .map_err(|e| format!("imshow: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+fn render_imshow_gray_file_tier(
+    _z: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("imshow: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
+}
+
+#[cfg(feature = "plot-svg")]
+#[allow(clippy::too_many_arguments)]
+fn render_imshow_rgb_file_tier(
+    r: &[f64],
+    g: &[f64],
+    b: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<Value, String> {
+    colormap::render_imshow_rgb_file(r, g, b, nrows, ncols, path, state)
+        .map_err(|e| format!("imshow: {e}"))?;
+    Ok(Value::Void)
+}
+
+#[cfg(not(feature = "plot-svg"))]
+#[allow(clippy::too_many_arguments)]
+fn render_imshow_rgb_file_tier(
+    _r: &[f64],
+    _g: &[f64],
+    _b: &[f64],
+    _nrows: usize,
+    _ncols: usize,
+    _path: &str,
+    _state: FigureState,
+) -> Result<Value, String> {
+    Err("imshow: SVG/PNG export requires the 'plot-svg' feature — \
+         rebuild with: cargo build --features plot-svg"
+        .into())
 }
 
 #[cfg(feature = "plot")]

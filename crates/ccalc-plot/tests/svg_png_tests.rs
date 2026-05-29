@@ -1060,3 +1060,107 @@ fn scatter_color_hold_accumulates() {
         "hold ColorScatter should render circles"
     );
 }
+
+// ── Phase 32f — image / imshow ───────────────────────────────────────────────
+
+fn mat2x2(vals: [[f64; 2]; 2]) -> Value {
+    Value::Matrix(
+        Array2::from_shape_vec((2, 2), vals.iter().flatten().copied().collect()).unwrap(),
+    )
+}
+
+#[test]
+fn image_equals_imagesc_svg() {
+    // `image` is an alias for `imagesc` — should produce valid SVG.
+    let path = svg_path("test_image_alias.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let z = mat2x2([[0.0, 0.5], [1.0, 1.5]]);
+    plugin
+        .call("image", &[z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "image should produce valid SVG");
+    assert!(
+        content.contains("<rect"),
+        "image SVG should contain rect elements"
+    );
+}
+
+#[test]
+fn imshow_gray_svg() {
+    // imshow(Z, path) with values in [0, 1] renders a grayscale SVG.
+    let path = svg_path("test_imshow_gray.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let z = mat2x2([[0.0, 0.25], [0.75, 1.0]]);
+    plugin
+        .call("imshow", &[z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "imshow gray should produce SVG");
+    assert!(
+        content.contains("<rect"),
+        "imshow gray SVG should contain rect elements"
+    );
+}
+
+#[test]
+fn imshow_gray_clamps_not_scales() {
+    // imshow must clamp values to [0,1]; a value of 2.0 should map to white
+    // (fill="#ffffff" or rgb(255,255,255)) rather than being scaled.
+    let path = svg_path("test_imshow_clamp.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    // 1×1 matrix with value 2.0 — imagesc would scale to 0.5, imshow clamps to 1.0 (white).
+    let z = Value::Matrix(Array2::from_shape_vec((1, 1), vec![2.0_f64]).unwrap());
+    plugin
+        .call("imshow", &[z, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    // The single pixel should be white — look for rgb(255,255,255) or #ffffff.
+    let has_white = content.contains("rgb(255, 255, 255)")
+        || content.contains("rgb(255,255,255)")
+        || content.to_lowercase().contains("#ffffff");
+    assert!(has_white, "imshow should clamp 2.0 to white, SVG snippet: {}", &content[..content.len().min(400)]);
+}
+
+#[test]
+fn imshow_rgb_svg() {
+    // imshow(R, G, B, path) should produce nrows*ncols rect elements.
+    let path = svg_path("test_imshow_rgb.svg");
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    // 2×2 image: red channel, green channel, blue channel
+    let r = mat2x2([[1.0, 0.0], [0.0, 1.0]]);
+    let g = mat2x2([[0.0, 1.0], [0.0, 0.0]]);
+    let b = mat2x2([[0.0, 0.0], [1.0, 0.0]]);
+    plugin
+        .call("imshow", &[r, g, b, Value::Str(path.clone())], &env)
+        .unwrap();
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("<svg"), "imshow RGB should produce SVG");
+    // Count <rect elements — should have at least 4 (one per pixel).
+    let rect_count = content.matches("<rect").count();
+    assert!(
+        rect_count >= 4,
+        "imshow 2×2 RGB should have ≥4 rect elements, got {rect_count}"
+    );
+}
+
+#[test]
+fn imshow_rgb_mismatched_dims() {
+    // imshow(R, G, B) with mismatched channel dimensions should return an error.
+    let plugin = PlotPlugin;
+    let env = Env::new();
+    let r = mat2x2([[1.0, 0.0], [0.0, 1.0]]);
+    let g = row_vec(&[0.5, 0.5, 0.5]); // 1×3 — mismatch
+    let b = mat2x2([[0.0, 0.0], [1.0, 0.0]]);
+    let result = plugin.call("imshow", &[r, g, b], &env);
+    assert!(result.is_err(), "mismatched RGB dims should return an error");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("same dimensions"),
+        "error should mention 'same dimensions': {msg}"
+    );
+}

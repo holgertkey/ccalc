@@ -282,6 +282,70 @@ pub fn render_imagesc_ascii(z: &[f64], nrows: usize, ncols: usize, state: &Figur
     }
 }
 
+// ── imshow ASCII renderers ─────────────────────────────────────────────────
+
+/// Computes per-pixel luminance `L = 0.299·R + 0.587·G + 0.114·B`.
+///
+/// All three channel slices must have the same length `nrows * ncols`.
+/// Returns a flat row-major luminance vector of the same length, with each
+/// value clamped to `[0, 1]`.
+pub fn compute_luminance(r: &[f64], g: &[f64], b: &[f64]) -> Vec<f64> {
+    r.iter()
+        .zip(g.iter())
+        .zip(b.iter())
+        .map(|((&rv, &gv), &bv)| (0.299 * rv + 0.587 * gv + 0.114 * bv).clamp(0.0, 1.0))
+        .collect()
+}
+
+/// Renders `imshow(Z)` as character art to stdout.
+///
+/// Unlike `render_imagesc_ascii`, pixel values are clamped to `[0, 1]`
+/// directly; no min/max normalisation is applied.  Values above 1.0 map to
+/// white; values below 0.0 map to black.
+#[cfg(feature = "plot")]
+pub fn render_imshow_gray_ascii(z: &[f64], nrows: usize, ncols: usize, state: &FigureState) {
+    const DENSITY: [char; 10] = [' ', '.', ':', '-', '=', '+', '*', '#', '@', '█'];
+
+    if nrows == 0 || ncols == 0 {
+        return;
+    }
+    if let Some(t) = &state.title {
+        println!("{t}");
+    }
+    for r in 0..nrows {
+        for c in 0..ncols {
+            let v = z[r * ncols + c].clamp(0.0, 1.0);
+            let idx = ((v * 9.0) as usize).min(9);
+            print!("{}", DENSITY[idx]);
+        }
+        println!();
+    }
+    if let Some(xl) = &state.xlabel {
+        println!("x: {xl}");
+    }
+    if let Some(yl) = &state.ylabel {
+        println!("y: {yl}");
+    }
+}
+
+/// Renders `imshow(R, G, B)` as luminance character art to stdout.
+///
+/// Computes `L = 0.299·R + 0.587·G + 0.114·B` per pixel and maps the
+/// result through the 10-level density palette.  Equivalent to calling
+/// `imshow(L)` where `L` is the luminance matrix.
+#[cfg(feature = "plot")]
+pub fn render_imshow_rgb_ascii(
+    r: &[f64],
+    g: &[f64],
+    b: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: &FigureState,
+) {
+    let lum = compute_luminance(r, g, b);
+    render_imshow_gray_ascii(&lum, nrows, ncols, state);
+}
+
 // ── SVG/PNG file renderer ──────────────────────────────────────────────────
 
 /// Width reserved for the colorbar strip (pixels).
@@ -456,6 +520,181 @@ where
     Ok(())
 }
 
+// ── imshow file renderers ──────────────────────────────────────────────────
+
+/// Writes a grayscale image of `z` to an SVG or PNG file.
+///
+/// Each pixel value is clamped to `[0, 1]` and used directly as gray
+/// intensity — **no min/max normalisation** is applied (contrast with
+/// [`render_imagesc_file`] which normalises via [`data_range`]).
+#[cfg(feature = "plot-svg")]
+pub fn render_imshow_gray_file(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    let (width, height) = state.canvas_size();
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (width, height)).into_drawing_area();
+        draw_imshow_gray(z, nrows, ncols, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (width, height)).into_drawing_area();
+        draw_imshow_gray(z, nrows, ncols, &state, root)
+    } else {
+        Err(format!("imshow: unsupported format '{path}'"))
+    }
+}
+
+#[cfg(feature = "plot-svg")]
+fn draw_imshow_gray<DB: DrawingBackend>(
+    z: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    let (rb, gb, bb) = state.effective_bg_rgb();
+    root.fill(&RGBColor(rb, gb, bb)).map_err(|e| e.to_string())?;
+
+    if nrows == 0 || ncols == 0 {
+        return root.present().map_err(|e| e.to_string());
+    }
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20))
+        .margin(30)
+        .x_label_area_size(40)
+        .y_label_area_size(50)
+        .build_cartesian_2d(0.0..(ncols as f64), 0.0..(nrows as f64))
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .x_desc(xlabel)
+        .y_desc(ylabel)
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    for r in 0..nrows {
+        let y_lo = (nrows - 1 - r) as f64;
+        let y_hi = y_lo + 1.0;
+        for c in 0..ncols {
+            let v = z[r * ncols + c].clamp(0.0, 1.0);
+            let gray = (v * 255.0).round() as u8;
+            chart
+                .draw_series(std::iter::once(Rectangle::new(
+                    [(c as f64, y_lo), ((c + 1) as f64, y_hi)],
+                    RGBColor(gray, gray, gray).filled(),
+                )))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Writes an RGB image to an SVG or PNG file.
+///
+/// `r`, `g`, `b` are flat row-major channel slices (same length `nrows *
+/// ncols`); each component is clamped to `[0, 1]` before conversion to `u8`.
+/// One filled [`Rectangle`] is drawn per pixel.
+#[cfg(feature = "plot-svg")]
+pub fn render_imshow_rgb_file(
+    r: &[f64],
+    g: &[f64],
+    b: &[f64],
+    nrows: usize,
+    ncols: usize,
+    path: &str,
+    state: FigureState,
+) -> Result<(), String> {
+    let (width, height) = state.canvas_size();
+    if path.ends_with(".svg") {
+        let root = SVGBackend::new(path, (width, height)).into_drawing_area();
+        draw_imshow_rgb(r, g, b, nrows, ncols, &state, root)
+    } else if path.ends_with(".png") {
+        let root = BitMapBackend::new(path, (width, height)).into_drawing_area();
+        draw_imshow_rgb(r, g, b, nrows, ncols, &state, root)
+    } else {
+        Err(format!("imshow: unsupported format '{path}'"))
+    }
+}
+
+#[cfg(feature = "plot-svg")]
+#[allow(clippy::too_many_arguments)]
+fn draw_imshow_rgb<DB: DrawingBackend>(
+    r_ch: &[f64],
+    g_ch: &[f64],
+    b_ch: &[f64],
+    nrows: usize,
+    ncols: usize,
+    state: &FigureState,
+    root: DrawingArea<DB, plotters::coord::Shift>,
+) -> Result<(), String>
+where
+    DB::ErrorType: std::fmt::Display,
+{
+    let (rb, gb, bb) = state.effective_bg_rgb();
+    root.fill(&RGBColor(rb, gb, bb)).map_err(|e| e.to_string())?;
+
+    if nrows == 0 || ncols == 0 {
+        return root.present().map_err(|e| e.to_string());
+    }
+
+    let title = state.title.as_deref().unwrap_or("");
+    let xlabel = state.xlabel.as_deref().unwrap_or("");
+    let ylabel = state.ylabel.as_deref().unwrap_or("");
+
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20))
+        .margin(30)
+        .x_label_area_size(40)
+        .y_label_area_size(50)
+        .build_cartesian_2d(0.0..(ncols as f64), 0.0..(nrows as f64))
+        .map_err(|e| e.to_string())?;
+
+    chart
+        .configure_mesh()
+        .x_desc(xlabel)
+        .y_desc(ylabel)
+        .disable_mesh()
+        .draw()
+        .map_err(|e| e.to_string())?;
+
+    let clamp_u8 = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+
+    for r in 0..nrows {
+        let y_lo = (nrows - 1 - r) as f64;
+        let y_hi = y_lo + 1.0;
+        for c in 0..ncols {
+            let idx = r * ncols + c;
+            let rc = clamp_u8(r_ch[idx]);
+            let gc = clamp_u8(g_ch[idx]);
+            let bc = clamp_u8(b_ch[idx]);
+            chart
+                .draw_series(std::iter::once(Rectangle::new(
+                    [(c as f64, y_lo), ((c + 1) as f64, y_hi)],
+                    RGBColor(rc, gc, bc).filled(),
+                )))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    root.present().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -560,5 +799,43 @@ mod tests {
         // Constant input gets expanded so range > 0.
         let (lo, hi) = data_range(&[5.0, 5.0, 5.0]);
         assert!(hi > lo);
+    }
+
+    // ── imshow helpers ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_compute_luminance_known() {
+        // Pure red: L = 0.299*1 + 0.587*0 + 0.114*0 = 0.299
+        let lum = compute_luminance(&[1.0], &[0.0], &[0.0]);
+        assert!((lum[0] - 0.299).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_compute_luminance_clamps_above_1() {
+        // Components > 1.0: luminance is clamped to 1.0
+        let lum = compute_luminance(&[2.0], &[2.0], &[2.0]);
+        assert_eq!(lum[0], 1.0);
+    }
+
+    #[test]
+    fn test_compute_luminance_clamps_below_0() {
+        let lum = compute_luminance(&[-1.0], &[-1.0], &[-1.0]);
+        assert_eq!(lum[0], 0.0);
+    }
+
+    #[test]
+    fn test_imshow_gray_clamp_vs_imagesc_scale() {
+        // A value of 2.0 should clamp to 1.0 (white) in imshow,
+        // but not in imagesc (which scales min/max).
+        // Verify compute_luminance is not called; test the clamp logic directly.
+        // imshow clamps: 2.0.clamp(0,1) = 1.0 → gray = 255
+        let v: f64 = 2.0;
+        let gray = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        assert_eq!(gray, 255);
+        // imagesc would scale: (2.0 - 2.0) / 0.0 = fallback 0.5 → 127
+        // (degenerate case, but the point is imshow does NOT call data_range)
+        let v2: f64 = -0.5;
+        let gray2 = (v2.clamp(0.0, 1.0) * 255.0).round() as u8;
+        assert_eq!(gray2, 0);
     }
 }
