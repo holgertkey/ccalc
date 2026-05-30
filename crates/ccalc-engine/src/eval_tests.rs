@@ -7696,8 +7696,14 @@ mod phase33d_tests {
 
         let entries = as_struct_array(eval_dir(&tmp.to_string_lossy()));
         let names: Vec<String> = entries.iter().map(|r| fstr(r, "name")).collect();
-        assert!(names.contains(&".".to_string()), "'.' missing from dir listing");
-        assert!(names.contains(&"..".to_string()), "'..' missing from dir listing");
+        assert!(
+            names.contains(&".".to_string()),
+            "'.' missing from dir listing"
+        );
+        assert!(
+            names.contains(&"..".to_string()),
+            "'..' missing from dir listing"
+        );
         for row in &entries {
             let n = fstr(row, "name");
             if n == "." || n == ".." {
@@ -7719,8 +7725,14 @@ mod phase33d_tests {
         let entries = as_struct_array(eval_dir(&pattern));
 
         let names: Vec<String> = entries.iter().map(|r| fstr(r, "name")).collect();
-        assert!(!names.contains(&".".to_string()), "'.' must not appear in glob results");
-        assert!(!names.contains(&"..".to_string()), "'..' must not appear in glob results");
+        assert!(
+            !names.contains(&".".to_string()),
+            "'.' must not appear in glob results"
+        );
+        assert!(
+            !names.contains(&"..".to_string()),
+            "'..' must not appear in glob results"
+        );
         for name in &names {
             assert!(name.ends_with(".csv"), "unexpected non-csv entry: {name}");
         }
@@ -7737,7 +7749,10 @@ mod phase33d_tests {
         let result = eval_dir(&missing);
         match result {
             Value::StructArray(entries) => {
-                assert!(entries.is_empty(), "expected empty struct array for missing path");
+                assert!(
+                    entries.is_empty(),
+                    "expected empty struct array for missing path"
+                );
             }
             other => panic!("expected StructArray, got {other:?}"),
         }

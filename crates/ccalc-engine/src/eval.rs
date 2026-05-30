@@ -7411,7 +7411,11 @@ fn dir_impl(path_arg: &str) -> Value {
             }
             let meta = e.metadata().ok()?;
             let is_dir = if meta.is_dir() { 1.0 } else { 0.0 };
-            let bytes = if meta.is_file() { meta.len() as f64 } else { 0.0 };
+            let bytes = if meta.is_file() {
+                meta.len() as f64
+            } else {
+                0.0
+            };
             let mut row = IndexMap::new();
             row.insert("name".to_string(), Value::Str(file_name.clone()));
             row.insert("folder".to_string(), Value::Str(folder_str.clone()));
