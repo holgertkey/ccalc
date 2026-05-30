@@ -23,7 +23,8 @@ use ccalc_engine::eval::{
 use ccalc_engine::exec::{Signal, exec_script, exec_stmts};
 use ccalc_engine::io::IoContext;
 use ccalc_engine::parser::{
-    Stmt, block_depth_delta, is_partial, is_single_line_block, parse, parse_stmts, split_stmts,
+    Stmt, block_depth_delta, bracket_depth_delta, is_partial, is_single_line_block, parse,
+    parse_stmts, split_stmts,
 };
 
 /// rustyline helper providing tab completion for variable names and built-in functions.
@@ -573,6 +574,8 @@ pub fn run() {
     // Multi-line block buffering state
     let mut block_buf: Vec<String> = Vec::new();
     let mut block_depth: i32 = 0;
+    // Bracket depth for multi-line matrix literals (e.g. `A = [1 2\n3 4]`)
+    let mut bkt_depth: i32 = 0;
     // Line continuation (`...`) buffer
     let mut cont_buf: String = String::new();
     // Session command counter (increments on the first non-empty line of each top-level command)
@@ -581,16 +584,17 @@ pub fn run() {
     'repl: loop {
         // Show the prospective next command number in the prompt; only commit
         // the increment once we know the input is non-empty (see below).
-        let show_line = if block_depth == 0 && cont_buf.is_empty() {
+        let show_line = if block_depth == 0 && bkt_depth == 0 && cont_buf.is_empty() {
             line_count + 1
         } else {
             line_count
         };
-        let (plain_prompt, colored_prompt) = if block_depth > 0 || !cont_buf.is_empty() {
-            render_prompt(&prompt2_tpl, &env, show_line, base, &fmt)
-        } else {
-            render_prompt(&prompt1_tpl, &env, show_line, base, &fmt)
-        };
+        let (plain_prompt, colored_prompt) =
+            if block_depth > 0 || bkt_depth > 0 || !cont_buf.is_empty() {
+                render_prompt(&prompt2_tpl, &env, show_line, base, &fmt)
+            } else {
+                render_prompt(&prompt1_tpl, &env, show_line, base, &fmt)
+            };
 
         if let Some(h) = rl.helper_mut() {
             h.update_env(&env);
@@ -600,10 +604,11 @@ pub fn run() {
         let input = match rl.readline(&plain_prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) => {
-                if block_depth > 0 || !cont_buf.is_empty() {
-                    // Cancel current block or continuation
+                if block_depth > 0 || bkt_depth > 0 || !cont_buf.is_empty() {
+                    // Cancel current block, bracket buffer, or continuation
                     block_buf.clear();
                     block_depth = 0;
+                    bkt_depth = 0;
                     cont_buf.clear();
                     eprintln!("^C");
                     continue;
@@ -622,7 +627,7 @@ pub fn run() {
             continue;
         }
         // Commit the line counter only for the first non-empty line of a command.
-        if block_depth == 0 && cont_buf.is_empty() {
+        if block_depth == 0 && bkt_depth == 0 && cont_buf.is_empty() {
             line_count += 1;
         }
         let _ = rl.add_history_entry(trimmed);
@@ -692,17 +697,25 @@ pub fn run() {
             continue;
         }
 
-        // Block mode: accumulate lines until block closes
+        // Block mode: accumulate lines until block closes.
+        // Also buffers when a matrix literal spans multiple lines (unclosed `[`).
         let delta = if is_single_line_block(trimmed) {
             0
         } else {
             block_depth_delta(trimmed)
         };
-        if block_depth > 0 || delta > 0 {
+        let bkt_delta = if block_depth > 0 {
+            0
+        } else {
+            bracket_depth_delta(trimmed)
+        };
+        if block_depth > 0 || bkt_depth > 0 || delta > 0 || bkt_delta > 0 {
             block_buf.push(trimmed.to_string());
             block_depth += delta;
-            if block_depth <= 0 {
+            bkt_depth += bkt_delta;
+            if block_depth <= 0 && bkt_depth <= 0 {
                 block_depth = 0;
+                bkt_depth = 0;
                 let block_input = block_buf.join("\n");
                 block_buf.clear();
                 match parse_stmts(&block_input) {
@@ -1555,6 +1568,8 @@ pub fn run_pipe(reader: impl BufRead) {
     // Multi-line block buffering state
     let mut block_buf: Vec<String> = Vec::new();
     let mut block_depth: i32 = 0;
+    // Bracket depth for multi-line matrix literals
+    let mut bkt_depth: i32 = 0;
 
     // Line continuation buffer (for `...` at end of line)
     let mut cont_buf: String = String::new();
@@ -1570,7 +1585,7 @@ pub fn run_pipe(reader: impl BufRead) {
         let trimmed = line.trim();
 
         if trimmed.is_empty() {
-            if block_depth > 0 {
+            if block_depth > 0 || bkt_depth > 0 {
                 block_buf.push(String::new());
             }
             continue;
@@ -1625,20 +1640,28 @@ pub fn run_pipe(reader: impl BufRead) {
             continue;
         }
 
-        // Block mode: accumulate lines until block closes
+        // Block mode: accumulate lines until block closes.
+        // Also buffers when a matrix literal spans multiple lines (unclosed `[`).
         let delta = if is_single_line_block(trimmed) {
             0
         } else {
             block_depth_delta(trimmed)
         };
-        if block_depth > 0 || delta > 0 {
+        let bkt_delta = if block_depth > 0 {
+            0
+        } else {
+            bracket_depth_delta(trimmed)
+        };
+        if block_depth > 0 || bkt_depth > 0 || delta > 0 || bkt_delta > 0 {
             if matches!(trimmed, "exit" | "quit") {
                 break 'lines;
             }
             block_buf.push(trimmed.to_string());
             block_depth += delta;
-            if block_depth <= 0 {
+            bkt_depth += bkt_delta;
+            if block_depth <= 0 && bkt_depth <= 0 {
                 block_depth = 0;
+                bkt_depth = 0;
                 let block_input = block_buf.join("\n");
                 block_buf.clear();
                 match parse_stmts(&block_input) {

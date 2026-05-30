@@ -582,6 +582,111 @@ fn test_matrix_with_expressions() {
     }
 }
 
+// --- Phase 33b: newline as matrix row separator ---
+
+#[test]
+fn test_matrix_newline_row_separator() {
+    // "[1 2\n3 4]" should parse identically to "[1 2; 3 4]"
+    let env = Env::new();
+    let input_nl = "[1 2\n3 4]";
+    let input_sc = "[1 2; 3 4]";
+    let v_nl = match eval(&unwrap_expr(parse(input_nl).unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m,
+        _ => panic!("expected matrix"),
+    };
+    let v_sc = match eval(&unwrap_expr(parse(input_sc).unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m,
+        _ => panic!("expected matrix"),
+    };
+    assert_eq!(v_nl.shape(), v_sc.shape());
+    assert_eq!(v_nl[[0, 0]], 1.0);
+    assert_eq!(v_nl[[0, 1]], 2.0);
+    assert_eq!(v_nl[[1, 0]], 3.0);
+    assert_eq!(v_nl[[1, 1]], 4.0);
+}
+
+#[test]
+fn test_matrix_newline_column_vector() {
+    // "[1\n2\n3]" → column vector [1; 2; 3]
+    let env = Env::new();
+    let m = match eval(&unwrap_expr(parse("[1\n2\n3]").unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m,
+        _ => panic!("expected matrix"),
+    };
+    assert_eq!(m.shape(), &[3, 1]);
+    assert_eq!(m[[0, 0]], 1.0);
+    assert_eq!(m[[1, 0]], 2.0);
+    assert_eq!(m[[2, 0]], 3.0);
+}
+
+#[test]
+fn test_matrix_newline_with_continuation() {
+    // "[1 2 ...\n3 4]" — `...` suppresses the newline → same as "[1 2 3 4]"
+    let stmts = super::parse_stmts("A = [1 2 ...\n     3 4]").unwrap();
+    assert_eq!(stmts.len(), 1);
+    let env = Env::new();
+    match &stmts[0].0 {
+        Stmt::Assign(name, expr) => {
+            assert_eq!(name, "A");
+            match eval(expr, &env).unwrap() {
+                Value::Matrix(m) => {
+                    assert_eq!(m.shape(), &[1, 4]);
+                    assert_eq!(m[[0, 0]], 1.0);
+                    assert_eq!(m[[0, 3]], 4.0);
+                }
+                _ => panic!("expected matrix"),
+            }
+        }
+        _ => panic!("expected assignment"),
+    }
+}
+
+#[test]
+fn test_matrix_newline_comment_inside() {
+    // Comment on a line inside a multi-line matrix must be stripped, not tokenized.
+    // "A = [1 2 % note\n3 4]" should behave identically to "A = [1 2\n3 4]"
+    let stmts = super::parse_stmts("A = [1 2 % note\n3 4]").unwrap();
+    assert_eq!(stmts.len(), 1);
+    let env = Env::new();
+    match &stmts[0].0 {
+        Stmt::Assign(name, expr) => {
+            assert_eq!(name, "A");
+            match eval(expr, &env).unwrap() {
+                Value::Matrix(m) => {
+                    assert_eq!(m.shape(), &[2, 2]);
+                    assert_eq!(m[[0, 0]], 1.0);
+                    assert_eq!(m[[0, 1]], 2.0);
+                    assert_eq!(m[[1, 0]], 3.0);
+                    assert_eq!(m[[1, 1]], 4.0);
+                }
+                _ => panic!("expected matrix"),
+            }
+        }
+        _ => panic!("expected assignment"),
+    }
+}
+
+#[test]
+fn test_matrix_newline_regression() {
+    // Existing single-line matrix forms must be unaffected.
+    let env = Env::new();
+    let v1 = match eval(&unwrap_expr(parse("[1 2 3]").unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m,
+        _ => panic!("expected matrix"),
+    };
+    assert_eq!(v1.shape(), &[1, 3]);
+    let v2 = match eval(&unwrap_expr(parse("[1; 2; 3]").unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m,
+        _ => panic!("expected matrix"),
+    };
+    assert_eq!(v2.shape(), &[3, 1]);
+    let v3 = match eval(&unwrap_expr(parse("[1 2; 3 4]").unwrap()), &env).unwrap() {
+        Value::Matrix(m) => m,
+        _ => panic!("expected matrix"),
+    };
+    assert_eq!(v3.shape(), &[2, 2]);
+}
+
 // --- Phase 4: element-wise operators and transpose ---
 
 #[test]

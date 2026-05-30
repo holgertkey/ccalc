@@ -185,6 +185,7 @@ enum Token {
     LBracket,
     RBracket,
     Semicolon,
+    Newline, // '\n' inside [...] — treated as a row separator in parse_matrix
     Colon,
     // --- Compound assignment ---
     PlusEq,     // +=
@@ -314,6 +315,8 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     // a char-array literal; without preceding whitespace after a value-producing
     // token it is a transpose operator.
     let mut prev_was_ws = true; // treat start-of-input like after whitespace
+    // Bracket nesting depth: inside [...] newlines become Token::Newline row separators.
+    let mut bracket_depth: i32 = 0;
 
     while let Some(&c) = chars.peek() {
         match c {
@@ -321,6 +324,19 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
                 prev_was_ws = true;
                 continue; // skip the prev_was_ws = false at the bottom
+            }
+            '\r' => {
+                chars.next();
+                continue; // skip carriage returns silently
+            }
+            '\n' => {
+                chars.next();
+                if bracket_depth > 0 {
+                    // Inside [...]: newline is a row separator, same as ';'
+                    tokens.push(Token::Newline);
+                }
+                prev_was_ws = true;
+                continue;
             }
             '+' => {
                 chars.next();
@@ -531,10 +547,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             '[' => {
+                bracket_depth += 1;
                 tokens.push(Token::LBracket);
                 chars.next();
             }
             ']' => {
+                if bracket_depth > 0 {
+                    bracket_depth -= 1;
+                }
                 tokens.push(Token::RBracket);
                 chars.next();
             }
@@ -1265,6 +1285,53 @@ pub fn block_depth_delta(line: &str) -> i32 {
     }
 }
 
+/// Returns the net bracket-depth change for `line` (counting `[` as +1, `]` as -1).
+///
+/// Respects string literals and inline `%`/`#` comments. Used by the REPL to detect
+/// unclosed matrix literals that span multiple input lines.
+pub fn bracket_depth_delta(line: &str) -> i32 {
+    let mut depth: i32 = 0;
+    let mut in_sq = false;
+    let mut in_dq = false;
+    let chars: Vec<(usize, char)> = line.char_indices().collect();
+    let mut ci = 0;
+    while ci < chars.len() {
+        let (i, c) = chars[ci];
+        match c {
+            '\'' if !in_dq => {
+                if in_sq {
+                    let next = chars.get(ci + 1).map(|&(_, c)| c);
+                    if next == Some('\'') {
+                        ci += 1; // skip escaped ''
+                    } else {
+                        in_sq = false;
+                    }
+                } else {
+                    let before = line[..i].trim_end_matches([' ', '\t']);
+                    let is_transpose = before.ends_with(|c: char| {
+                        c.is_alphanumeric()
+                            || c == '_'
+                            || c == ')'
+                            || c == ']'
+                            || c == '\''
+                            || c == '.'
+                    });
+                    if !is_transpose {
+                        in_sq = true;
+                    }
+                }
+            }
+            '"' if !in_sq => in_dq = !in_dq,
+            '%' | '#' if !in_sq && !in_dq => break, // rest is a comment
+            '[' if !in_sq && !in_dq => depth += 1,
+            ']' if !in_sq && !in_dq => depth -= 1,
+            _ => {}
+        }
+        ci += 1;
+    }
+    depth
+}
+
 /// Returns `true` when `line` is a self-contained single-line block, e.g.
 /// `if cond; body; end`.  These lines start with a block-opening keyword but
 /// also close themselves with `end` / `until` in the same line, so they do
@@ -1864,7 +1931,27 @@ fn parse_stmts_from_lines(
                     continue;
                 }
 
-                for (stmt_str, silent) in split_stmts(raw) {
+                // Collect continuation lines when a matrix literal spans multiple physical
+                // lines (e.g. `A = [1 2\n3 4]`). Strip comments from each physical line
+                // before joining so that `%` inside a bracket never reaches the tokenizer.
+                let joined_buf: String;
+                let effective_raw: &str;
+                let stripped_first = strip_line_comment(raw);
+                if bracket_depth_delta(stripped_first) > 0 {
+                    let mut buf = stripped_first.to_string();
+                    while bracket_depth_delta(&buf) > 0 && *pos + 1 < lines.len() {
+                        *pos += 1;
+                        buf.push('\n');
+                        buf.push_str(strip_line_comment(lines[*pos]));
+                    }
+                    joined_buf = buf;
+                    effective_raw = &joined_buf;
+                } else {
+                    joined_buf = String::new();
+                    effective_raw = raw;
+                }
+                let _ = &joined_buf; // keep binding alive for effective_raw lifetime
+                for (stmt_str, silent) in split_stmts(effective_raw) {
                     stmts.push((parse(stmt_str)?, silent, stmt_line));
                 }
                 *pos += 1;
@@ -2663,7 +2750,7 @@ fn parse_matrix(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
                 }
                 break;
             }
-            Some(Token::Semicolon) => {
+            Some(Token::Semicolon | Token::Newline) => {
                 *pos += 1;
                 if !current_row.is_empty() {
                     rows.push(std::mem::take(&mut current_row));
