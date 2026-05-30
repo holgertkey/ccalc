@@ -2890,6 +2890,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "det",
         "diag",
         "diff",
+        "dir",
         "dot",
         "disp",
         "dlmread",
@@ -4887,6 +4888,15 @@ fn call_builtin(
             let path = string_arg(&args[0], name, 1)?;
             let is_dir = std::fs::metadata(path).map(|m| m.is_dir()).unwrap_or(false);
             Ok(Value::Scalar(bool_to_f64(is_dir)))
+        }
+        // dir([path]) — directory listing; returns StructArray with name/folder/isdir/bytes
+        ("dir", _) => {
+            let path = if args.is_empty() {
+                "."
+            } else {
+                string_arg(&args[0], "dir", 1)?
+            };
+            Ok(dir_impl(path))
         }
         // genpath(dir) — return dir and all subdirectories as a path separator-delimited string
         ("genpath", 1) => {
@@ -7307,6 +7317,113 @@ fn writetable_impl(
 
     std::fs::write(path, out).map_err(|e| format!("writetable: cannot write '{path}': {e}"))?;
     Ok(Value::Void)
+}
+
+/// Recursive glob matcher supporting `*` (any sequence) and `?` (single char).
+fn glob_match_inner(pat: &[u8], name: &[u8]) -> bool {
+    match (pat.first(), name.first()) {
+        (None, None) => true,
+        (Some(&b'*'), _) => {
+            glob_match_inner(&pat[1..], name)
+                || (!name.is_empty() && glob_match_inner(pat, &name[1..]))
+        }
+        (Some(&b'?'), Some(_)) => glob_match_inner(&pat[1..], &name[1..]),
+        (Some(p), Some(n)) if p == n => glob_match_inner(&pat[1..], &name[1..]),
+        _ => false,
+    }
+}
+
+/// Case-aware glob match: case-insensitive on Windows, case-sensitive elsewhere.
+fn glob_match(pattern: &str, name: &str) -> bool {
+    #[cfg(windows)]
+    let (p, n) = (pattern.to_lowercase(), name.to_lowercase());
+    #[cfg(not(windows))]
+    let (p, n) = (pattern.to_string(), name.to_string());
+    glob_match_inner(p.as_bytes(), n.as_bytes())
+}
+
+/// Implementation of `dir(path)` — returns a `Value::StructArray` with MATLAB-compatible fields.
+fn dir_impl(path_arg: &str) -> Value {
+    let has_glob = path_arg.contains('*') || path_arg.contains('?');
+    let p = std::path::Path::new(path_arg);
+
+    let (dir_path, pattern): (std::path::PathBuf, String) = if has_glob {
+        let parent = p
+            .parent()
+            .filter(|d| *d != std::path::Path::new(""))
+            .unwrap_or(std::path::Path::new("."));
+        let pat = p
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        (parent.to_path_buf(), pat)
+    } else {
+        (p.to_path_buf(), String::new())
+    };
+
+    // Resolve to an absolute folder string.
+    // Use current_dir() + join to avoid the UNC prefix (\\?\C:\...) that
+    // canonicalize() produces on Windows.
+    let abs = if dir_path.is_absolute() {
+        dir_path.to_string_lossy().into_owned()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| ".".into())
+            .join(&dir_path)
+            .to_string_lossy()
+            .into_owned()
+    };
+    // Normalize path separators to the platform native one so the folder field
+    // is consistent regardless of whether the user passed "/" or "\" on Windows.
+    #[cfg(windows)]
+    let abs = abs.replace('/', "\\");
+    // Strip a trailing separator, but preserve root paths ("/", "C:\").
+    let folder_str = if abs.len() > 1 && (abs.ends_with('/') || abs.ends_with('\\')) {
+        abs[..abs.len() - 1].to_string()
+    } else {
+        abs
+    };
+
+    let mut entries: Vec<IndexMap<String, Value>> = Vec::new();
+
+    // MATLAB always prepends "." and ".." for non-glob directory listings.
+    if !has_glob {
+        for dot in &[".", ".."] {
+            let mut row = IndexMap::new();
+            row.insert("name".to_string(), Value::Str(dot.to_string()));
+            row.insert("folder".to_string(), Value::Str(folder_str.clone()));
+            row.insert("isdir".to_string(), Value::Scalar(1.0));
+            row.insert("bytes".to_string(), Value::Scalar(0.0));
+            entries.push(row);
+        }
+    }
+
+    let Ok(rd) = std::fs::read_dir(&dir_path) else {
+        return Value::StructArray(vec![]);
+    };
+
+    let mut file_rows: Vec<(String, IndexMap<String, Value>)> = rd
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let file_name = e.file_name().to_string_lossy().into_owned();
+            if has_glob && !glob_match(&pattern, &file_name) {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            let is_dir = if meta.is_dir() { 1.0 } else { 0.0 };
+            let bytes = if meta.is_file() { meta.len() as f64 } else { 0.0 };
+            let mut row = IndexMap::new();
+            row.insert("name".to_string(), Value::Str(file_name.clone()));
+            row.insert("folder".to_string(), Value::Str(folder_str.clone()));
+            row.insert("isdir".to_string(), Value::Scalar(is_dir));
+            row.insert("bytes".to_string(), Value::Scalar(bytes));
+            Some((file_name, row))
+        })
+        .collect();
+
+    file_rows.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.extend(file_rows.into_iter().map(|(_, row)| row));
+    Value::StructArray(entries)
 }
 
 /// Converts an f64 to u64 for bitwise operations.

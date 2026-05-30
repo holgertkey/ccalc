@@ -7639,3 +7639,134 @@ mod phase30b_tests {
         assert_eq!(y[[1, 0]], 20.0);
     }
 }
+
+// ── Phase 33d — dir() ─────────────────────────────────────────────────────────
+
+mod phase33d_tests {
+    use super::*;
+    use indexmap::IndexMap;
+
+    fn eval_dir(path: &str) -> Value {
+        let env = crate::env::Env::new();
+        let expr = Expr::Call("dir".to_string(), vec![Expr::StrLiteral(path.to_string())]);
+        eval(&expr, &env).unwrap()
+    }
+
+    fn as_struct_array(v: Value) -> Vec<IndexMap<String, Value>> {
+        match v {
+            Value::StructArray(e) => e,
+            other => panic!("expected StructArray, got {other:?}"),
+        }
+    }
+
+    fn fstr(row: &IndexMap<String, Value>, key: &str) -> String {
+        match row.get(key) {
+            Some(Value::Str(s)) => s.clone(),
+            other => panic!("expected Str for '{key}', got {other:?}"),
+        }
+    }
+
+    fn fscalar(row: &IndexMap<String, Value>, key: &str) -> f64 {
+        match row.get(key) {
+            Some(Value::Scalar(v)) => *v,
+            other => panic!("expected Scalar for '{key}', got {other:?}"),
+        }
+    }
+
+    // dir(path) prepends "." and ".." as the first two entries (MATLAB behaviour).
+    #[test]
+    fn dir_current_directory() {
+        let tmp = std::env::temp_dir().join("ccalc_dir33d_cwd");
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("hello.txt"), "test").unwrap();
+
+        let entries = as_struct_array(eval_dir(&tmp.to_string_lossy()));
+        assert!(entries.len() >= 3, "expected at least 3 entries");
+        assert_eq!(fstr(&entries[0], "name"), ".");
+        assert_eq!(fstr(&entries[1], "name"), "..");
+        assert_eq!(fscalar(&entries[0], "isdir"), 1.0);
+        assert_eq!(fscalar(&entries[1], "isdir"), 1.0);
+    }
+
+    // Both "." and ".." are always present, both with isdir=1.
+    #[test]
+    fn dir_dot_dot_present() {
+        let tmp = std::env::temp_dir().join("ccalc_dir33d_dotdot");
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let entries = as_struct_array(eval_dir(&tmp.to_string_lossy()));
+        let names: Vec<String> = entries.iter().map(|r| fstr(r, "name")).collect();
+        assert!(names.contains(&".".to_string()), "'.' missing from dir listing");
+        assert!(names.contains(&"..".to_string()), "'..' missing from dir listing");
+        for row in &entries {
+            let n = fstr(row, "name");
+            if n == "." || n == ".." {
+                assert_eq!(fscalar(row, "isdir"), 1.0, "{n} must have isdir=1");
+            }
+        }
+    }
+
+    // Glob patterns return only matching files; "." and ".." are excluded.
+    #[test]
+    fn dir_glob_pattern() {
+        let tmp = std::env::temp_dir().join("ccalc_dir33d_glob");
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("data.csv"), "1,2,3").unwrap();
+        std::fs::write(tmp.join("notes.txt"), "hello").unwrap();
+        std::fs::write(tmp.join("report.csv"), "4,5,6").unwrap();
+
+        let pattern = tmp.join("*.csv").to_string_lossy().into_owned();
+        let entries = as_struct_array(eval_dir(&pattern));
+
+        let names: Vec<String> = entries.iter().map(|r| fstr(r, "name")).collect();
+        assert!(!names.contains(&".".to_string()), "'.' must not appear in glob results");
+        assert!(!names.contains(&"..".to_string()), "'..' must not appear in glob results");
+        for name in &names {
+            assert!(name.ends_with(".csv"), "unexpected non-csv entry: {name}");
+        }
+        assert_eq!(names.len(), 2);
+    }
+
+    // Non-existent path returns an empty struct array without panic.
+    #[test]
+    fn dir_nonexistent() {
+        let missing = std::env::temp_dir()
+            .join("ccalc_dir33d_nonexistent_xyzzy_99999")
+            .to_string_lossy()
+            .into_owned();
+        let result = eval_dir(&missing);
+        match result {
+            Value::StructArray(entries) => {
+                assert!(entries.is_empty(), "expected empty struct array for missing path");
+            }
+            other => panic!("expected StructArray, got {other:?}"),
+        }
+    }
+
+    // Every entry has exactly the four required fields; folder is an absolute path;
+    // file bytes match actual file size.
+    #[test]
+    fn dir_fields_complete() {
+        let tmp = std::env::temp_dir().join("ccalc_dir33d_fields");
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("sample.txt"), "abcdef").unwrap();
+
+        let entries = as_struct_array(eval_dir(&tmp.to_string_lossy()));
+        for row in &entries {
+            assert!(row.contains_key("name"), "missing 'name' field");
+            assert!(row.contains_key("folder"), "missing 'folder' field");
+            assert!(row.contains_key("isdir"), "missing 'isdir' field");
+            assert!(row.contains_key("bytes"), "missing 'bytes' field");
+            let folder = fstr(row, "folder");
+            assert!(
+                std::path::Path::new(&folder).is_absolute(),
+                "folder is not absolute: {folder}"
+            );
+        }
+        let file_row = entries.iter().find(|r| fstr(r, "name") == "sample.txt");
+        assert!(file_row.is_some(), "sample.txt not found in listing");
+        let file_row = file_row.unwrap();
+        assert_eq!(fscalar(file_row, "bytes"), 6.0, "byte count mismatch");
+        assert_eq!(fscalar(file_row, "isdir"), 0.0, "file should have isdir=0");
+    }
+}
