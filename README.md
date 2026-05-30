@@ -1342,6 +1342,25 @@ exist('x', 'file')          % 2 if file exists on disk (MATLAB numeric code)
 exist('x')                  % checks workspace first, then filesystem
 ```
 
+### Directory listing
+
+`dir` returns a struct array; each element has fields `name`, `folder` (absolute path), `isdir`, and `bytes`.
+
+```matlab
+entries = dir('.')           % list current directory (.  and .. always first)
+entries = dir('*.csv')       % glob — only matching files (no . or ..)
+entries = dir()              % same as dir('.')
+
+% Walk a directory
+for k = 1:numel(entries)
+    if ~entries(k).isdir
+        fprintf('%s  %d bytes\n', entries(k).name, entries(k).bytes);
+    end
+end
+```
+
+Non-existent path → empty struct array, no error.
+
 ### Workspace with explicit path
 
 ```matlab
@@ -2177,6 +2196,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `formatted_output.calc` | `fprintf`/`sprintf` specifiers, flags, escape sequences, data table |
 | `format_modes.calc`     | All `format` display modes: short/long/shortE/bank/rat/hex/+/compact |
 | `file_io.calc`          | File I/O: fopen/fclose/fgetl/fgets, dlmread/dlmwrite, isfile/isfolder/exist/pwd, save/load with path |
+| `dir_demo\dir_demo.m`   | `dir()` directory listing: plain dir, glob patterns, field access, non-existent path |
 | `csv/csv.calc`          | CSV tables: readmatrix (header auto-skip, NaN for empty), readtable (Struct of columns), writetable (RFC 4180 quoting), tab-separated variant |
 | `json/json.calc`        | JSON encode/decode: primitives, arrays, objects, nested structs, roundtrip, file I/O, dataset analysis — requires `--features json` |
 | `control_flow.calc`          | Core control flow: if/elseif/else, for, while, break/continue, compound operators; grade classifier, prime sieve, Newton-Raphson, Collatz |

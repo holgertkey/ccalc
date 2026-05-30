@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.44.0+003] - 2026-05-30
+
+### Added
+
+- **Phase 33d — `dir(pattern)` — directory listing**
+- `dir()` / `dir(path)` returns a `StructArray` where every element has four
+  fields: `name` (char array), `folder` (absolute path, char array),
+  `isdir` (1.0 or 0.0), `bytes` (file size in bytes).
+- Non-glob path (e.g. `dir('.')`) — prepends `.` and `..` as the first two
+  entries (MATLAB-compatible). `dir()` with no argument defaults to `'.'`.
+- Glob pattern (e.g. `dir('*.csv')` or `dir('subdir/*.toml')`) — only
+  matching files are returned; `.` and `..` are excluded from results.
+- Non-existent path → empty struct array (no error, no panic).
+- `folder` field is always an absolute path using OS-native separators
+  (`\` on Windows, `/` on Linux/macOS); forward slashes in user-supplied
+  paths are normalised to `\` on Windows.
+- Glob matching is case-insensitive on Windows (mirrors filesystem behaviour),
+  case-sensitive on Linux/macOS.
+- Pure `std::fs` — no new Cargo dependency.
+- 5 new tests: `dir_current_directory`, `dir_dot_dot_present`,
+  `dir_glob_pattern`, `dir_nonexistent`, `dir_fields_complete`.
+- Example script `examples/dir_demo/dir_demo.m`.
+
 ## [0.44.0+002] - 2026-05-30
 
 ### Added

@@ -91,6 +91,54 @@ The numeric codes for `exist` match MATLAB: 1 = variable, 2 = file.
 
 ---
 
+## Directory listing
+
+`dir` returns a struct array where every element describes one filesystem entry.
+
+```matlab
+entries = dir('.')              % list current directory
+entries = dir('/path/to/dir')   % list a specific directory
+entries = dir('*.csv')          % glob pattern — current directory
+entries = dir('data/*.toml')    % glob with parent path
+entries = dir()                 % same as dir('.')
+```
+
+Each element has four fields:
+
+| Field    | Type       | Description |
+|----------|------------|-------------|
+| `name`   | char array | File or directory name |
+| `folder` | char array | Absolute path of the containing directory |
+| `isdir`  | Scalar     | `1.0` for directories, `0.0` for files |
+| `bytes`  | Scalar     | File size in bytes (`0` for directories) |
+
+**MATLAB compatibility:** `dir(path)` always prepends `.` and `..` as the first two entries (both with `isdir = 1`). Glob patterns do **not** include `.` or `..`.
+
+A non-existent path returns an empty struct array — no error is raised.
+
+```matlab
+% Print all files in examples/
+entries = dir('examples');
+for k = 1:numel(entries)
+    e = entries(k);
+    if ~e.isdir
+        fprintf('%s  (%d bytes)\n', e.name, e.bytes);
+    end
+end
+
+% Count .csv files in the current directory
+csvs = dir('*.csv');
+fprintf('%d CSV file(s) found\n', numel(csvs));
+
+% Non-existent path → 0 entries, no error
+missing = dir('/no/such/path');
+fprintf('entries: %d\n', numel(missing));   % → 0
+```
+
+The `folder` field is always an absolute path using OS-native separators.
+
+---
+
 ## Workspace with explicit path
 
 Save and load workspace variables to a named file instead of the default path:

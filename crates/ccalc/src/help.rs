@@ -20,7 +20,9 @@ pub fn print(topic: Option<&str>) {
         Some("vectors" | "vector" | "utils") => print_vectors(),
         Some("complex" | "cplx" | "imag") => print_complex(),
         Some("strings" | "string" | "str" | "char") => print_strings(),
-        Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose") => print_fileio(),
+        Some("files" | "file" | "fileio" | "io" | "fopen" | "fclose" | "dir" | "directory") => {
+            print_fileio()
+        }
         Some(
             "control" | "flow" | "if" | "for" | "while" | "switch" | "do" | "run" | "source"
             | "path" | "addpath" | "rmpath",
@@ -364,6 +366,8 @@ Files   fd = fopen('f.txt','w')   fclose(fd)   fclose('all')
         A = readmatrix('f.csv')          readmatrix(f,'Delimiter','\t')
         T = readtable('f.csv')           writetable(T,'out.csv')
         isfile(p)  isfolder(p)  pwd()  exist('x','var')  exist('f','file')
+        entries = dir('.')              struct array: .name .folder .isdir .bytes
+        entries = dir('*.csv')         glob pattern (no . or .. in results)
 Format  format short   5 sig digits (default)   format long    15 sig digits
         format shortE  always scientific         format longE
         format shortG  same as short             format bank    2 decimal places
@@ -1838,6 +1842,33 @@ Filesystem queries
     exist(name)             1 if variable in workspace, 2 if file on disk
     exist(name, 'var')      check workspace only; 1 or 0
     exist(name, 'file')     check filesystem only; 2 if found, 0 otherwise
+
+Directory listing
+    entries = dir(path)       list a directory; returns StructArray
+    entries = dir('*.csv')    glob pattern — only matching files
+    entries = dir()           same as dir('.')
+
+  Each element of the returned StructArray has four fields:
+    .name     char array — file or directory name
+    .folder   char array — absolute path of the containing directory
+    .isdir    1.0 for directories, 0.0 for files
+    .bytes    file size in bytes (0 for directories)
+
+  dir(path) always prepends '.' and '..' as the first two entries.
+  dir('*.pat') glob results do NOT include '.' or '..'.
+  Non-existent path → empty struct array (no error).
+
+  Example:
+    entries = dir('examples');
+    for k = 1:numel(entries)
+      if ~entries(k).isdir
+        fprintf('%s  %d bytes\\n', entries(k).name, entries(k).bytes);
+      end
+    end
+
+    % Glob — list only .csv files in the current directory:
+    csvs = dir('*.csv');
+    fprintf('%d CSV files found\\n', numel(csvs));
 
 Workspace with explicit path
     save                         save to ~/.config/ccalc/workspace.toml
