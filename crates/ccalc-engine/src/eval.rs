@@ -902,7 +902,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     .get(&field)
                     .cloned()
                     .ok_or_else(|| format!("No field '{field}' in struct")),
-                _ => Err(format!("Cannot access field '{field}' on a non-struct value")),
+                _ => Err(format!(
+                    "Cannot access field '{field}' on a non-struct value"
+                )),
             }
         }
         Expr::FieldGet(base_expr, field) => {
