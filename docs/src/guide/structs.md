@@ -59,6 +59,52 @@ Chaining works to any depth. Accessing a field that does not exist is an error.
 
 ---
 
+## Dynamic field access
+
+Use `s.(expr)` to read or write a field whose name is computed at runtime.
+The expression inside `.(...)` must evaluate to a string:
+
+```matlab
+fname = 'x';
+s.x = 10;
+s.(fname)           % 10 — equivalent to s.x
+
+s.(fname) = 99;     % write: equivalent to s.x = 99
+s.x                 % 99
+```
+
+This is especially useful when iterating over a list of field names:
+
+```matlab
+stats.min  = -3.14;
+stats.max  =  9.81;
+stats.mean =  2.71;
+
+fields = {'min', 'max', 'mean'};
+for k = 1:numel(fields)
+  fprintf('  %s = %g\n', fields{k}, stats.(fields{k}))
+end
+```
+
+Or when building a struct from parallel name/value arrays:
+
+```matlab
+keys   = {'x', 'y', 'z'};
+values = {10,  20,  30};
+pt = struct();
+for k = 1:numel(keys)
+  pt.(keys{k}) = values{k};
+end
+pt.y    % 20
+```
+
+An inline string literal also works: `s.('fieldname')`.
+
+The field expression must evaluate to a string; passing a number produces an
+error: `"Dynamic field name must be a string"`.
+
+---
+
 ## Built-in utilities
 
 | Function            | Description                                                   |
@@ -270,3 +316,4 @@ like a scalar struct.
 - `help cells` — cell arrays, `varargin`/`varargout`
 - `ccalc examples/structs.calc` — annotated scalar struct example
 - `ccalc examples/struct_arrays.calc` — annotated struct array example
+- `ccalc examples/dyn_field_demo.m` — dynamic field access examples

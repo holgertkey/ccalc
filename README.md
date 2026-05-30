@@ -1673,6 +1673,20 @@ xs = pts.x   % [1 3 0]  — field collection across all elements
 ys = pts.y   % [0 4 5]
 ```
 
+**Dynamic field access** — field name computed at runtime:
+
+```matlab
+fname = 'x';
+s.(fname)             % read: equivalent to s.x
+s.(fname) = 99;       % write: equivalent to s.x = 99
+
+% loop over field names:
+fields = {'min', 'max', 'mean'};
+for k = 1:numel(fields)
+  fprintf('%s = %g\n', fields{k}, stats.(fields{k}))
+end
+```
+
 **Struct utilities:**
 
 ```matlab

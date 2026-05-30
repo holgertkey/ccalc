@@ -335,6 +335,14 @@ Cells     c = {{1, 'hi', [1 2 3]}}        cell literal (heterogeneous)
           cellfun(@f, c)                   apply f to each cell element
           arrayfun(@f, v)                  apply f to each vector element
           case {{2, 3}}                    multi-value switch case
+Structs  s.x = 1                   field assignment (creates struct if needed)
+         s.a.b = v                 nested field (auto-creates intermediate)
+         s = struct('x',1,'y',2)  constructor from key-value pairs
+         fname = 'x'; s.(fname)   dynamic field read — name from a string var
+         s.(fname) = val           dynamic field write
+         fieldnames(s)  isfield(s,'x')  rmfield(s,'x')  isstruct(v)
+         s(i).field = v            struct array element assignment
+         s.field                   collect field across all struct array elements
 Scoping global x              shared across all functions and the workspace
         persistent x         per-function value that survives between calls
         private/             directory-scoped helpers (visible only to parent dir)
@@ -2430,6 +2438,26 @@ string, complex, cell, or another struct).  Fields are ordered by insertion.
   s.x                   read field value
   s.a.b                 chained: read nested field (any depth)
 
+─── Dynamic field access ──────────────────────────────────────────────────────
+
+  s.(fname)             read field named by the string variable fname
+  s.(fname) = val       write field named by fname (creates struct if needed)
+  s.('x')               inline string literal also valid
+
+  % Loop over field names:
+  fields = {{'min', 'max', 'mean'}};
+  for k = 1:numel(fields)
+    fprintf('%s = %g\n', fields{{k}}, stats.(fields{{k}}))
+  end
+
+  % Build struct from name/value arrays:
+  keys = {{'x','y','z'}};  vals = {{10, 20, 30}};
+  for k = 1:numel(keys)
+    pt.(keys{{k}}) = vals{{k}};
+  end
+
+  The expression inside .(…) must evaluate to a string; s.(1) → error.
+
 ─── Built-in utilities ────────────────────────────────────────────────────────
 
   fieldnames(s)         cell array of field names, insertion order
@@ -2480,7 +2508,8 @@ string, complex, cell, or another struct).  Fields are ordered by insertion.
 
 See also: help cells  help userfuncs  help control
 Examples: ccalc examples/structs.calc
-          ccalc examples/struct_arrays.calc"
+          ccalc examples/struct_arrays.calc
+          ccalc examples/dyn_field_demo.m"
     );
 }
 
