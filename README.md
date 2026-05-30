@@ -324,7 +324,7 @@ rate = 0.05
 ## Matrices
 
 Create matrices using bracket syntax. Separate elements with spaces or commas;
-separate rows with `;`:
+separate rows with `;` or a bare newline (both work inside `[...]`):
 
 ```
 [ 0 ]: A = [1 2; 3 4]
@@ -2193,6 +2193,7 @@ The `examples/` directory contains annotated formula files ready to run:
 | `pie_demo/pie_demo.calc` | Phase 32c: `pie` chart with explicit labels, explode offsets, and SVG file export |
 | `yyaxis_demo/yyaxis_demo.calc` | Phase 32d: dual Y-axis chart — temperature vs humidity (ASCII + SVG), population vs growth rate (SVG) |
 | `contour_demo/contour_demo.calc` | Phase 32e: `contour`, `contourf`, and `clabel()` level labels on Gaussian bell + saddle surface |
+| `matrix_newline_demo.m`          | Phase 33b: bare newlines as row separators inside `[...]` — 2D matrices, column vectors, comments on rows, line continuation |
 
 ```bash
 ccalc < examples/mortgage.calc

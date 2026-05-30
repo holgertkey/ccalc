@@ -4,13 +4,38 @@ ccalc supports matrix literals using Octave/MATLAB bracket syntax.
 
 ## Creating matrices
 
-Separate elements with spaces or commas; separate rows with semicolons:
+Separate elements with spaces or commas; separate rows with `;` or a bare newline:
 
 ```
 [1 2 3]          % row vector  (1×3)
 [1; 2; 3]        % column vector  (3×1)
 [1 2; 3 4]       % 2×2 matrix
 [1, 2, 3]        % commas work too
+```
+
+A bare newline inside `[...]` is a row separator, identical to `;`:
+
+```
+A = [1 2 3
+     4 5 6]      % same as [1 2 3; 4 5 6]
+
+v = [10
+     20
+     30]         % column vector (3×1)
+```
+
+Trailing `%` comments on a row are stripped before the newline is interpreted:
+
+```
+B = [100 200  % first row
+     300 400] % second row
+```
+
+Line continuation (`...`) joins the next line into the **same** row — no row break occurs:
+
+```
+D = [1 2 ...
+     3 4]         % same as [1 2 3 4]  (1×4 row vector)
 ```
 
 Elements can be arbitrary expressions:
@@ -324,10 +349,13 @@ M(M > 5)        % → [7 8 6 9]   (column-major order)
 M(M > 5) = 0;   % zero out those elements
 ```
 
-## Semicolon inside matrix literals
+## Row separators inside matrix literals
 
-The `;` inside `[...]` is always a row separator, never a statement separator:
+Both `;` and bare newlines act as row separators inside `[...]`; they are never
+statement separators there:
 
 ```
-A = [1 2; 3 4];   % the ; after ] suppresses output; the ; inside is part of the matrix
+A = [1 2; 3 4];   % ; after ] suppresses output; ; inside is part of the matrix
+B = [1 2
+     3 4];        % newline inside [...] is a row separator; ; after ] suppresses output
 ```

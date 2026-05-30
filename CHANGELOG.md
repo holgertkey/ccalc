@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.44.0+001] - 2026-05-30
+
+### Added
+
+- **Phase 33b — Newline as matrix row separator inside `[...]`**
+- A bare newline inside `[...]` is now a row separator, identical to `;`.
+  `A = [1 2\n3 4]` is equivalent to `A = [1 2; 3 4]`. Works in scripts,
+  pipe mode, and the interactive REPL (open brackets trigger multi-line
+  buffering automatically).
+- Trailing `%` comments on a row inside a multi-line matrix are stripped before
+  the newline is processed, so `[1 2 % note\n3 4]` works correctly.
+- Line continuation (`...`) suppresses the row break as expected:
+  `[1 2 ...\n3 4]` produces a 1×4 row vector, not a 2×2 matrix.
+- `Token::Newline` added to the tokenizer (emitted only inside `[...]`);
+  `parse_matrix` handles it identically to `Token::Semicolon`.
+- `bracket_depth_delta(line)` exported from `parser.rs` — returns the net
+  `[` minus `]` count for a line; used by the REPL to detect unclosed
+  matrix literals that span multiple input lines.
+- 5 new tests: `test_matrix_newline_row_separator`,
+  `test_matrix_newline_column_vector`, `test_matrix_newline_with_continuation`,
+  `test_matrix_newline_comment_inside`, `test_matrix_newline_regression`.
+- Example script `examples/matrix_newline_demo.m`.
+
 ## [0.44.0] - 2026-05-29
 
 ### Added

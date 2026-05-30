@@ -908,6 +908,10 @@ Literals
     [1 2; 3 4]        2×2 matrix
     [1, 2; 3, 4]      commas also separate elements
 
+    A bare newline inside [...] is also a row separator (identical to ;):
+    A = [1 2 3        same as [1 2 3; 4 5 6]
+         4 5 6]
+
     Elements can be expressions:
     [sqrt(4), 2^3]    →  [2, 8]
 
