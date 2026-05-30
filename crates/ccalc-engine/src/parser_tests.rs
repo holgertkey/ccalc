@@ -3503,6 +3503,59 @@ fn test_struct_field_insertion_order() {
     assert_eq!(keys, vec!["c", "a", "b"]);
 }
 
+// ── Phase 33c — Dynamic struct field access s.(fname) ────────────────────────
+
+#[test]
+fn dyn_field_read_str() {
+    let env = run_block("s.x = 1; fname = 'x'; ans = s.(fname)");
+    assert_eq!(env.get("ans"), Some(&Value::Scalar(1.0)));
+}
+
+#[test]
+fn dyn_field_write_str() {
+    let env = run_block("fname = 'y'; s.(fname) = 42");
+    match env.get("s").unwrap() {
+        Value::Struct(map) => assert_eq!(map.get("y"), Some(&Value::Scalar(42.0))),
+        other => panic!("expected Struct, got {other:?}"),
+    }
+}
+
+#[test]
+fn dyn_field_unknown_key() {
+    crate::exec::init();
+    let mut env = run_block("s.x = 1");
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = s.('z')").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
+    assert!(result.err().unwrap().contains("No field 'z'"));
+}
+
+#[test]
+fn dyn_field_non_string() {
+    crate::exec::init();
+    let mut env = run_block("s.x = 1");
+    let mut io = IoContext::new();
+    let stmts = parse_stmts("ans = s.(1)").unwrap();
+    let result = exec_stmts(
+        &stmts,
+        &mut env,
+        &mut io,
+        &FormatMode::Short,
+        Base::Dec,
+        true,
+    );
+    assert!(result.is_err());
+    assert!(result.err().unwrap().contains("must be a string"));
+}
+
 // ── Phase 13.5 — Struct arrays ────────────────────────────────────────────────
 
 #[test]

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.44.0+002] - 2026-05-30
+
+### Added
+
+- **Phase 33c — Dynamic struct field access `s.(fname)`**
+- `s.(fname)` reads a struct field where `fname` is a string expression evaluated
+  at runtime. Equivalent to `s.x` when `fname = 'x'`.
+- `s.(fname) = val` writes to a struct field named by the runtime string; creates
+  the struct if it does not already exist.
+- `Token::Dot` now emitted by the tokenizer when `.` is followed by `(`, enabling
+  the `.(` syntax to parse correctly.
+- `Expr::DynFieldGet(Box<Expr>, Box<Expr>)` added to the AST.
+- `Stmt::DynFieldSet(String, Expr, Expr)` added as a parser statement.
+- 4 new tests: `dyn_field_read_str`, `dyn_field_write_str`,
+  `dyn_field_unknown_key`, `dyn_field_non_string`.
+
 ## [0.44.0+001] - 2026-05-30
 
 ### Added

@@ -1652,6 +1652,41 @@ pub fn exec_stmts(
                 env.insert(base_name.clone(), struct_val);
             }
 
+            // ── dynamic struct field assignment ──────────────────────────────
+            Stmt::DynFieldSet(base_name, field_expr, rhs_expr) => {
+                let field_val =
+                    eval_with_io(field_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
+                let field = match &field_val {
+                    Value::Str(s) | Value::StringObj(s) => s.clone(),
+                    _ => {
+                        return Err(annotate_line(
+                            "Dynamic field name must be a string".to_string(),
+                            *stmt_line,
+                        ));
+                    }
+                };
+                let rhs =
+                    eval_with_io(rhs_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
+                let root = match env.remove(base_name) {
+                    Some(Value::Struct(m)) => m,
+                    None => IndexMap::new(),
+                    Some(other) => {
+                        env.insert(base_name.clone(), other);
+                        return Err(annotate_line(
+                            format!("'{base_name}' is not a struct"),
+                            *stmt_line,
+                        ));
+                    }
+                };
+                let mut updated = root;
+                updated.insert(field, rhs);
+                let struct_val = Value::Struct(updated);
+                if !silent {
+                    print_value(Some(base_name), &struct_val, fmt, base, compact);
+                }
+                env.insert(base_name.clone(), struct_val);
+            }
+
             // ── struct array element field assignment ────────────────────────
             Stmt::StructArrayFieldSet(base_name, idx_expr, path, rhs_expr) => {
                 let rhs =

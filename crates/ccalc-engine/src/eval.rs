@@ -452,6 +452,10 @@ pub enum Expr {
     ///
     /// At eval time the base expression must evaluate to `Value::Struct`.
     FieldGet(Box<Expr>, String),
+    /// Dynamic struct field read: `s.(fname)` where `fname` evaluates to a string.
+    ///
+    /// At eval time the field expression must evaluate to `Value::Str` or `Value::StringObj`.
+    DynFieldGet(Box<Expr>, Box<Expr>),
     /// Package-qualified function call: `pkg.func(args)` or `pkg.sub.func(args)`.
     ///
     /// `segments` holds the dot-separated name components, e.g. `["utils", "my_function"]`.
@@ -884,6 +888,21 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 }
                 (Value::Cell(_), _) => Err("Cell index must be a scalar integer".to_string()),
                 _ => Err("Brace indexing '{}' is only valid on cell arrays".to_string()),
+            }
+        }
+        Expr::DynFieldGet(base_expr, field_expr) => {
+            let base_val = eval_inner(base_expr, env, io.as_deref_mut())?;
+            let field_val = eval_inner(field_expr, env, io)?;
+            let field = match &field_val {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("Dynamic field name must be a string".to_string()),
+            };
+            match base_val {
+                Value::Struct(map) => map
+                    .get(&field)
+                    .cloned()
+                    .ok_or_else(|| format!("No field '{field}' in struct")),
+                _ => Err(format!("Cannot access field '{field}' on a non-struct value")),
             }
         }
         Expr::FieldGet(base_expr, field) => {
@@ -7880,6 +7899,7 @@ pub(crate) fn contains_end(expr: &Expr) -> bool {
         | Expr::Transpose(e)
         | Expr::PlainTranspose(e)
         | Expr::FieldGet(e, _) => contains_end(e),
+        Expr::DynFieldGet(a, b) => contains_end(a) || contains_end(b),
         Expr::BinOp(l, _, r) => contains_end(l) || contains_end(r),
         Expr::Call(_, args) | Expr::DotCall(_, args) => args.iter().any(contains_end),
         Expr::Matrix(rows) => rows.iter().flat_map(|r| r.iter()).any(contains_end),
@@ -8545,6 +8565,9 @@ pub fn expr_to_string(e: &Expr) -> String {
         Expr::Colon => ":".to_string(),
         Expr::NaT => "NaT".to_string(),
         Expr::FieldGet(base, field) => format!("{}.{field}", expr_to_string(base)),
+        Expr::DynFieldGet(base, field_expr) => {
+            format!("{}.({})", expr_to_string(base), expr_to_string(field_expr))
+        }
         Expr::DotCall(segs, args) => {
             let args_str = args
                 .iter()

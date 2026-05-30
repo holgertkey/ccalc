@@ -125,6 +125,13 @@ pub enum Stmt {
     /// the path is walked (creating intermediate structs on demand), and the final
     /// field is set.
     FieldSet(String, Vec<String>, Expr),
+    /// `s.(fname) = v` — dynamic struct field assignment.
+    ///
+    /// `DynFieldSet(base_var, field_expr, rhs)`:
+    /// - `base_var`: the top-level variable name.
+    /// - `field_expr`: expression that evaluates to the field name string at runtime.
+    /// - `rhs`: the value to store.
+    DynFieldSet(String, Expr, Expr),
     /// `s(i).field = v` / `s(i).a.b = v` — struct array element field assignment.
     ///
     /// `StructArrayFieldSet(base_var, idx_expr, field_path, rhs)`:
@@ -513,9 +520,12 @@ fn tokenize(input: &str) -> Result<Vec<Token>, String> {
                             .map_err(|_| format!("Invalid number: '{num_str}'"))?;
                         tokens.push(Token::Number(n));
                     }
-                    // Field access: '.' followed by an identifier letter/underscore.
-                    // Don't consume the letter — it will be tokenized as Ident on the next pass.
+                    // Field access: '.' followed by an identifier letter/underscore or '('.
+                    // Don't consume the next char — it will be tokenized on the next pass.
                     Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+                        tokens.push(Token::Dot);
+                    }
+                    Some('(') => {
                         tokens.push(Token::Dot);
                     }
                     _ => return Err("Unexpected '.'".to_string()),
@@ -808,6 +818,66 @@ fn try_split_struct_array_field_assign(input: &str) -> Option<(String, &str, Vec
     Some((base_var, idx_str, fields, rhs))
 }
 
+/// Detects `base.(field_expr) = rhs` at the string level (before tokenising).
+///
+/// Returns `Some((base, field_expr_str, rhs_str))` on a match, `None` otherwise.
+fn try_split_dyn_field_assign(input: &str) -> Option<(String, &str, &str)> {
+    let trimmed = input.trim();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+
+    // Parse leading identifier
+    if i >= bytes.len() || !(bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+        return None;
+    }
+    let name_start = i;
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    let base_var = &trimmed[name_start..i];
+
+    // Expect '.' then '('
+    if i >= bytes.len() || bytes[i] != b'.' {
+        return None;
+    }
+    i += 1;
+    if i >= bytes.len() || bytes[i] != b'(' {
+        return None;
+    }
+    i += 1; // consume '('
+
+    // Scan for matching ')' tracking nested paren/bracket/brace depth
+    let field_start = i;
+    let mut depth = 1usize;
+    while i < bytes.len() && depth > 0 {
+        match bytes[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    // i now points one past the closing ')'
+    let field_str = trimmed[field_start..i - 1].trim();
+    if field_str.is_empty() {
+        return None;
+    }
+
+    // Skip optional whitespace then expect bare '=' (not '==')
+    let rest = trimmed[i..].trim_start();
+    if !rest.starts_with('=') || rest.starts_with("==") {
+        return None;
+    }
+    let rhs = rest[1..].trim();
+    if rhs.is_empty() {
+        return None;
+    }
+    Some((base_var.to_string(), field_str, rhs))
+}
+
 /// Detects `base.f1.f2...fn = rhs` at the string level (before tokenising).
 ///
 /// Returns `Some((base, fields, rhs))` on a match, `None` otherwise.
@@ -959,6 +1029,29 @@ pub fn parse(input: &str) -> Result<Stmt, String> {
             indices,
             value,
         });
+    }
+
+    // Dynamic struct field assignment: name.(field_expr) = rhs
+    if let Some((base_var, field_str, rhs)) = try_split_dyn_field_assign(trimmed) {
+        let field_tokens = tokenize(field_str)?;
+        if field_tokens.is_empty() {
+            return Err("Expected expression inside '.()'".to_string());
+        }
+        let mut fpos = 0;
+        let field_expr = parse_logical_or(&field_tokens, &mut fpos)?;
+        if fpos != field_tokens.len() {
+            return Err("Unexpected token in dynamic field expression".to_string());
+        }
+        let rhs_tokens = tokenize(rhs)?;
+        if rhs_tokens.is_empty() {
+            return Err("Expected expression after '='".to_string());
+        }
+        let mut rpos = 0;
+        let rhs_expr = parse_logical_or(&rhs_tokens, &mut rpos)?;
+        if rpos != rhs_tokens.len() {
+            return Err("Unexpected token after expression".to_string());
+        }
+        return Ok(Stmt::DynFieldSet(base_var, field_expr, rhs_expr));
     }
 
     // Struct field assignment: name.field[.field]* = rhs
@@ -2666,6 +2759,16 @@ fn parse_primary(tokens: &[Token], pos: &mut usize) -> Result<Expr, String> {
             Some(Token::Dot) => {
                 *pos += 1;
                 match tokens.get(*pos) {
+                    Some(Token::LParen) => {
+                        // Dynamic field access: expr.(field_expr)
+                        *pos += 1;
+                        let field_expr = parse_logical_or(tokens, pos)?;
+                        if !matches!(tokens.get(*pos), Some(Token::RParen)) {
+                            return Err("Expected closing ')' in dynamic field access".to_string());
+                        }
+                        *pos += 1;
+                        expr = Expr::DynFieldGet(Box::new(expr), Box::new(field_expr));
+                    }
                     Some(Token::Ident(field)) => {
                         let field = field.clone();
                         *pos += 1;
