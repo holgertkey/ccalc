@@ -23,7 +23,7 @@ re_min = -2.5;  re_max = 1.0;
 im_min = -1.2;  im_max = 1.2;
 
 Z = zeros(ny, nx);
-
+tic
 for iy = 1:ny
   for ix = 1:nx
     c_re = re_min + (ix - 1) / (nx - 1) * (re_max - re_min);
@@ -42,7 +42,7 @@ for iy = 1:ny
     Z(iy, ix) = n;
   end
 end
-
+toc
 fprintf('Rendering %dx%d Mandelbrot set (max_iter=%d)...\n', nx, ny, max_iter)
 
 figure(1600, 1200)

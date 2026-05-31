@@ -25,7 +25,7 @@ re_min = -1.6;  re_max = 1.6;
 im_min = -1.2;  im_max = 1.2;
 
 Z = zeros(ny, nx);
-
+tic
 for iy = 1:ny
   for ix = 1:nx
     z = (re_min + (ix - 1) / (nx - 1) * (re_max - re_min)) ...
@@ -42,7 +42,7 @@ for iy = 1:ny
     Z(iy, ix) = n;
   end
 end
-
+toc
 fprintf('Rendering %dx%d Julia set c=-0.7+0.27i (max_iter=%d)...\n', nx, ny, max_iter)
 
 figure(1600, 1200)
