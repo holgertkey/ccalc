@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - No new Cargo dependencies.
 - 6 new tests: `map_create_and_read`, `map_insert_update`, `map_isKey`,
   `map_keys_values_sorted`, `map_remove`, `map_count_property`.
-- Example script `examples/containers_map_demo/containers_map_demo.calc`.
+- Example script `examples/containers_map_demo/containers_map_demo.m`.
 
 ## [0.44.0+003] - 2026-05-30
 
