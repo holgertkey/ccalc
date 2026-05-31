@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.44.0+004] - 2026-05-31
+
+### Added
+
+- **Phase 33e — `containers.Map` — string-keyed associative array**
+- `containers.Map({'k1','k2'},{v1,v2})` — construct a map from two cell arrays
+  (keys cell + values cell); empty `containers.Map()` also supported.
+- `m('key')` — read a value by string key; error if key absent.
+- `m('key') = val` — insert or update a key in-place.
+- `m.Count` — read-only property returning the number of entries.
+- `isKey(m, 'key')` — returns `1` if key present, `0` otherwise.
+- `keys(m)` — cell array of keys in sorted order.
+- `values(m)` — cell array of values in sorted-key order.
+- `remove(m, 'key')` — removes a key in-place (no assignment needed).
+- Multi-line display: `Map with N entries: 'key' → value`.
+- Backed by `IndexMap<String, Value>` (existing `indexmap` dependency).
+- No new Cargo dependencies.
+- 6 new tests: `map_create_and_read`, `map_insert_update`, `map_isKey`,
+  `map_keys_values_sorted`, `map_remove`, `map_count_property`.
+- Example script `examples/containers_map_demo/containers_map_demo.calc`.
+
 ## [0.44.0+003] - 2026-05-30
 
 ### Added

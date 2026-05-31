@@ -524,7 +524,7 @@ fn pipe_output(input: &str) -> Vec<String> {
                         Value::Duration(s) => {
                             output.push(ccalc_engine::datetime::format_duration(*s));
                         }
-                        Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                        Value::DateTimeArray(_) | Value::DurationArray(_) | Value::Map(_) => {
                             if let Some(full) = format_value_full(&v, &fmt) {
                                 output.push(full);
                             }
@@ -590,7 +590,9 @@ fn pipe_output(input: &str) -> Vec<String> {
                                         ccalc_engine::datetime::format_duration(*s)
                                     ));
                                 }
-                                Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                Value::DateTimeArray(_)
+                                | Value::DurationArray(_)
+                                | Value::Map(_) => {
                                     if let Some(full) = format_value_full(&v, &fmt) {
                                         output.push(format!("{name} ="));
                                         output.push(full);
@@ -647,7 +649,9 @@ fn pipe_output(input: &str) -> Vec<String> {
                                     Value::Duration(s) => {
                                         output.push(ccalc_engine::datetime::format_duration(*s));
                                     }
-                                    Value::DateTimeArray(_) | Value::DurationArray(_) => {
+                                    Value::DateTimeArray(_)
+                                    | Value::DurationArray(_)
+                                    | Value::Map(_) => {
                                         if let Some(full) = format_value_full(&v, &fmt) {
                                             output.push(format!("{prefix} ="));
                                             output.push(full);

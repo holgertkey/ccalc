@@ -689,6 +689,8 @@ fn is_truthy(val: &Value) -> bool {
         Value::DateTime(ts) => !ts.is_nan(),
         Value::Duration(s) => *s != 0.0,
         Value::DateTimeArray(v) | Value::DurationArray(v) => !v.is_empty(),
+        // A map is truthy when nonempty.
+        Value::Map(m) => !m.is_empty(),
     }
 }
 
@@ -797,6 +799,16 @@ fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, c
             }
         }
         Value::DateTimeArray(_) | Value::DurationArray(_) => {
+            if let Some(full) = format_value_full(val, fmt) {
+                let prefix = label.unwrap_or("ans");
+                println!("{prefix} =");
+                println!("{full}");
+                if !compact {
+                    println!();
+                }
+            }
+        }
+        Value::Map(_) => {
             if let Some(full) = format_value_full(val, fmt) {
                 let prefix = label.unwrap_or("ans");
                 println!("{prefix} =");
@@ -1230,6 +1242,44 @@ pub fn exec_stmts(
                                 },
                             };
                             env.remove(&key);
+                        }
+                    }
+                    continue;
+                }
+
+                // Intercept remove(m, k) — in-place key removal from containers.Map.
+                if let Expr::Call(fn_name, args) = expr
+                    && fn_name == "remove"
+                    && args.len() == 2
+                    && let Expr::Var(map_name) = &args[0]
+                {
+                    let map_name = map_name.clone();
+                    let key_val = eval_with_io(&args[1], env, io)
+                        .map_err(|e| annotate_line(e, *stmt_line))?;
+                    let key = match key_val {
+                        Value::Str(s) | Value::StringObj(s) => s,
+                        _ => {
+                            return Err(annotate_line(
+                                "remove: key must be a string".to_string(),
+                                *stmt_line,
+                            ));
+                        }
+                    };
+                    match env.get_mut(&map_name) {
+                        Some(Value::Map(map)) => {
+                            map.shift_remove(&key);
+                        }
+                        Some(_) => {
+                            return Err(annotate_line(
+                                format!("remove: '{map_name}' is not a containers.Map"),
+                                *stmt_line,
+                            ));
+                        }
+                        None => {
+                            return Err(annotate_line(
+                                format!("remove: undefined variable '{map_name}'"),
+                                *stmt_line,
+                            ));
                         }
                     }
                     continue;
@@ -1884,6 +1934,22 @@ fn exec_index_set(
     env: &mut Env,
     io: &mut IoContext,
 ) -> Result<(), String> {
+    // Map key assignment: m('key') = val
+    if indices.len() == 1 && matches!(env.get(name), Some(Value::Map(_))) {
+        let key_val = eval_with_io(&indices[0], env, io)?;
+        let key = match key_val {
+            Value::Str(s) | Value::StringObj(s) => s,
+            _ => return Err("Map key assignment requires a string key".to_string()),
+        };
+        match env.get_mut(name) {
+            Some(Value::Map(map)) => {
+                map.insert(key, rhs);
+                return Ok(());
+            }
+            _ => unreachable!(),
+        }
+    }
+
     // If LHS is already ComplexMatrix or RHS introduces complex values, use the complex path.
     let needs_complex = matches!(env.get(name), Some(Value::ComplexMatrix(_)))
         || matches!(&rhs, Value::Complex(_, _) | Value::ComplexMatrix(_));

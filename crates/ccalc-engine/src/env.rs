@@ -111,6 +111,12 @@ pub enum Value {
     DateTimeArray(Vec<f64>),
     /// An ordered sequence of elapsed durations (seconds, fractional).
     DurationArray(Vec<f64>),
+    /// String-keyed associative array (`containers.Map` semantics).
+    ///
+    /// Keys are always `String`; values may be any [`Value`]. Preserves
+    /// insertion order (via `IndexMap`). Indexed with `m('key')` and
+    /// assigned with `m('key') = val`.
+    Map(IndexMap<String, Value>),
 }
 
 impl Value {
@@ -142,7 +148,8 @@ impl Value {
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => None,
+            | Value::DurationArray(_)
+            | Value::Map(_) => None,
         }
     }
 }

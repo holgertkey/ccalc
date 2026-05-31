@@ -7640,6 +7640,71 @@ mod phase30b_tests {
     }
 }
 
+// ── Phase 33e — containers.Map ───────────────────────────────────────────────
+
+mod phase33e_tests {
+    use super::*;
+
+    fn run(src: &str) -> Value {
+        let env = run_script_src(src);
+        env.get("ans").cloned().unwrap_or(Value::Void)
+    }
+
+    #[test]
+    fn map_create_and_read() {
+        let v = run("m = containers.Map({'a','b'},{10,20}); m('a')");
+        assert_eq!(v, Value::Scalar(10.0), "m('a') should return 10");
+    }
+
+    #[test]
+    fn map_insert_update() {
+        let v = run("m = containers.Map({'a'},{1}); m('b') = 2; m('a') = 99; m('b') + m('a')");
+        assert_eq!(v, Value::Scalar(101.0));
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn map_isKey() {
+        let present = run("m = containers.Map({'x'},{1}); isKey(m,'x')");
+        let absent = run("m = containers.Map({'x'},{1}); isKey(m,'y')");
+        assert_eq!(present, Value::Scalar(1.0), "isKey for present key");
+        assert_eq!(absent, Value::Scalar(0.0), "isKey for absent key");
+    }
+
+    #[test]
+    fn map_keys_values_sorted() {
+        // Insert in reverse order; keys() and values() must come back sorted
+        let ks = run("m = containers.Map({'c','a','b'},{3,1,2}); k = keys(m); k{1}");
+        assert_eq!(
+            ks,
+            Value::Str("a".to_string()),
+            "first sorted key should be 'a'"
+        );
+        let vs = run("m = containers.Map({'c','a','b'},{3,1,2}); v = values(m); v{1}");
+        assert_eq!(
+            vs,
+            Value::Scalar(1.0),
+            "first value (for key 'a') should be 1"
+        );
+    }
+
+    #[test]
+    fn map_remove() {
+        let v = run("m = containers.Map({'a','b'},{1,2}); remove(m,'a'); isKey(m,'a')");
+        assert_eq!(
+            v,
+            Value::Scalar(0.0),
+            "key 'a' should be absent after remove"
+        );
+    }
+
+    #[test]
+    fn map_count_property() {
+        let v = run("m = containers.Map({'a','b','c'},{1,2,3}); m.Count");
+        assert_eq!(v, Value::Scalar(3.0), "Count should equal number of keys");
+    }
+}
+
 // ── Phase 33d — dir() ─────────────────────────────────────────────────────────
 
 mod phase33d_tests {

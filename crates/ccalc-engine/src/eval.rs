@@ -641,9 +641,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("Unary minus is not applicable to this type".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("Unary minus is not applicable to this type".to_string()),
         },
         Expr::UnaryNot(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Logical NOT is not applicable to void".to_string()),
@@ -676,9 +675,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("Logical NOT is not applicable to this type".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("Logical NOT is not applicable to this type".to_string()),
         },
         Expr::BinOp(left, op, right) => {
             let l = eval_inner(left, env, io.as_deref_mut())?;
@@ -910,6 +908,10 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::FieldGet(base_expr, field) => {
             let base_val = eval_inner(base_expr, env, io)?;
             match base_val {
+                Value::Map(ref map) if field == "Count" => Ok(Value::Scalar(map.len() as f64)),
+                Value::Map(_) => Err(format!(
+                    "Map has no property '{field}'; use 'Count', isKey(), keys(), values()"
+                )),
                 Value::Struct(map) => map
                     .get(field)
                     .cloned()
@@ -949,6 +951,10 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         }
         Expr::DotCall(segs, args) => {
             let qualified = segs.join(".");
+            // containers.Map({'k1','k2'}, {v1,v2}) constructor.
+            if segs == &["containers", "Map"] {
+                return make_containers_map(args, env, io);
+            }
             // If the head segment is a variable, follow the field chain and call the result.
             if let Some(head_val) = env.get(&segs[0]).cloned() {
                 let mut val = head_val;
@@ -1062,7 +1068,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::Struct(_)
             | Value::StructArray(_)
             | Value::DateTime(_)
-            | Value::Duration(_) => Err("Transpose is not applicable to this type".to_string()),
+            | Value::Duration(_)
+            | Value::Map(_) => Err("Transpose is not applicable to this type".to_string()),
         },
         Expr::Colon => Err("':' is only valid inside index expressions".to_string()),
         Expr::NaT => Ok(Value::DateTime(f64::NAN)),
@@ -1117,7 +1124,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     | Value::Tuple(_)
                     | Value::Cell(_)
                     | Value::Struct(_)
-                    | Value::StructArray(_) => {
+                    | Value::StructArray(_)
+                    | Value::Map(_) => {
                         return Err("This type cannot be used in matrix literals".to_string());
                     }
                     // Cannot reach here — has_complex covers this
@@ -1375,7 +1383,8 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             | Value::Struct(_)
             | Value::StructArray(_)
             | Value::DateTime(_)
-            | Value::Duration(_) => Err("Transpose is not applicable to this type".to_string()),
+            | Value::Duration(_)
+            | Value::Map(_) => Err("Transpose is not applicable to this type".to_string()),
         },
         Expr::StrLiteral(s) => Ok(Value::Str(s.clone())),
         Expr::StringObjLiteral(s) => Ok(Value::StringObj(s.clone())),
@@ -1431,7 +1440,7 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
         (Value::StringObj(_), _) | (_, Value::StringObj(_)) => {
             Err("String object cannot be combined with non-string values".to_string())
         }
-        // Functions, tuples, cell arrays, structs, and struct arrays are not numeric
+        // Functions, tuples, cell arrays, structs, struct arrays, and maps are not numeric
         (Value::Lambda(_), _)
         | (_, Value::Lambda(_))
         | (Value::Function { .. }, _)
@@ -1443,7 +1452,9 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
         | (Value::Struct(_), _)
         | (_, Value::Struct(_))
         | (Value::StructArray(_), _)
-        | (_, Value::StructArray(_)) => Err("Cannot apply operator to a struct value".to_string()),
+        | (_, Value::StructArray(_))
+        | (Value::Map(_), _)
+        | (_, Value::Map(_)) => Err("Cannot apply operator to a Map value".to_string()),
         // --- DateTime / Duration arithmetic ---
         // datetime + duration → datetime
         (Value::DateTime(t), Value::Duration(d)) => match op {
@@ -2030,7 +2041,8 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
         | Value::DateTime(_)
         | Value::Duration(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => Err(format!(
+        | Value::DurationArray(_)
+        | Value::Map(_) => Err(format!(
             "Function '{fname}' argument {pos} must be a scalar, got a non-numeric value"
         )),
     }
@@ -2194,9 +2206,8 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
         | Value::DateTime(_)
         | Value::Duration(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => {
-            Err("Element-wise function not applicable to this type".to_string())
-        }
+        | Value::DurationArray(_)
+        | Value::Map(_) => Err("Element-wise function not applicable to this type".to_string()),
     }
 }
 
@@ -2226,7 +2237,8 @@ where
         | Value::DateTime(_)
         | Value::Duration(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => Err("Reduction not applicable to this type".to_string()),
+        | Value::DurationArray(_)
+        | Value::Map(_) => Err("Reduction not applicable to this type".to_string()),
         Value::Matrix(m) => {
             if m.nrows() == 1 || m.ncols() == 1 {
                 let vals: Vec<f64> = m.iter().copied().collect();
@@ -2346,9 +2358,8 @@ where
         | Value::DateTime(_)
         | Value::Duration(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => {
-            Err("Cumulative reduction not applicable to this type".to_string())
-        }
+        | Value::DurationArray(_)
+        | Value::Map(_) => Err("Cumulative reduction not applicable to this type".to_string()),
         Value::Matrix(m) => {
             let initial = combine(0.0, 0.0); // detect identity: 0+0=0 or 0*0=0
             // Use 0.0 as additive identity, 1.0 as multiplicative identity.
@@ -2397,7 +2408,8 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
         | Value::DateTime(_)
         | Value::Duration(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => Err("find: not applicable to this type".to_string()),
+        | Value::DurationArray(_)
+        | Value::Map(_) => Err("find: not applicable to this type".to_string()),
         Value::Complex(re, im) => {
             if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
                 Ok(Value::Matrix(
@@ -2658,7 +2670,8 @@ fn printf_string(v: &Value) -> Result<String, String> {
         | Value::Struct(_)
         | Value::StructArray(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => Err("fprintf: cannot format this type as string".to_string()),
+        | Value::DurationArray(_)
+        | Value::Map(_) => Err("fprintf: cannot format this type as string".to_string()),
     }
 }
 
@@ -2945,10 +2958,12 @@ pub fn builtin_names() -> &'static [&'static str] {
         "isnan",
         "isnat",
         "isreal",
+        "isKey",
         "isstring",
         "isstruct",
         "jsonencode",
         "jsondecode",
+        "keys",
         "kron",
         "kurtosis",
         "lasterr",
@@ -3002,6 +3017,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "regexprep",
         "rem",
         "repelem",
+        "remove",
         "repmat",
         "reshape",
         "rmfield",
@@ -3040,6 +3056,7 @@ pub fn builtin_names() -> &'static [&'static str] {
         "union",
         "unique",
         "upper",
+        "values",
         "var",
         "writetable",
         "xor",
@@ -3307,7 +3324,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => Err("size: not applicable to this type".to_string()),
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("size: not applicable to this type".to_string()),
         },
         ("size", 2) => {
             let dim = scalar_arg(&args[1], name, 2)? as usize;
@@ -3352,7 +3370,8 @@ fn call_builtin(
                 | Value::DateTime(_)
                 | Value::Duration(_)
                 | Value::DateTimeArray(_)
-                | Value::DurationArray(_) => Err("size: not applicable to this type".to_string()),
+                | Value::DurationArray(_)
+                | Value::Map(_) => Err("size: not applicable to this type".to_string()),
             }
         }
         ("length", 1) => match &args[0] {
@@ -3366,6 +3385,7 @@ fn call_builtin(
             Value::StructArray(arr) => Ok(Value::Scalar(arr.len() as f64)),
             Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::DateTime(_) | Value::Duration(_) => Ok(Value::Scalar(1.0)),
+            Value::Map(m) => Ok(Value::Scalar(m.len() as f64)),
             Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
                 Err("length: not applicable to function values".to_string())
             }
@@ -3381,6 +3401,7 @@ fn call_builtin(
             Value::StructArray(arr) => Ok(Value::Scalar(arr.len() as f64)),
             Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::DateTime(_) | Value::Duration(_) => Ok(Value::Scalar(1.0)),
+            Value::Map(m) => Ok(Value::Scalar(m.len() as f64)),
             Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
                 Err("numel: not applicable to function values".to_string())
             }
@@ -3413,9 +3434,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("trace: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("trace: not applicable to non-numeric values".to_string()),
         },
         ("det", 1) => match &args[0] {
             Value::Void => Err("det: not applicable to void".to_string()),
@@ -3434,9 +3454,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("det: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("det: not applicable to non-numeric values".to_string()),
         },
         ("inv", 1) => match &args[0] {
             Value::Void => Err("inv: not applicable to void".to_string()),
@@ -3469,9 +3488,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("inv: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("inv: not applicable to non-numeric values".to_string()),
         },
         // --- Range / linspace ---
         ("linspace", 3) => {
@@ -3704,9 +3722,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("norm: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("norm: not applicable to non-numeric values".to_string()),
         },
         ("norm", 2) => match &args[1] {
             Value::Str(s) | Value::StringObj(s) => match s.as_str() {
@@ -3770,7 +3787,8 @@ fn call_builtin(
                     | Value::DateTime(_)
                     | Value::Duration(_)
                     | Value::DateTimeArray(_)
-                    | Value::DurationArray(_) => {
+                    | Value::DurationArray(_)
+                    | Value::Map(_) => {
                         Err("norm: not applicable to non-numeric values".to_string())
                     }
                 }
@@ -3796,9 +3814,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("sort: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("sort: not applicable to non-numeric values".to_string()),
             Value::Matrix(m) => {
                 if m.nrows() > 1 && m.ncols() > 1 {
                     return Err("sort: input must be a vector".to_string());
@@ -3841,9 +3858,8 @@ fn call_builtin(
                 | Value::DateTime(_)
                 | Value::Duration(_)
                 | Value::DateTimeArray(_)
-                | Value::DurationArray(_) => {
-                    Err("reshape: not applicable to non-numeric values".to_string())
-                }
+                | Value::DurationArray(_)
+                | Value::Map(_) => Err("reshape: not applicable to non-numeric values".to_string()),
                 Value::Matrix(m) => {
                     let total = m.len();
                     if r * c != total {
@@ -3880,9 +3896,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err(format!("{name}: not applicable to non-numeric values"))
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err(format!("{name}: not applicable to non-numeric values")),
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -3912,9 +3927,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err(format!("{name}: not applicable to non-numeric values"))
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err(format!("{name}: not applicable to non-numeric values")),
             Value::Matrix(m) => {
                 let (nrows, ncols) = (m.nrows(), m.ncols());
                 let mut result = m.clone();
@@ -3968,9 +3982,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("unique: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("unique: not applicable to non-numeric values".to_string()),
         },
         // --- Descriptive statistics ---
         ("std", 1) => apply_stat(&args[0], |s| stat_var_vec(s, false).sqrt(), "std"),
@@ -4272,9 +4285,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("diag: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("diag: not applicable to non-numeric values".to_string()),
         },
 
         // --- Complex built-ins ---
@@ -4296,9 +4308,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("real: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("real: not applicable to non-numeric values".to_string()),
         },
         // imag(z) — imaginary part; returns 0.0 for real scalars and real matrices.
         ("imag", 1) => match &args[0] {
@@ -4318,9 +4329,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("imag: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("imag: not applicable to non-numeric values".to_string()),
         },
         // abs(z) — modulus; overloads scalar abs; element-wise on matrices.
         ("abs", 1) => match &args[0] {
@@ -4340,9 +4350,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("abs: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("abs: not applicable to non-numeric values".to_string()),
         },
         // angle(z) — argument in radians; returns 0 for non-negative reals.
         ("angle", 1) => match &args[0] {
@@ -4370,9 +4379,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("angle: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("angle: not applicable to non-numeric values".to_string()),
         },
         // conj(z) — complex conjugate; element-wise over complex matrices.
         ("conj", 1) => match &args[0] {
@@ -4392,9 +4400,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => {
-                Err("conj: not applicable to non-numeric values".to_string())
-            }
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("conj: not applicable to non-numeric values".to_string()),
         },
         // complex(re, im) — construct complex from two reals.
         ("complex", 2) => {
@@ -4420,7 +4427,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => Ok(Value::Scalar(0.0)),
+            | Value::DurationArray(_)
+            | Value::Map(_) => Ok(Value::Scalar(0.0)),
         },
         // --- String built-ins ---
         // num2str(x) — convert number to char array string
@@ -4450,7 +4458,8 @@ fn call_builtin(
             | Value::DateTime(_)
             | Value::Duration(_)
             | Value::DateTimeArray(_)
-            | Value::DurationArray(_) => Err("num2str: not applicable to this type".to_string()),
+            | Value::DurationArray(_)
+            | Value::Map(_) => Err("num2str: not applicable to this type".to_string()),
         },
         // num2str(x, N) — N significant digits
         ("num2str", 2) => {
@@ -4483,9 +4492,8 @@ fn call_builtin(
                 | Value::DateTime(_)
                 | Value::Duration(_)
                 | Value::DateTimeArray(_)
-                | Value::DurationArray(_) => {
-                    Err("num2str: not applicable to this type".to_string())
-                }
+                | Value::DurationArray(_)
+                | Value::Map(_) => Err("num2str: not applicable to this type".to_string()),
             }
         }
         // str2double(s) — parse string as f64; return NaN on failure
@@ -4584,6 +4592,44 @@ fn call_builtin(
                 _ => 0.0,
             }))
         }
+        // --- containers.Map built-ins ---
+        ("isKey", 2) => {
+            let key = match &args[1] {
+                Value::Str(s) | Value::StringObj(s) => s.clone(),
+                _ => return Err("isKey: second argument must be a string key".to_string()),
+            };
+            match &args[0] {
+                Value::Map(map) => Ok(Value::Scalar(if map.contains_key(&key) {
+                    1.0
+                } else {
+                    0.0
+                })),
+                _ => Err("isKey: first argument must be a containers.Map".to_string()),
+            }
+        }
+        ("keys", 1) => match &args[0] {
+            Value::Map(map) => {
+                let mut sorted_keys: Vec<&String> = map.keys().collect();
+                sorted_keys.sort();
+                Ok(Value::Cell(
+                    sorted_keys
+                        .into_iter()
+                        .map(|k| Value::Str(k.clone()))
+                        .collect(),
+                ))
+            }
+            _ => Err("keys: argument must be a containers.Map".to_string()),
+        },
+        ("values", 1) => match &args[0] {
+            Value::Map(map) => {
+                let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
+                pairs.sort_by_key(|(k, _)| *k);
+                Ok(Value::Cell(
+                    pairs.into_iter().map(|(_, v)| v.clone()).collect(),
+                ))
+            }
+            _ => Err("values: argument must be a containers.Map".to_string()),
+        },
         // rmfield(s, 'name') — copy of struct with field removed
         ("rmfield", 2) => {
             let field = match &args[1] {
@@ -8039,6 +8085,59 @@ pub(crate) fn contains_end(expr: &Expr) -> bool {
 ///
 /// Disambiguation rule (Octave semantics): a name that exists in `Env` is always
 /// treated as a variable to be indexed, never as a function call.
+/// Constructs a `Value::Map` from `containers.Map(keys_cell, values_cell)` call.
+///
+/// 0-arg form: empty map. 2-arg form: cell of string keys + cell of values.
+fn make_containers_map(
+    args: &[Expr],
+    env: &Env,
+    io: Option<&mut IoContext>,
+) -> Result<Value, String> {
+    if args.is_empty() {
+        return Ok(Value::Map(IndexMap::new()));
+    }
+    if args.len() != 2 {
+        return Err(
+            "containers.Map: expected 0 or 2 arguments (keys cell, values cell)".to_string(),
+        );
+    }
+    let mut io_wrap = io;
+    let keys_val = eval_inner(&args[0], env, io_wrap.as_deref_mut())?;
+    let vals_val = eval_inner(&args[1], env, io_wrap)?;
+    let keys = match keys_val {
+        Value::Cell(v) => v,
+        _ => {
+            return Err(
+                "containers.Map: first argument must be a cell array of strings".to_string(),
+            );
+        }
+    };
+    let values = match vals_val {
+        Value::Cell(v) => v,
+        _ => {
+            return Err(
+                "containers.Map: second argument must be a cell array of values".to_string(),
+            );
+        }
+    };
+    if keys.len() != values.len() {
+        return Err(format!(
+            "containers.Map: key count ({}) does not match value count ({})",
+            keys.len(),
+            values.len()
+        ));
+    }
+    let mut map = IndexMap::new();
+    for (k, v) in keys.into_iter().zip(values) {
+        let key = match k {
+            Value::Str(s) | Value::StringObj(s) => s,
+            _ => return Err("containers.Map: all keys must be strings".to_string()),
+        };
+        map.insert(key, v);
+    }
+    Ok(Value::Map(map))
+}
+
 fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
     match args.len() {
         0 => Err("Indexing requires at least one index".to_string()),
@@ -8052,6 +8151,16 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                 Value::Cell(_) => Err("Use c{i} to index into a cell array, not c(i)".to_string()),
                 Value::Struct(_) => {
                     Err("Use s.field to access struct fields, not s(i)".to_string())
+                }
+                Value::Map(map) => {
+                    let key_val = eval_inner(&args[0], env, None)?;
+                    let key = match key_val {
+                        Value::Str(s) | Value::StringObj(s) => s,
+                        _ => return Err("Map key must be a string".to_string()),
+                    };
+                    map.get(&key)
+                        .cloned()
+                        .ok_or_else(|| format!("Map key '{key}' not found"))
                 }
                 Value::StructArray(arr) => {
                     let total = arr.len();
@@ -8526,7 +8635,8 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
         | Value::DateTime(_)
         | Value::Duration(_)
         | Value::DateTimeArray(_)
-        | Value::DurationArray(_) => {
+        | Value::DurationArray(_)
+        | Value::Map(_) => {
             return Err("Index must be numeric, not a function or datetime".to_string());
         }
     };
@@ -8735,6 +8845,7 @@ pub fn format_value(v: &Value, base: Base, mode: &FormatMode) -> String {
         Value::Duration(s) => crate::datetime::format_duration(*s),
         Value::DateTimeArray(v) => format!("[{}×1 datetime]", v.len()),
         Value::DurationArray(v) => format!("[{}×1 duration]", v.len()),
+        Value::Map(m) => format!("[Map with {} entries]", m.len()),
     }
 }
 
@@ -8759,6 +8870,7 @@ pub fn format_value_full(v: &Value, mode: &FormatMode) -> Option<String> {
         Value::StructArray(arr) => Some(format_struct_array(arr, mode)),
         Value::DateTimeArray(v) => Some(format_datetime_array(v)),
         Value::DurationArray(v) => Some(format_duration_array(v)),
+        Value::Map(m) => Some(format_map(m, mode)),
     }
 }
 
@@ -8843,6 +8955,25 @@ fn format_struct_array(arr: &[IndexMap<String, Value>], mode: &FormatMode) -> St
             };
             lines.push(format!("    {key}: {val_str}"));
         }
+    }
+    lines.join("\n")
+}
+
+fn format_map(map: &IndexMap<String, Value>, mode: &FormatMode) -> String {
+    let n = map.len();
+    let mut lines = vec![
+        String::new(),
+        format!("  Map with {n} entries:"),
+        String::new(),
+    ];
+    for (key, val) in map {
+        let val_str = match val {
+            Value::Struct(_) => "[1×1 struct]".to_string(),
+            Value::Matrix(m) => format!("[{}×{} double]", m.nrows(), m.ncols()),
+            Value::Cell(v) => format!("{{1×{} cell}}", v.len()),
+            _ => format_value(val, Base::Dec, mode),
+        };
+        lines.push(format!("    '{key}' → {val_str}"));
     }
     lines.join("\n")
 }
