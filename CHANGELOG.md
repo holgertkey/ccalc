@@ -6,6 +6,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-05-31
+
+### Added
+
+- **Phase 33b — Newline as matrix row separator inside `[...]`**
+- A bare newline inside `[...]` is now a row separator, identical to `;`.
+  `A = [1 2\n3 4]` is equivalent to `A = [1 2; 3 4]`. Works in scripts,
+  pipe mode, and the interactive REPL (open brackets trigger multi-line
+  buffering automatically).
+- Trailing `%` comments on a row inside a multi-line matrix are stripped before
+  the newline is processed, so `[1 2 % note\n3 4]` works correctly.
+- Line continuation (`...`) suppresses the row break as expected:
+  `[1 2 ...\n3 4]` produces a 1×4 row vector, not a 2×2 matrix.
+- `Token::Newline` added to the tokenizer (emitted only inside `[...]`);
+  `parse_matrix` handles it identically to `Token::Semicolon`.
+- `bracket_depth_delta(line)` exported from `parser.rs`.
+- 5 new tests; example script `examples/matrix_newline_demo.m`.
+
+- **Phase 33c — Dynamic struct field access `s.(fname)`**
+- `s.(fname)` reads a struct field where `fname` is a string expression evaluated
+  at runtime. Equivalent to `s.x` when `fname = 'x'`.
+- `s.(fname) = val` writes to a struct field named by the runtime string; creates
+  the struct if it does not already exist.
+- `Expr::DynFieldGet(Box<Expr>, Box<Expr>)` added to the AST;
+  `Stmt::DynFieldSet(String, Expr, Expr)` added as a parser statement.
+- 4 new tests.
+
+- **Phase 33d — `dir(pattern)` — directory listing**
+- `dir()` / `dir(path)` returns a `StructArray` where every element has four
+  fields: `name` (char array), `folder` (absolute path, char array),
+  `isdir` (1.0 or 0.0), `bytes` (file size in bytes).
+- Non-glob path (e.g. `dir('.')`) prepends `.` and `..` as the first two entries
+  (MATLAB-compatible). `dir()` with no argument defaults to `'.'`.
+- Glob pattern (e.g. `dir('*.csv')`) — only matching files returned; `.` and
+  `..` excluded from glob results.
+- Non-existent path → empty struct array (no error, no panic).
+- `folder` always absolute with OS-native separators; glob matching is
+  case-insensitive on Windows, case-sensitive on Linux/macOS.
+- Pure `std::fs` — no new Cargo dependency.
+- 5 new tests; example script `examples/dir_demo/dir_demo.m`.
+
+- **Phase 33e — `containers.Map` — string-keyed associative array**
+- `containers.Map({'k1','k2'},{v1,v2})` — construct a map from two cell arrays;
+  empty `containers.Map()` also supported.
+- `m('key')` — read a value by string key; error if key absent.
+- `m('key') = val` — insert or update a key in-place.
+- `m.Count` — read-only property returning the number of entries.
+- `isKey(m, 'key')` — `1` if key present, `0` otherwise.
+- `keys(m)` — cell array of keys in sorted order.
+- `values(m)` — cell array of values in sorted-key order.
+- `remove(m, 'key')` — removes a key in-place (no assignment needed).
+- Multi-line display: `Map with N entries: 'key' → value`.
+- Backed by `IndexMap<String, Value>` (existing `indexmap` dependency).
+- 6 new tests; example script `examples/containers_map_demo/containers_map_demo.m`.
+
+### Changed
+
+- **Phase 33f — mdBook documentation update**: documented two previously
+  undocumented built-ins: `genpath(dir)` (file-io guide) and `assert` variants
+  (user-functions guide). `cargo doc --no-deps` and `mdbook build docs` both
+  pass with zero warnings.
+- **Phase 33g — Benchmark verification**: confirmed no regression > 10 % on
+  `scalar_ops_sum_1M`, `loop_10k`, or `fn_calls_1000` versus the Phase 19
+  criterion baseline.
+
 ## [0.44.0+004] - 2026-05-31
 
 ### Added
