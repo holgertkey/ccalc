@@ -42,6 +42,10 @@ pub fn print(topic: Option<&str>) {
             print_structs()
         }
         Some(
+            "map" | "maps" | "containers" | "containers.Map" | "isKey" | "iskey" | "keys"
+            | "values" | "remove" | "associative" | "lookup" | "dict" | "dictionary",
+        ) => print_map(),
+        Some(
             "scoping" | "scope" | "global" | "persistent" | "private" | "packages" | "package"
             | "namespace" | "namespaces" | "pkg",
         ) => print_scoping(),
@@ -171,7 +175,7 @@ pub fn print(topic: Option<&str>) {
         Some(unknown) => {
             eprintln!("Unknown help topic: '{unknown}'");
             eprintln!(
-                "Available topics: syntax  functions  userfuncs  cells  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  prompt  highlight  examples"
+                "Available topics: syntax  functions  userfuncs  cells  map  structs  errors  testing  scoping  stats  linalg  bases  vars  script  format  matrices  index  logic  vectors  complex  strings  datetime  regex  files  csv  json  matfile  control  path  setops  poly  eval  fft  plot  prompt  highlight  examples"
             );
         }
     }
@@ -345,6 +349,11 @@ Structs  s.x = 1                   field assignment (creates struct if needed)
          fieldnames(s)  isfield(s,'x')  rmfield(s,'x')  isstruct(v)
          s(i).field = v            struct array element assignment
          s.field                   collect field across all struct array elements
+Map     m = containers.Map({{'k1','k2'}},{{v1,v2}})  string-keyed lookup table
+        m('key')               read value; error if absent
+        m('key') = val         insert or update
+        m.Count                number of entries (read-only property)
+        isKey(m,'k')  keys(m)  values(m)  remove(m,'k')
 Scoping global x              shared across all functions and the workspace
         persistent x         per-function value that survives between calls
         private/             directory-scoped helpers (visible only to parent dir)
@@ -388,6 +397,7 @@ Keys    ↑↓ history  Ctrl+R search  Ctrl+A/E line start/end
   help functions   built-in function reference with examples
   help userfuncs   user-defined functions, multiple return, lambdas
   help cells       cell arrays, varargin/varargout, cellfun, arrayfun
+  help map         containers.Map — string-keyed lookup table (isKey/keys/values/remove)
   help structs     scalar structs + struct arrays, field access, fieldnames/isfield/rmfield
   help errors      error/warning, try/catch, try(expr,default), pcall
   help testing     assert(cond), assert(a,b), assert(a,b,tol) — unit testing
@@ -2537,10 +2547,88 @@ string, complex, cell, or another struct).  Fields are ordered by insertion.
   Structs are NOT persisted by ws/save — same policy as matrices and cells.
   who shows: s = [1×1 struct]  or  pts = [1×3 struct]
 
-See also: help cells  help userfuncs  help control
+See also: help cells  help map  help userfuncs  help control
 Examples: ccalc examples/structs.calc
           ccalc examples/struct_arrays.calc
           ccalc examples/dyn_field_demo.m"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// help map
+// ---------------------------------------------------------------------------
+
+fn print_map() {
+    println!(
+        "\
+CONTAINERS.MAP  (help map)
+
+A string-keyed associative array — maps string keys to values of any type.
+Equivalent to a Python dict or JavaScript Map.
+
+─── Construction ──────────────────────────────────────────────────────────────
+
+  m = containers.Map()                  empty map
+  m = containers.Map({{'k1','k2'}}, {{v1,v2}})  from two cell arrays (equal length)
+
+  Keys must be strings (char arrays or string objects).
+  Values can be any type: scalar, matrix, string, cell, struct, …
+
+─── Reading ───────────────────────────────────────────────────────────────────
+
+  m('key')              read value; error if key is absent
+  m.Count               number of entries (read-only property)
+
+─── Writing ───────────────────────────────────────────────────────────────────
+
+  m('key') = val        insert new key or update existing key
+
+─── Built-in functions ────────────────────────────────────────────────────────
+
+  isKey(m, 'key')       1 if key present, 0 if absent
+  keys(m)               cell array of all keys, sorted alphabetically
+  values(m)             cell array of values, same sorted-key order as keys(m)
+  remove(m, 'key')      remove a key in-place (no assignment statement needed)
+
+─── Example ───────────────────────────────────────────────────────────────────
+
+  prices = containers.Map({{'apple','banana'}}, {{1.5, 0.75}});
+  prices('cherry') = 2.0;         % insert
+  prices('banana') = 0.99;        % update
+  fprintf('Count: %d\\n', prices.Count);   % → Count: 3
+
+  isKey(prices, 'apple')    % → 1
+  isKey(prices, 'mango')    % → 0
+
+  k = keys(prices);         % {{'apple', 'banana', 'cherry'}}  (sorted)
+  v = values(prices);       % {{1.5, 0.99, 2}}                 (key order)
+
+  % Iterate
+  for i = 1:prices.Count
+    fprintf('%s: %.2f\\n', k{{i}}, prices(k{{i}}));
+  end
+
+  remove(prices, 'banana');
+  prices.Count              % → 2
+
+─── Display ───────────────────────────────────────────────────────────────────
+
+  prices =
+
+    Map with 2 entries:
+
+      'apple'  → 1.5
+      'cherry' → 2
+
+─── Notes ─────────────────────────────────────────────────────────────────────
+
+  * String keys only — numeric-key maps are not supported.
+  * Value semantics: m2 = m creates a copy (mutations to m2 don't affect m).
+  * Maps are NOT persisted by ws/save — same policy as matrices and cells.
+  * who shows: m = [Map 3]
+
+See also: help cells  help structs
+Example:  ccalc examples/containers_map_demo.m"
     );
 }
 

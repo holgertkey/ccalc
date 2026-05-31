@@ -1781,6 +1781,36 @@ f = @sqrt;   f(16)            % 4
 g = @abs;    g(-7.5)          % 7.5
 ```
 
+---
+
+### containers.Map
+
+A string-keyed associative array (lookup table). Equivalent to Python's `dict`.
+
+```matlab
+% Construct from key/value cell arrays
+prices = containers.Map({'apple', 'banana', 'cherry'}, {1.5, 0.75, 2.0});
+
+prices('apple')           % 1.5  — read by key
+prices('date') = 3.5;     % insert new key
+prices('banana') = 0.99;  % update existing key
+prices.Count              % 4    — number of entries
+
+isKey(prices, 'apple')    % 1
+isKey(prices, 'mango')    % 0
+
+k = keys(prices)          % {'apple', 'banana', 'cherry', 'date'}  (sorted)
+v = values(prices)        % {1.5, 0.99, 2.0, 3.5}  (same order as keys)
+
+remove(prices, 'date');   % remove in-place
+prices.Count              % 3
+```
+
+Maps are not saved by `ws`/`save` (same policy as matrices and cells).
+`help map` for the full reference.
+
+---
+
 **`case {v1, v2}` in switch** — matches if the switch expression equals any element:
 
 ```matlab
@@ -1911,7 +1941,7 @@ All forms desugar at parse time — no performance penalty.
 | `config reload`                   | Re-read `config.toml` and apply changes |
 | Ctrl+C / Ctrl+D                   | Quit                                    |
 
-Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `prompt`  `highlight`  `examples`
+Help topics: `syntax`  `functions`  `userfuncs`  `cells`  `map`  `structs`  `errors`  `bases`  `vars`  `script`  `format`  `matrices`  `files`  `control`  `datetime`  `setops`  `poly`  `prompt`  `highlight`  `examples`
 
 ### Prompt customization
 

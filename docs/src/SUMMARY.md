@@ -22,6 +22,7 @@
   - [Control Flow](./guide/control-flow.md)
   - [User-defined Functions](./guide/user-functions.md)
   - [Cell Arrays](./guide/cell-arrays.md)
+  - [containers.Map](./guide/containers-map.md)
   - [Structs and Struct Arrays](./guide/structs.md)
   - [Error Handling](./guide/error-handling.md)
   - [Variable Scoping](./guide/scoping.md)
