@@ -274,6 +274,31 @@ works automatically:
 
 ---
 
+## Testing with `assert`
+
+`assert` checks a condition and throws an error if it is false.
+Use it in scripts and function files to catch programming mistakes early.
+
+```matlab
+% assert(cond) — error if cond is 0, NaN, or empty
+assert(1 == 1)            % passes — silently returns
+assert(2 > 3)             % fails: "assert: condition is false"
+
+% assert(expected, actual) — error if values differ (element-wise)
+assert(sqrt(4), 2)        % passes
+assert([1 2], [1 3])      % fails: "assert: values differ"
+
+% assert(expected, actual, tol) — error if |expected - actual| > tol
+assert(pi, 3.14159, 1e-4) % passes — within tolerance
+assert(pi, 3.14, 1e-4)    % fails — difference 0.00159 > 1e-4
+```
+
+`assert` works on scalars, vectors, and matrices.  For numeric comparisons
+the element-wise absolute difference is checked; for matrices the check
+applies to every element.
+
+---
+
 ## Full example
 
 ```bash

@@ -139,6 +139,24 @@ The `folder` field is always an absolute path using OS-native separators.
 
 ---
 
+## Path generation
+
+`genpath(dir)` recursively walks a directory tree and returns a path string
+containing the root directory and all of its subdirectories (depth-first,
+sorted alphabetically).  On Unix the entries are joined with `:`; on Windows
+with `;`.  Non-existent paths return an empty string.
+
+```matlab
+% Get a path string covering crates/ and all of its subdirectories
+p = genpath('crates');
+fprintf('%s\n', p)
+
+% Typical use: add all subdirectories of a library to the search path
+addpath(genpath('libs'))
+```
+
+---
+
 ## Workspace with explicit path
 
 Save and load workspace variables to a named file instead of the default path:
