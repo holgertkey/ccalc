@@ -4,6 +4,14 @@ use std::rc::Rc;
 /// Parsed function body cache: body source string → pre-parsed, all-silent statements.
 type BodyCache = HashMap<String, Rc<Vec<StmtEntry>>>;
 
+/// Compiled bytecode cache for function bodies.
+///
+/// Key: body source string (same key as `BODY_CACHE`).
+/// Value: `Some(chunk)` when compilation succeeded, `None` when the body has
+/// constructs the compiler does not yet support (never retried).
+type ChunkCache = HashMap<String, Option<Rc<crate::vm::Chunk>>>;
+
+
 /// Expands a leading `~` to the user's home directory.
 ///
 /// On Windows `USERPROFILE` is tried as a fallback for `HOME`. If neither is set the
@@ -73,6 +81,13 @@ thread_local! {
     /// Cache entries are never evicted — acceptable because the number of
     /// unique function bodies in a session is small.
     static BODY_CACHE: std::cell::RefCell<BodyCache> =
+        std::cell::RefCell::new(HashMap::new());
+
+    /// Compiled bytecode cache for named function bodies.
+    ///
+    /// Populated on the first successful compilation of a function body; `None`
+    /// entries mark bodies whose compilation failed (no retry on future calls).
+    static BODY_CHUNK_CACHE: std::cell::RefCell<ChunkCache> =
         std::cell::RefCell::new(HashMap::new());
 }
 
@@ -552,12 +567,31 @@ fn call_user_function(
     local_env.insert("nargin".to_string(), Value::Scalar(nargin as f64));
     local_env.insert("nargout".to_string(), Value::Scalar(outputs.len() as f64));
 
-    // Retrieve (or parse-and-cache) the function body, then execute it.
+    // Retrieve (or parse-and-cache) the function body.
     let body = get_or_parse_body(body_source)?;
-    let fmt = get_display_fmt();
-    let base = get_display_base();
+    let fmt     = get_display_fmt();
+    let base    = get_display_base();
     let compact = get_display_compact();
-    let exec_result = exec_stmts(&body, &mut local_env, io, &fmt, base, compact);
+
+    // Try the compiled VM path (cached by body_source).
+    let maybe_chunk: Option<Rc<crate::vm::Chunk>> = BODY_CHUNK_CACHE.with(|cc| {
+        let mut cache = cc.borrow_mut();
+        if let Some(entry) = cache.get(body_source) {
+            return entry.clone();
+        }
+        let result: Option<Rc<crate::vm::Chunk>> = match crate::vm::compile::compile(&body) {
+            Ok(chunk) => Some(Rc::new(chunk)),
+            Err(_)    => None,
+        };
+        cache.insert(body_source.to_string(), result.clone());
+        result
+    });
+
+    let exec_result = if let Some(chunk) = maybe_chunk {
+        crate::vm::exec::vm_exec(&chunk, &mut local_env, io, &fmt, base, compact)
+    } else {
+        exec_stmts(&body, &mut local_env, io, &fmt, base, compact)
+    };
 
     // Save persistent variables before unwinding the frame (even on error).
     let (func_name_saved, persistent_names) = persistent_frame_pop();
@@ -670,7 +704,7 @@ pub fn resolve_script_path(name: &str) -> Option<std::path::PathBuf> {
 /// - Complex: either part nonzero.
 /// - Str/StringObj: nonempty.
 /// - Void: always false.
-fn is_truthy(val: &Value) -> bool {
+pub(crate) fn is_truthy(val: &Value) -> bool {
     match val {
         Value::Scalar(n) => *n != 0.0 && !n.is_nan(),
         Value::Matrix(m) => m.iter().all(|&x| x != 0.0 && !x.is_nan()),
@@ -698,7 +732,7 @@ fn is_truthy(val: &Value) -> bool {
 ///
 /// `label` is `Some("name")` for assignment output and `None` for expression output.
 /// In expression context scalars/complex print without a label; matrices print `ans =`.
-fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, compact: bool) {
+pub(crate) fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, compact: bool) {
     match val {
         Value::Void => {}
         Value::Scalar(n) => {
@@ -909,6 +943,18 @@ pub fn exec_stmts(
     base: Base,
     compact: bool,
 ) -> Result<Option<Signal>, String> {
+    // Fast pre-scan: check compilability with zero heap allocation.
+    // This avoids the expensive Chunk-building + Expr-cloning that compile()
+    // does before discovering an unsupported node deep inside a hot loop body.
+    if crate::vm::compile::is_compilable(stmts) {
+        match crate::vm::compile::compile(stmts) {
+            Ok(chunk) => {
+                return crate::vm::exec::vm_exec(&chunk, env, io, fmt, base, compact);
+            }
+            Err(crate::vm::CompileError::Unsupported) => {}
+        }
+    }
+
     // Propagate display settings to eval.rs so named function bodies can use them.
     set_display_ctx(fmt, base, compact);
 
@@ -1927,7 +1973,7 @@ fn write_env_with_end(env: &Env, dim_size: usize) -> Env {
 /// - 2 indices: 2-D row/column indexing; grows the matrix in either dimension.
 /// - Scalar RHS is broadcast to all selected positions.
 /// - Logical mask indices (Phase 15d).
-fn exec_index_set(
+pub(crate) fn exec_index_set(
     name: &str,
     indices: &[crate::eval::Expr],
     rhs: Value,

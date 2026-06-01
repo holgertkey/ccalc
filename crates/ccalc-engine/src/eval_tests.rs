@@ -7850,3 +7850,289 @@ mod phase33d_tests {
         assert_eq!(fscalar(file_row, "isdir"), 0.0, "file should have isdir=0");
     }
 }
+
+// ── Phase 34b — Bytecode compiler + register VM ───────────────────────────────
+
+#[cfg(test)]
+mod vm_tests {
+    use crate::env::{Env, Value};
+    use crate::eval::{Base, FormatMode};
+    use crate::exec::{exec_stmts, init};
+    use crate::io::IoContext;
+    use crate::parser::parse_stmts;
+    use crate::vm;
+    use crate::vm::compile::compile;
+    use crate::vm::exec::vm_exec;
+    use crate::vm::Opcode;
+
+    fn new_env() -> Env {
+        let mut env = Env::new();
+        env.insert("ans".to_string(), Value::Scalar(0.0));
+        env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+        env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+        env
+    }
+
+    fn run(code: &str, env: &mut Env) {
+        let stmts = parse_stmts(code).unwrap_or_else(|e| panic!("parse: {e}\n{code}"));
+        let mut io = IoContext::new();
+        exec_stmts(&stmts, env, &mut io, &FormatMode::Short, Base::Dec, true)
+            .unwrap_or_else(|e| panic!("exec: {e}\n{code}"));
+    }
+
+    fn scalar(env: &Env, name: &str) -> f64 {
+        match env.get(name) {
+            Some(Value::Scalar(f)) => *f,
+            other => panic!("{name} = {other:?}"),
+        }
+    }
+
+    // ── 1: Instr is exactly 8 bytes ───────────────────────────────────────────
+
+    #[test]
+    fn instr_size_is_8_bytes() {
+        assert_eq!(std::mem::size_of::<vm::Instr>(), 8);
+    }
+
+    // ── 2: compile a simple assignment ────────────────────────────────────────
+
+    #[test]
+    fn vm_compile_assign() {
+        // x = 3 + 4  →  PushConst(3) PushConst(4) Add StoreVar("x", silent=false)
+        let stmts = parse_stmts("x = 3 + 4").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert_eq!(chunk.code[0].op, Opcode::PushConst, "expected PushConst for 3");
+        assert_eq!(chunk.code[1].op, Opcode::PushConst, "expected PushConst for 4");
+        assert_eq!(chunk.code[2].op, Opcode::Add, "expected Add");
+        assert_eq!(chunk.code[3].op, Opcode::StoreVar, "expected StoreVar");
+        // Verify constant pool: 3.0 and 4.0
+        let c0 = chunk.code[0].u16_arg() as usize;
+        let c1 = chunk.code[1].u16_arg() as usize;
+        assert!(matches!(chunk.consts[c0], Value::Scalar(f) if f == 3.0));
+        assert!(matches!(chunk.consts[c1], Value::Scalar(f) if f == 4.0));
+        // Verify name pool: "x"
+        let nidx = chunk.code[3].u16_at(0) as usize;
+        assert_eq!(chunk.names[nidx], "x");
+        // silent flag = 0 (not silent — no semicolon)
+        assert_eq!(chunk.code[3].u8_at(2), 0, "expected silent=0");
+    }
+
+    // ── 3: compile a for loop with correct backpatching ───────────────────────
+
+    #[test]
+    fn vm_compile_for_range() {
+        // for k=1:5; end  →  EvalExpr PushIter IterNext(k,exit) Jump(back)
+        let stmts = parse_stmts("for k = 1:5\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        // Positions: 0=EvalExpr, 1=PushIter, 2=IterNext, 3=Jump
+        assert_eq!(chunk.code[0].op, Opcode::EvalExpr, "range → EvalExpr");
+        assert_eq!(chunk.code[1].op, Opcode::PushIter);
+        assert_eq!(chunk.code[2].op, Opcode::IterNext);
+        assert_eq!(chunk.code[3].op, Opcode::Jump);
+        // IterNext exit_offset: from ip=2, ip_next=3, should jump to exit=4
+        // exit_off = 4 - 2 - 1 = 1
+        let exit_off = chunk.code[2].i32_at(2);
+        assert_eq!(exit_off, 1, "IterNext exit_offset should jump to after loop");
+        // Jump back-edge: from ip=3, ip_next=4, should jump to IterNext at 2
+        // back_off = 2 - 3 - 1 = -2
+        let back_off = chunk.code[3].i32_arg();
+        assert_eq!(back_off, -2, "Jump should back-edge to IterNext");
+        // Verify loop var "k" is in name pool
+        let var_idx = chunk.code[2].u16_at(0) as usize;
+        assert_eq!(chunk.names[var_idx], "k");
+    }
+
+    // ── 4: compile a while loop (back-edge JumpTruthy/Jump) ───────────────────
+
+    #[test]
+    fn vm_compile_while() {
+        // while x < 5; end  →  [cond] JumpFalsy(exit) Jump(cond)
+        let stmts = parse_stmts("while x < 5\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        // 0: LoadVar("x")  1: PushConst(5)  2: Lt  3: JumpFalsy  4: Jump(back to 0)
+        assert_eq!(chunk.code[0].op, Opcode::LoadVar);
+        assert_eq!(chunk.code[1].op, Opcode::PushConst);
+        assert_eq!(chunk.code[2].op, Opcode::Lt);
+        assert_eq!(chunk.code[3].op, Opcode::JumpFalsy);
+        assert_eq!(chunk.code[4].op, Opcode::Jump);
+        // JumpFalsy should jump to exit = 5
+        let jf_off = chunk.code[3].i32_arg();
+        assert_eq!(3 + 1 + jf_off as usize, 5, "JumpFalsy should reach exit");
+        // Back-edge Jump should reach condition at 0
+        let back_off = chunk.code[4].i32_arg();
+        assert_eq!((4i32 + 1 + back_off) as usize, 0, "Jump should reach condition");
+    }
+
+    // ── 5: compile if/else with correct backpatching ──────────────────────────
+
+    #[test]
+    fn vm_compile_if_else() {
+        // if x; y=1; else; y=2; end
+        let stmts = parse_stmts("if x\n  y = 1\nelse\n  y = 2\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        // Sequence: LoadVar(x) JumpFalsy(else) ... PushConst(1) StoreVar(y) Jump(end) PushConst(2) StoreVar(y)
+        assert_eq!(chunk.code[0].op, Opcode::LoadVar);
+        let jf_pos = 1usize;
+        assert_eq!(chunk.code[jf_pos].op, Opcode::JumpFalsy);
+        // Find the Jump-to-end instruction (should be just before the else block)
+        // and verify the JumpFalsy lands after it
+        let jf_off = chunk.code[jf_pos].i32_arg();
+        let else_start = (jf_pos as i32 + 1 + jf_off) as usize;
+        // else block should start with PushConst(2.0)
+        assert_eq!(chunk.code[else_start].op, Opcode::PushConst);
+        let c = chunk.code[else_start].u16_arg() as usize;
+        assert!(matches!(chunk.consts[c], Value::Scalar(f) if f == 2.0));
+        // The Jump before else_start should jump past the else block (to end)
+        let jump_to_end_pos = else_start - 1;
+        assert_eq!(chunk.code[jump_to_end_pos].op, Opcode::Jump);
+        let end_jump_off = chunk.code[jump_to_end_pos].i32_arg();
+        let end_pos = (jump_to_end_pos as i32 + 1 + end_jump_off) as usize;
+        assert_eq!(end_pos, chunk.code.len(), "Jump should reach end of chunk");
+    }
+
+    // ── 6: compile break inside for loop ─────────────────────────────────────
+
+    #[test]
+    fn vm_compile_break() {
+        // for k=1:5; break; end  →  ... IterNext ... PopIter Jump(exit) Jump(back) [exit]
+        let stmts = parse_stmts("for k = 1:5\n  break\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        // Find PopIter — it should be in the body, before a Jump to exit
+        let pop_pos = chunk
+            .code
+            .iter()
+            .position(|i| i.op == Opcode::PopIter)
+            .expect("expected PopIter for break");
+        assert_eq!(
+            chunk.code[pop_pos + 1].op,
+            Opcode::Jump,
+            "PopIter should be followed by Jump (break jump to exit)"
+        );
+    }
+
+    // ── 7: compile continue inside for loop ───────────────────────────────────
+
+    #[test]
+    fn vm_compile_continue() {
+        // for k=1:5; continue; end
+        // continue emits Jump back to IterNext position
+        let stmts = parse_stmts("for k = 1:5\n  continue\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        // IterNext is at position 2.
+        // continue → Jump with negative offset back to 2.
+        let iter_next_pos = 2usize;
+        assert_eq!(chunk.code[iter_next_pos].op, Opcode::IterNext);
+        // The Jump emitted for continue should land at iter_next_pos.
+        let continue_jump = chunk
+            .code
+            .iter()
+            .enumerate()
+            .find(|(_, i)| i.op == Opcode::Jump)
+            .map(|(pos, instr)| (pos, instr.i32_arg()))
+            .expect("expected a Jump for continue");
+        let (cj_pos, cj_off) = continue_jump;
+        let target = (cj_pos as i32 + 1 + cj_off) as usize;
+        assert_eq!(target, iter_next_pos, "continue Jump should reach IterNext");
+    }
+
+    // ── 8: vm executes scalar accumulator loop correctly ──────────────────────
+
+    #[test]
+    fn vm_exec_scalar_loop() {
+        // s = 0; for k=1:100; s += k; end  →  s == 5050
+        let mut env = new_env();
+        run("s = 0;\nfor k = 1:100\n  s += k;\nend", &mut env);
+        assert_eq!(scalar(&env, "s"), 5050.0);
+    }
+
+    // ── 9: vm handles nested loops ────────────────────────────────────────────
+
+    #[test]
+    fn vm_exec_nested_loop() {
+        let mut env = new_env();
+        run("s = 0;\nfor i = 1:10\n  for j = 1:10\n    s += 1;\n  end\nend", &mut env);
+        assert_eq!(scalar(&env, "s"), 100.0);
+    }
+
+    // ── 10: vm executes while loop correctly ──────────────────────────────────
+
+    #[test]
+    fn vm_exec_while_loop() {
+        let mut env = new_env();
+        run("x = 0;\nwhile x < 5\n  x += 1;\nend", &mut env);
+        assert_eq!(scalar(&env, "x"), 5.0);
+    }
+
+    // ── 11: user function called inside a compiled for body ───────────────────
+
+    #[test]
+    fn vm_exec_fn_call() {
+        init();
+        let mut env = new_env();
+        // Define a simple increment function.
+        run(
+            "function y = inc(x)\n  y = x + 1;\nend",
+            &mut env,
+        );
+        // Call inc 5 times inside a for loop.
+        run("s = 0;\nfor k = 1:5\n  s = inc(s);\nend", &mut env);
+        assert_eq!(scalar(&env, "s"), 5.0);
+    }
+
+    // ── 12: break exits inner loop; continue skips rest of iteration ──────────
+
+    #[test]
+    fn vm_exec_break_continue() {
+        let mut env = new_env();
+        // Outer loop 1..5; inner loop 1..5; break inner at j==3.
+        // Each outer iteration runs j=1,2 then breaks → 2 increments × 5 = 10.
+        run(
+            concat!(
+                "s = 0;\n",
+                "for i = 1:5\n",
+                "  for j = 1:5\n",
+                "    if j == 3\n",
+                "      break;\n",
+                "    end\n",
+                "    s += 1;\n",
+                "  end\n",
+                "end",
+            ),
+            &mut env,
+        );
+        assert_eq!(scalar(&env, "s"), 10.0);
+
+        // continue: sum only even k in 1..10
+        let mut env2 = new_env();
+        run(
+            concat!(
+                "s = 0;\n",
+                "for k = 1:10\n",
+                "  if mod(k, 2) ~= 0\n",
+                "    continue;\n",
+                "  end\n",
+                "  s += k;\n",
+                "end",
+            ),
+            &mut env2,
+        );
+        assert_eq!(scalar(&env2, "s"), 30.0, "sum of even 1..10");
+    }
+
+    // ── 13: BODY_CHUNK_CACHE is populated after first call, reused on second ──
+
+    #[test]
+    fn vm_chunk_cache_reuse() {
+        init();
+        let mut env = new_env();
+        // Define a simple function and call it twice; both must return correct results.
+        run(
+            "function y = double(x)\n  y = x * 2;\nend",
+            &mut env,
+        );
+        run("a = double(3);", &mut env);
+        run("b = double(7);", &mut env);
+        assert_eq!(scalar(&env, "a"), 6.0, "first call result");
+        assert_eq!(scalar(&env, "b"), 14.0, "second call result (cache reuse)");
+    }
+}

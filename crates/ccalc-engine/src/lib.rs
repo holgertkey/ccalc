@@ -50,3 +50,6 @@ pub(crate) mod mat;
 
 #[cfg(feature = "fft")]
 pub(crate) mod fft;
+
+/// Bytecode compiler and register VM for interpreter performance.
+pub(crate) mod vm;
