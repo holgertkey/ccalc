@@ -7861,9 +7861,8 @@ mod vm_tests {
     use crate::io::IoContext;
     use crate::parser::parse_stmts;
     use crate::vm;
-    use crate::vm::compile::compile;
-    use crate::vm::exec::vm_exec;
     use crate::vm::Opcode;
+    use crate::vm::compile::compile;
 
     fn new_env() -> Env {
         let mut env = Env::new();
@@ -7901,8 +7900,16 @@ mod vm_tests {
         // x = 3 + 4  →  PushConst(3) PushConst(4) Add StoreVar("x", silent=false)
         let stmts = parse_stmts("x = 3 + 4").expect("parse");
         let chunk = compile(&stmts).expect("compile");
-        assert_eq!(chunk.code[0].op, Opcode::PushConst, "expected PushConst for 3");
-        assert_eq!(chunk.code[1].op, Opcode::PushConst, "expected PushConst for 4");
+        assert_eq!(
+            chunk.code[0].op,
+            Opcode::PushConst,
+            "expected PushConst for 3"
+        );
+        assert_eq!(
+            chunk.code[1].op,
+            Opcode::PushConst,
+            "expected PushConst for 4"
+        );
         assert_eq!(chunk.code[2].op, Opcode::Add, "expected Add");
         assert_eq!(chunk.code[3].op, Opcode::StoreVar, "expected StoreVar");
         // Verify constant pool: 3.0 and 4.0
@@ -7932,7 +7939,10 @@ mod vm_tests {
         // IterNext exit_offset: from ip=2, ip_next=3, should jump to exit=4
         // exit_off = 4 - 2 - 1 = 1
         let exit_off = chunk.code[2].i32_at(2);
-        assert_eq!(exit_off, 1, "IterNext exit_offset should jump to after loop");
+        assert_eq!(
+            exit_off, 1,
+            "IterNext exit_offset should jump to after loop"
+        );
         // Jump back-edge: from ip=3, ip_next=4, should jump to IterNext at 2
         // back_off = 2 - 3 - 1 = -2
         let back_off = chunk.code[3].i32_arg();
@@ -7960,7 +7970,11 @@ mod vm_tests {
         assert_eq!(3 + 1 + jf_off as usize, 5, "JumpFalsy should reach exit");
         // Back-edge Jump should reach condition at 0
         let back_off = chunk.code[4].i32_arg();
-        assert_eq!((4i32 + 1 + back_off) as usize, 0, "Jump should reach condition");
+        assert_eq!(
+            (4i32 + 1 + back_off) as usize,
+            0,
+            "Jump should reach condition"
+        );
     }
 
     // ── 5: compile if/else with correct backpatching ──────────────────────────
@@ -8050,7 +8064,10 @@ mod vm_tests {
     #[test]
     fn vm_exec_nested_loop() {
         let mut env = new_env();
-        run("s = 0;\nfor i = 1:10\n  for j = 1:10\n    s += 1;\n  end\nend", &mut env);
+        run(
+            "s = 0;\nfor i = 1:10\n  for j = 1:10\n    s += 1;\n  end\nend",
+            &mut env,
+        );
         assert_eq!(scalar(&env, "s"), 100.0);
     }
 
@@ -8070,10 +8087,7 @@ mod vm_tests {
         init();
         let mut env = new_env();
         // Define a simple increment function.
-        run(
-            "function y = inc(x)\n  y = x + 1;\nend",
-            &mut env,
-        );
+        run("function y = inc(x)\n  y = x + 1;\nend", &mut env);
         // Call inc 5 times inside a for loop.
         run("s = 0;\nfor k = 1:5\n  s = inc(s);\nend", &mut env);
         assert_eq!(scalar(&env, "s"), 5.0);
@@ -8126,10 +8140,7 @@ mod vm_tests {
         init();
         let mut env = new_env();
         // Define a simple function and call it twice; both must return correct results.
-        run(
-            "function y = double(x)\n  y = x * 2;\nend",
-            &mut env,
-        );
+        run("function y = double(x)\n  y = x * 2;\nend", &mut env);
         run("a = double(3);", &mut env);
         run("b = double(7);", &mut env);
         assert_eq!(scalar(&env, "a"), 6.0, "first call result");

@@ -21,96 +21,97 @@ use ndarray::Array2;
 pub enum Opcode {
     // ── Constants & variables ─────────────────── payload ──────────────────
     /// Push `chunk.consts[u16]` onto the operand stack.
-    PushConst  = 0,   // [u16 idx, 0, 0, 0, 0]
+    PushConst = 0, // [u16 idx, 0, 0, 0, 0]
     /// Push a clone of `env[chunk.names[u16]]` onto the stack.
-    LoadVar    = 1,   // [u16 idx, 0, 0, 0, 0]
+    LoadVar = 1, // [u16 idx, 0, 0, 0, 0]
     /// Pop stack-top → `env[chunk.names[u16]]`; u8 flag: 1 = silent (no print).
-    StoreVar   = 2,   // [u16 idx, u8 silent, 0, 0, 0]
+    StoreVar = 2, // [u16 idx, u8 silent, 0, 0, 0]
     /// Copy stack-top (no pop) into `env["ans"]`.
-    UpdateAns  = 3,   // [0, 0, 0, 0, 0, 0, 0]
+    UpdateAns = 3, // [0, 0, 0, 0, 0, 0, 0]
     /// Pop and discard stack-top.
-    Pop        = 4,   // [0, 0, 0, 0, 0, 0, 0]
+    Pop = 4, // [0, 0, 0, 0, 0, 0, 0]
     /// Print stack-top without variable label, then pop.
-    Print      = 5,   // [0, 0, 0, 0, 0, 0, 0]
+    Print = 5, // [0, 0, 0, 0, 0, 0, 0]
 
     // ── Arithmetic ──────────────────────────────────────────────────────────
     /// Pop b, pop a, push a + b.
-    Add        = 10,
+    Add = 10,
     /// Pop b, pop a, push a − b.
-    Sub        = 11,
+    Sub = 11,
     /// Pop b, pop a, push a * b (scalar multiply or matrix product).
-    Mul        = 12,
+    Mul = 12,
     /// Pop b, pop a, push a / b.
-    Div        = 13,
+    Div = 13,
     /// Pop b, pop a, push a ^ b.
-    Pow        = 14,
+    Pow = 14,
     /// Pop b, pop a, push a .* b (element-wise).
-    ElemMul    = 15,
+    ElemMul = 15,
     /// Pop b, pop a, push a ./ b (element-wise).
-    ElemDiv    = 16,
+    ElemDiv = 16,
     /// Pop b, pop a, push a .^ b (element-wise).
-    ElemPow    = 17,
+    ElemPow = 17,
     /// Negate stack-top in place (replace with −top).
-    Neg        = 18,
+    Neg = 18,
 
     // ── Comparison / logical ────────────────────────────────────────────────
     /// Logical NOT: replace top with 0.0 if truthy, 1.0 otherwise.
-    Not        = 20,
+    Not = 20,
     /// Pop b, a; push 1.0 if a == b, else 0.0.
-    Eq         = 21,
+    Eq = 21,
     /// Pop b, a; push 1.0 if a ~= b, else 0.0.
-    Ne         = 22,
+    Ne = 22,
     /// Pop b, a; push 1.0 if a < b, else 0.0.
-    Lt         = 23,
+    Lt = 23,
     /// Pop b, a; push 1.0 if a <= b, else 0.0.
-    Le         = 24,
+    Le = 24,
     /// Pop b, a; push 1.0 if a > b, else 0.0.
-    Gt         = 25,
+    Gt = 25,
     /// Pop b, a; push 1.0 if a >= b, else 0.0.
-    Ge         = 26,
+    Ge = 26,
     /// Pop b, a; push 1.0 if both truthy, else 0.0 (element-wise `&&`).
-    And        = 27,
+    And = 27,
     /// Pop b, a; push 1.0 if either truthy, else 0.0 (element-wise `||`).
-    Or         = 28,
+    Or = 28,
 
     // ── Control flow ────────────────────────────────────────────────────────
     /// Unconditional jump: `ip += 1 + i32_payload`.
-    Jump       = 30,  // [i32 offset, 0, 0, 0]
+    Jump = 30, // [i32 offset, 0, 0, 0]
     /// Pop top; if falsy, jump by i32 offset, else advance.
-    JumpFalsy  = 31,  // [i32 offset, 0, 0, 0]
+    JumpFalsy = 31, // [i32 offset, 0, 0, 0]
     /// Pop top; if truthy, jump by i32 offset, else advance.
-    JumpTruthy = 32,  // [i32 offset, 0, 0, 0]
+    #[allow(dead_code)]
+    JumpTruthy = 32, // [i32 offset, 0, 0, 0]
 
     // ── For-loop iteration ───────────────────────────────────────────────────
     /// Pop stack-top; build an [`IterState`] and push onto the iterator stack.
-    PushIter   = 40,
+    PushIter = 40,
     /// Advance the top iterator: if exhausted, pop it and jump by i32 exit_offset;
     /// else store the next column in `chunk.names[u16 var_idx]` and advance ip.
-    IterNext   = 41,  // [u16 var_idx, i32 exit_offset, 0]
+    IterNext = 41, // [u16 var_idx, i32 exit_offset, 0]
     /// Pop the top iterator (emitted on `break`).
-    PopIter    = 42,
+    PopIter = 42,
 
     // ── Deferred expression evaluation ──────────────────────────────────────
     /// Evaluate `chunk.exprs[u16]` via `eval_with_io` and push the result.
     ///
     /// Used for expressions too complex to compile natively (function calls,
     /// ranges, matrix literals, indexing, etc.).
-    EvalExpr   = 60,  // [u16 expr_idx, 0, 0, 0, 0]
+    EvalExpr = 60, // [u16 expr_idx, 0, 0, 0, 0]
 
     // ── Indexed assignment ────────────────────────────────────────────────────
     /// Pop RHS from stack; call `exec_index_set(chunk.names[u16], chunk.index_sets[u16], rhs, …)`.
     /// u8 `silent` flag controls whether the updated variable is printed.
-    IndexSetOp = 80,  // [u16 name_idx, u16 iset_idx, u8 silent, 0, 0]
+    IndexSetOp = 80, // [u16 name_idx, u16 iset_idx, u8 silent, 0, 0]
 
     // ── Function definition ───────────────────────────────────────────────────
     /// Register `chunk.consts[u16 const_idx]` (a `Value::Function`) into
     /// `env[chunk.names[u16 name_idx]]`.  Replicates the tree-walker
     /// `Stmt::FunctionDef` handler.
-    DefineFunc = 75,  // [u16 name_idx, u16 const_idx, 0, 0, 0]
+    DefineFunc = 75, // [u16 name_idx, u16 const_idx, 0, 0, 0]
 
     // ── Function control ─────────────────────────────────────────────────────
     /// Return from the current function body (unwinds vm_exec).
-    Return     = 70,
+    Return = 70,
 }
 
 // ── Instr ────────────────────────────────────────────────────────────────────
@@ -131,7 +132,10 @@ const _INSTR_SIZE: () = assert!(std::mem::size_of::<Instr>() == 8);
 impl Instr {
     /// Create an instruction with no payload (all payload bytes = 0).
     pub fn no_arg(op: Opcode) -> Self {
-        Self { op, payload: [0; 7] }
+        Self {
+            op,
+            payload: [0; 7],
+        }
     }
 
     /// Create an instruction with a single u16 argument at payload[0..2].
@@ -240,16 +244,16 @@ impl Instr {
 /// [`vm_exec`](crate::vm::exec::vm_exec).
 pub struct Chunk {
     /// Flat sequence of bytecode instructions.
-    pub code:   Vec<Instr>,
+    pub code: Vec<Instr>,
     /// Constant pool: scalar literals and other pre-computed values.
     pub consts: Vec<Value>,
     /// Name pool: variable names referenced by `LoadVar`, `StoreVar`, `IterNext`.
-    pub names:  Vec<String>,
+    pub names: Vec<String>,
     /// Expression pool: AST nodes evaluated via `eval_with_io` at runtime.
     ///
     /// Used by [`Opcode::EvalExpr`] for function calls, ranges, matrix literals,
     /// indexing, and other expressions that cannot be compiled to native opcodes.
-    pub exprs:  Vec<Expr>,
+    pub exprs: Vec<Expr>,
     /// Index expression pool: lists of index `Expr` nodes for `IndexSetOp`.
     ///
     /// Stores the index expressions of `A(i,j) = v` style statements verbatim
@@ -259,19 +263,19 @@ pub struct Chunk {
     ///
     /// Used to annotate runtime errors with `near line N`, matching the
     /// behaviour of the tree-walking interpreter.
-    pub lines:  Vec<usize>,
+    pub lines: Vec<usize>,
 }
 
 impl Chunk {
     /// Create an empty chunk.
     pub fn new() -> Self {
         Self {
-            code:       Vec::new(),
-            consts:     Vec::new(),
-            names:      Vec::new(),
-            exprs:      Vec::new(),
+            code: Vec::new(),
+            consts: Vec::new(),
+            names: Vec::new(),
+            exprs: Vec::new(),
             index_sets: Vec::new(),
-            lines:      Vec::new(),
+            lines: Vec::new(),
         }
     }
 
@@ -325,7 +329,7 @@ pub enum CompileError {
 /// expression at loop entry, matching the semantics of the tree-walking interpreter.
 pub struct IterState {
     vals: Vec<Value>,
-    pos:  usize,
+    pos: usize,
 }
 
 impl IterState {

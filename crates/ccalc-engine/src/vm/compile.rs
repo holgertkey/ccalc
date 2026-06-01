@@ -4,19 +4,17 @@
 //! Constructs the compiler cannot yet handle return [`CompileError::Unsupported`];
 //! the caller must fall back to the tree-walking interpreter transparently.
 
-use crate::eval::{Expr, Op};
-use crate::env::Value;
-use crate::parser::{Stmt, StmtEntry};
 use super::{Chunk, CompileError, Instr, Opcode};
+use crate::env::Value;
+use crate::eval::{Expr, Op};
+use crate::parser::{Stmt, StmtEntry};
 
 // ── Special call names that exec_stmts intercepts and that eval_with_io cannot
 // handle (they need direct env mutation / RUN_DEPTH tracking / thread-local updates).
 const EXEC_INTERCEPTS: &[&str] = &[
-    "run", "source",
-    "addpath", "rmpath", "path",
-    "clear",
-    "remove",  // containers.Map in-place removal
-    "format",  // display mode — updates thread-locals via exec_stmts path
+    "run", "source", "addpath", "rmpath", "path", "clear",
+    "remove", // containers.Map in-place removal
+    "format", // display mode — updates thread-locals via exec_stmts path
     "save", "load", "ws", "wl",
 ];
 
@@ -63,7 +61,7 @@ fn stmt_compilable(stmt: &Stmt) -> bool {
         } => {
             is_compilable(body)
                 && elseif_branches.iter().all(|(_, b)| is_compilable(b))
-                && else_body.as_ref().map_or(true, |b| is_compilable(b))
+                && else_body.as_ref().is_none_or(|b| is_compilable(b))
         }
 
         // ── Now supported via IndexSetOp ─────────────────────────────────────
@@ -84,8 +82,8 @@ fn stmt_compilable(stmt: &Stmt) -> bool {
 /// is visited repeatedly (e.g. inside a hot loop) to avoid wasted allocation.
 pub fn compile(stmts: &[StmtEntry]) -> Result<Chunk, CompileError> {
     let mut compiler = Compiler {
-        chunk:        Chunk::new(),
-        loop_stack:   Vec::new(),
+        chunk: Chunk::new(),
+        loop_stack: Vec::new(),
         current_line: 0,
     };
     compiler.compile_stmts(stmts)?;
@@ -101,14 +99,14 @@ struct LoopFrame {
     /// first instruction of the condition block.
     continue_target: usize,
     /// Instruction indices that need their i32 payload set to the loop exit offset.
-    break_patches:   Vec<usize>,
+    break_patches: Vec<usize>,
     /// `true` for `for` loops — `break` must emit `PopIter` before the jump.
-    is_for:          bool,
+    is_for: bool,
 }
 
 struct Compiler {
-    chunk:        Chunk,
-    loop_stack:   Vec<LoopFrame>,
+    chunk: Chunk,
+    loop_stack: Vec<LoopFrame>,
     current_line: usize,
 }
 
@@ -142,21 +140,17 @@ impl Compiler {
                 }
                 self.compile_expr_push(expr);
                 let idx = self.chunk.name_idx(name);
-                self.emit(Instr::with_u16_u8(
-                    Opcode::StoreVar,
-                    idx,
-                    u8::from(silent),
-                ));
+                self.emit(Instr::with_u16_u8(Opcode::StoreVar, idx, u8::from(silent)));
                 Ok(())
             }
 
             // ── Expression statement ──────────────────────────────────────────
             Stmt::Expr(expr) => {
                 // Reject calls that exec_stmts intercepts with env mutation.
-                if let Expr::Call(name, _) = expr {
-                    if EXEC_INTERCEPTS.contains(&name.as_str()) {
-                        return Err(CompileError::Unsupported);
-                    }
+                if let Expr::Call(name, _) = expr
+                    && EXEC_INTERCEPTS.contains(&name.as_str())
+                {
+                    return Err(CompileError::Unsupported);
                 }
                 // `eval("...")` as a statement modifies `env` directly through the
                 // exec_stmts path and cannot go through eval_with_io.
@@ -178,7 +172,11 @@ impl Compiler {
             }
 
             // ── for loop ─────────────────────────────────────────────────────
-            Stmt::For { var, range_expr, body } => {
+            Stmt::For {
+                var,
+                range_expr,
+                body,
+            } => {
                 // Evaluate range and build iterator.
                 self.compile_expr_push(range_expr);
                 self.emit(Instr::no_arg(Opcode::PushIter));
@@ -194,8 +192,8 @@ impl Compiler {
                 // Push loop frame (continue → IterNext; break → after loop).
                 self.loop_stack.push(LoopFrame {
                     continue_target: iter_next_pos,
-                    break_patches:   Vec::new(),
-                    is_for:          true,
+                    break_patches: Vec::new(),
+                    is_for: true,
                 });
 
                 self.compile_stmts(body)?;
@@ -228,8 +226,8 @@ impl Compiler {
 
                 self.loop_stack.push(LoopFrame {
                     continue_target: cond_pos,
-                    break_patches:   Vec::new(),
-                    is_for:          false,
+                    break_patches: Vec::new(),
+                    is_for: false,
                 });
 
                 self.compile_stmts(body)?;
@@ -329,7 +327,11 @@ impl Compiler {
                 self.emit(Instr::with_i32(Opcode::Jump, 0));
                 // Defer to pop() after the loop is closed — borrow ends here.
                 let j_idx_owned = j_idx;
-                self.loop_stack.last_mut().unwrap().break_patches.push(j_idx_owned);
+                self.loop_stack
+                    .last_mut()
+                    .unwrap()
+                    .break_patches
+                    .push(j_idx_owned);
                 Ok(())
             }
 
@@ -365,20 +367,24 @@ impl Compiler {
                 use crate::env::Value;
                 use indexmap::IndexMap;
                 let func = Value::Function {
-                    outputs:     outputs.clone(),
-                    params:      params.clone(),
+                    outputs: outputs.clone(),
+                    params: params.clone(),
                     body_source: body_source.clone(),
-                    locals:      IndexMap::new(),
-                    doc:         doc.clone(),
+                    locals: IndexMap::new(),
+                    doc: doc.clone(),
                 };
                 let const_idx = self.chunk.add_const(func);
-                let name_idx  = self.chunk.name_idx(name);
+                let name_idx = self.chunk.name_idx(name);
                 self.emit(Instr::with_u16_u16(Opcode::DefineFunc, name_idx, const_idx));
                 Ok(())
             }
 
             // ── Indexed assignment: A(i, j) = v ──────────────────────────────
-            Stmt::IndexSet { name, indices, value } => {
+            Stmt::IndexSet {
+                name,
+                indices,
+                value,
+            } => {
                 // Push RHS onto the stack.
                 self.compile_expr_push(value);
                 // Store the index Expr list in the pool.
@@ -460,27 +466,27 @@ impl Compiler {
                 self.compile_native(left);
                 self.compile_native(right);
                 let opcode = match op {
-                    Op::Add    => Opcode::Add,
-                    Op::Sub    => Opcode::Sub,
-                    Op::Mul    => Opcode::Mul,
-                    Op::Div    => Opcode::Div,
-                    Op::Pow    => Opcode::Pow,
+                    Op::Add => Opcode::Add,
+                    Op::Sub => Opcode::Sub,
+                    Op::Mul => Opcode::Mul,
+                    Op::Div => Opcode::Div,
+                    Op::Pow => Opcode::Pow,
                     Op::ElemMul => Opcode::ElemMul,
                     Op::ElemDiv => Opcode::ElemDiv,
                     Op::ElemPow => Opcode::ElemPow,
-                    Op::Eq     => Opcode::Eq,
-                    Op::NotEq  => Opcode::Ne,
-                    Op::Lt     => Opcode::Lt,
-                    Op::LtEq   => Opcode::Le,
-                    Op::Gt     => Opcode::Gt,
-                    Op::GtEq   => Opcode::Ge,
-                    Op::And    => Opcode::And,
-                    Op::Or     => Opcode::Or,
+                    Op::Eq => Opcode::Eq,
+                    Op::NotEq => Opcode::Ne,
+                    Op::Lt => Opcode::Lt,
+                    Op::LtEq => Opcode::Le,
+                    Op::Gt => Opcode::Gt,
+                    Op::GtEq => Opcode::Ge,
+                    Op::And => Opcode::And,
+                    Op::Or => Opcode::Or,
                     // ElemAnd, ElemOr, LDiv are excluded by is_pure(); this arm
                     // is unreachable in correct usage.
-                    Op::ElemAnd | Op::ElemOr | Op::LDiv => unreachable!(
-                        "compile_native: is_pure should have excluded this op"
-                    ),
+                    Op::ElemAnd | Op::ElemOr | Op::LDiv => {
+                        unreachable!("compile_native: is_pure should have excluded this op")
+                    }
                 };
                 self.emit(Instr::no_arg(opcode));
             }

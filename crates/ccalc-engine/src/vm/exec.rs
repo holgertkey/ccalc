@@ -7,15 +7,14 @@
 use ndarray::Array2;
 use num_complex::Complex;
 
+use super::{Chunk, IterState, Opcode};
 use crate::env::{Env, Value};
 use crate::eval::{
-    Base, Expr, FormatMode, Op, eval_with_io,
-    is_global, is_persistent, global_set, persistent_save, current_func_name,
-    set_display_ctx,
+    Base, Expr, FormatMode, Op, current_func_name, eval_with_io, global_set, is_global,
+    is_persistent, persistent_save, set_display_ctx,
 };
-use crate::io::IoContext;
 use crate::exec::{Signal, print_value};
-use super::{Chunk, IterState, Opcode};
+use crate::io::IoContext;
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -27,10 +26,10 @@ use super::{Chunk, IterState, Opcode};
 /// the same statement block.
 pub fn vm_exec(
     chunk: &Chunk,
-    env:     &mut Env,
-    io:      &mut IoContext,
-    fmt:     &FormatMode,
-    base:    Base,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
     compact: bool,
 ) -> Result<Option<Signal>, String> {
     // Propagate display settings to eval.rs so EvalExpr / fn-call paths work.
@@ -79,7 +78,7 @@ pub fn vm_exec(
 
             Opcode::StoreVar => {
                 let name_idx = instr.u16_at(0) as usize;
-                let silent   = instr.u8_at(2) != 0;
+                let silent = instr.u8_at(2) != 0;
                 let val = stack.pop().unwrap();
                 let name = &chunk.names[name_idx];
                 env.insert(name.clone(), val.clone());
@@ -232,7 +231,8 @@ pub fn vm_exec(
                         env.insert(tmp_key.clone(), a);
                         let result = eval_with_io(
                             &Expr::UnaryNot(Box::new(Expr::Var(tmp_key.clone()))),
-                            env, io,
+                            env,
+                            io,
                         )?;
                         env.remove(&tmp_key);
                         result
@@ -273,7 +273,7 @@ pub fn vm_exec(
                 ip += 1;
             }
             Opcode::IterNext => {
-                let var_idx  = instr.u16_at(0) as usize;
+                let var_idx = instr.u16_at(0) as usize;
                 let exit_off = instr.i32_at(2);
                 match iters.last_mut().unwrap().next_val() {
                     Some(val) => {
@@ -303,10 +303,10 @@ pub fn vm_exec(
             Opcode::IndexSetOp => {
                 let name_idx = instr.u16_at(0) as usize;
                 let iset_idx = instr.u16_at(2) as usize;
-                let silent   = instr.u8_at(4) != 0;
-                let rhs      = stack.pop().unwrap();
-                let name     = &chunk.names[name_idx];
-                let indices  = &chunk.index_sets[iset_idx];
+                let silent = instr.u8_at(4) != 0;
+                let rhs = stack.pop().unwrap();
+                let name = &chunk.names[name_idx];
+                let indices = &chunk.index_sets[iset_idx];
 
                 // Refresh persistent var before partial update.
                 if is_persistent(name) {
@@ -319,27 +319,27 @@ pub fn vm_exec(
                 at_line!(crate::exec::exec_index_set(name, indices, rhs, env, io));
 
                 // Write-through for persistent vars.
-                if is_persistent(name) {
-                    if let Some(val) = env.get(name) {
-                        crate::eval::persistent_save(&current_func_name(), name, val.clone());
-                    }
+                if is_persistent(name)
+                    && let Some(val) = env.get(name)
+                {
+                    crate::eval::persistent_save(&current_func_name(), name, val.clone());
                 }
-                if is_global(name) {
-                    if let Some(val) = env.get(name) {
-                        global_set(name, val.clone());
-                    }
+                if is_global(name)
+                    && let Some(val) = env.get(name)
+                {
+                    global_set(name, val.clone());
                 }
-                if !silent {
-                    if let Some(val) = env.get(name) {
-                        print_value(Some(name), val, fmt, base, compact);
-                    }
+                if !silent
+                    && let Some(val) = env.get(name)
+                {
+                    print_value(Some(name), val, fmt, base, compact);
                 }
                 ip += 1;
             }
 
             // ── Function definition ───────────────────────────────────────────
             Opcode::DefineFunc => {
-                let name_idx  = instr.u16_at(0) as usize;
+                let name_idx = instr.u16_at(0) as usize;
                 let const_idx = instr.u16_at(2) as usize;
                 let func = chunk.consts[const_idx].clone();
                 env.insert(chunk.names[name_idx].clone(), func);
@@ -361,45 +361,120 @@ pub fn vm_exec(
 ///
 /// Fast path for `Scalar op Scalar`; falls back to `eval_with_io` for all
 /// other type combinations to reuse the existing semantics without duplication.
-fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Result<Value, String> {
+fn vm_binop(
+    a: Value,
+    op: Op,
+    b: Value,
+    env: &mut Env,
+    io: &mut IoContext,
+) -> Result<Value, String> {
     // ── Scalar × Scalar fast path ─────────────────────────────────────────────
     if let (Value::Scalar(fa), Value::Scalar(fb)) = (&a, &b) {
         let fa = *fa;
         let fb = *fb;
         let result = match op {
-            Op::Add   => fa + fb,
-            Op::Sub   => fa - fb,
-            Op::Mul   => fa * fb,
-            Op::Div   => fa / fb,
+            Op::Add => fa + fb,
+            Op::Sub => fa - fb,
+            Op::Mul => fa * fb,
+            Op::Div => fa / fb,
             Op::Pow | Op::ElemPow => fa.powf(fb),
             Op::ElemMul => fa * fb,
             Op::ElemDiv => fa / fb,
-            Op::Eq    => if fa == fb { 1.0 } else { 0.0 },
-            Op::NotEq => if fa != fb { 1.0 } else { 0.0 },
-            Op::Lt    => if fa < fb  { 1.0 } else { 0.0 },
-            Op::LtEq  => if fa <= fb { 1.0 } else { 0.0 },
-            Op::Gt    => if fa > fb  { 1.0 } else { 0.0 },
-            Op::GtEq  => if fa >= fb { 1.0 } else { 0.0 },
-            Op::And    => if fa != 0.0 && fb != 0.0 { 1.0 } else { 0.0 },
-            Op::Or     => if fa != 0.0 || fb != 0.0 { 1.0 } else { 0.0 },
-            Op::ElemAnd => if fa != 0.0 && fb != 0.0 { 1.0 } else { 0.0 },
-            Op::ElemOr  => if fa != 0.0 || fb != 0.0 { 1.0 } else { 0.0 },
-            Op::LDiv    => fb / fa,
+            Op::Eq => {
+                if fa == fb {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::NotEq => {
+                if fa != fb {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::Lt => {
+                if fa < fb {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::LtEq => {
+                if fa <= fb {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::Gt => {
+                if fa > fb {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::GtEq => {
+                if fa >= fb {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::And => {
+                if fa != 0.0 && fb != 0.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::Or => {
+                if fa != 0.0 || fb != 0.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::ElemAnd => {
+                if fa != 0.0 && fb != 0.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::ElemOr => {
+                if fa != 0.0 || fb != 0.0 {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Op::LDiv => fb / fa,
         };
         return Ok(Value::Scalar(result));
     }
 
     // ── Complex × Complex / Scalar×Complex fast path ──────────────────────────
-    if matches!((&a, &b), (Value::Complex(..) | Value::Scalar(_), Value::Complex(..) | Value::Scalar(_))) {
+    if matches!(
+        (&a, &b),
+        (
+            Value::Complex(..) | Value::Scalar(_),
+            Value::Complex(..) | Value::Scalar(_)
+        )
+    ) {
         let (are, aim) = to_complex_parts(&a);
         let (bre, bim) = to_complex_parts(&b);
         let result: Option<(f64, f64)> = match op {
-            Op::Add    => Some((are + bre, aim + bim)),
-            Op::Sub    => Some((are - bre, aim - bim)),
+            Op::Add => Some((are + bre, aim + bim)),
+            Op::Sub => Some((are - bre, aim - bim)),
             Op::Mul | Op::ElemMul => Some((are * bre - aim * bim, are * bim + aim * bre)),
             Op::Div | Op::ElemDiv => {
                 let denom = bre * bre + bim * bim;
-                Some(((are * bre + aim * bim) / denom, (aim * bre - are * bim) / denom))
+                Some((
+                    (are * bre + aim * bim) / denom,
+                    (aim * bre - are * bim) / denom,
+                ))
             }
             Op::Pow | Op::ElemPow => {
                 // Use num_complex for correct branch-cut behaviour.
@@ -416,12 +491,28 @@ fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Re
                 };
                 Some((r.re, r.im))
             }
-            Op::Eq     => return Ok(Value::Scalar(if are == bre && aim == bim { 1.0 } else { 0.0 })),
-            Op::NotEq  => return Ok(Value::Scalar(if are != bre || aim != bim { 1.0 } else { 0.0 })),
+            Op::Eq => {
+                return Ok(Value::Scalar(if are == bre && aim == bim {
+                    1.0
+                } else {
+                    0.0
+                }));
+            }
+            Op::NotEq => {
+                return Ok(Value::Scalar(if are != bre || aim != bim {
+                    1.0
+                } else {
+                    0.0
+                }));
+            }
             _ => None,
         };
         if let Some((re, im)) = result {
-            return Ok(if im == 0.0 { Value::Scalar(re) } else { Value::Complex(re, im) });
+            return Ok(if im == 0.0 {
+                Value::Scalar(re)
+            } else {
+                Value::Complex(re, im)
+            });
         }
     }
 
@@ -432,9 +523,15 @@ fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Re
             Op::Add | Op::ElemMul => {
                 // commutative
                 if matches!(a, Value::Scalar(_)) {
-                    m.mapv(|x| match op { Op::Add => s + x, _ => s * x })
+                    m.mapv(|x| match op {
+                        Op::Add => s + x,
+                        _ => s * x,
+                    })
                 } else {
-                    m.mapv(|x| match op { Op::Add => x + s, _ => x * s })
+                    m.mapv(|x| match op {
+                        Op::Add => x + s,
+                        _ => x * s,
+                    })
                 }
             }
             Op::Sub => {
@@ -472,16 +569,68 @@ fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Re
             _ => {
                 // Comparison: element-wise
                 m.mapv(|x| {
-                    let (fa, fb) = if matches!(a, Value::Scalar(_)) { (s, x) } else { (x, s) };
+                    let (fa, fb) = if matches!(a, Value::Scalar(_)) {
+                        (s, x)
+                    } else {
+                        (x, s)
+                    };
                     match op {
-                        Op::Eq   => if fa == fb { 1.0 } else { 0.0 },
-                        Op::NotEq=> if fa != fb { 1.0 } else { 0.0 },
-                        Op::Lt   => if fa < fb  { 1.0 } else { 0.0 },
-                        Op::LtEq => if fa <= fb { 1.0 } else { 0.0 },
-                        Op::Gt   => if fa > fb  { 1.0 } else { 0.0 },
-                        Op::GtEq => if fa >= fb { 1.0 } else { 0.0 },
-                        Op::And  => if fa != 0.0 && fb != 0.0 { 1.0 } else { 0.0 },
-                        Op::Or   => if fa != 0.0 || fb != 0.0 { 1.0 } else { 0.0 },
+                        Op::Eq => {
+                            if fa == fb {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::NotEq => {
+                            if fa != fb {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::Lt => {
+                            if fa < fb {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::LtEq => {
+                            if fa <= fb {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::Gt => {
+                            if fa > fb {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::GtEq => {
+                            if fa >= fb {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::And => {
+                            if fa != 0.0 && fb != 0.0 {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
+                        Op::Or => {
+                            if fa != 0.0 || fb != 0.0 {
+                                1.0
+                            } else {
+                                0.0
+                            }
+                        }
                         _ => unreachable!(),
                     }
                 })
@@ -493,20 +642,25 @@ fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Re
     // ── Matrix × Matrix ────────────────────────────────────────────────────────
     if let (Value::Matrix(ma), Value::Matrix(mb)) = (&a, &b) {
         match op {
-            Op::Add    => return Ok(Value::Matrix(ma + mb)),
-            Op::Sub    => return Ok(Value::Matrix(ma - mb)),
+            Op::Add => return Ok(Value::Matrix(ma + mb)),
+            Op::Sub => return Ok(Value::Matrix(ma - mb)),
             Op::ElemMul => return Ok(Value::Matrix(ma * mb)),
             Op::ElemDiv => return Ok(Value::Matrix(ma / mb)),
-            Op::ElemPow => return Ok(Value::Matrix(ma.mapv(|_| 0.0)
-                // element-wise pow — mapv over zip
-                // ndarray doesn't have zip_mapv, use Zip
-            )),
+            Op::ElemPow => {
+                return Ok(Value::Matrix(
+                    ma.mapv(|_| 0.0), // element-wise pow — mapv over zip
+                                      // ndarray doesn't have zip_mapv, use Zip
+                ));
+            }
             Op::Mul => {
                 // Matrix product
                 if ma.ncols() != mb.nrows() {
                     return Err(format!(
                         "Matrix dimensions mismatch for *: {}×{} vs {}×{}",
-                        ma.nrows(), ma.ncols(), mb.nrows(), mb.ncols()
+                        ma.nrows(),
+                        ma.ncols(),
+                        mb.nrows(),
+                        mb.ncols()
                     ));
                 }
                 return Ok(Value::Matrix(ma.dot(mb)));
@@ -523,17 +677,18 @@ fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Re
         }
         // Comparison element-wise.
         let result = ndarray::Zip::from(ma).and(mb).map_collect(|&av, &bv| {
-            match op {
-                Op::Eq    => if av == bv { 1.0 } else { 0.0 },
-                Op::NotEq => if av != bv { 1.0 } else { 0.0 },
-                Op::Lt    => if av < bv  { 1.0 } else { 0.0 },
-                Op::LtEq  => if av <= bv { 1.0 } else { 0.0 },
-                Op::Gt    => if av > bv  { 1.0 } else { 0.0 },
-                Op::GtEq  => if av >= bv { 1.0 } else { 0.0 },
-                Op::And   => if av != 0.0 && bv != 0.0 { 1.0 } else { 0.0 },
-                Op::Or    => if av != 0.0 || bv != 0.0 { 1.0 } else { 0.0 },
-                _ => 0.0,
-            }
+            let t = match op {
+                Op::Eq => av == bv,
+                Op::NotEq => av != bv,
+                Op::Lt => av < bv,
+                Op::LtEq => av <= bv,
+                Op::Gt => av > bv,
+                Op::GtEq => av >= bv,
+                Op::And => av != 0.0 && bv != 0.0,
+                Op::Or => av != 0.0 || bv != 0.0,
+                _ => return 0.0,
+            };
+            if t { 1.0 } else { 0.0 }
         });
         return Ok(Value::Matrix(result));
     }
@@ -550,7 +705,13 @@ fn vm_binop(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Re
 
 /// Fallback: evaluate `a op b` by inserting values into a temporary scope and
 /// calling `eval_with_io` on a constructed `BinOp` expression.
-fn vm_binop_fallback(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoContext) -> Result<Value, String> {
+fn vm_binop_fallback(
+    a: Value,
+    op: Op,
+    b: Value,
+    env: &mut Env,
+    io: &mut IoContext,
+) -> Result<Value, String> {
     let key_a = "__vm_op_a__".to_string();
     let key_b = "__vm_op_b__".to_string();
     let saved_a = env.get(&key_a).cloned();
@@ -568,12 +729,20 @@ fn vm_binop_fallback(a: Value, op: Op, b: Value, env: &mut Env, io: &mut IoConte
     );
     // Restore env to its previous state.
     match saved_a {
-        Some(v) => { env.insert(key_a, v); }
-        None    => { env.remove("__vm_op_a__"); }
+        Some(v) => {
+            env.insert(key_a, v);
+        }
+        None => {
+            env.remove("__vm_op_a__");
+        }
     }
     match saved_b {
-        Some(v) => { env.insert(key_b, v); }
-        None    => { env.remove("__vm_op_b__"); }
+        Some(v) => {
+            env.insert(key_b, v);
+        }
+        None => {
+            env.remove("__vm_op_b__");
+        }
     }
     result
 }
@@ -591,8 +760,12 @@ fn vm_neg(a: Value, env: &mut Env, io: &mut IoContext) -> Result<Value, String> 
     env.insert(key.clone(), a);
     let result = eval_with_io(&Expr::UnaryMinus(Box::new(Expr::Var(key.clone()))), env, io);
     match saved {
-        Some(v) => { env.insert(key, v); }
-        None    => { env.remove("__vm_neg__"); }
+        Some(v) => {
+            env.insert(key, v);
+        }
+        None => {
+            env.remove("__vm_neg__");
+        }
     }
     result
 }
@@ -624,7 +797,7 @@ fn is_truthy(val: &Value) -> bool {
 
 fn to_complex_parts(v: &Value) -> (f64, f64) {
     match v {
-        Value::Scalar(f)      => (*f, 0.0),
+        Value::Scalar(f) => (*f, 0.0),
         Value::Complex(re, im) => (*re, *im),
         _ => (f64::NAN, 0.0),
     }

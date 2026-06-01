@@ -11,7 +11,6 @@ type BodyCache = HashMap<String, Rc<Vec<StmtEntry>>>;
 /// constructs the compiler does not yet support (never retried).
 type ChunkCache = HashMap<String, Option<Rc<crate::vm::Chunk>>>;
 
-
 /// Expands a leading `~` to the user's home directory.
 ///
 /// On Windows `USERPROFILE` is tried as a fallback for `HOME`. If neither is set the
@@ -569,8 +568,8 @@ fn call_user_function(
 
     // Retrieve (or parse-and-cache) the function body.
     let body = get_or_parse_body(body_source)?;
-    let fmt     = get_display_fmt();
-    let base    = get_display_base();
+    let fmt = get_display_fmt();
+    let base = get_display_base();
     let compact = get_display_compact();
 
     // Try the compiled VM path (cached by body_source).
@@ -581,7 +580,7 @@ fn call_user_function(
         }
         let result: Option<Rc<crate::vm::Chunk>> = match crate::vm::compile::compile(&body) {
             Ok(chunk) => Some(Rc::new(chunk)),
-            Err(_)    => None,
+            Err(_) => None,
         };
         cache.insert(body_source.to_string(), result.clone());
         result
@@ -732,7 +731,13 @@ pub(crate) fn is_truthy(val: &Value) -> bool {
 ///
 /// `label` is `Some("name")` for assignment output and `None` for expression output.
 /// In expression context scalars/complex print without a label; matrices print `ans =`.
-pub(crate) fn print_value(label: Option<&str>, val: &Value, fmt: &FormatMode, base: Base, compact: bool) {
+pub(crate) fn print_value(
+    label: Option<&str>,
+    val: &Value,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) {
     match val {
         Value::Void => {}
         Value::Scalar(n) => {
