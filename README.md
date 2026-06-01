@@ -2300,20 +2300,25 @@ The API is identical in both builds.
 ```
 crates/
   ccalc/src/
-    main.rs      — entry point, mode detection (arg / pipe / REPL), CLI flags
-    repl.rs      — REPL loop, run_pipe(), run_expr(), shared evaluate() core
-    help.rs      — help text
+    main.rs           — entry point, mode detection (arg / pipe / REPL), CLI flags
+    repl.rs           — REPL loop, run_pipe(), run_expr(), shared evaluate() core
+    help.rs           — help text
   ccalc-engine/src/
-    lib.rs       — crate root, public module exports
-    env.rs       — Value enum (Scalar/Matrix/Complex/Str/StringObj/Void/Lambda/Function/Tuple/Cell/Struct), Env type (HashMap<String, Value>), workspace save/load
-    eval.rs      — AST types (Expr, Op) + evaluator returning Value + number formatters + Base/FormatMode enums + FnCallHook
-    exec.rs      — block statement executor: exec_stmts(), Signal enum (Break/Continue/Return), call_user_function()
-    io.rs        — IoContext (file descriptor table), fopen/fclose/fgetl/fgets/write_to_fd
-    parser.rs    — lexer (tokenizer) + recursive descent parser, Stmt enum (incl. If/For/While/FunctionDef/Return/MultiAssign)
+    lib.rs            — crate root, public module exports
+    env.rs            — Value enum, Env type (HashMap<String, Value>), workspace save/load
+    eval.rs           — AST types (Expr, Op), evaluator, formatters, Base/FormatMode, built-ins
+    exec.rs           — block executor: exec_stmts(), Signal enum, call_user_function(),
+                        BODY_CHUNK_CACHE (compiled function-body cache)
+    io.rs             — IoContext — file descriptor table for fopen/fgetl/fprintf/etc.
+    parser.rs         — tokenizer + recursive-descent parser, Stmt enum
+    vm/
+      mod.rs          — Opcode enum, Instr (8-byte fixed), Chunk, IterState, CompileError
+      compile.rs      — compile(&[StmtEntry]) → Chunk; is_compilable() pre-scan
+      exec.rs         — vm_exec(chunk, env, …) — main bytecode dispatch loop
   ccalc-engine/benches/
-    engine.rs    — Criterion benchmark suite (scalar ops, fib, loop, matmul, inv, fn calls, fft)
-Cargo.toml       — workspace manifest (single source of truth for version)
-CHANGELOG.md     — version history
+    engine.rs         — Criterion benchmark suite (scalar ops, fib, loop, matmul, fn calls, fft)
+Cargo.toml            — workspace manifest (single source of truth for version)
+CHANGELOG.md          — version history
 ```
 
 ---

@@ -6,6 +6,93 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.45.0+003] - 2026-06-01
+
+### Added
+
+- **Phase 34b — Bytecode compiler + register VM** (internal; no API change)
+
+  The AST-walking interpreter's hot loop cost per loop iteration has been
+  eliminated by compiling statement blocks to flat bytecode before execution.
+
+  **Architecture:**
+  - New crate-internal module `crates/ccalc-engine/src/vm/`:
+    - `compile.rs` — single-pass compiler; lowers `Stmt`/`Expr` AST to a
+      flat `Vec<Instr>`.  Expressions too complex for native opcodes are
+      stored in an expression pool and evaluated via `eval_with_io` at
+      runtime (`EvalExpr` opcode).
+    - `exec.rs` — stack VM; runs a compiled `Chunk` in a single `while`
+      loop over `chunk.code` with no per-statement function call overhead.
+    - `mod.rs` — shared types: fixed 8-byte `Instr` (compile-time assert),
+      `Opcode` enum, `Chunk` (code / consts / names / exprs / index_sets /
+      lines pools), `IterState` for `for`-loop iteration, `CompileError`.
+  - `exec_stmts` runs `is_compilable()` (zero-allocation pre-scan) then
+    `compile()` on the statement block; falls back to the tree-walker on
+    `CompileError::Unsupported`.
+  - `call_user_function` compiles and caches each function body in a
+    `BODY_CHUNK_CACHE` (keyed by `body_source` string); subsequent calls
+    skip compilation entirely.
+  - Supported statements: `Assign`, `Expr`, `For`, `While`, `If`/`elseif`/
+    `else`, `Break`, `Continue`, `Return`, `FunctionDef` (→ `DefineFunc`
+    opcode), `IndexSet` (→ `IndexSetOp` opcode).
+  - Special calls (`run`, `source`, `eval`, `clear`, `remove`, `format`,
+    `save`, `load`, …) are detected by the compiler and force a tree-walker
+    fallback for the enclosing block.
+
+  **New opcodes:** `PushConst`, `LoadVar`, `StoreVar`, `UpdateAns`, `Pop`,
+  `Print`, `Add`/`Sub`/`Mul`/`Div`/`Pow`/`ElemMul`/`ElemDiv`/`ElemPow`,
+  `Neg`, `Not`, `Eq`/`Ne`/`Lt`/`Le`/`Gt`/`Ge`/`And`/`Or`,
+  `Jump`/`JumpFalsy`/`JumpTruthy`,
+  `PushIter`/`IterNext`/`PopIter`,
+  `EvalExpr`, `IndexSetOp`, `DefineFunc`, `Return`.
+
+  **Arithmetic fast paths in `vm_binop`:**
+  - Scalar × Scalar: direct `f64` arithmetic (no function call).
+  - Complex × Scalar / Scalar × Complex / Complex × Complex:
+    inline `+`, `-`, `*`, `/`, and power via `num_complex::Complex::powi`
+    / `powf` / `powc` (eliminates temporary-env fallback for `z^2`).
+  - Matrix broadcast and element-wise operations: direct `ndarray` ops.
+  - All other type combinations: `vm_binop_fallback` via `eval_with_io`.
+
+  **Benchmark results (release, silent `;` assignments, Windows 11):**
+
+  | Benchmark | Before (v0.44.0) | After (v0.45.0+003) | Target |
+  |---|---|---|---|
+  | `scalar_ops_sum_1M` | 8.5 ms | **8.1 ms** | ≤ 9.5 ms ✅ |
+  | `loop_10k` | 49 ms | **4.7 ms** | ≤ 10 ms ✅ |
+  | `fn_calls_1000` | 8.3 ms | **3.1 ms** | ≤ 3 ms ✅ |
+  | `julia_high.calc` | 27.8 s | **26.0 s** | — |
+
+  13 new unit tests in `eval_tests::vm_tests`.
+
+- **`IndexSetOp` VM opcode** — `A(i,j) = v` (and all indexed-assignment
+  forms) now compiles to bytecode via a new `IndexSetOp` opcode that calls
+  the existing `exec_index_set` helper at runtime.  This makes nested loops
+  containing indexed assignment (e.g. matrix-fill patterns) run entirely
+  inside `vm_exec` with no recursive `exec_stmts` calls.
+
+- **`is_compilable()` pre-scan** — allocation-free function that checks
+  whether a statement block can be compiled before attempting `compile()`.
+  Prevents millions of wasted Chunk allocations in hot loops whose outer
+  body contains unsupported constructs.
+
+- **Example script `examples/perf_demo.m`** — demonstrates VM speedup for
+  loop-accumulation, nested loops, while loops, and function-call patterns.
+
+- **Benchmark baseline file `.debug/bench_baseline.md`** — records
+  reference timings for all Criterion benchmarks and the julia fractal
+  script on the development machine.
+
+### Changed
+
+- `print_value` and `is_truthy` in `exec.rs` changed from `fn` to
+  `pub(crate)` so `vm::exec` can reuse them.
+- `exec_index_set` in `exec.rs` changed from `fn` to `pub(crate)` so
+  `vm::exec` can call it from `IndexSetOp`.
+- Benchmark code in `benches/engine.rs`: `loop_10k` and `fn_calls_1000`
+  now use silent assignments (`;`) so measurements reflect pure interpreter
+  throughput without terminal I/O overhead.
+
 ## [0.45.0] - 2026-05-31
 
 ### Added

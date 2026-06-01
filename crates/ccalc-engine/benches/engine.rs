@@ -92,9 +92,10 @@ end";
 
 // ── 3: interpreter loop throughput ───────────────────────────────────────────
 
-/// for k=1:10000; s+=k; end — measures REPL/exec loop overhead at 10 K iterations.
+/// for k=1:10000; s+=k; end — measures interpreter loop overhead at 10 K iterations.
+/// All assignments are silent (`;`) to eliminate println! I/O from the measurement.
 fn bench_loop_throughput(c: &mut Criterion) {
-    let stmts = parse_stmts("s = 0\nfor k = 1:10000\n  s += k\nend").expect("parse");
+    let stmts = parse_stmts("s = 0;\nfor k = 1:10000\n  s += k;\nend").expect("parse");
     let mut env = new_env();
     let mut io = IoContext::new();
 
@@ -168,7 +169,7 @@ end";
     let mut env = new_env();
     run(fn_def, &mut env);
 
-    let stmts = parse_stmts("s = 0\nfor k = 1:1000\n  s = inc(k)\nend").expect("parse");
+    let stmts = parse_stmts("s = 0;\nfor k = 1:1000\n  s = inc(k);\nend").expect("parse");
     let mut io = IoContext::new();
 
     c.bench_function("fn_calls_1000", |b| {

@@ -1,46 +1,78 @@
 # Engine Crate (`ccalc-engine`)
 
-The `ccalc-engine` crate is a pure computation library with no I/O dependencies
-beyond file access for workspace persistence. It exposes three public modules.
+The `ccalc-engine` crate is a pure computation library with no terminal
+I/O dependencies.  It contains the full language pipeline.
 
-## Public API
+## Execution pipeline
+
+```
+parse_stmts(src) → Vec<StmtEntry>   (AST)
+        │
+        ▼
+vm::compile::compile(&stmts)
+        │   Ok(Chunk)              Err(Unsupported)
+        ▼                                  ▼
+vm::exec::vm_exec(chunk, env, …)   exec::exec_stmts (tree-walker)
+```
+
+`exec_stmts` is the public execution entry point.  It tries to compile the
+statement block to bytecode first; if any construct is not yet supported
+(`CompileError::Unsupported`), it falls back to the recursive tree-walker
+transparently.
+
+## Key public types
 
 ```rust
-// Parse an input string into a statement (assignment or expression)
-pub fn parser::parse(input: &str) -> Result<Stmt, String>
+// Statement AST — produced by the parser
+pub enum parser::Stmt { Assign(..), Expr(..), For { .. }, While { .. }, … }
+pub type  parser::StmtEntry = (Stmt, /*silent*/ bool, /*line*/ usize);
 
-// Check whether input is a partial expression (starts with an operator)
-pub fn parser::is_partial(input: &str) -> bool
+// Value enum — result of evaluation
+pub enum env::Value {
+    Scalar(f64), Matrix(Array2<f64>), Complex(f64, f64),
+    ComplexMatrix(Array2<Complex<f64>>), Str(String), StringObj(String),
+    Lambda(LambdaFn), Function { .. }, Cell(Vec<Value>),
+    Struct(IndexMap<String, Value>), StructArray(Vec<IndexMap<..>>),
+    Map(IndexMap<String, Value>), Void,
+    DateTime(f64), Duration(f64), DateTimeArray(Vec<f64>), DurationArray(Vec<f64>),
+    Tuple(Vec<Value>),
+}
 
-// Evaluate an AST node given a variable environment
-pub fn eval::eval(expr: &Expr, env: &Env) -> Result<f64, String>
-// Note: return type migrates to Result<Value, String> in Phase 3
+// Variable environment
+pub type env::Env = IndexMap<String, Value>;
 
-// Format a number for user-facing display (respects base and precision)
-pub fn eval::format_value(n: f64, precision: usize, base: Base) -> String
+// Execute a parsed block (tries VM, falls back to tree-walker)
+pub fn exec::exec_stmts(stmts, env, io, fmt, base, compact)
+    -> Result<Option<Signal>, String>;
 
-// Format a number for internal use (always decimal)
-pub fn eval::format_number(n: f64) -> String
-
-// Variable environment: maps names to scalar values
-// Migrates to HashMap<String, Value> in Phase 3
-pub type env::Env = HashMap<String, f64>;
-
-// Save / load workspace to ~/.config/ccalc/workspace.toml
-pub fn env::save_workspace_default(env: &Env) -> Result<(), String>
-pub fn env::load_workspace_default() -> Result<Env, String>
+// Execute a top-level script (hoists function defs, then exec_stmts)
+pub fn exec::exec_script(stmts, env, io, fmt, base, compact)
+    -> Result<Option<Signal>, String>;
 ```
+
+## Bytecode VM (`vm/`)
+
+Added in Phase 34b.  Three modules:
+
+| Module | Role |
+|--------|------|
+| `vm/mod.rs` | Shared types: `Opcode` (u8), `Instr` (8 bytes, compile-time size assert), `Chunk`, `IterState`, `CompileError` |
+| `vm/compile.rs` | `compile(&[StmtEntry]) → Result<Chunk, CompileError>` — single-pass lowering; `is_compilable(&[StmtEntry]) → bool` — zero-allocation pre-check |
+| `vm/exec.rs` | `vm_exec(chunk, env, io, fmt, base, compact) → Result<Option<Signal>, String>` — main dispatch loop |
+
+`Instr` is always 8 bytes: 1-byte opcode + 7-byte little-endian payload.
+This fits thousands of instructions in L1-D cache.
+
+Supported compiled statements: `Assign`, `Expr`, `For`, `While`, `If`/elseif/else,
+`Break`, `Continue`, `Return`, `FunctionDef` (→ `DefineFunc`), `IndexSet`
+(→ `IndexSetOp`).
+
+Arithmetic fast paths: Scalar×Scalar (direct `f64`), Complex power via
+`num_complex::powi`/`powf`/`powc`, Matrix broadcast via `ndarray`.
 
 ## Why a separate crate?
 
-The engine crate provides a stable, testable boundary between computation logic
-and the CLI. This separation makes it straightforward to:
-
-- **Test** the parser and evaluator in isolation with 100+ unit tests.
-- **Extend** for Octave/MATLAB compatibility without touching the CLI code.
-- **Embed** the calculator in other tools or a future WASM target.
-
-## Extending the engine
-
-All Octave compatibility work (Phases 1–9) will be added to this crate.
-The binary crate will remain a thin CLI wrapper.
+- **Testable in isolation** — 1 000+ unit tests, no CLI coupling.
+- **Embeddable** — WASM or other frontends can link `ccalc-engine` directly.
+- **Clean boundary** — the binary owns all user-facing interaction;
+  the engine has no `rustyline`, no terminal codes, no `println!` in hot paths.
