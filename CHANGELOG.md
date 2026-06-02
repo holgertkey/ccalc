@@ -6,6 +6,80 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-06-02
+
+### Changed
+
+- **Phase 35 — Interpreter Performance 2: slot locals, native builtins, Value boxing**
+
+  Three layered sub-phases reduce hot-loop overhead **8.4×** compared to Phase 34b
+  (v0.45), with no changes to the public API or observable language behaviour.
+
+  #### 35a — Slot-indexed local variables
+
+  Pure-local variables in compiled chunks are stored in a flat `Vec<Value>`
+  (`locals`) instead of the `HashMap<String,Value>` environment, eliminating
+  per-iteration hash operations for accumulators and loop counters.
+
+  Three new opcodes: `LoadSlot(slot)`, `StoreSlot(slot, silent)`,
+  `IterNextSlot(slot, exit_offset)`.  The compiler runs a two-pass analysis:
+  collect assignment-LHS and loop-var candidates, then filter out any name
+  that appears free inside an `EvalExpr` sub-expression (env-required).
+  On `vm_exec` entry the slot vec is seeded from env; on exit (and before
+  every `Return`) `sync_locals()` writes back non-Void slots.
+
+  #### 35c — Native `CallBuiltin` opcode
+
+  Pure-math built-in calls such as `abs(z)`, `sqrt(x)`, `sin(k)` previously
+  compiled to `EvalExpr` (recursive AST + env look-up per argument).  A
+  `COMPILABLE_BUILTINS` whitelist (57 names) marks those calls as pure, so
+  `is_pure()` returns `true` for them.  A new `CallBuiltin(name_idx, argc)`
+  opcode pops arguments directly from the VM stack and calls `call_builtin`
+  with no env access.
+
+  Side-effect: once `abs(z)` is pure, `z` is no longer env-required → 35a
+  assigns it a slot.  In a Julia/Mandelbrot-style loop, `z`, `k`, and `n` all
+  receive slots, eliminating all HashMap traffic per iteration.
+
+  Accepted limitation: a user variable that shadows a `COMPILABLE_BUILTINS`
+  name (e.g. `abs = 5`) will always call the built-in instead of indexing the
+  variable.  Documented in `callbuiltin_shadowing_documented_divergence`.
+
+  #### 35b — Boxing large `Value` variants
+
+  `sizeof(Value)` reduced from **168 → 32 bytes** by placing eight large
+  variants behind `Box<T>`:
+
+  | Variant | Before | After |
+  |---|---|---|
+  | `Matrix(Array2<f64>)` | 56 B | `Box` → 8 B |
+  | `ComplexMatrix(Array2<Complex<f64>>)` | 56 B | `Box` → 8 B |
+  | `Function { … }` | ~136 B | `Box<FunctionData>` → 8 B |
+  | `Struct(IndexMap<…>)` | ~72 B | `Box` → 8 B |
+  | `StructArray(Vec<…>)` | 24 B | `Box` → 8 B |
+  | `Map(IndexMap<…>)` | ~72 B | `Box` → 8 B |
+  | `Lambda(LambdaFn)` | ~40 B | `Box` → 8 B |
+  | `Cell(Vec<Value>)` | 24 B | `Box` → 8 B |
+
+  `Value::Function` fields migrate from inline struct syntax to `fd.outputs`,
+  `fd.params`, `fd.body_source`, `fd.locals`, `fd.doc` via the new public
+  `FunctionData` struct.  A compile-time assertion
+  `const _VALUE_SIZE: () = assert!(size_of::<Value>() <= 32)` prevents
+  future size regressions.
+
+  #### Benchmark results (release build, Windows 11)
+
+  | Benchmark | v0.45 (Phase 34b) | v0.46 (35a) | v0.47 (35a+35c+35b) | Target |
+  |---|---|---|---|---|
+  | `loop_10k` | 4.68 ms | 1.95 ms | **0.56 ms** | ≤ 0.8 ms ✅ |
+  | `fn_calls_1000` | 3.10 ms | 3.08 ms | **2.92 ms** | ≤ 1.0 ms ⚠ |
+  | `scalar_ops_sum_1M` | 8.05 ms | 7.85 ms | **9.40 ms** | ≤ 9.5 ms ✅ |
+
+  `fn_calls_1000` is bounded by `call_user_function` (fresh `Env` allocation per
+  call), not by inner-loop overhead — targeted in a future phase.
+
+  **27 new tests** across the three sub-phases (13 + 11 + 3).
+
 ## [0.46.0+003] - 2026-06-02
 
 ### Changed
