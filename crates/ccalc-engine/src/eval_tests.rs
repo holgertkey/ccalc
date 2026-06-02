@@ -4171,11 +4171,15 @@ mod csv_tests {
         let mut fields = IndexMap::new();
         fields.insert(
             "x".to_string(),
-            Value::Matrix(Box::new(Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap())),
+            Value::Matrix(Box::new(
+                Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap(),
+            )),
         );
         fields.insert(
             "y".to_string(),
-            Value::Matrix(Box::new(Array2::from_shape_vec((2, 1), vec![3.0, 4.0]).unwrap())),
+            Value::Matrix(Box::new(
+                Array2::from_shape_vec((2, 1), vec![3.0, 4.0]).unwrap(),
+            )),
         );
         let path = tmp_path("wt_basic");
         let ps = path.to_str().unwrap();
@@ -4222,7 +4226,10 @@ mod csv_tests {
     fn writetable_wrong_type_errors() {
         let mut fields = IndexMap::new();
         fields.insert("a".to_string(), Value::Scalar(1.0));
-        fields.insert("b".to_string(), Value::Matrix(Box::new(Array2::<f64>::zeros((2, 2)))));
+        fields.insert(
+            "b".to_string(),
+            Value::Matrix(Box::new(Array2::<f64>::zeros((2, 2)))),
+        );
         let path = tmp_path("wt_err");
         let ps = path.to_str().unwrap();
         let mut env = empty_env();
@@ -4587,7 +4594,10 @@ fn test_strjoin_with_delimiter() {
 
 #[test]
 fn test_strjoin_default_space() {
-    let cell = Value::Cell(Box::new(vec![Value::Str("x".into()), Value::Str("y".into())]));
+    let cell = Value::Cell(Box::new(vec![
+        Value::Str("x".into()),
+        Value::Str("y".into()),
+    ]));
     assert_eq!(call1("strjoin", cell), Ok(Value::Str("x y".into())));
 }
 
@@ -4599,7 +4609,7 @@ fn test_strjoin_single_element() {
 
 #[test]
 fn test_strjoin_empty_cell() {
-    let cell = Value::Cell(Box::new(vec![]));
+    let cell = Value::Cell(Box::default());
     assert_eq!(call1("strjoin", cell), Ok(Value::Str("".into())));
 }
 
@@ -5490,7 +5500,9 @@ mod phase23_tests {
     }
 
     fn mat(rows: usize, cols: usize, data: Vec<f64>) -> Value {
-        Value::Matrix(Box::new(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap()))
+        Value::Matrix(Box::new(
+            ndarray::Array2::from_shape_vec((rows, cols), data).unwrap(),
+        ))
     }
 
     // ── 23a — triu / tril / repmat / kron ────────────────────────────────────
@@ -5804,7 +5816,9 @@ mod phase24_tests {
     }
 
     fn mat(rows: usize, cols: usize, data: Vec<f64>) -> Value {
-        Value::Matrix(Box::new(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap()))
+        Value::Matrix(Box::new(
+            ndarray::Array2::from_shape_vec((rows, cols), data).unwrap(),
+        ))
     }
 
     /// Evaluate `src` with a pre-seeded variable `"p"` holding a 1×N polynomial row vector.
@@ -5814,7 +5828,9 @@ mod phase24_tests {
         let n = coeffs.len();
         env.insert(
             "p".to_string(),
-            Value::Matrix(Box::new(ndarray::Array2::from_shape_vec((1, n), coeffs.to_vec()).unwrap())),
+            Value::Matrix(Box::new(
+                ndarray::Array2::from_shape_vec((1, n), coeffs.to_vec()).unwrap(),
+            )),
         );
         eval_parse(src, &env)
     }

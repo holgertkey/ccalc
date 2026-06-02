@@ -1061,9 +1061,9 @@ pub fn run() {
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
                                 Value::Lambda(lf) => println!("{name} = {}", lf.1),
-                                    Value::Function(fd) => {
-                                        let p = fd.params.join(", ");
-                                        let out = match fd.outputs.len() {
+                                Value::Function(fd) => {
+                                    let p = fd.params.join(", ");
+                                    let out = match fd.outputs.len() {
                                         0 => String::new(),
                                         1 => format!("{} = ", fd.outputs[0]),
                                         _ => format!("[{}] = ", fd.outputs.join(", ")),
@@ -1150,9 +1150,9 @@ pub fn run() {
                                         }
                                     }
                                     Value::Lambda(lf) => println!("{}", lf.1),
-                                        Value::Function(fd) => {
-                                            let p = fd.params.join(", ");
-                                            let out = match fd.outputs.len() {
+                                    Value::Function(fd) => {
+                                        let p = fd.params.join(", ");
+                                        let out = match fd.outputs.len() {
                                             0 => String::new(),
                                             1 => format!("{} = ", fd.outputs[0]),
                                             _ => format!("[{}] = ", fd.outputs.join(", ")),
@@ -1260,9 +1260,9 @@ pub fn run_expr(expr: &str) {
                 Value::Str(s) => println!("{name} = {s}"),
                 Value::StringObj(s) => println!("{name} = {s}"),
                 Value::Lambda(lf) => println!("{name} = {}", lf.1),
-                    Value::Function(fd) => {
-                        let p = fd.params.join(", ");
-                        let out = match fd.outputs.len() {
+                Value::Function(fd) => {
+                    let p = fd.params.join(", ");
+                    let out = match fd.outputs.len() {
                         0 => String::new(),
                         1 => format!("{} = ", fd.outputs[0]),
                         _ => format!("[{}] = ", fd.outputs.join(", ")),
@@ -1323,9 +1323,9 @@ pub fn run_expr(expr: &str) {
                         }
                     }
                     Value::Lambda(lf) => println!("{}", lf.1),
-                        Value::Function(fd) => {
-                            let p = fd.params.join(", ");
-                            let out = match fd.outputs.len() {
+                    Value::Function(fd) => {
+                        let p = fd.params.join(", ");
+                        let out = match fd.outputs.len() {
                             0 => String::new(),
                             1 => format!("{} = ", fd.outputs[0]),
                             _ => format!("[{}] = ", fd.outputs.join(", ")),
@@ -1884,9 +1884,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
                                 Value::Lambda(lf) => println!("{name} = {}", lf.1),
-                                    Value::Function(fd) => {
-                                        let p = fd.params.join(", ");
-                                        let out = match fd.outputs.len() {
+                                Value::Function(fd) => {
+                                    let p = fd.params.join(", ");
+                                    let out = match fd.outputs.len() {
                                         0 => String::new(),
                                         1 => format!("{} = ", fd.outputs[0]),
                                         _ => format!("[{}] = ", fd.outputs.join(", ")),
@@ -1970,9 +1970,9 @@ pub fn run_pipe(reader: impl BufRead) {
                                         }
                                     }
                                     Value::Lambda(lf) => println!("{}", lf.1),
-                                        Value::Function(fd) => {
-                                            let p = fd.params.join(", ");
-                                            let out = match fd.outputs.len() {
+                                    Value::Function(fd) => {
+                                        let p = fd.params.join(", ");
+                                        let out = match fd.outputs.len() {
                                             0 => String::new(),
                                             1 => format!("{} = ", fd.outputs[0]),
                                             _ => format!("[{}] = ", fd.outputs.join(", ")),

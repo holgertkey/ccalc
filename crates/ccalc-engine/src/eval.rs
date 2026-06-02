@@ -647,7 +647,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::UnaryNot(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Logical NOT is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
-            Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 })))),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(
+                m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }),
+            ))),
             Value::Complex(re, im) => Ok(Value::Scalar(if re == 0.0 && im == 0.0 {
                 1.0
             } else {
@@ -660,7 +662,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             }
             Value::Str(s) => match str_to_numeric(&s) {
                 Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
-                Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 })))),
+                Value::Matrix(m) => Ok(Value::Matrix(Box::new(
+                    m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }),
+                ))),
                 _ => unreachable!(),
             },
             Value::StringObj(_) => {
@@ -939,7 +943,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                             })
                             .collect();
                         let n = nums.len();
-                        Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), nums).unwrap())))
+                        Ok(Value::Matrix(Box::new(
+                            Array2::from_shape_vec((1, n), nums).unwrap(),
+                        )))
                     } else {
                         Ok(Value::Cell(Box::new(values)))
                     }
@@ -1677,7 +1683,9 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             | Op::And
             | Op::Or
             | Op::ElemAnd
-            | Op::ElemOr => Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64(cmp_op(op, s, x)))))),
+            | Op::ElemOr => Ok(Value::Matrix(Box::new(
+                m.mapv(|x| bool_to_f64(cmp_op(op, s, x))),
+            ))),
         },
         (Value::Matrix(m), Value::Scalar(s)) => match op {
             Op::Add => Ok(Value::Matrix(Box::new(&*m + s))),
@@ -1698,7 +1706,9 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             | Op::And
             | Op::Or
             | Op::ElemAnd
-            | Op::ElemOr => Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64(cmp_op(op, x, s)))))),
+            | Op::ElemOr => Ok(Value::Matrix(Box::new(
+                m.mapv(|x| bool_to_f64(cmp_op(op, x, s))),
+            ))),
         },
     }
 }
@@ -1907,15 +1917,19 @@ fn complex_matrix_binop(
         }
         Op::And | Op::ElemAnd => {
             same_shape()?;
-            Ok(Value::Matrix(Box::new(ndarray::Zip::from(&a).and(&b).map_collect(
-                |x, y| bool_to_f64((x.re != 0.0 || x.im != 0.0) && (y.re != 0.0 || y.im != 0.0)),
-            ))))
+            Ok(Value::Matrix(Box::new(
+                ndarray::Zip::from(&a).and(&b).map_collect(|x, y| {
+                    bool_to_f64((x.re != 0.0 || x.im != 0.0) && (y.re != 0.0 || y.im != 0.0))
+                }),
+            )))
         }
         Op::Or | Op::ElemOr => {
             same_shape()?;
-            Ok(Value::Matrix(Box::new(ndarray::Zip::from(&a).and(&b).map_collect(
-                |x, y| bool_to_f64(x.re != 0.0 || x.im != 0.0 || y.re != 0.0 || y.im != 0.0),
-            ))))
+            Ok(Value::Matrix(Box::new(
+                ndarray::Zip::from(&a).and(&b).map_collect(|x, y| {
+                    bool_to_f64(x.re != 0.0 || x.im != 0.0 || y.re != 0.0 || y.im != 0.0)
+                }),
+            )))
         }
     }
 }
@@ -2446,7 +2460,9 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
             if n == 0 {
                 Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             } else {
-                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), idxs).unwrap())))
+                Ok(Value::Matrix(Box::new(
+                    Array2::from_shape_vec((1, n), idxs).unwrap(),
+                )))
             }
         }
     }
@@ -3297,9 +3313,9 @@ pub(crate) fn call_builtin(
         // --- Matrix properties ---
         ("size", 1) => match &args[0] {
             Value::Void => Err("size: not applicable to void".to_string()),
-            Value::Scalar(_) | Value::Complex(_, _) | Value::Struct(_) => Ok(Value::Matrix(Box::new(
-                Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
-            ))),
+            Value::Scalar(_) | Value::Complex(_, _) | Value::Struct(_) => Ok(Value::Matrix(
+                Box::new(Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap()),
+            )),
             Value::Matrix(m) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![m.nrows() as f64, m.ncols() as f64]).unwrap(),
             ))),
@@ -3507,7 +3523,9 @@ pub(crate) fn call_builtin(
             let vals: Vec<f64> = (0..n)
                 .map(|i| a + (b - a) * i as f64 / (n - 1) as f64)
                 .collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((1, n), vals).unwrap(),
+            )))
         }
         // --- Bitwise functions ---
         // All operands are truncated to i64. Results are non-negative integers
@@ -3582,25 +3600,33 @@ pub(crate) fn call_builtin(
         ("rand", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
             let data: Vec<f64> = (0..r * c).map(|_| rand_uniform()).collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((r, c), data).unwrap(),
+            )))
         }
         ("rand", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
             let data: Vec<f64> = (0..r * c).map(|_| rand_uniform()).collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((r, c), data).unwrap(),
+            )))
         }
         ("randn", 0) => Ok(Value::Scalar(rand_normal())),
         ("randn", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
             let data: Vec<f64> = (0..r * c).map(|_| rand_normal()).collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((r, c), data).unwrap(),
+            )))
         }
         ("randn", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
             let data: Vec<f64> = (0..r * c).map(|_| rand_normal()).collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((r, c), data).unwrap(),
+            )))
         }
         ("randi", 1) => {
             let (lo, hi) = randi_range(&args[0])?;
@@ -3613,7 +3639,9 @@ pub(crate) fn call_builtin(
             let data: Vec<f64> = (0..n * n)
                 .map(|_| RNG.with(|r| r.borrow_mut().gen_range(lo..=hi)) as f64)
                 .collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, n), data).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((n, n), data).unwrap(),
+            )))
         }
         ("randi", 3) => {
             let (lo, hi) = randi_range(&args[0])?;
@@ -3622,7 +3650,9 @@ pub(crate) fn call_builtin(
             let data: Vec<f64> = (0..r * c)
                 .map(|_| RNG.with(|rng| rng.borrow_mut().gen_range(lo..=hi)) as f64)
                 .collect();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((r, c), data).unwrap(),
+            )))
         }
         ("rng", 1) => match &args[0] {
             Value::Scalar(n) => {
@@ -4150,7 +4180,9 @@ pub(crate) fn call_builtin(
                     if n_p == 1 {
                         Ok(Value::Scalar(pr[0]))
                     } else {
-                        Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n_p), pr).unwrap())))
+                        Ok(Value::Matrix(Box::new(
+                            Array2::from_shape_vec((1, n_p), pr).unwrap(),
+                        )))
                     }
                 }
                 Value::Matrix(m) if m.nrows() == 1 || m.ncols() == 1 => {
@@ -4159,7 +4191,9 @@ pub(crate) fn call_builtin(
                     if n_p == 1 {
                         Ok(Value::Scalar(pr[0]))
                     } else {
-                        Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n_p), pr).unwrap())))
+                        Ok(Value::Matrix(Box::new(
+                            Array2::from_shape_vec((1, n_p), pr).unwrap(),
+                        )))
                     }
                 }
                 Value::Matrix(m) => {
@@ -4247,7 +4281,9 @@ pub(crate) fn call_builtin(
                     // matrix → extract main diagonal as N×1 column vector
                     let n = rows.min(cols);
                     let d: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
-                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), d).unwrap())))
+                    Ok(Value::Matrix(Box::new(
+                        Array2::from_shape_vec((n, 1), d).unwrap(),
+                    )))
                 }
             }
             Value::Void => Err("diag: not applicable to void".to_string()),
@@ -4730,7 +4766,9 @@ pub(crate) fn call_builtin(
                         if n == 0 {
                             Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
                         } else {
-                            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
+                            Ok(Value::Matrix(Box::new(
+                                Array2::from_shape_vec((1, n), vals).unwrap(),
+                            )))
                         }
                     } else {
                         Ok(Value::Cell(Box::new(results)))
@@ -5056,17 +5094,23 @@ pub(crate) fn call_builtin(
                     if mx.shape() != my.shape() {
                         return Err("xor: matrices must have the same dimensions".to_string());
                     }
-                    Ok(Value::Matrix(Box::new(ndarray::Zip::from(&**mx).and(&**my).map_collect(
-                        |a, b| bool_to_f64((*a != 0.0) ^ (*b != 0.0)),
-                    ))))
+                    Ok(Value::Matrix(Box::new(
+                        ndarray::Zip::from(&**mx)
+                            .and(&**my)
+                            .map_collect(|a, b| bool_to_f64((*a != 0.0) ^ (*b != 0.0))),
+                    )))
                 }
                 (Value::Scalar(s), Value::Matrix(m)) => {
                     let sv = *s != 0.0;
-                    Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64(sv ^ (x != 0.0))))))
+                    Ok(Value::Matrix(Box::new(
+                        m.mapv(|x| bool_to_f64(sv ^ (x != 0.0))),
+                    )))
                 }
                 (Value::Matrix(m), Value::Scalar(s)) => {
                     let sv = *s != 0.0;
-                    Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64((x != 0.0) ^ sv)))))
+                    Ok(Value::Matrix(Box::new(
+                        m.mapv(|x| bool_to_f64((x != 0.0) ^ sv)),
+                    )))
                 }
                 _ => Err("xor: arguments must be numeric".to_string()),
             }
@@ -5331,7 +5375,10 @@ pub(crate) fn call_builtin(
                     for (i, &e) in reals.iter().enumerate() {
                         d[[i, i]] = e;
                     }
-                    Ok(Value::Tuple(vec![Value::Matrix(Box::new(evecs)), Value::Matrix(Box::new(d))]))
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(Box::new(evecs)),
+                        Value::Matrix(Box::new(d)),
+                    ]))
                 }
             }
             _ => Err("eig: argument must be a real numeric matrix".to_string()),
@@ -5361,7 +5408,9 @@ pub(crate) fn call_builtin(
                 let k = s_v.len();
                 if get_nargout() <= 1 {
                     let col: Vec<f64> = s_v;
-                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((k, 1), col).unwrap())))
+                    Ok(Value::Matrix(Box::new(
+                        Array2::from_shape_vec((k, 1), col).unwrap(),
+                    )))
                 } else {
                     // Full SVD: extend U to m×m, S to m×n.
                     let u_full = complete_orthonormal_basis(&u_c);
@@ -5443,7 +5492,10 @@ pub(crate) fn call_builtin(
                 if get_nargout() <= 1 {
                     Ok(Value::Matrix(Box::new(r)))
                 } else {
-                    Ok(Value::Tuple(vec![Value::Matrix(Box::new(q)), Value::Matrix(Box::new(r))]))
+                    Ok(Value::Tuple(vec![
+                        Value::Matrix(Box::new(q)),
+                        Value::Matrix(Box::new(r)),
+                    ]))
                 }
             }
             _ => Err("qr: argument must be a real numeric matrix".to_string()),
@@ -5616,7 +5668,9 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), out).unwrap())))
+                    Ok(Value::Matrix(Box::new(
+                        Array2::from_shape_vec((1, n), out).unwrap(),
+                    )))
                 } else if ncols == 1 {
                     let n = nrows;
                     let shift = n / 2;
@@ -5625,7 +5679,9 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), out).unwrap())))
+                    Ok(Value::Matrix(Box::new(
+                        Array2::from_shape_vec((n, 1), out).unwrap(),
+                    )))
                 } else {
                     let row_shift = nrows / 2;
                     let col_shift = ncols / 2;
@@ -5654,7 +5710,9 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), out).unwrap())))
+                    Ok(Value::Matrix(Box::new(
+                        Array2::from_shape_vec((1, n), out).unwrap(),
+                    )))
                 } else if ncols == 1 {
                     let n = nrows;
                     let shift = n.div_ceil(2);
@@ -5663,7 +5721,9 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), out).unwrap())))
+                    Ok(Value::Matrix(Box::new(
+                        Array2::from_shape_vec((n, 1), out).unwrap(),
+                    )))
                 } else {
                     let row_shift = nrows.div_ceil(2);
                     let col_shift = ncols.div_ceil(2);
@@ -6524,7 +6584,9 @@ pub(crate) fn call_builtin(
                     .map(|(&ri, &ci)| ((ci as usize - 1) * rows + ri as usize) as f64)
                     .collect();
                 let n = vals.len();
-                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
+                Ok(Value::Matrix(Box::new(
+                    Array2::from_shape_vec((1, n), vals).unwrap(),
+                )))
             }
         }
 
@@ -6614,9 +6676,9 @@ pub(crate) fn call_builtin(
                 }
                 Ok(Value::Matrix(Box::new(result)))
             }
-            (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => Ok(Value::Matrix(Box::new(
-                Array2::from_elem((*rm as usize, *cn as usize), *s),
-            ))),
+            (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => Ok(Value::Matrix(
+                Box::new(Array2::from_elem((*rm as usize, *cn as usize), *s)),
+            )),
             _ => Err("repelem: expects (matrix, m, n) for 2D repetition".to_string()),
         },
 
@@ -6696,7 +6758,9 @@ pub(crate) fn call_builtin(
         ("poly", 1) => match &args[0] {
             Value::Scalar(r) => {
                 let data = vec![1.0, -*r];
-                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, 2), data).unwrap())))
+                Ok(Value::Matrix(Box::new(
+                    Array2::from_shape_vec((1, 2), data).unwrap(),
+                )))
             }
             Value::Matrix(m) => {
                 if m.nrows() == 1 || m.ncols() == 1 {
@@ -6735,7 +6799,9 @@ pub(crate) fn call_builtin(
             }
             let c = poly_conv(&a, &b);
             let len = c.len();
-            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, len), c).unwrap())))
+            Ok(Value::Matrix(Box::new(
+                Array2::from_shape_vec((1, len), c).unwrap(),
+            )))
         }
 
         ("deconv", 2) => {
@@ -7214,7 +7280,10 @@ fn readtable_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, S
     if data_lines.is_empty() {
         let mut s: IndexMap<String, Value> = IndexMap::new();
         for h in &headers {
-            s.insert(h.clone(), Value::Matrix(Box::new(Array2::<f64>::zeros((0, 1)))));
+            s.insert(
+                h.clone(),
+                Value::Matrix(Box::new(Array2::<f64>::zeros((0, 1)))),
+            );
         }
         return Ok(Value::Struct(Box::new(s)));
     }
@@ -7445,7 +7514,7 @@ fn dir_impl(path_arg: &str) -> Value {
     }
 
     let Ok(rd) = std::fs::read_dir(&dir_path) else {
-        return Value::StructArray(Box::new(vec![]));
+        return Value::StructArray(Box::default());
     };
 
     let mut file_rows: Vec<(String, IndexMap<String, Value>)> = rd
@@ -8324,7 +8393,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                 Ok(Value::Scalar(vals[0]))
                             } else {
                                 let n = vals.len();
-                                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
+                                Ok(Value::Matrix(Box::new(
+                                    Array2::from_shape_vec((1, n), vals).unwrap(),
+                                )))
                             }
                         }
                     }

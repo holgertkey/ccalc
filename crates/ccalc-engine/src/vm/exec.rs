@@ -731,20 +731,22 @@ fn vm_binop(
             return Ok(Value::Matrix(Box::new(result)));
         }
         // Comparison element-wise.
-        let result = ndarray::Zip::from(&**ma).and(&**mb).map_collect(|&av, &bv| {
-            let t = match op {
-                Op::Eq => av == bv,
-                Op::NotEq => av != bv,
-                Op::Lt => av < bv,
-                Op::LtEq => av <= bv,
-                Op::Gt => av > bv,
-                Op::GtEq => av >= bv,
-                Op::And => av != 0.0 && bv != 0.0,
-                Op::Or => av != 0.0 || bv != 0.0,
-                _ => return 0.0,
-            };
-            if t { 1.0 } else { 0.0 }
-        });
+        let result = ndarray::Zip::from(&**ma)
+            .and(&**mb)
+            .map_collect(|&av, &bv| {
+                let t = match op {
+                    Op::Eq => av == bv,
+                    Op::NotEq => av != bv,
+                    Op::Lt => av < bv,
+                    Op::LtEq => av <= bv,
+                    Op::Gt => av > bv,
+                    Op::GtEq => av >= bv,
+                    Op::And => av != 0.0 && bv != 0.0,
+                    Op::Or => av != 0.0 || bv != 0.0,
+                    _ => return 0.0,
+                };
+                if t { 1.0 } else { 0.0 }
+            });
         return Ok(Value::Matrix(Box::new(result)));
     }
 

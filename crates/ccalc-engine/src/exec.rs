@@ -611,7 +611,9 @@ fn call_user_function(
 
     // varargout: single output named 'varargout' — expand from cell
     if outputs.len() == 1 && outputs[0] == "varargout" {
-        let cell = local_env.remove("varargout").unwrap_or(Value::Cell(Box::new(vec![])));
+        let cell = local_env
+            .remove("varargout")
+            .unwrap_or(Value::Cell(Box::default()));
         return match cell {
             Value::Cell(mut v) => {
                 if v.is_empty() {
@@ -1003,7 +1005,10 @@ pub fn exec_stmts(
                         // First call: initialize to [] (empty matrix), matching MATLAB.
                         // This makes isempty(x) true so guards like
                         // `if isempty(x); x = 0; end` work correctly.
-                        env.insert(name.clone(), Value::Matrix(Box::new(ndarray::Array2::zeros((0, 0)))));
+                        env.insert(
+                            name.clone(),
+                            Value::Matrix(Box::new(ndarray::Array2::zeros((0, 0)))),
+                        );
                     }
                 }
             }

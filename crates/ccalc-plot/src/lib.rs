@@ -3421,7 +3421,9 @@ mod tests {
     }
 
     fn f64_vec(vals: &[f64]) -> Value {
-        Value::Matrix(Box::new(Array2::from_shape_vec((1, vals.len()), vals.to_vec()).unwrap()))
+        Value::Matrix(Box::new(
+            Array2::from_shape_vec((1, vals.len()), vals.to_vec()).unwrap(),
+        ))
     }
 
     // ── extract_xy ────────────────────────────────────────────────────
@@ -3657,7 +3659,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let lim = Value::Matrix(Box::new(Array2::from_shape_vec((1, 2), vec![0.0, 10.0]).unwrap()));
+        let lim = Value::Matrix(Box::new(
+            Array2::from_shape_vec((1, 2), vec![0.0, 10.0]).unwrap(),
+        ));
         plugin.call("xlim", &[lim], &env).unwrap();
         let xlim = FIGURE_STATE.with(|f| f.borrow().xlim);
         assert_eq!(xlim, Some((0.0, 10.0)));
@@ -3669,7 +3673,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let lim = Value::Matrix(Box::new(Array2::from_shape_vec((1, 2), vec![-1.0, 1.0]).unwrap()));
+        let lim = Value::Matrix(Box::new(
+            Array2::from_shape_vec((1, 2), vec![-1.0, 1.0]).unwrap(),
+        ));
         plugin.call("ylim", &[lim], &env).unwrap();
         let ylim = FIGURE_STATE.with(|f| f.borrow().ylim);
         assert_eq!(ylim, Some((-1.0, 1.0)));
@@ -3759,7 +3765,9 @@ mod tests {
     fn test_xlim_wrong_length() {
         let plugin = PlotPlugin;
         let env = Env::new();
-        let v = Value::Matrix(Box::new(Array2::from_shape_vec((1, 3), vec![1.0, 2.0, 3.0]).unwrap()));
+        let v = Value::Matrix(Box::new(
+            Array2::from_shape_vec((1, 3), vec![1.0, 2.0, 3.0]).unwrap(),
+        ));
         let result = plugin.call("xlim", &[v], &env);
         assert!(result.is_err());
     }
@@ -3948,7 +3956,9 @@ mod tests {
             .unwrap();
         let x = f64_vec(&[1.0, 2.0]);
         let y = f64_vec(&[1.0, 2.0]);
-        let m = Value::Matrix(Box::new(Array2::from_shape_vec((1, 3), vec![1.0, 0.0, 0.0]).unwrap()));
+        let m = Value::Matrix(Box::new(
+            Array2::from_shape_vec((1, 3), vec![1.0, 0.0, 0.0]).unwrap(),
+        ));
         plugin.call("plot", &[x, y, m], &env).unwrap();
         let series = FIGURE_STATE.with(|f| f.borrow().pending_series.clone());
         assert_eq!(series.len(), 1, "should have one pending series");
@@ -4312,7 +4322,9 @@ mod tests {
     fn test_imagesc_svg_without_feature_errors() {
         let plugin = PlotPlugin;
         let env = Env::new();
-        let z = Value::Matrix(Box::new(Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap()));
+        let z = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap(),
+        ));
         let path = Value::Str("out.svg".into());
         let result = plugin.call("imagesc", &[z, path], &env);
         assert!(result.is_err());
@@ -4360,9 +4372,15 @@ mod tests {
 
     #[allow(dead_code)]
     fn make_xyz(rows: usize, cols: usize) -> (Value, Value, Value) {
-        let x = Value::Matrix(Box::new(Array2::from_shape_fn((rows, cols), |(_r, c)| c as f64)));
-        let y = Value::Matrix(Box::new(Array2::from_shape_fn((rows, cols), |(r, _c)| r as f64)));
-        let z = Value::Matrix(Box::new(Array2::from_shape_fn((rows, cols), |(r, c)| (r + c) as f64)));
+        let x = Value::Matrix(Box::new(Array2::from_shape_fn((rows, cols), |(_r, c)| {
+            c as f64
+        })));
+        let y = Value::Matrix(Box::new(Array2::from_shape_fn((rows, cols), |(r, _c)| {
+            r as f64
+        })));
+        let z = Value::Matrix(Box::new(Array2::from_shape_fn((rows, cols), |(r, c)| {
+            (r + c) as f64
+        })));
         (x, y, z)
     }
 
@@ -4371,9 +4389,15 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let x = Value::Matrix(Box::new(Array2::from_shape_vec((2, 3), vec![1.0; 6]).unwrap()));
-        let y = Value::Matrix(Box::new(Array2::from_shape_vec((3, 2), vec![1.0; 6]).unwrap()));
-        let z = Value::Matrix(Box::new(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap()));
+        let x = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 3), vec![1.0; 6]).unwrap(),
+        ));
+        let y = Value::Matrix(Box::new(
+            Array2::from_shape_vec((3, 2), vec![1.0; 6]).unwrap(),
+        ));
+        let z = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap(),
+        ));
         let err = plugin.call("surf", &[x, y, z], &env).unwrap_err();
         assert!(
             err.contains("same dimensions"),
@@ -4386,9 +4410,15 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let x = Value::Matrix(Box::new(Array2::from_shape_vec((2, 3), vec![1.0; 6]).unwrap()));
-        let y = Value::Matrix(Box::new(Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap()));
-        let z = Value::Matrix(Box::new(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap()));
+        let x = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 3), vec![1.0; 6]).unwrap(),
+        ));
+        let y = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap(),
+        ));
+        let z = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap(),
+        ));
         let err = plugin.call("mesh", &[x, y, z], &env).unwrap_err();
         assert!(
             err.contains("same dimensions"),
@@ -4401,7 +4431,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let x = Value::Matrix(Box::new(Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap()));
+        let x = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 2), vec![1.0; 4]).unwrap(),
+        ));
         let err = plugin.call("surf", &[x], &env).unwrap_err();
         assert!(
             err.contains("requires"),
@@ -4510,9 +4542,15 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let x = Value::Matrix(Box::new(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap()));
-        let y = Value::Matrix(Box::new(Array2::from_shape_vec((3, 2), vec![0.0; 6]).unwrap()));
-        let z = Value::Matrix(Box::new(Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap()));
+        let x = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap(),
+        ));
+        let y = Value::Matrix(Box::new(
+            Array2::from_shape_vec((3, 2), vec![0.0; 6]).unwrap(),
+        ));
+        let z = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 3), vec![0.0; 6]).unwrap(),
+        ));
         let result = plugin.call("contour", &[x, y, z], &env);
         assert!(result.is_err(), "mismatched dimensions should error");
         let msg = result.unwrap_err();
@@ -4527,7 +4565,9 @@ mod tests {
         FIGURE_STATE.with(|f| f.take());
         let plugin = PlotPlugin;
         let env = Env::new();
-        let x = Value::Matrix(Box::new(Array2::from_shape_vec((2, 2), vec![0.0; 4]).unwrap()));
+        let x = Value::Matrix(Box::new(
+            Array2::from_shape_vec((2, 2), vec![0.0; 4]).unwrap(),
+        ));
         let result = plugin.call("contour", &[x], &env);
         assert!(result.is_err());
         let msg = result.unwrap_err();
@@ -5010,7 +5050,9 @@ mod tests {
         let env = Env::new();
         FIGURE_STATE.with(|f| *f.borrow_mut() = FigureState::default());
         // [0.0, 0.5, 1.0] as 1×3 matrix → RGB(0, 128, 255).
-        let m = Value::Matrix(Box::new(Array2::from_shape_vec((1, 3), vec![0.0_f64, 0.5, 1.0]).unwrap()));
+        let m = Value::Matrix(Box::new(
+            Array2::from_shape_vec((1, 3), vec![0.0_f64, 0.5, 1.0]).unwrap(),
+        ));
         plugin.call("bgcolor", &[m], &env).unwrap();
         let bg = FIGURE_STATE.with(|f| f.borrow().bg_color);
         assert_eq!(bg, Some(style::StyleColor(0, 128, 255)));
@@ -5437,7 +5479,10 @@ mod tests {
         let env = Env::new();
         let values = f64_vec(&[30.0, 30.0, 40.0]);
         // Cell array with wrong number of labels.
-        let cell = Value::Cell(Box::new(vec![Value::Str("A".into()), Value::Str("B".into())]));
+        let cell = Value::Cell(Box::new(vec![
+            Value::Str("A".into()),
+            Value::Str("B".into()),
+        ]));
         let err = plugin.call("pie", &[values, cell], &env).unwrap_err();
         assert!(
             err.contains("length"),
@@ -5476,7 +5521,10 @@ mod tests {
         let path = ".debug/test_pie_labels.svg".to_string();
         let _ = std::fs::remove_file(&path);
         let values = f64_vec(&[30.0, 70.0]);
-        let cell = Value::Cell(Box::new(vec![Value::Str("Small".into()), Value::Str("Large".into())]));
+        let cell = Value::Cell(Box::new(vec![
+            Value::Str("Small".into()),
+            Value::Str("Large".into()),
+        ]));
         let result = plugin.call("pie", &[values, cell, Value::Str(path.clone())], &env);
         assert!(
             result.is_ok(),

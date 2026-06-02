@@ -770,7 +770,10 @@ fn test_transpose_matrix_mul() {
     // v' * v where v = [1;2;3] → scalar 14
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0], [2.0], [3.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0], [2.0], [3.0]])),
+    );
     match parse("v' * v").unwrap() {
         Stmt::Expr(expr) => match eval(&expr, &env).unwrap() {
             Value::Matrix(m) => {
@@ -928,7 +931,11 @@ fn index_env() -> Env {
     // A = [1 2 3; 4 5 6; 7 8 9]  (3×3)
     env.insert(
         "A".to_string(),
-        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])),
+        Value::Matrix(Box::new(array![
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+            [7.0, 8.0, 9.0]
+        ])),
     );
     // x = 42  (scalar in env — can be indexed)
     env.insert("x".to_string(), Value::Scalar(42.0));
@@ -1183,8 +1190,14 @@ fn test_comparison_matrix_scalar() {
 fn test_comparison_matrix_matrix() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("a".to_string(), Value::Matrix(Box::new(array![[1.0, 5.0, 3.0]])));
-    env.insert("b".to_string(), Value::Matrix(Box::new(array![[2.0, 4.0, 3.0]])));
+    env.insert(
+        "a".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 5.0, 3.0]])),
+    );
+    env.insert(
+        "b".to_string(),
+        Value::Matrix(Box::new(array![[2.0, 4.0, 3.0]])),
+    );
     // a == b → [0 0 1]
     let result = match eval_with("a == b", &env) {
         Value::Matrix(m) => m.into_raw_vec_and_offset().0,
@@ -1197,7 +1210,10 @@ fn test_comparison_matrix_matrix() {
 fn test_not_matrix() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[0.0, 1.0, 0.0, 5.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[0.0, 1.0, 0.0, 5.0]])),
+    );
     let result = match eval_with("~v", &env) {
         Value::Matrix(m) => m.into_raw_vec_and_offset().0,
         _ => panic!("expected matrix"),
@@ -1380,10 +1396,16 @@ fn test_nan_constructor() {
 fn test_sum_vector() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])),
+    );
     assert_eq!(eval_with("sum(v)", &env).as_scalar().unwrap(), 10.0);
     // Column vector
-    env.insert("c".to_string(), Value::Matrix(Box::new(array![[1.0], [2.0], [3.0]])));
+    env.insert(
+        "c".to_string(),
+        Value::Matrix(Box::new(array![[1.0], [2.0], [3.0]])),
+    );
     assert_eq!(eval_with("sum(c)", &env).as_scalar().unwrap(), 6.0);
 }
 
@@ -1410,7 +1432,10 @@ fn test_sum_matrix_columnwise() {
 fn test_prod_vector() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])),
+    );
     assert_eq!(eval_with("prod(v)", &env).as_scalar().unwrap(), 24.0);
 }
 
@@ -1418,9 +1443,18 @@ fn test_prod_vector() {
 fn test_any_all() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[0.0, 1.0, 0.0]])));
-    env.insert("w".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])));
-    env.insert("z".to_string(), Value::Matrix(Box::new(array![[0.0, 0.0, 0.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[0.0, 1.0, 0.0]])),
+    );
+    env.insert(
+        "w".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])),
+    );
+    env.insert(
+        "z".to_string(),
+        Value::Matrix(Box::new(array![[0.0, 0.0, 0.0]])),
+    );
     assert_eq!(eval_with("any(v)", &env).as_scalar().unwrap(), 1.0);
     assert_eq!(eval_with("any(z)", &env).as_scalar().unwrap(), 0.0);
     assert_eq!(eval_with("all(v)", &env).as_scalar().unwrap(), 0.0);
@@ -1431,7 +1465,10 @@ fn test_any_all() {
 fn test_mean_vector() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])),
+    );
     assert_eq!(eval_with("mean(v)", &env).as_scalar().unwrap(), 2.5);
 }
 
@@ -1459,7 +1496,10 @@ fn test_norm_l2() {
 fn test_norm_lp() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])),
+    );
     // L1 norm = 1+2+3 = 6
     assert!((eval_with("norm(v, 1)", &env).as_scalar().unwrap() - 6.0).abs() < 1e-10);
 }
@@ -1468,7 +1508,10 @@ fn test_norm_lp() {
 fn test_cumsum_vector() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])),
+    );
     match eval_with("cumsum(v)", &env) {
         Value::Matrix(r) => {
             let vals: Vec<f64> = r.iter().copied().collect();
@@ -1482,7 +1525,10 @@ fn test_cumsum_vector() {
 fn test_cumprod_vector() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0, 4.0]])),
+    );
     match eval_with("cumprod(v)", &env) {
         Value::Matrix(r) => {
             let vals: Vec<f64> = r.iter().copied().collect();
@@ -1536,7 +1582,10 @@ fn test_reshape() {
 fn test_reshape_wrong_size() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])),
+    );
     assert!(eval(&unwrap_expr(parse("reshape(v, 2, 2)").unwrap()), &env).is_err());
 }
 
@@ -1544,7 +1593,10 @@ fn test_reshape_wrong_size() {
 fn test_fliplr() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]])),
+    );
     match eval_with("fliplr(v)", &env) {
         Value::Matrix(r) => {
             let vals: Vec<f64> = r.iter().copied().collect();
@@ -1577,7 +1629,10 @@ fn test_flipud() {
 fn test_find_basic() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[0.0, 3.0, 0.0, 5.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[0.0, 3.0, 0.0, 5.0]])),
+    );
     match eval_with("find(v)", &env) {
         Value::Matrix(r) => {
             let vals: Vec<f64> = r.iter().copied().collect();
@@ -1627,7 +1682,10 @@ fn test_unique_basic() {
 fn test_index_end_last_element() {
     use ndarray::array;
     let mut env = Env::new();
-    env.insert("v".to_string(), Value::Matrix(Box::new(array![[10.0, 20.0, 30.0]])));
+    env.insert(
+        "v".to_string(),
+        Value::Matrix(Box::new(array![[10.0, 20.0, 30.0]])),
+    );
     assert_eq!(eval_with("v(end)", &env).as_scalar().unwrap(), 30.0);
 }
 
