@@ -40,6 +40,24 @@ The work is divided into phases in order of architectural dependency.
 | 20a | JSON: `jsondecode` / `jsonencode` behind `--features json` | ✅ Done |
 | 20c | CSV: `readmatrix`, `readtable`, `writetable` with headers and RFC 4180 quoting | ✅ Done |
 | 20.5 | MAT file read: `load('file.mat')` behind `--features mat` | ✅ Done |
+| 21 | String completions and regex (`regexp`, `regexprep`, `strsplit` upgrades) | ✅ Done |
+| 22 | Datetime & duration types (`datetime`, `duration`, `tic`/`toc`, arithmetic) | ✅ Done |
+| 23 | Matrix utilities & set operations (`unique`, `intersect`, `union`, `repmat`, `kron`, `cross`) | ✅ Done |
+| 24 | Polynomial operations & interpolation (`polyval`, `polyfit`, `roots`, `poly`, `conv`, `deconv`, `interp1`) | ✅ Done |
+| 25 | Dynamic evaluation & timing (`eval`, `tic`/`toc`, `feval`) | ✅ Done |
+| 26 | FFT & signal processing (`fft`, `ifft`, `fftshift`, `ifftshift`, `fftfreq`) | ✅ Done |
+| 27 | Complex matrices (`[1+2i, 3]` literals, ComplexMatrix arithmetic, `angle`, `abs`, `conj`) | ✅ Done |
+| 27.5 | ComplexMatrix gaps: `eig`, `svd`, `norm`, `cond`, indexed assignment on ComplexMatrix | ✅ Done |
+| 28 | Plugin architecture: `Plugin` trait, `register_plugin`, dynamic dispatch | ✅ Done |
+| 29 | Plot engine (ASCII + SVG/PNG): `plot`, `scatter`, `bar`, `stem`, `hist`, `loglog`, `plot3`, `scatter3` | ✅ Done |
+| 30 | Plot engine extensions: `colormap`, `imagesc`, `surf`, `mesh`, `contour`, `contourf`, `subplot`, `hold`, `savefig`, style strings, `quiver`, `text` | ✅ Done |
+| 30.5 | Unified color system: `ColormapSpec`, extended style strings (`#RRGGBB`, full color names, RGB matrix) | ✅ Done |
+| 30.6 | Visual style system: `theme`, `bgcolor`, `fontsize`, `linewidth`, `markersize`, `gridcolor`, `gridwidth`, `axis` mode | ✅ Done |
+| 31 | Configurable REPL prompt & syntax highlighting | ✅ Done |
+| 32 | Plot primitives & statistical charts: `line`, `patch`, `rectangle`, `errorbar`, scatter color, `pie`, `yyaxis`, `clabel`, `image`, `imshow` | ✅ Done |
+| 33 | Language polish: newline as matrix row separator, `s.(fname)` dynamic field access, `dir`, `containers.Map`, mdBook update | ✅ Done |
+| 34 | Interpreter performance: bytecode compiler + register VM (`vm/`), `IndexSetOp`, Complex power fast path | ✅ Done |
+| 35 | Interpreter performance 2: slot-indexed locals (`LoadSlot`/`StoreSlot`), `CallBuiltin` opcode, `Value` boxing (168 → 32 bytes) | ✅ Done |
 
 ## Key architectural decisions
 
@@ -281,6 +299,39 @@ data).t().to_owned()`. The assignment form (`data = load('f.mat')`) returns a
 current workspace. `save('*.mat', ...)` returns a clear "not yet supported"
 error. 5 roundtrip tests using `matvar!`/`matfile!` macros. Example:
 `examples/mat/mat.calc`.
+
+**Phase 34** adds a bytecode compiler and register VM in `crates/ccalc-engine/src/vm/`.
+`exec_stmts` calls `is_compilable()` (zero-allocation pre-scan), then `compile()` to
+produce a `Chunk` of fixed-width 8-byte `Instr` values.  If any construct is unsupported
+(`CompileError::Unsupported`), the tree-walker fallback is used transparently.  The
+`Chunk` is cached in a `CHUNK_CACHE` thread-local keyed by the raw source string.
+Supported compiled constructs: `Assign`, `Expr`, `For`, `While`, `If`/elseif/else,
+`Break`, `Continue`, `Return`, `FunctionDef` (→ `DefineFunc`), `IndexSet`
+(→ `IndexSetOp`).  Benchmarks: `loop_10k` improved from ~50 ms (tree-walker) to
+4.68 ms; `fn_calls_1000` improved to 3.10 ms.
+
+**Phase 35** adds three layered optimisations targeting hot-loop throughput.
+
+**35a — Slot-indexed locals**: the compiler identifies variables that are only assigned
+inside the chunk and never referenced via `EvalExpr` (i.e., they only appear in pure
+expressions).  Those variables receive consecutive slot indices stored in
+`chunk.slot_names`.  `vm_exec` keeps a `Vec<Value>` (`locals`) instead of the
+`HashMap<String, Value>` env for these variables.  New opcodes `LoadSlot`, `StoreSlot`,
+`IterNextSlot` replace `LoadVar`/`StoreVar`/`IterNext` for slotted names.
+Result: `loop_10k` 4.68 ms → 1.95 ms.
+
+**35c — Native `CallBuiltin` opcode**: a `COMPILABLE_BUILTINS` whitelist of 57
+pure-math function names extends `is_pure()`.  Calls to whitelisted functions compile to
+`CallBuiltin(name_idx, argc)` which pops arguments from the stack and invokes
+`call_builtin` directly — no `EvalExpr`, no env-lookup for arguments.  Side-effect:
+variables used only in builtin calls become slottable under 35a.
+
+**35b — `Value` boxing**: `sizeof(Value)` reduced from 168 → **32 bytes** by boxing
+eight variants behind `Box<T>`: `Matrix`, `ComplexMatrix`, `Function` (→
+`Box<FunctionData>`), `Lambda`, `Cell`, `Struct`, `StructArray`, `Map`.
+A compile-time assertion `const _VALUE_SIZE: () = assert!(size_of::<Value>() <= 32)`
+prevents regression.  Combined result (35a + 35c + 35b): `loop_10k` = **0.56 ms**
+(8.4× faster than Phase 34b).
 
 ## Compatibility notes
 

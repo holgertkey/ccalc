@@ -27,15 +27,33 @@ transparently.
 pub enum parser::Stmt { Assign(..), Expr(..), For { .. }, While { .. }, … }
 pub type  parser::StmtEntry = (Stmt, /*silent*/ bool, /*line*/ usize);
 
-// Value enum — result of evaluation
+// Value enum — result of evaluation  (sizeof = 32 bytes, Phase 35b)
 pub enum env::Value {
-    Scalar(f64), Matrix(Array2<f64>), Complex(f64, f64),
-    ComplexMatrix(Array2<Complex<f64>>), Str(String), StringObj(String),
-    Lambda(LambdaFn), Function { .. }, Cell(Vec<Value>),
-    Struct(IndexMap<String, Value>), StructArray(Vec<IndexMap<..>>),
-    Map(IndexMap<String, Value>), Void,
-    DateTime(f64), Duration(f64), DateTimeArray(Vec<f64>), DurationArray(Vec<f64>),
-    Tuple(Vec<Value>),
+    // ── unboxed (small) ────────────────────────────────────────────────
+    Void,
+    Scalar(f64),
+    Complex(f64, f64),
+    DateTime(f64),    Duration(f64),
+    Str(String),      StringObj(String),
+    Tuple(Vec<Value>), DateTimeArray(Vec<f64>), DurationArray(Vec<f64>),
+    // ── boxed (large, one heap pointer each) ──────────────────────────
+    Matrix(Box<Array2<f64>>),
+    ComplexMatrix(Box<Array2<Complex<f64>>>),
+    Function(Box<FunctionData>),        // outputs, params, body_source, locals, doc
+    Lambda(Box<LambdaFn>),
+    Cell(Box<Vec<Value>>),
+    Struct(Box<IndexMap<String, Value>>),
+    StructArray(Box<Vec<IndexMap<String, Value>>>),
+    Map(Box<IndexMap<String, Value>>),
+}
+
+// Associated struct for named user functions (behind Box in Value::Function)
+pub struct env::FunctionData {
+    pub outputs:     Vec<String>,
+    pub params:      Vec<String>,
+    pub body_source: String,
+    pub locals:      IndexMap<String, Value>,
+    pub doc:         Option<String>,
 }
 
 // Variable environment
@@ -69,6 +87,58 @@ Supported compiled statements: `Assign`, `Expr`, `For`, `While`, `If`/elseif/els
 
 Arithmetic fast paths: Scalar×Scalar (direct `f64`), Complex power via
 `num_complex::powi`/`powf`/`powc`, Matrix broadcast via `ndarray`.
+
+## Phase 35 — Interpreter Performance 2
+
+Three sub-phases reduced loop overhead from ~4.7 ms/10k-iter to ~0.56 ms:
+
+### 35a — Slot-indexed locals
+
+Variables that are only assigned in the current chunk and never referenced
+inside an `EvalExpr` expression receive consecutive **slot indices** instead of
+`HashMap` keys.  New opcodes `LoadSlot`/`StoreSlot`/`IterNextSlot` access a
+`Vec<Value>` by integer index — O(1) with zero hashing.  The compiler performs
+two passes: collect assignment-LHS/loop-var candidates, filter out any name
+that appears free inside an `EvalExpr` sub-expression, assign slots to the rest.
+Entry and exit of `vm_exec` sync slots to/from `env` in O(slots) passes.
+
+### 35c — Native `CallBuiltin` opcode
+
+A `COMPILABLE_BUILTINS` whitelist (57 pure-math functions: `abs`, `sqrt`,
+`sin`/`cos`, `real`/`imag`, `sum`, `size`, `zeros`, …) marks calls as pure.
+`is_pure()` returns `true` for whitelisted calls, so their arguments are no
+longer EvalExpr-referenced.  The `CallBuiltin(name_idx, argc)` opcode pops
+arguments directly from the VM stack and calls `call_builtin` — no env lookup,
+no AST traversal.
+
+**Side-effect:** once `abs(z)` becomes `CallBuiltin`, `z` is no longer
+EvalExpr-referenced → 35a assigns it a slot → Julia-set inner loop is
+fully slot-indexed.
+
+### 35b — Value boxing
+
+`sizeof(Value)` reduced from **168 → 32 bytes** by placing eight large variants
+behind `Box<T>` (see the `Value` enum listing above).  Benefits:
+
+| Impact | Detail |
+|--------|--------|
+| Slot `Vec<Value>` | 5–7× smaller; fits in a single cache line for typical functions |
+| VM operand stack | Same reduction; `push`/`pop` memcopy 32 B not 168 B |
+| `for k = 1:256` iterator | 256 × 32 B = 8 KB (was 43 KB) |
+
+A compile-time assertion `const _VALUE_SIZE: () = assert!(size_of::<Value>() <= 32)`
+prevents future size regressions.
+
+### Benchmark summary (release, Windows 11)
+
+| Benchmark | v0.45 (Phase 34b) | v0.46 (Phase 35) | Improvement |
+|-----------|-------------------|------------------|-------------|
+| `loop_10k` | 4.68 ms | **0.56 ms** | 8.4× |
+| `fn_calls_1000` | 3.10 ms | 2.92 ms | 1.06× |
+| `scalar_ops_sum_1M` | 8.05 ms | 9.40 ms | within budget |
+
+`fn_calls_1000` is bounded by `call_user_function` (fresh `Env` allocation per
+call), not by the inner loop — a separate optimisation target.
 
 ## Why a separate crate?
 
