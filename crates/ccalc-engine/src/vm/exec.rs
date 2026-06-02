@@ -368,9 +368,7 @@ pub fn vm_exec(
                 {
                     global_set(name, val.clone());
                 }
-                if !silent
-                    && let Some(val) = env.get(name)
-                {
+                if !silent && let Some(val) = env.get(name) {
                     print_value(Some(name), val, fmt, base, compact);
                 }
                 ip += 1;

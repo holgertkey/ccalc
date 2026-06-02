@@ -7900,10 +7900,22 @@ mod vm_tests {
         // x = 3 + 4 — x is a pure local → PushConst PushConst Add StoreSlot
         let stmts = parse_stmts("x = 3 + 4").expect("parse");
         let chunk = compile(&stmts).expect("compile");
-        assert_eq!(chunk.code[0].op, Opcode::PushConst, "expected PushConst for 3");
-        assert_eq!(chunk.code[1].op, Opcode::PushConst, "expected PushConst for 4");
+        assert_eq!(
+            chunk.code[0].op,
+            Opcode::PushConst,
+            "expected PushConst for 3"
+        );
+        assert_eq!(
+            chunk.code[1].op,
+            Opcode::PushConst,
+            "expected PushConst for 4"
+        );
         assert_eq!(chunk.code[2].op, Opcode::Add, "expected Add");
-        assert_eq!(chunk.code[3].op, Opcode::StoreSlot, "expected StoreSlot (x is a pure local)");
+        assert_eq!(
+            chunk.code[3].op,
+            Opcode::StoreSlot,
+            "expected StoreSlot (x is a pure local)"
+        );
         // Verify constant pool: 3.0 and 4.0
         let c0 = chunk.code[0].u16_arg() as usize;
         let c1 = chunk.code[1].u16_arg() as usize;
@@ -7926,12 +7938,19 @@ mod vm_tests {
         // Positions: 0=EvalExpr, 1=PushIter, 2=IterNextSlot, 3=Jump
         assert_eq!(chunk.code[0].op, Opcode::EvalExpr, "range → EvalExpr");
         assert_eq!(chunk.code[1].op, Opcode::PushIter);
-        assert_eq!(chunk.code[2].op, Opcode::IterNextSlot, "k is a pure local → IterNextSlot");
+        assert_eq!(
+            chunk.code[2].op,
+            Opcode::IterNextSlot,
+            "k is a pure local → IterNextSlot"
+        );
         assert_eq!(chunk.code[3].op, Opcode::Jump);
         // IterNextSlot exit_offset: from ip=2, ip_next=3, should jump to exit=4
         // exit_off = 4 - 2 - 1 = 1
         let exit_off = chunk.code[2].i32_at(2);
-        assert_eq!(exit_off, 1, "IterNextSlot exit_offset should jump past loop");
+        assert_eq!(
+            exit_off, 1,
+            "IterNextSlot exit_offset should jump past loop"
+        );
         // Jump back-edge: from ip=3, ip_next=4, should jump to IterNextSlot at 2
         // back_off = 2 - 3 - 1 = -2
         let back_off = chunk.code[3].i32_arg();
@@ -8033,7 +8052,10 @@ mod vm_tests {
             .expect("expected a Jump for continue");
         let (cj_pos, cj_off) = continue_jump;
         let target = (cj_pos as i32 + 1 + cj_off) as usize;
-        assert_eq!(target, iter_next_pos, "continue Jump should reach IterNextSlot");
+        assert_eq!(
+            target, iter_next_pos,
+            "continue Jump should reach IterNextSlot"
+        );
     }
 
     // ── 8: vm executes scalar accumulator loop correctly ──────────────────────
@@ -8143,9 +8165,18 @@ mod vm_tests {
         // a=1; b=2; c=3 — all pure locals; should get slots 0, 1, 2 in order.
         let stmts = parse_stmts("a = 1;\nb = 2;\nc = 3;").expect("parse");
         let chunk = compile(&stmts).expect("compile");
-        assert!(chunk.slot_names.contains(&"a".to_string()), "a should be slotted");
-        assert!(chunk.slot_names.contains(&"b".to_string()), "b should be slotted");
-        assert!(chunk.slot_names.contains(&"c".to_string()), "c should be slotted");
+        assert!(
+            chunk.slot_names.contains(&"a".to_string()),
+            "a should be slotted"
+        );
+        assert!(
+            chunk.slot_names.contains(&"b".to_string()),
+            "b should be slotted"
+        );
+        assert!(
+            chunk.slot_names.contains(&"c".to_string()),
+            "c should be slotted"
+        );
         assert_eq!(chunk.slot_names.len(), 3, "exactly 3 slots");
         // Verify consecutive indices: a=0, b=1, c=2
         assert_eq!(chunk.slot_names[0], "a");
@@ -8183,7 +8214,10 @@ mod vm_tests {
             "loop var k should be slotted"
         );
         let iter_next_slot = chunk.code.iter().find(|i| i.op == Opcode::IterNextSlot);
-        assert!(iter_next_slot.is_some(), "IterNextSlot should be emitted for slotted loop var");
+        assert!(
+            iter_next_slot.is_some(),
+            "IterNextSlot should be emitted for slotted loop var"
+        );
     }
 
     // ── 35a-4: simple assignment executes correctly via slots ─────────────────
@@ -8223,8 +8257,16 @@ mod vm_tests {
     fn slot_env_sync_after_exit() {
         let mut env = new_env();
         run("x = 5;\nfor k = 1:3\n  x += 1;\nend", &mut env);
-        assert_eq!(scalar(&env, "x"), 8.0, "env[x] must be updated after vm_exec");
-        assert_eq!(scalar(&env, "k"), 3.0, "env[k] must reflect last loop value");
+        assert_eq!(
+            scalar(&env, "x"),
+            8.0,
+            "env[x] must be updated after vm_exec"
+        );
+        assert_eq!(
+            scalar(&env, "k"),
+            3.0,
+            "env[k] must reflect last loop value"
+        );
     }
 
     // ── 35a-8: Return syncs slots before unwinding ────────────────────────────
@@ -8239,7 +8281,11 @@ mod vm_tests {
             &mut env,
         );
         run("out = add2(10);", &mut env);
-        assert_eq!(scalar(&env, "out"), 12.0, "return must sync slotted vars to env");
+        assert_eq!(
+            scalar(&env, "out"),
+            12.0,
+            "return must sync slotted vars to env"
+        );
     }
 
     // ── 35a-9: mixed slot/env variables in the same chunk ────────────────────
@@ -8264,10 +8310,7 @@ mod vm_tests {
         // n is a pure-local counter (slotted). Verify no stale-read on n.
         let mut env = new_env();
         env.insert("x".to_string(), Value::Scalar(-3.0));
-        run(
-            "n = 0;\nif abs(x) > 2\n  n += 1;\nend",
-            &mut env,
-        );
+        run("n = 0;\nif abs(x) > 2\n  n += 1;\nend", &mut env);
         assert_eq!(scalar(&env, "n"), 1.0, "n must be 1 when |x|>2");
     }
 
@@ -8291,7 +8334,11 @@ mod vm_tests {
             &mut env,
         );
         assert_eq!(scalar(&env, "s"), 4.0, "4 iterations before break");
-        assert_eq!(scalar(&env, "k"), 5.0, "k must be synced to env after break");
+        assert_eq!(
+            scalar(&env, "k"),
+            5.0,
+            "k must be synced to env after break"
+        );
     }
 
     // ── 35a-12: function body uses slotted locals across 1000 calls ──────────

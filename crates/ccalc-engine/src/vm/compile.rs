@@ -167,7 +167,11 @@ impl Compiler {
                 }
                 self.compile_expr_push(expr);
                 if let Some(&slot) = self.slots.get(name) {
-                    self.emit(Instr::with_u16_u8(Opcode::StoreSlot, slot, u8::from(silent)));
+                    self.emit(Instr::with_u16_u8(
+                        Opcode::StoreSlot,
+                        slot,
+                        u8::from(silent),
+                    ));
                 } else {
                     let idx = self.chunk.name_idx(name);
                     self.emit(Instr::with_u16_u8(Opcode::StoreVar, idx, u8::from(silent)));
@@ -574,11 +578,10 @@ fn is_exec_intercepted_call(expr: &Expr) -> bool {
 fn collect_candidates(stmts: &[StmtEntry], out: &mut Vec<String>) {
     for (stmt, _, _) in stmts {
         match stmt {
-            Stmt::Assign(name, _) => {
-                if !out.contains(name) {
-                    out.push(name.clone());
-                }
+            Stmt::Assign(name, _) if !out.contains(name) => {
+                out.push(name.clone());
             }
+            Stmt::Assign(_, _) => {}
             Stmt::For { var, body, .. } => {
                 if !out.contains(var) {
                     out.push(var.clone());
@@ -614,16 +617,14 @@ fn collect_candidates(stmts: &[StmtEntry], out: &mut Vec<String>) {
 fn collect_env_required(stmts: &[StmtEntry], out: &mut HashSet<String>) {
     for (stmt, _, _) in stmts {
         match stmt {
-            Stmt::Assign(_, expr) => {
-                if !Compiler::is_pure(expr) {
-                    free_vars_in_expr(expr, out);
-                }
+            Stmt::Assign(_, expr) if !Compiler::is_pure(expr) => {
+                free_vars_in_expr(expr, out);
             }
-            Stmt::Expr(expr) => {
-                if !Compiler::is_pure(expr) {
-                    free_vars_in_expr(expr, out);
-                }
+            Stmt::Assign(_, _) => {}
+            Stmt::Expr(expr) if !Compiler::is_pure(expr) => {
+                free_vars_in_expr(expr, out);
             }
+            Stmt::Expr(_) => {}
             Stmt::For {
                 range_expr, body, ..
             } => {
@@ -691,10 +692,7 @@ fn free_vars_in_expr(expr: &Expr, out: &mut HashSet<String>) {
         | Expr::Colon
         | Expr::NaT
         | Expr::FuncHandle(_) => {}
-        Expr::UnaryMinus(e)
-        | Expr::UnaryNot(e)
-        | Expr::Transpose(e)
-        | Expr::PlainTranspose(e) => {
+        Expr::UnaryMinus(e) | Expr::UnaryNot(e) | Expr::Transpose(e) | Expr::PlainTranspose(e) => {
             free_vars_in_expr(e, out);
         }
         Expr::BinOp(a, _, b) => {
