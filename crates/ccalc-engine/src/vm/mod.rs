@@ -32,6 +32,11 @@ pub enum Opcode {
     Pop = 4, // [0, 0, 0, 0, 0, 0, 0]
     /// Print stack-top without variable label, then pop.
     Print = 5, // [0, 0, 0, 0, 0, 0, 0]
+    /// Load `locals[u16 slot]` onto the operand stack.
+    LoadSlot = 6, // [u16 slot, 0, 0, 0, 0]
+    /// Pop stack-top → `locals[u16 slot]`; u8 flag: 1 = silent (no print).
+    /// If !silent, prints `chunk.slot_names[slot] = <value>`.
+    StoreSlot = 7, // [u16 slot, u8 silent, 0, 0, 0]
 
     // ── Arithmetic ──────────────────────────────────────────────────────────
     /// Pop b, pop a, push a + b.
@@ -90,6 +95,9 @@ pub enum Opcode {
     IterNext = 41, // [u16 var_idx, i32 exit_offset, 0]
     /// Pop the top iterator (emitted on `break`).
     PopIter = 42,
+    /// Advance the top iterator: if exhausted, pop it and jump by i32 exit_offset;
+    /// else store the next column in `locals[u16 slot]` and advance ip.
+    IterNextSlot = 43, // [u16 slot, i32 exit_offset, 0]
 
     // ── Deferred expression evaluation ──────────────────────────────────────
     /// Evaluate `chunk.exprs[u16]` via `eval_with_io` and push the result.
@@ -264,6 +272,12 @@ pub struct Chunk {
     /// Used to annotate runtime errors with `near line N`, matching the
     /// behaviour of the tree-walking interpreter.
     pub lines: Vec<usize>,
+    /// Slot name table: `slot_names[i]` is the variable name for slot `i`.
+    ///
+    /// Populated by the compiler; used by [`vm_exec`](crate::vm::exec::vm_exec)
+    /// to initialize the `locals` vector from `env` on entry and to sync
+    /// updated values back to `env` on exit.
+    pub slot_names: Vec<String>,
 }
 
 impl Chunk {
@@ -276,6 +290,7 @@ impl Chunk {
             exprs: Vec::new(),
             index_sets: Vec::new(),
             lines: Vec::new(),
+            slot_names: Vec::new(),
         }
     }
 

@@ -35,6 +35,13 @@ pub fn vm_exec(
     // Propagate display settings to eval.rs so EvalExpr / fn-call paths work.
     set_display_ctx(fmt, base, compact);
 
+    // ── Init slot-local variables from env (one-time cost per chunk entry) ───
+    let mut locals: Vec<Value> = chunk
+        .slot_names
+        .iter()
+        .map(|name| env.get(name.as_str()).cloned().unwrap_or(Value::Void))
+        .collect();
+
     let mut stack: Vec<Value> = Vec::with_capacity(8);
     let mut iters: Vec<IterState> = Vec::new();
     let mut ip: usize = 0;
@@ -112,6 +119,24 @@ pub fn vm_exec(
                 let v = stack.pop().unwrap();
                 if !matches!(v, Value::Void) {
                     print_value(None, &v, fmt, base, compact);
+                }
+                ip += 1;
+            }
+
+            // ── Slot-local variables ──────────────────────────────────────────
+            Opcode::LoadSlot => {
+                let slot = instr.u16_arg() as usize;
+                stack.push(locals[slot].clone());
+                ip += 1;
+            }
+
+            Opcode::StoreSlot => {
+                let slot = instr.u16_at(0) as usize;
+                let silent = instr.u8_at(2) != 0;
+                let val = stack.pop().unwrap();
+                locals[slot] = val.clone();
+                if !silent && !matches!(val, Value::Void) {
+                    print_value(Some(&chunk.slot_names[slot]), &val, fmt, base, compact);
                 }
                 ip += 1;
             }
@@ -290,6 +315,20 @@ pub fn vm_exec(
                 iters.pop();
                 ip += 1;
             }
+            Opcode::IterNextSlot => {
+                let slot = instr.u16_at(0) as usize;
+                let exit_off = instr.i32_at(2);
+                match iters.last_mut().unwrap().next_val() {
+                    Some(val) => {
+                        locals[slot] = val;
+                        ip += 1;
+                    }
+                    None => {
+                        iters.pop();
+                        ip = (ip as isize + 1 + exit_off as isize) as usize;
+                    }
+                }
+            }
 
             // ── Deferred expression evaluation ────────────────────────────────
             Opcode::EvalExpr => {
@@ -348,10 +387,14 @@ pub fn vm_exec(
 
             // ── Function control ──────────────────────────────────────────────
             Opcode::Return => {
+                sync_locals(chunk, &locals, env);
                 return Ok(Some(Signal::Return));
             }
         }
     }
+
+    // ── Sync slot-local variables back to env on normal exit ─────────────────
+    sync_locals(chunk, &locals, env);
     Ok(None)
 }
 
@@ -790,6 +833,20 @@ fn is_truthy(val: &Value) -> bool {
         Value::Duration(s) => *s != 0.0,
         Value::DateTimeArray(v) | Value::DurationArray(v) => !v.is_empty(),
         Value::Map(m) => !m.is_empty(),
+    }
+}
+
+// ── Slot sync ─────────────────────────────────────────────────────────────────
+
+/// Copy non-Void slot values back to `env`.
+///
+/// Called at every exit path of `vm_exec` (normal completion and `return`),
+/// so that slot-optimised variables are visible to callers that read from `env`.
+fn sync_locals(chunk: &Chunk, locals: &[Value], env: &mut Env) {
+    for (slot, name) in chunk.slot_names.iter().enumerate() {
+        if !matches!(locals[slot], Value::Void) {
+            env.insert(name.clone(), locals[slot].clone());
+        }
     }
 }
 

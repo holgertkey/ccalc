@@ -4,9 +4,11 @@
 //! Constructs the compiler cannot yet handle return [`CompileError::Unsupported`];
 //! the caller must fall back to the tree-walking interpreter transparently.
 
+use std::collections::{HashMap, HashSet};
+
 use super::{Chunk, CompileError, Instr, Opcode};
 use crate::env::Value;
-use crate::eval::{Expr, Op};
+use crate::eval::{Expr, Op, is_global, is_persistent};
 use crate::parser::{Stmt, StmtEntry};
 
 // ── Special call names that exec_stmts intercepts and that eval_with_io cannot
@@ -81,11 +83,34 @@ fn stmt_compilable(stmt: &Stmt) -> bool {
 /// **Prefer calling [`is_compilable`] first** when the same statement block
 /// is visited repeatedly (e.g. inside a hot loop) to avoid wasted allocation.
 pub fn compile(stmts: &[StmtEntry]) -> Result<Chunk, CompileError> {
+    // ── Pass 1: collect slot candidates (LHS of Assign + For loop vars) ──────
+    let mut candidates: Vec<String> = Vec::new();
+    collect_candidates(stmts, &mut candidates);
+
+    // ── Pass 2: find names that must remain in env (env-required) ────────────
+    let mut env_required: HashSet<String> = HashSet::new();
+    // `ans` is always written via UpdateAns directly to env; never slot it.
+    env_required.insert("ans".to_string());
+    collect_env_required(stmts, &mut env_required);
+
+    // ── Build slot map (candidates minus env-required) ────────────────────────
+    let mut slot_map: HashMap<String, u16> = HashMap::new();
+    let mut slot_names: Vec<String> = Vec::new();
+    for name in &candidates {
+        if !env_required.contains(name) && !is_global(name) && !is_persistent(name) {
+            let slot = slot_names.len() as u16;
+            slot_map.insert(name.clone(), slot);
+            slot_names.push(name.clone());
+        }
+    }
+
     let mut compiler = Compiler {
         chunk: Chunk::new(),
         loop_stack: Vec::new(),
         current_line: 0,
+        slots: slot_map,
     };
+    compiler.chunk.slot_names = slot_names;
     compiler.compile_stmts(stmts)?;
     Ok(compiler.chunk)
 }
@@ -108,6 +133,8 @@ struct Compiler {
     chunk: Chunk,
     loop_stack: Vec<LoopFrame>,
     current_line: usize,
+    /// Map from variable name to slot index for pure-local variables.
+    slots: HashMap<String, u16>,
 }
 
 impl Compiler {
@@ -139,8 +166,12 @@ impl Compiler {
                     return Err(CompileError::Unsupported);
                 }
                 self.compile_expr_push(expr);
-                let idx = self.chunk.name_idx(name);
-                self.emit(Instr::with_u16_u8(Opcode::StoreVar, idx, u8::from(silent)));
+                if let Some(&slot) = self.slots.get(name) {
+                    self.emit(Instr::with_u16_u8(Opcode::StoreSlot, slot, u8::from(silent)));
+                } else {
+                    let idx = self.chunk.name_idx(name);
+                    self.emit(Instr::with_u16_u8(Opcode::StoreVar, idx, u8::from(silent)));
+                }
                 Ok(())
             }
 
@@ -181,37 +212,61 @@ impl Compiler {
                 self.compile_expr_push(range_expr);
                 self.emit(Instr::no_arg(Opcode::PushIter));
 
-                let var_idx = self.chunk.name_idx(var);
                 let iter_next_pos = self.chunk.code.len();
 
-                // Emit IterNext with placeholder exit offset.
-                self.chunk
-                    .code
-                    .push(Instr::with_u16_i32(Opcode::IterNext, var_idx, 0));
+                if let Some(&slot) = self.slots.get(var) {
+                    // Slotted loop variable: emit IterNextSlot with placeholder.
+                    self.chunk
+                        .code
+                        .push(Instr::with_u16_i32(Opcode::IterNextSlot, slot, 0));
 
-                // Push loop frame (continue → IterNext; break → after loop).
-                self.loop_stack.push(LoopFrame {
-                    continue_target: iter_next_pos,
-                    break_patches: Vec::new(),
-                    is_for: true,
-                });
+                    self.loop_stack.push(LoopFrame {
+                        continue_target: iter_next_pos,
+                        break_patches: Vec::new(),
+                        is_for: true,
+                    });
 
-                self.compile_stmts(body)?;
+                    self.compile_stmts(body)?;
 
-                // Back-edge: jump back to IterNext.
-                let back_off = iter_next_pos as i32 - self.chunk.code.len() as i32 - 1;
-                self.emit(Instr::with_i32(Opcode::Jump, back_off));
+                    let back_off = iter_next_pos as i32 - self.chunk.code.len() as i32 - 1;
+                    self.emit(Instr::with_i32(Opcode::Jump, back_off));
 
-                // Exit position and patch IterNext.
-                let exit_pos = self.chunk.code.len();
-                let exit_off = exit_pos as i32 - iter_next_pos as i32 - 1;
-                self.chunk.code[iter_next_pos].set_u16_i32(var_idx, exit_off);
+                    let exit_pos = self.chunk.code.len();
+                    let exit_off = exit_pos as i32 - iter_next_pos as i32 - 1;
+                    self.chunk.code[iter_next_pos].set_u16_i32(slot, exit_off);
 
-                // Patch all break jumps.
-                let frame = self.loop_stack.pop().unwrap();
-                for p in frame.break_patches {
-                    let off = exit_pos as i32 - p as i32 - 1;
-                    self.chunk.code[p].set_i32(off);
+                    let frame = self.loop_stack.pop().unwrap();
+                    for p in frame.break_patches {
+                        let off = exit_pos as i32 - p as i32 - 1;
+                        self.chunk.code[p].set_i32(off);
+                    }
+                } else {
+                    // Env-backed loop variable: emit IterNext with placeholder.
+                    let var_idx = self.chunk.name_idx(var);
+                    self.chunk
+                        .code
+                        .push(Instr::with_u16_i32(Opcode::IterNext, var_idx, 0));
+
+                    self.loop_stack.push(LoopFrame {
+                        continue_target: iter_next_pos,
+                        break_patches: Vec::new(),
+                        is_for: true,
+                    });
+
+                    self.compile_stmts(body)?;
+
+                    let back_off = iter_next_pos as i32 - self.chunk.code.len() as i32 - 1;
+                    self.emit(Instr::with_i32(Opcode::Jump, back_off));
+
+                    let exit_pos = self.chunk.code.len();
+                    let exit_off = exit_pos as i32 - iter_next_pos as i32 - 1;
+                    self.chunk.code[iter_next_pos].set_u16_i32(var_idx, exit_off);
+
+                    let frame = self.loop_stack.pop().unwrap();
+                    for p in frame.break_patches {
+                        let off = exit_pos as i32 - p as i32 - 1;
+                        self.chunk.code[p].set_i32(off);
+                    }
                 }
                 Ok(())
             }
@@ -451,8 +506,12 @@ impl Compiler {
                 self.emit(Instr::with_u16(Opcode::PushConst, idx));
             }
             Expr::Var(name) => {
-                let idx = self.chunk.name_idx(name);
-                self.emit(Instr::with_u16(Opcode::LoadVar, idx));
+                if let Some(&slot) = self.slots.get(name) {
+                    self.emit(Instr::with_u16(Opcode::LoadSlot, slot));
+                } else {
+                    let idx = self.chunk.name_idx(name);
+                    self.emit(Instr::with_u16(Opcode::LoadVar, idx));
+                }
             }
             Expr::UnaryMinus(inner) => {
                 self.compile_native(inner);
@@ -504,4 +563,189 @@ fn is_exec_intercepted_call(expr: &Expr) -> bool {
         return EXEC_INTERCEPTS.contains(&name.as_str());
     }
     false
+}
+
+// ── Slot analysis passes ──────────────────────────────────────────────────────
+
+/// Pass 1: collect all variable names that are candidates for slotting.
+///
+/// A name is a candidate if it appears as the LHS of any `Assign` statement
+/// or as the loop variable of any `For` statement (recursively).
+fn collect_candidates(stmts: &[StmtEntry], out: &mut Vec<String>) {
+    for (stmt, _, _) in stmts {
+        match stmt {
+            Stmt::Assign(name, _) => {
+                if !out.contains(name) {
+                    out.push(name.clone());
+                }
+            }
+            Stmt::For { var, body, .. } => {
+                if !out.contains(var) {
+                    out.push(var.clone());
+                }
+                collect_candidates(body, out);
+            }
+            Stmt::While { body, .. } => collect_candidates(body, out),
+            Stmt::If {
+                body,
+                elseif_branches,
+                else_body,
+                ..
+            } => {
+                collect_candidates(body, out);
+                for (_, b) in elseif_branches {
+                    collect_candidates(b, out);
+                }
+                if let Some(b) = else_body {
+                    collect_candidates(b, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Pass 2: collect names that must remain in `env` (must NOT be slotted).
+///
+/// A name is env-required if it appears as a free variable inside any
+/// expression that will be evaluated via `EvalExpr` (i.e., not `is_pure`),
+/// or inside any `IndexSet` index expression, or is the target of an
+/// `IndexSet` operation (because `exec_index_set` reads from env).
+fn collect_env_required(stmts: &[StmtEntry], out: &mut HashSet<String>) {
+    for (stmt, _, _) in stmts {
+        match stmt {
+            Stmt::Assign(_, expr) => {
+                if !Compiler::is_pure(expr) {
+                    free_vars_in_expr(expr, out);
+                }
+            }
+            Stmt::Expr(expr) => {
+                if !Compiler::is_pure(expr) {
+                    free_vars_in_expr(expr, out);
+                }
+            }
+            Stmt::For {
+                range_expr, body, ..
+            } => {
+                if !Compiler::is_pure(range_expr) {
+                    free_vars_in_expr(range_expr, out);
+                }
+                collect_env_required(body, out);
+            }
+            Stmt::While { cond, body } => {
+                if !Compiler::is_pure(cond) {
+                    free_vars_in_expr(cond, out);
+                }
+                collect_env_required(body, out);
+            }
+            Stmt::If {
+                cond,
+                body,
+                elseif_branches,
+                else_body,
+            } => {
+                if !Compiler::is_pure(cond) {
+                    free_vars_in_expr(cond, out);
+                }
+                collect_env_required(body, out);
+                for (ei_cond, ei_body) in elseif_branches {
+                    if !Compiler::is_pure(ei_cond) {
+                        free_vars_in_expr(ei_cond, out);
+                    }
+                    collect_env_required(ei_body, out);
+                }
+                if let Some(b) = else_body {
+                    collect_env_required(b, out);
+                }
+            }
+            Stmt::IndexSet {
+                name,
+                indices,
+                value,
+            } => {
+                // The target variable is always read+written via env by exec_index_set.
+                out.insert(name.clone());
+                // Index expressions are evaluated against env by exec_index_set.
+                for idx in indices {
+                    free_vars_in_expr(idx, out);
+                }
+                // RHS: if not pure, collect its free vars too.
+                if !Compiler::is_pure(value) {
+                    free_vars_in_expr(value, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Recursively collect all `Expr::Var` names that appear free in `expr`.
+fn free_vars_in_expr(expr: &Expr, out: &mut HashSet<String>) {
+    match expr {
+        Expr::Var(name) => {
+            out.insert(name.clone());
+        }
+        Expr::Number(_)
+        | Expr::StrLiteral(_)
+        | Expr::StringObjLiteral(_)
+        | Expr::Colon
+        | Expr::NaT
+        | Expr::FuncHandle(_) => {}
+        Expr::UnaryMinus(e)
+        | Expr::UnaryNot(e)
+        | Expr::Transpose(e)
+        | Expr::PlainTranspose(e) => {
+            free_vars_in_expr(e, out);
+        }
+        Expr::BinOp(a, _, b) => {
+            free_vars_in_expr(a, out);
+            free_vars_in_expr(b, out);
+        }
+        Expr::Call(name, args) => {
+            // The callee name may be a variable (e.g. matrix indexing `v(i)`):
+            // eval_with_io looks it up from env, so it must not be slotted.
+            out.insert(name.clone());
+            for a in args {
+                free_vars_in_expr(a, out);
+            }
+        }
+        Expr::CellLiteral(args) => {
+            for a in args {
+                free_vars_in_expr(a, out);
+            }
+        }
+        Expr::Matrix(rows) => {
+            for row in rows {
+                for e in row {
+                    free_vars_in_expr(e, out);
+                }
+            }
+        }
+        Expr::Range(a, step, b) => {
+            free_vars_in_expr(a, out);
+            if let Some(s) = step {
+                free_vars_in_expr(s, out);
+            }
+            free_vars_in_expr(b, out);
+        }
+        Expr::CellIndex(base, idx) => {
+            free_vars_in_expr(base, out);
+            free_vars_in_expr(idx, out);
+        }
+        Expr::FieldGet(base, _) => {
+            free_vars_in_expr(base, out);
+        }
+        Expr::DynFieldGet(base, field) => {
+            free_vars_in_expr(base, out);
+            free_vars_in_expr(field, out);
+        }
+        Expr::DotCall(_, args) => {
+            for a in args {
+                free_vars_in_expr(a, out);
+            }
+        }
+        Expr::Lambda { body, .. } => {
+            free_vars_in_expr(body, out);
+        }
+    }
 }
