@@ -13,6 +13,8 @@ use plotters::series::LineSeries;
 use crate::FigureState;
 #[cfg(any(feature = "plot", feature = "plot-svg"))]
 use crate::colormap::{ColormapSpec, apply_colormap_spec};
+#[cfg(feature = "plot-svg")]
+use crate::file::resolve_colors;
 
 // ── Level computation ──────────────────────────────────────────────────────
 
@@ -270,8 +272,8 @@ fn draw_contour<DB: DrawingBackend>(
 where
     DB::ErrorType: std::fmt::Display,
 {
-    let (r, g, b) = state.effective_bg_rgb();
-    root.fill(&RGBColor(r, g, b)).map_err(|e| e.to_string())?;
+    let (bg_c, text_c, axis_c, _, _) = resolve_colors(state);
+    root.fill(&bg_c).map_err(|e| e.to_string())?;
 
     if nrows == 0 || ncols == 0 || levels.is_empty() {
         return root.present().map_err(|e| e.to_string());
@@ -294,7 +296,7 @@ where
     let n_levels = levels.len();
 
     let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20))
+        .caption(title, ("sans-serif", 20).into_font().color(&text_c))
         .margin(30)
         .x_label_area_size(40)
         .y_label_area_size(50)
@@ -304,6 +306,9 @@ where
     if state.grid {
         chart
             .configure_mesh()
+            .axis_style(ShapeStyle::from(&axis_c))
+            .axis_desc_style(("sans-serif", 14).into_font().color(&text_c))
+            .label_style(("sans-serif", 12).into_font().color(&text_c))
             .x_desc(xlabel)
             .y_desc(ylabel)
             .draw()
@@ -311,6 +316,9 @@ where
     } else {
         chart
             .configure_mesh()
+            .axis_style(ShapeStyle::from(&axis_c))
+            .axis_desc_style(("sans-serif", 14).into_font().color(&text_c))
+            .label_style(("sans-serif", 12).into_font().color(&text_c))
             .x_desc(xlabel)
             .y_desc(ylabel)
             .disable_mesh()

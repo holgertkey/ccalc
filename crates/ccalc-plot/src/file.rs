@@ -510,7 +510,7 @@ fn sc_to_rgb(c: StyleColor) -> RGBColor {
 /// Resolves all five theme colours for a state in one call.
 ///
 /// Returns `(bg, text, axis, grid_bold, grid_light)`.
-fn resolve_colors(state: &FigureState) -> (RGBColor, RGBColor, RGBColor, RGBColor, RGBColor) {
+pub(crate) fn resolve_colors(state: &FigureState) -> (RGBColor, RGBColor, RGBColor, RGBColor, RGBColor) {
     let theme = resolve_theme(state);
     let bg = effective_bg(state);
     let text = sc_to_rgb(theme.text);

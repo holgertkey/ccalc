@@ -77,10 +77,10 @@ errorbar(xe, ye, el, eh, 'orange')
 savefig(strcat(out, 'gallery.svg'))
 fprintf('Saved gallery.svg\n')
 
-% ── Contourf: sin(X).*cos(Y), plasma colormap, dark theme ────────────────────
+% ── Contourf: sin(X).*cos(Y), plasma colormap ────────────────────────────────
 
 figure(800, 600)
-theme('dark')
+theme('light')
 
 step = 0.01;
 [X, Y] = meshgrid(-pi:step:pi, -pi:step:pi);
