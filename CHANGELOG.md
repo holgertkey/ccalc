@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     Payload format: `[u16 name_idx, u8 argc, 0, 0, 0]`.
 
   **Compiler changes (`vm/compile.rs`):**
-  - `COMPILABLE_BUILTINS` — public whitelist of 47 pure-math function names
+  - `COMPILABLE_BUILTINS` — public whitelist of 57 pure-math function names
     (`abs`, `sqrt`, `sin`/`cos`/`tan`, `real`/`imag`, `isnan`, `sum`, `size`,
     `zeros`, `sort`, `num2str`, `ischar`, etc.).
   - `is_pure` extended: `Expr::Call(name, args)` is now pure when `name` is in
