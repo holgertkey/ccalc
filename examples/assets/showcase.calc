@@ -1,0 +1,111 @@
+% showcase.calc — Plot plugin showcase for README documentation
+%
+% Generates three images demonstrating the breadth of ccalc's plotting:
+%   gallery.svg   — 2×3 dark-theme grid of six chart types
+%   contourf.png  — filled contour of sin(x)*cos(y) (plasma, dark)
+%   surface.png   — 3D ripple surface Z=sin(sqrt(x^2+y^2)) (viridis)
+%
+% Build:  cargo build --release --features plot-all
+% Run:    ccalc examples/assets/showcase.calc
+
+out = 'examples/assets/';
+
+x = linspace(0, 2*pi, 100);
+
+% ── Gallery: 2×3 subplot, dark Catppuccin Mocha theme ────────────────────────
+
+figure(1200, 800)
+theme('dark')
+
+% Panel (1,1): sin + cos with thick lines and grid
+subplot(2, 3, 1)
+grid('on')
+gridcolor('#45475A')
+gridwidth(0.5)
+linewidth(1.8)
+title('sin & cos')
+xlabel('x')
+ylabel('amplitude')
+hold('on')
+plot(x, sin(x), 'orange')
+plot(x, cos(x), '#88CCEE')
+hold('off')
+
+% Panel (1,2): scatter colored by cos(x), viridis
+subplot(2, 3, 2)
+xs = linspace(0, 2*pi, 80);
+colormap('viridis')
+title('color scatter — viridis')
+xlabel('x')
+ylabel('sin(x)')
+scatter(xs, sin(xs), 5, cos(xs))
+
+% Panel (1,3): bar chart
+subplot(2, 3, 3)
+title('bar chart')
+xlabel('category')
+ylabel('value')
+bar(1:8, [3 1 4 1 5 9 2 6], 'color', 'orange')
+
+% Panel (2,1): stem plot of sin(x)
+subplot(2, 3, 4)
+xs_s = linspace(0, 2*pi, 20);
+title('stem — sin(x)')
+xlabel('x')
+ylabel('sin(x)')
+stem(xs_s, sin(xs_s), 'color', '#F38BA8')
+
+% Panel (2,2): filled area under sin(x)+1
+subplot(2, 3, 5)
+xa = linspace(0, 2*pi, 80);
+title('area — sin(x)+1')
+xlabel('x')
+ylabel('y')
+area(xa, sin(xa) + 1, '#88CCEE')
+
+% Panel (2,3): asymmetric error bars on a trend
+subplot(2, 3, 6)
+xe = 1:6;
+ye = [2.5, 3.1, 2.8, 3.9, 3.4, 4.2];
+el = [0.20, 0.30, 0.25, 0.20, 0.30, 0.15];
+eh = [0.30, 0.20, 0.35, 0.25, 0.20, 0.30];
+title('error bars')
+xlabel('sample')
+ylabel('value')
+errorbar(xe, ye, el, eh, 'orange')
+
+savefig(strcat(out, 'gallery.svg'))
+fprintf('Saved gallery.svg\n')
+
+% ── Contourf: sin(X).*cos(Y), plasma colormap, dark theme ────────────────────
+
+figure(800, 600)
+theme('dark')
+
+step = 0.01;
+[X, Y] = meshgrid(-pi:step:pi, -pi:step:pi);
+Z = sin(X) .* cos(Y);
+
+colormap('plasma')
+title('filled contour — sin(x)*cos(y)')
+xlabel('x')
+ylabel('y')
+contourf(X, Y, Z, 20, strcat(out, 'contourf.png'))
+fprintf('Saved contourf.png\n')
+
+% ── Surface: Z = sin(√(X²+Y²)), viridis, light theme ─────────────────────────
+
+theme('light')
+
+[Xs, Ys] = meshgrid(-4:0.2:4, -4:0.2:4);
+Zs = sin(sqrt(Xs .^ 2 + Ys .^ 2));
+
+colormap('viridis')
+title('surface — Z = sin(sqrt(x^2+y^2))')
+xlabel('X')
+ylabel('Y')
+zlabel('Z')
+surf(Xs, Ys, Zs, strcat(out, 'surface.png'))
+fprintf('Saved surface.png\n')
+
+fprintf('\nDone. Images written to %s\n', out)

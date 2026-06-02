@@ -781,6 +781,10 @@ See `examples/fft_demo.calc` and `help fft` for a full worked example.
 > Annotation functions (`title`, `xlabel`, `ylabel`, `zlabel`, `xlim`, `ylim`, `zlim`, `legend`, `grid`)
 > work without any feature.
 
+![Plot gallery — six chart types in dark theme](examples/assets/gallery.svg)
+
+<img src="examples/assets/contourf.png" width="49%"><img src="examples/assets/surface.png" width="49%">
+
 ### Chart types
 
 | Call | Requires | Description |
