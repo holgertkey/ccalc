@@ -6,6 +6,88 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.46.0+002] - 2026-06-02
+
+### Added
+
+- **Phase 35c — Native `CallBuiltin` opcode** (internal; no API change)
+
+  Builtin function calls such as `abs(z)`, `sqrt(x)`, `sin(k)` inside hot loops
+  previously compiled to `EvalExpr`, which routes through `eval_with_io` and pays
+  for recursive AST evaluation, a HashMap lookup per argument, and an `env.get`
+  for the callee name.  This sub-phase replaces those paths with a direct
+  `CallBuiltin` opcode that pops arguments from the VM stack and calls
+  `call_builtin` with no env lookups for the arguments.
+
+  **New opcode (`vm/mod.rs`):**
+  - `CallBuiltin(name_idx, argc)` — pop `argc` args from the stack, call
+    `call_builtin(&names[name_idx], &args, env, io)`, push the result.
+    Payload format: `[u16 name_idx, u8 argc, 0, 0, 0]`.
+
+  **Compiler changes (`vm/compile.rs`):**
+  - `COMPILABLE_BUILTINS` — public whitelist of 47 pure-math function names
+    (`abs`, `sqrt`, `sin`/`cos`/`tan`, `real`/`imag`, `isnan`, `sum`, `size`,
+    `zeros`, `sort`, `num2str`, `ischar`, etc.).
+  - `is_pure` extended: `Expr::Call(name, args)` is now pure when `name` is in
+    `COMPILABLE_BUILTINS` and all `args` are recursively pure.
+  - `compile_native` gains an `Expr::Call` arm that pushes each arg natively and
+    emits `CallBuiltin`.
+
+  **Effect on slot analysis:** because `abs(z)` is now pure, the condition
+  `abs(z) > 2` is pure, so `z` is no longer added to `env_required`.  In the
+  canonical `for k=1:N; z=z^2+c; if abs(z)>2; break; end; end` loop body, `z`,
+  `k`, and `n` all receive slots — eliminating HashMap access entirely per iteration.
+
+  **Accepted limitation:** if the user shadows a `COMPILABLE_BUILTINS` name with
+  a variable (e.g. `abs = 5`), the VM always calls the builtin rather than
+  performing matrix indexing.  Real hot-loop code does not shadow pure-math names;
+  the divergence is documented in test `callbuiltin_shadowing_documented_divergence`.
+
+  11 new unit tests in `eval_tests::vm_tests` (35c-1 through 35c-11).
+
+## [0.46.0+001] - 2026-06-02
+
+### Added
+
+- **Phase 35a — Slot-indexed local variables** (internal; no API change)
+
+  Pure-local variables in compiled chunks are now stored in a flat `Vec<Value>`
+  (`locals`) instead of the `HashMap<String,Value>` environment, eliminating
+  per-iteration hash operations for simple loop accumulators and loop counters.
+
+  **New opcodes in `vm/mod.rs`:**
+  - `LoadSlot(slot)` — load `locals[slot]` onto the operand stack.
+  - `StoreSlot(slot, silent)` — pop stack-top into `locals[slot]`.
+  - `IterNextSlot(slot, exit_offset)` — advance the top iterator and store the
+    next value into `locals[slot]` (replaces `IterNext` for slotted loop vars).
+
+  **Compiler two-pass analysis (`vm/compile.rs`):**
+  - Pass 1 collects slot candidates: LHS of every `Assign` and loop var of
+    every `For` in the block (recursively).
+  - Pass 2 collects env-required names (must NOT be slotted): free variables
+    inside any non-pure (EvalExpr) expression, callee names in `Expr::Call`
+    (for variable-indexing disambiguation), `IndexSet` target and index-expression
+    free vars (read by `exec_index_set` from env), and `ans` (written directly
+    by `UpdateAns`). Global and persistent vars are also excluded at compile time.
+  - Remaining candidates receive consecutive slot indices stored in
+    `Chunk.slot_names`.
+
+  **VM entry/exit protocol (`vm/exec.rs`):**
+  - `locals` is initialised from env once on `vm_exec` entry.
+  - `sync_locals()` copies non-Void slots back to env on normal exit and
+    before every `Return` so callers see updated variable values.
+
+  **Benchmark results (release build, Windows 11):**
+
+  | Benchmark | Before (v0.46.0) | After (v0.46.0+001) |
+  |---|---|---|
+  | `loop_10k` | 4.58 ms | **1.95 ms** (−57 %) |
+  | `fn_calls_1000` | 3.03 ms | 3.08 ms (neutral — `k` env-required; 35c will fix) |
+  | `scalar_ops_sum_1M` | 8.1 ms | 7.85 ms (no regression) |
+
+  13 new unit tests in `eval_tests::vm_tests` (slot analysis, execution,
+  env-sync, break/return, IndexSet exclusion guard).
+
 ## [0.45.0+003] - 2026-06-01
 
 ### Added

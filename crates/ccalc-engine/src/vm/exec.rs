@@ -330,6 +330,23 @@ pub fn vm_exec(
                 }
             }
 
+            // ── Native builtin call ───────────────────────────────────────────
+            Opcode::CallBuiltin => {
+                let name_idx = instr.u16_at(0) as usize;
+                let argc = instr.u8_at(2) as usize;
+                // Pop argc args; rightmost arg is on top — reverse to get call order.
+                let mut args: Vec<Value> = (0..argc).map(|_| stack.pop().unwrap()).collect();
+                args.reverse();
+                let result = at_line!(crate::eval::call_builtin(
+                    &chunk.names[name_idx],
+                    &args,
+                    env,
+                    Some(&mut *io),
+                ));
+                stack.push(result);
+                ip += 1;
+            }
+
             // ── Deferred expression evaluation ────────────────────────────────
             Opcode::EvalExpr => {
                 let expr_idx = instr.u16_arg() as usize;

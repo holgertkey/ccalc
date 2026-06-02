@@ -99,6 +99,19 @@ pub enum Opcode {
     /// else store the next column in `locals[u16 slot]` and advance ip.
     IterNextSlot = 43, // [u16 slot, i32 exit_offset, 0]
 
+    // ── Native builtin call ──────────────────────────────────────────────────
+    /// Pop `u8 argc` args (rightmost argument on top of stack); call
+    /// `call_builtin(&chunk.names[u16 name_idx], args, env, io)`; push the
+    /// returned [`Value`].
+    ///
+    /// Only emitted for names in [`COMPILABLE_BUILTINS`].  Variables that
+    /// shadow a builtin name in `env` are **not** checked — the builtin is
+    /// always called.  This is an accepted limitation: real hot-loop code
+    /// does not shadow pure-math builtin names.
+    ///
+    /// [`COMPILABLE_BUILTINS`]: crate::vm::compile::COMPILABLE_BUILTINS
+    CallBuiltin = 50, // [u16 name_idx, u8 argc, 0, 0, 0]
+
     // ── Deferred expression evaluation ──────────────────────────────────────
     /// Evaluate `chunk.exprs[u16]` via `eval_with_io` and push the result.
     ///

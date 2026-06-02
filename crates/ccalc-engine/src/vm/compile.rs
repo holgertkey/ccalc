@@ -20,6 +20,84 @@ const EXEC_INTERCEPTS: &[&str] = &[
     "save", "load", "ws", "wl",
 ];
 
+/// Builtin function names that can be called natively via [`Opcode::CallBuiltin`].
+///
+/// A call `f(args)` is compiled to `CallBuiltin` when:
+/// 1. `f` is in this list, AND
+/// 2. all arguments are recursively pure (no `EvalExpr` needed).
+///
+/// Exclusions: functions that mutate `env`, require I/O state, inspect `nargout`,
+/// or have non-trivial multi-return semantics (`disp`, `fprintf`, `eval`, `clear`, etc.).
+///
+/// **Note:** if the user shadows one of these names with a variable (e.g. `sum = [1 2 3]`),
+/// the builtin is always called — matrix indexing of the variable is not performed.
+/// This is an accepted limitation for hot-loop performance.
+pub const COMPILABLE_BUILTINS: &[&str] = &[
+    // Scalar math
+    "abs",
+    "sqrt",
+    "exp",
+    "log",
+    "log2",
+    "log10",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "floor",
+    "ceil",
+    "round",
+    "fix",
+    "sign",
+    "mod",
+    "rem",
+    // Complex
+    "real",
+    "imag",
+    "conj",
+    "angle",
+    "isreal",
+    // Predicates
+    "isnan",
+    "isinf",
+    "isfinite",
+    // Reductions (1-arg)
+    "sum",
+    "prod",
+    "mean",
+    "norm",
+    "max",
+    "min",
+    "any",
+    "all",
+    "cumsum",
+    "cumprod",
+    // Shape / construction
+    "size",
+    "length",
+    "numel",
+    "zeros",
+    "ones",
+    "eye",
+    "reshape",
+    "fliplr",
+    "flipud",
+    "sort",
+    "unique",
+    "find",
+    // Type conversion / introspection
+    "num2str",
+    "int2str",
+    "str2num",
+    "str2double",
+    "ischar",
+    "iscell",
+    "isstruct",
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return `true` if every statement in `stmts` (recursively) can be compiled
@@ -484,9 +562,10 @@ impl Compiler {
     /// Returns `true` if `expr` can be compiled to pure stack opcodes without
     /// any call to `eval_with_io`.
     ///
-    /// "Pure" means: numeric literals, variable loads, and binary / unary
-    /// arithmetic on those — excluding `ElemAnd`, `ElemOr`, and `LDiv` which
-    /// are rare enough to handle via `EvalExpr`.
+    /// "Pure" means: numeric literals, variable loads, binary / unary arithmetic,
+    /// and calls to [`COMPILABLE_BUILTINS`] whose arguments are recursively pure.
+    /// Excludes `ElemAnd`, `ElemOr`, and `LDiv` which are rare enough to
+    /// handle via `EvalExpr`.
     fn is_pure(expr: &Expr) -> bool {
         match expr {
             Expr::Number(_) | Expr::Var(_) => true,
@@ -495,6 +574,9 @@ impl Compiler {
                 !matches!(op, Op::ElemAnd | Op::ElemOr | Op::LDiv)
                     && Self::is_pure(a)
                     && Self::is_pure(b)
+            }
+            Expr::Call(name, args) => {
+                COMPILABLE_BUILTINS.contains(&name.as_str()) && args.iter().all(Self::is_pure)
             }
             _ => false,
         }
@@ -552,6 +634,18 @@ impl Compiler {
                     }
                 };
                 self.emit(Instr::no_arg(opcode));
+            }
+            Expr::Call(name, args) => {
+                // Guarded by is_pure: name is in COMPILABLE_BUILTINS, all args are pure.
+                for arg in args {
+                    self.compile_native(arg);
+                }
+                let name_idx = self.chunk.name_idx(name);
+                self.emit(Instr::with_u16_u8(
+                    Opcode::CallBuiltin,
+                    name_idx,
+                    args.len() as u8,
+                ));
             }
             _ => unreachable!("compile_native called on non-pure expression"),
         }

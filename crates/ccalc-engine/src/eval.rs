@@ -3168,7 +3168,7 @@ fn assert_values_equal(a: &Value, b: &Value, tol: Option<f64>) -> Result<Value, 
     }
 }
 
-fn call_builtin(
+pub(crate) fn call_builtin(
     name: &str,
     args: &[Value],
     env: &Env,

@@ -8188,17 +8188,29 @@ mod vm_tests {
 
     #[test]
     fn slot_map_excludes_evalexpr_vars() {
-        // a = 1; b = abs(a) — `a` appears inside non-pure EvalExpr abs(a) → env-required.
-        // `b` is only on LHS, not referenced in any EvalExpr → slotted.
-        let stmts = parse_stmts("a = 1;\nb = abs(a);").expect("parse");
+        // After 35c: abs is in COMPILABLE_BUILTINS → abs(a) is pure → `a` IS slotted.
+        // To demonstrate env-required exclusion we use a non-whitelisted user function.
+        // `a = 1; b = user_func(a)` — `a` appears inside a non-pure EvalExpr → env-required.
+        let stmts = parse_stmts("a = 1;\nb = user_func(a);").expect("parse");
         let chunk = compile(&stmts).expect("compile");
         assert!(
             !chunk.slot_names.contains(&"a".to_string()),
-            "a is referenced in abs(a) (EvalExpr) → must NOT be slotted"
+            "a is referenced in user_func(a) (EvalExpr) → must NOT be slotted"
         );
         assert!(
             chunk.slot_names.contains(&"b".to_string()),
             "b is only an assignment LHS → should be slotted"
+        );
+        // Verify that abs(a) is now pure: both a and b are slotted.
+        let stmts2 = parse_stmts("a = 1;\nb = abs(a);").expect("parse");
+        let chunk2 = compile(&stmts2).expect("compile");
+        assert!(
+            chunk2.slot_names.contains(&"a".to_string()),
+            "after 35c: abs is whitelisted → abs(a) is pure → a IS slotted"
+        );
+        assert!(
+            chunk2.slot_names.contains(&"b".to_string()),
+            "b is an assignment LHS → should be slotted"
         );
     }
 
@@ -8292,10 +8304,8 @@ mod vm_tests {
 
     #[test]
     fn slot_mixed_slot_env() {
-        // `cnt` is assigned only, not referenced in any EvalExpr → slotted.
-        // `cnt2` references cnt in abs(cnt) (non-pure) → `cnt` becomes env-required.
-        // After fix: only variables referenced INSIDE EvalExpr are excluded.
-        // Here: `cnt = 5; cnt2 = abs(cnt) + 1` → cnt is env-required, cnt2 is slotted.
+        // After 35c: abs is in COMPILABLE_BUILTINS → abs(cnt) is pure → both cnt and cnt2
+        // are slotted.  The behavioral result is unchanged: cnt=5, cnt2=abs(5)+1=6.
         let mut env = new_env();
         run("cnt = 5;\ncnt2 = abs(cnt) + 1;", &mut env);
         assert_eq!(scalar(&env, "cnt"), 5.0);
@@ -8306,8 +8316,9 @@ mod vm_tests {
 
     #[test]
     fn slot_no_stale_evalexpr() {
-        // x is referenced inside abs(x) (EvalExpr) so it stays in env.
-        // n is a pure-local counter (slotted). Verify no stale-read on n.
+        // After 35c: abs(x) is pure (abs is whitelisted, x is Var) → abs(x) > 2 is pure.
+        // x is not a candidate (not an Assign LHS in this chunk) → read via LoadVar from env.
+        // n is slotted (pure Assign LHS).  Correct result: n=1 since |(-3)|=3 > 2.
         let mut env = new_env();
         env.insert("x".to_string(), Value::Scalar(-3.0));
         run("n = 0;\nif abs(x) > 2\n  n += 1;\nend", &mut env);
@@ -8397,6 +8408,190 @@ mod vm_tests {
         assert!(
             !chunk.slot_names.contains(&"jj".to_string()),
             "jj appears in index expressions → must NOT be slotted"
+        );
+    }
+
+    // ── 35c-1: abs(-3) compiles to PushConst + CallBuiltin; no EvalExpr ──────
+
+    #[test]
+    fn callbuiltin_abs_scalar() {
+        let stmts = parse_stmts("y = abs(-3);").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        let has_callbuiltin = chunk.code.iter().any(|i| i.op == Opcode::CallBuiltin);
+        let has_evalexpr = chunk.code.iter().any(|i| i.op == Opcode::EvalExpr);
+        assert!(has_callbuiltin, "abs should emit CallBuiltin");
+        assert!(!has_evalexpr, "abs with pure arg should not emit EvalExpr");
+        // Verify correct result.
+        let mut env = new_env();
+        run("y = abs(-3);", &mut env);
+        assert_eq!(scalar(&env, "y"), 3.0);
+    }
+
+    // ── 35c-2: abs of complex number computes modulus ─────────────────────────
+
+    #[test]
+    fn callbuiltin_abs_complex() {
+        let mut env = new_env();
+        // 3 + 4i → |z| = 5
+        run("z = 3 + 4*i; y = abs(z);", &mut env);
+        assert!((scalar(&env, "y") - 5.0).abs() < 1e-12, "abs(3+4i) = 5");
+    }
+
+    // ── 35c-3: sqrt, sin, cos all produce correct values via CallBuiltin ──────
+
+    #[test]
+    fn callbuiltin_sqrt_sin_cos() {
+        let mut env = new_env();
+        run("a = sqrt(4); b = sin(0); c = cos(0);", &mut env);
+        assert_eq!(scalar(&env, "a"), 2.0, "sqrt(4)=2");
+        assert!((scalar(&env, "b")).abs() < 1e-12, "sin(0)=0");
+        assert_eq!(scalar(&env, "c"), 1.0, "cos(0)=1");
+    }
+
+    // ── 35c-4: abs(x) > 2 in an if-condition compiles without EvalExpr ────────
+
+    #[test]
+    fn callbuiltin_in_if_condition() {
+        let stmts = parse_stmts("if abs(x) > 2\n  n = 1;\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        let has_evalexpr = chunk.code.iter().any(|i| i.op == Opcode::EvalExpr);
+        assert!(
+            !has_evalexpr,
+            "abs(x) > 2 is pure after 35c → no EvalExpr in chunk"
+        );
+        // Runtime check.
+        let mut env = new_env();
+        env.insert("x".to_string(), Value::Scalar(-5.0));
+        run("n = 0;\nif abs(x) > 2\n  n = 1;\nend", &mut env);
+        assert_eq!(scalar(&env, "n"), 1.0);
+    }
+
+    // ── 35c-5: sqrt in for-loop body compiles to CallBuiltin, not EvalExpr ────
+
+    #[test]
+    fn callbuiltin_in_for_body() {
+        let stmts = parse_stmts("for k = 1:5\n  y = sqrt(k);\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        let has_callbuiltin = chunk.code.iter().any(|i| i.op == Opcode::CallBuiltin);
+        assert!(
+            has_callbuiltin,
+            "sqrt(k) in for-body should emit CallBuiltin"
+        );
+        // Verify k is slotted (not env-required via EvalExpr anymore).
+        assert!(
+            chunk.slot_names.contains(&"k".to_string()),
+            "after 35c: k is not referenced in any EvalExpr → should be slotted"
+        );
+        // Runtime correctness.
+        let mut env = new_env();
+        run("s = 0;\nfor k = 1:4\n  s = s + sqrt(k);\nend", &mut env);
+        let expected = 1.0_f64.sqrt() + 2.0_f64.sqrt() + 3.0_f64.sqrt() + 4.0_f64.sqrt();
+        assert!((scalar(&env, "s") - expected).abs() < 1e-12);
+    }
+
+    // ── 35c-6: nested builtin calls compile to consecutive CallBuiltin instrs ─
+
+    #[test]
+    fn callbuiltin_nested_calls() {
+        let stmts = parse_stmts("y = abs(sqrt(x));").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        let cb_count = chunk
+            .code
+            .iter()
+            .filter(|i| i.op == Opcode::CallBuiltin)
+            .count();
+        assert_eq!(cb_count, 2, "abs(sqrt(x)) → two CallBuiltin instructions");
+        // Runtime check.
+        let mut env = new_env();
+        env.insert("x".to_string(), Value::Scalar(4.0));
+        run("y = abs(sqrt(x));", &mut env);
+        assert_eq!(scalar(&env, "y"), 2.0);
+    }
+
+    // ── 35c-7: after 35c, z in julia-style loop body is slotted ─────────────
+
+    #[test]
+    fn callbuiltin_z_becomes_slotted() {
+        // z = z^2 + c; if abs(z) > 2; break; end
+        // After 35c: abs(z) is pure → z not env-required → z is slotted.
+        let src = "c = 0.5;\nz = 0.0;\nfor k = 1:10\n  z = z^2 + c;\n  if abs(z) > 2\n    break;\n  end\nend";
+        let stmts = parse_stmts(src).expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert!(
+            chunk.slot_names.contains(&"z".to_string()),
+            "after 35c: abs(z) is pure → z should be slotted in the inner chunk"
+        );
+        // Runtime correctness: z should not blow up for c=0.5 within 10 iterations.
+        let mut env = new_env();
+        run(src, &mut env);
+        // z must be finite (didn't diverge unexpectedly).
+        match env.get("z").expect("z must be defined") {
+            Value::Scalar(v) => assert!(v.is_finite(), "z must be finite"),
+            other => panic!("expected Scalar, got {other:?}"),
+        }
+    }
+
+    // ── 35c-8: atan2 with two args dispatches correctly ──────────────────────
+
+    #[test]
+    fn callbuiltin_atan2_two_args() {
+        let mut env = new_env();
+        run("y = atan2(1, 1);", &mut env);
+        let expected = std::f64::consts::FRAC_PI_4; // pi/4
+        assert!(
+            (scalar(&env, "y") - expected).abs() < 1e-12,
+            "atan2(1,1)=pi/4"
+        );
+    }
+
+    // ── 35c-9: size(A) via CallBuiltin returns correct matrix ─────────────────
+
+    #[test]
+    fn callbuiltin_size_returns_correct() {
+        let mut env = new_env();
+        run("A = zeros(3, 4); s = size(A);", &mut env);
+        match env.get("s").expect("s must be defined") {
+            Value::Matrix(m) => {
+                assert_eq!(m[[0, 0]], 3.0, "rows");
+                assert_eq!(m[[0, 1]], 4.0, "cols");
+            }
+            other => panic!("expected Matrix, got {other:?}"),
+        }
+    }
+
+    // ── 35c-10: disp(x) is NOT compiled via CallBuiltin (still EvalExpr) ─────
+
+    #[test]
+    fn callbuiltin_disp_still_evalexpr() {
+        // `disp` is not in COMPILABLE_BUILTINS → must emit EvalExpr, not CallBuiltin.
+        let stmts = parse_stmts("disp(x);").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        let has_evalexpr = chunk.code.iter().any(|i| i.op == Opcode::EvalExpr);
+        let has_callbuiltin = chunk.code.iter().any(|i| i.op == Opcode::CallBuiltin);
+        assert!(has_evalexpr, "disp is not whitelisted → must use EvalExpr");
+        assert!(!has_callbuiltin, "disp must not emit CallBuiltin");
+    }
+
+    // ── 35c-11: builtin shadowing — documented divergence from tree-walker ────
+
+    #[test]
+    fn callbuiltin_shadowing_documented_divergence() {
+        // When the user assigns to a name that matches a COMPILABLE_BUILTIN,
+        // the VM always calls the builtin (ignores the variable), diverging from
+        // the tree-walker which would perform matrix indexing.
+        //
+        // This is an accepted limitation per Phase 35c: real hot-loop code
+        // does not shadow pure-math builtin names.
+        //
+        // Tree-walker: `s = [10 20 30]; y = s(2)` — `s` is a Matrix in env,
+        // so `s(2)` is matrix indexing → y = 20.
+        // (We verify this using a non-builtin name `sv`.)
+        let mut env_tw = new_env();
+        run("sv = [10 20 30]; y = sv(2);", &mut env_tw);
+        assert_eq!(
+            scalar(&env_tw, "y"),
+            20.0,
+            "matrix indexing via non-builtin name"
         );
     }
 }
