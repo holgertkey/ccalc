@@ -544,8 +544,8 @@ fn test_eval_matrix_2x2() {
 #[test]
 fn test_eval_matrix_add() {
     use ndarray::array;
-    let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
-    let b = Value::Matrix(array![[5.0, 6.0], [7.0, 8.0]]);
+    let a = Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]]));
+    let b = Value::Matrix(Box::new(array![[5.0, 6.0], [7.0, 8.0]]));
     let mut env = empty_env();
     env.insert("a".to_string(), a);
     env.insert("b".to_string(), b);
@@ -568,7 +568,7 @@ fn test_eval_matrix_add() {
 #[test]
 fn test_eval_matrix_scalar_mul() {
     use ndarray::array;
-    let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+    let a = Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]]));
     let mut env = empty_env();
     env.insert("a".to_string(), a);
     let expr = Expr::BinOp(
@@ -593,8 +593,8 @@ fn test_eval_matrix_scalar_mul() {
 fn test_eval_matrix_mul() {
     use ndarray::array;
     // [1 2; 3 4] * [1; 1] = [3; 7]
-    let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
-    let b = Value::Matrix(array![[1.0], [1.0]]);
+    let a = Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]]));
+    let b = Value::Matrix(Box::new(array![[1.0], [1.0]]));
     let mut env = empty_env();
     env.insert("a".to_string(), a);
     env.insert("b".to_string(), b);
@@ -616,16 +616,16 @@ fn test_eval_matrix_mul() {
 #[test]
 fn test_eval_matrix_mul_inner_mismatch() {
     use ndarray::array;
-    let a = Value::Matrix(array![[1.0, 2.0]]);
-    let b = Value::Matrix(array![[1.0, 2.0]]);
+    let a = Value::Matrix(Box::new(array![[1.0, 2.0]]));
+    let b = Value::Matrix(Box::new(array![[1.0, 2.0]]));
     assert!(eval_binop(a, &Op::Mul, b).is_err());
 }
 
 #[test]
 fn test_eval_matrix_elem_mul() {
     use ndarray::array;
-    let a = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
-    let b = Value::Matrix(array![[2.0, 3.0], [4.0, 5.0]]);
+    let a = Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]]));
+    let b = Value::Matrix(Box::new(array![[2.0, 3.0], [4.0, 5.0]]));
     match eval_binop(a, &Op::ElemMul, b).unwrap() {
         Value::Matrix(m) => {
             assert_eq!(m[[0, 0]], 2.0);
@@ -640,8 +640,8 @@ fn test_eval_matrix_elem_mul() {
 #[test]
 fn test_eval_matrix_elem_div() {
     use ndarray::array;
-    let a = Value::Matrix(array![[6.0, 8.0]]);
-    let b = Value::Matrix(array![[2.0, 4.0]]);
+    let a = Value::Matrix(Box::new(array![[6.0, 8.0]]));
+    let b = Value::Matrix(Box::new(array![[2.0, 4.0]]));
     match eval_binop(a, &Op::ElemDiv, b).unwrap() {
         Value::Matrix(m) => {
             assert_eq!(m[[0, 0]], 3.0);
@@ -654,8 +654,8 @@ fn test_eval_matrix_elem_div() {
 #[test]
 fn test_eval_matrix_elem_pow() {
     use ndarray::array;
-    let a = Value::Matrix(array![[2.0, 3.0]]);
-    let b = Value::Matrix(array![[3.0, 2.0]]);
+    let a = Value::Matrix(Box::new(array![[2.0, 3.0]]));
+    let b = Value::Matrix(Box::new(array![[3.0, 2.0]]));
     match eval_binop(a, &Op::ElemPow, b).unwrap() {
         Value::Matrix(m) => {
             assert_eq!(m[[0, 0]], 8.0);
@@ -668,7 +668,7 @@ fn test_eval_matrix_elem_pow() {
 #[test]
 fn test_eval_transpose_matrix() {
     use ndarray::array;
-    let a = Value::Matrix(array![[1.0, 2.0, 3.0]]);
+    let a = Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]]));
     let mut env = empty_env();
     env.insert("a".to_string(), a);
     let expr = Expr::Transpose(Box::new(Expr::Var("a".to_string())));
@@ -744,7 +744,7 @@ fn test_eval_size() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])),
     );
     let expr = Expr::Call("size".to_string(), vec![Expr::Var("a".to_string())]);
     match eval(&expr, &env).unwrap() {
@@ -763,7 +763,7 @@ fn test_eval_length_numel() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])),
     );
     let len = Expr::Call("length".to_string(), vec![Expr::Var("a".to_string())]);
     let num = Expr::Call("numel".to_string(), vec![Expr::Var("a".to_string())]);
@@ -777,7 +777,7 @@ fn test_eval_trace() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]])),
     );
     let expr = Expr::Call("trace".to_string(), vec![Expr::Var("a".to_string())]);
     assert_eq!(eval_s(&expr, &env), 5.0);
@@ -789,7 +789,7 @@ fn test_eval_det_2x2() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]])),
     );
     let expr = Expr::Call("det".to_string(), vec![Expr::Var("a".to_string())]);
     assert!((eval_s(&expr, &env) - (-2.0)).abs() < 1e-10);
@@ -801,7 +801,7 @@ fn test_eval_det_singular() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0], [2.0, 4.0]])),
     );
     let expr = Expr::Call("det".to_string(), vec![Expr::Var("a".to_string())]);
     assert_eq!(eval_s(&expr, &env), 0.0);
@@ -813,7 +813,7 @@ fn test_eval_inv_2x2() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]])),
     );
     let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
     match eval(&expr, &env).unwrap() {
@@ -833,7 +833,7 @@ fn test_eval_inv_singular() {
     let mut env = empty_env();
     env.insert(
         "a".to_string(),
-        Value::Matrix(array![[1.0, 2.0], [2.0, 4.0]]),
+        Value::Matrix(Box::new(array![[1.0, 2.0], [2.0, 4.0]])),
     );
     let expr = Expr::Call("inv".to_string(), vec![Expr::Var("a".to_string())]);
     assert!(eval(&expr, &env).is_err());
@@ -1305,7 +1305,7 @@ fn test_str_arithmetic_multi_char() {
         Box::new(Expr::Number(0.0)),
     );
     match eval(&expr, &env).unwrap() {
-        Value::Matrix(m) => assert_eq!(m, array![[97.0, 98.0]]),
+        Value::Matrix(m) => assert_eq!(*m, array![[97.0, 98.0]]),
         _ => panic!("expected matrix"),
     }
 }
@@ -2584,7 +2584,7 @@ fn test_randn_size_of_matrix() {
     // Build env with A = ones(3,4) then evaluate randn(size(A)).
     use ndarray::Array2;
     let mut env = empty_env();
-    env.insert("A".into(), Value::Matrix(Array2::ones((3, 4))));
+    env.insert("A".into(), Value::Matrix(Box::new(Array2::ones((3, 4)))));
     let v = eval_parse("randn(size(A))", &env).unwrap();
     let Value::Matrix(m) = v else {
         panic!("expected matrix")
@@ -2596,7 +2596,7 @@ fn test_randn_size_of_matrix() {
 fn test_zeros_size_of_matrix() {
     use ndarray::Array2;
     let mut env = empty_env();
-    env.insert("A".into(), Value::Matrix(Array2::ones((2, 5))));
+    env.insert("A".into(), Value::Matrix(Box::new(Array2::ones((2, 5)))));
     let v = eval_parse("zeros(size(A))", &env).unwrap();
     let Value::Matrix(m) = v else {
         panic!("expected matrix")
@@ -3796,7 +3796,7 @@ mod json_tests {
     fn decode_numeric_array() {
         use ndarray::array;
         match decode("[1, 2, 3]") {
-            Value::Matrix(m) => assert_eq!(m, array![[1.0, 2.0, 3.0]]),
+            Value::Matrix(m) => assert_eq!(*m, array![[1.0, 2.0, 3.0]]),
             other => panic!("expected Matrix, got {other:?}"),
         }
     }
@@ -3893,14 +3893,14 @@ mod json_tests {
     #[test]
     fn encode_row_vector() {
         use ndarray::array;
-        let m = Value::Matrix(array![[1.0, 2.0, 3.0]]);
+        let m = Value::Matrix(Box::new(array![[1.0, 2.0, 3.0]]));
         assert_eq!(encode(m), "[1.0,2.0,3.0]");
     }
 
     #[test]
     fn encode_matrix_2d() {
         use ndarray::array;
-        let m = Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]);
+        let m = Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]]));
         assert_eq!(encode(m), "[[1.0,2.0],[3.0,4.0]]");
     }
 
@@ -4171,15 +4171,15 @@ mod csv_tests {
         let mut fields = IndexMap::new();
         fields.insert(
             "x".to_string(),
-            Value::Matrix(Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap()),
+            Value::Matrix(Box::new(Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap())),
         );
         fields.insert(
             "y".to_string(),
-            Value::Matrix(Array2::from_shape_vec((2, 1), vec![3.0, 4.0]).unwrap()),
+            Value::Matrix(Box::new(Array2::from_shape_vec((2, 1), vec![3.0, 4.0]).unwrap())),
         );
         let path = tmp_path("wt_basic");
         let ps = path.to_str().unwrap();
-        call_wt(Value::Struct(fields), ps);
+        call_wt(Value::Struct(Box::new(fields)), ps);
         let content = std::fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines[0], "x,y");
@@ -4192,14 +4192,14 @@ mod csv_tests {
         let mut fields = IndexMap::new();
         fields.insert(
             "text".to_string(),
-            Value::Cell(vec![
+            Value::Cell(Box::new(vec![
                 Value::Str("hello, world".to_string()),
                 Value::Str("plain".to_string()),
-            ]),
+            ])),
         );
         let path = tmp_path("wt_quote");
         let ps = path.to_str().unwrap();
-        call_wt(Value::Struct(fields), ps);
+        call_wt(Value::Struct(Box::new(fields)), ps);
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("\"hello, world\""));
         assert!(content.contains("plain"));
@@ -4222,11 +4222,11 @@ mod csv_tests {
     fn writetable_wrong_type_errors() {
         let mut fields = IndexMap::new();
         fields.insert("a".to_string(), Value::Scalar(1.0));
-        fields.insert("b".to_string(), Value::Matrix(Array2::<f64>::zeros((2, 2))));
+        fields.insert("b".to_string(), Value::Matrix(Box::new(Array2::<f64>::zeros((2, 2)))));
         let path = tmp_path("wt_err");
         let ps = path.to_str().unwrap();
         let mut env = empty_env();
-        env.insert("_t".to_string(), Value::Struct(fields));
+        env.insert("_t".to_string(), Value::Struct(Box::new(fields)));
         let expr = Expr::Call(
             "writetable".to_string(),
             vec![
@@ -4574,11 +4574,11 @@ fn test_ends_with_false() {
 
 #[test]
 fn test_strjoin_with_delimiter() {
-    let cell = Value::Cell(vec![
+    let cell = Value::Cell(Box::new(vec![
         Value::Str("a".into()),
         Value::Str("b".into()),
         Value::Str("c".into()),
-    ]);
+    ]));
     assert_eq!(
         call2("strjoin", cell, Value::Str(",".into())),
         Ok(Value::Str("a,b,c".into()))
@@ -4587,25 +4587,25 @@ fn test_strjoin_with_delimiter() {
 
 #[test]
 fn test_strjoin_default_space() {
-    let cell = Value::Cell(vec![Value::Str("x".into()), Value::Str("y".into())]);
+    let cell = Value::Cell(Box::new(vec![Value::Str("x".into()), Value::Str("y".into())]));
     assert_eq!(call1("strjoin", cell), Ok(Value::Str("x y".into())));
 }
 
 #[test]
 fn test_strjoin_single_element() {
-    let cell = Value::Cell(vec![Value::Str("only".into())]);
+    let cell = Value::Cell(Box::new(vec![Value::Str("only".into())]));
     assert_eq!(call1("strjoin", cell), Ok(Value::Str("only".into())));
 }
 
 #[test]
 fn test_strjoin_empty_cell() {
-    let cell = Value::Cell(vec![]);
+    let cell = Value::Cell(Box::new(vec![]));
     assert_eq!(call1("strjoin", cell), Ok(Value::Str("".into())));
 }
 
 #[test]
 fn test_strjoin_non_string_cell_errors() {
-    let cell = Value::Cell(vec![Value::Str("ok".into()), Value::Scalar(1.0)]);
+    let cell = Value::Cell(Box::new(vec![Value::Str("ok".into()), Value::Scalar(1.0)]));
     assert!(call1("strjoin", cell).is_err());
 }
 
@@ -4690,7 +4690,7 @@ mod regex_tests {
         use ndarray::Array2;
         assert_eq!(
             regexp("hello", r"\d+"),
-            Value::Matrix(Array2::zeros((0, 0)))
+            Value::Matrix(Box::new(Array2::zeros((0, 0))))
         );
     }
 
@@ -5490,7 +5490,7 @@ mod phase23_tests {
     }
 
     fn mat(rows: usize, cols: usize, data: Vec<f64>) -> Value {
-        Value::Matrix(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap())
+        Value::Matrix(Box::new(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap()))
     }
 
     // ── 23a — triu / tril / repmat / kron ────────────────────────────────────
@@ -5804,7 +5804,7 @@ mod phase24_tests {
     }
 
     fn mat(rows: usize, cols: usize, data: Vec<f64>) -> Value {
-        Value::Matrix(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap())
+        Value::Matrix(Box::new(ndarray::Array2::from_shape_vec((rows, cols), data).unwrap()))
     }
 
     /// Evaluate `src` with a pre-seeded variable `"p"` holding a 1×N polynomial row vector.
@@ -5814,7 +5814,7 @@ mod phase24_tests {
         let n = coeffs.len();
         env.insert(
             "p".to_string(),
-            Value::Matrix(ndarray::Array2::from_shape_vec((1, n), coeffs.to_vec()).unwrap()),
+            Value::Matrix(Box::new(ndarray::Array2::from_shape_vec((1, n), coeffs.to_vec()).unwrap())),
         );
         eval_parse(src, &env)
     }
@@ -6969,7 +6969,7 @@ mod phase27_tests {
 
     fn get_cm(env: &Env, name: &str) -> ndarray::Array2<Complex<f64>> {
         match env.get(name).unwrap() {
-            Value::ComplexMatrix(m) => m.clone(),
+            Value::ComplexMatrix(m) => (**m).clone(),
             other => panic!("expected ComplexMatrix for '{name}', got {other:?}"),
         }
     }
@@ -7193,7 +7193,7 @@ mod phase27_5_tests {
 
     fn get_cm(env: &Env, name: &str) -> ndarray::Array2<Complex<f64>> {
         match env.get(name).unwrap() {
-            Value::ComplexMatrix(m) => m.clone(),
+            Value::ComplexMatrix(m) => (**m).clone(),
             other => panic!("expected ComplexMatrix for '{name}', got {other:?}"),
         }
     }
@@ -7576,7 +7576,7 @@ mod phase30b_tests {
 
     fn mat(env: &Env, name: &str) -> ndarray::Array2<f64> {
         match env.get(name) {
-            Some(Value::Matrix(m)) => m.clone(),
+            Some(Value::Matrix(m)) => (**m).clone(),
             other => panic!("expected Matrix for '{name}', got {other:?}"),
         }
     }
@@ -7719,7 +7719,7 @@ mod phase33d_tests {
 
     fn as_struct_array(v: Value) -> Vec<IndexMap<String, Value>> {
         match v {
-            Value::StructArray(e) => e,
+            Value::StructArray(e) => *e,
             other => panic!("expected StructArray, got {other:?}"),
         }
     }
@@ -8593,5 +8593,56 @@ mod vm_tests {
             20.0,
             "matrix indexing via non-builtin name"
         );
+    }
+
+    // ── Phase 35b tests: Value boxing ─────────────────────────────────────────
+
+    #[test]
+    fn value_size_le_32() {
+        assert!(
+            std::mem::size_of::<crate::env::Value>() <= 32,
+            "sizeof(Value) = {} bytes, expected <= 32",
+            std::mem::size_of::<crate::env::Value>()
+        );
+    }
+
+    #[test]
+    fn matrix_box_clone_independent() {
+        use ndarray::array;
+        let m1 = Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]]));
+        let m2 = m1.clone();
+        // Mutate m1 in-place via pattern binding
+        if let Value::Matrix(ref mut inner) = m1.clone() {
+            inner[[0, 0]] = 99.0;
+            // m2 must not be affected
+            if let Value::Matrix(ref inner2) = m2 {
+                assert_eq!(inner2[[0, 0]], 1.0, "clone should be independent");
+            }
+        }
+    }
+
+    #[test]
+    fn function_box_roundtrip() {
+        use crate::env::FunctionData;
+        use indexmap::IndexMap;
+        let fd = FunctionData {
+            outputs: vec!["y".to_string()],
+            params: vec!["x".to_string()],
+            body_source: "y = x * 2;".to_string(),
+            locals: IndexMap::new(),
+            doc: None,
+        };
+        let v = Value::Function(Box::new(fd));
+        // Store in env and retrieve
+        let mut env = crate::env::Env::new();
+        env.insert("double".to_string(), v);
+        match env.get("double") {
+            Some(Value::Function(fd)) => {
+                assert_eq!(fd.params, vec!["x"]);
+                assert_eq!(fd.outputs, vec!["y"]);
+                assert_eq!(fd.body_source, "y = x * 2;");
+            }
+            other => panic!("expected Function, got {other:?}"),
+        }
     }
 }

@@ -694,21 +694,18 @@ fn vm_binop(
                 })
             }
         };
-        return Ok(Value::Matrix(result_mat));
+        return Ok(Value::Matrix(Box::new(result_mat)));
     }
 
     // ── Matrix × Matrix ────────────────────────────────────────────────────────
     if let (Value::Matrix(ma), Value::Matrix(mb)) = (&a, &b) {
         match op {
-            Op::Add => return Ok(Value::Matrix(ma + mb)),
-            Op::Sub => return Ok(Value::Matrix(ma - mb)),
-            Op::ElemMul => return Ok(Value::Matrix(ma * mb)),
-            Op::ElemDiv => return Ok(Value::Matrix(ma / mb)),
+            Op::Add => return Ok(Value::Matrix(Box::new(&**ma + &**mb))),
+            Op::Sub => return Ok(Value::Matrix(Box::new(&**ma - &**mb))),
+            Op::ElemMul => return Ok(Value::Matrix(Box::new(&**ma * &**mb))),
+            Op::ElemDiv => return Ok(Value::Matrix(Box::new(&**ma / &**mb))),
             Op::ElemPow => {
-                return Ok(Value::Matrix(
-                    ma.mapv(|_| 0.0), // element-wise pow — mapv over zip
-                                      // ndarray doesn't have zip_mapv, use Zip
-                ));
+                return Ok(Value::Matrix(Box::new(ma.mapv(|_| 0.0))));
             }
             Op::Mul => {
                 // Matrix product
@@ -721,7 +718,7 @@ fn vm_binop(
                         mb.ncols()
                     ));
                 }
-                return Ok(Value::Matrix(ma.dot(mb)));
+                return Ok(Value::Matrix(Box::new(ma.dot(&**mb))));
             }
             _ => {} // fall through to eval_with_io for other ops
         }
@@ -731,10 +728,10 @@ fn vm_binop(
             for ((r, &av), &bv) in result.iter_mut().zip(ma.iter()).zip(mb.iter()) {
                 *r = av.powf(bv);
             }
-            return Ok(Value::Matrix(result));
+            return Ok(Value::Matrix(Box::new(result)));
         }
         // Comparison element-wise.
-        let result = ndarray::Zip::from(ma).and(mb).map_collect(|&av, &bv| {
+        let result = ndarray::Zip::from(&**ma).and(&**mb).map_collect(|&av, &bv| {
             let t = match op {
                 Op::Eq => av == bv,
                 Op::NotEq => av != bv,
@@ -748,7 +745,7 @@ fn vm_binop(
             };
             if t { 1.0 } else { 0.0 }
         });
-        return Ok(Value::Matrix(result));
+        return Ok(Value::Matrix(Box::new(result)));
     }
 
     // ── String concatenation (`+` on StringObj) ───────────────────────────────
@@ -810,7 +807,7 @@ fn vm_neg(a: Value, env: &mut Env, io: &mut IoContext) -> Result<Value, String> 
     match &a {
         Value::Scalar(f) => return Ok(Value::Scalar(-f)),
         Value::Complex(re, im) => return Ok(Value::Complex(-re, -im)),
-        Value::Matrix(m) => return Ok(Value::Matrix(m.mapv(|x| -x))),
+        Value::Matrix(m) => return Ok(Value::Matrix(Box::new(m.mapv(|x| -x)))),
         _ => {}
     }
     let key = "__vm_neg__".to_string();
@@ -841,7 +838,7 @@ fn is_truthy(val: &Value) -> bool {
         Value::ComplexMatrix(m) => m.iter().all(|c: &Complex<f64>| c.re != 0.0 || c.im != 0.0),
         Value::Str(s) | Value::StringObj(s) => !s.is_empty(),
         Value::Void => false,
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => true,
+        Value::Lambda(_) | Value::Function(_) | Value::Tuple(_) => true,
         Value::Cell(v) => !v.is_empty(),
         Value::Struct(_) | Value::StructArray(_) => true,
         Value::DateTime(ts) => !ts.is_nan(),

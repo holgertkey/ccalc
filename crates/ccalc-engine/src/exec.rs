@@ -292,13 +292,13 @@ fn try_autoload(name: &str) -> bool {
             {
                 locals.insert(
                     n.clone(),
-                    Value::Function {
+                    Value::Function(Box::new(crate::env::FunctionData {
                         outputs: outputs.clone(),
                         params: params.clone(),
                         body_source: body_source.clone(),
                         locals: IndexMap::new(),
                         doc: doc.clone(),
-                    },
+                    })),
                 );
             }
         }
@@ -312,13 +312,13 @@ fn try_autoload(name: &str) -> bool {
         {
             autoload_cache_insert(
                 primary_name,
-                Value::Function {
+                Value::Function(Box::new(crate::env::FunctionData {
                     outputs: outputs.clone(),
                     params: params.clone(),
                     body_source: body_source.clone(),
                     locals,
                     doc: doc.clone(),
-                },
+                })),
             );
             return true;
         }
@@ -385,13 +385,13 @@ fn try_autoload_pkg(qualified: &str) -> bool {
                 {
                     locals.insert(
                         n.clone(),
-                        Value::Function {
+                        Value::Function(Box::new(crate::env::FunctionData {
                             outputs: outputs.clone(),
                             params: params.clone(),
                             body_source: body_source.clone(),
                             locals: IndexMap::new(),
                             doc: doc.clone(),
-                        },
+                        })),
                     );
                 }
             }
@@ -405,13 +405,13 @@ fn try_autoload_pkg(qualified: &str) -> bool {
             {
                 autoload_cache_insert(
                     qualified.to_string(),
-                    Value::Function {
+                    Value::Function(Box::new(crate::env::FunctionData {
                         outputs: outputs.clone(),
                         params: params.clone(),
                         body_source: body_source.clone(),
                         locals,
                         doc: doc.clone(),
-                    },
+                    })),
                 );
                 return true;
             }
@@ -481,16 +481,11 @@ fn call_user_function(
     caller_env: &Env,
     io: &mut IoContext,
 ) -> Result<Value, String> {
-    let Value::Function {
-        outputs,
-        params,
-        body_source,
-        locals,
-        ..
-    } = func
-    else {
+    let Value::Function(fd) = func else {
         return Err("call_user_function: not a Function value".to_string());
     };
+    let (outputs, params, body_source, locals) =
+        (&fd.outputs, &fd.params, &fd.body_source, &fd.locals);
 
     // Push global and persistent tracking frames for this function call.
     global_frame_push();
@@ -509,7 +504,7 @@ fn call_user_function(
         local_env.insert(fn_name.clone(), val.clone());
     }
     for (var_name, val) in caller_env.iter() {
-        if matches!(val, Value::Function { .. } | Value::Lambda(_)) {
+        if matches!(val, Value::Function(_) | Value::Lambda(_)) {
             local_env.insert(var_name.clone(), val.clone());
         }
     }
@@ -558,7 +553,7 @@ fn call_user_function(
             .get(fixed_params.len()..)
             .unwrap_or(&[])
             .to_vec();
-        let varargin = Value::Cell(extra);
+        let varargin = Value::Cell(Box::new(extra));
         local_env.insert("varargin".to_string(), varargin);
     }
 
@@ -616,7 +611,7 @@ fn call_user_function(
 
     // varargout: single output named 'varargout' — expand from cell
     if outputs.len() == 1 && outputs[0] == "varargout" {
-        let cell = local_env.remove("varargout").unwrap_or(Value::Cell(vec![]));
+        let cell = local_env.remove("varargout").unwrap_or(Value::Cell(Box::new(vec![])));
         return match cell {
             Value::Cell(mut v) => {
                 if v.is_empty() {
@@ -624,7 +619,7 @@ fn call_user_function(
                 } else if v.len() == 1 {
                     Ok(v.remove(0))
                 } else {
-                    Ok(Value::Tuple(v))
+                    Ok(Value::Tuple(*v))
                 }
             }
             other => Ok(other),
@@ -713,7 +708,7 @@ pub(crate) fn is_truthy(val: &Value) -> bool {
         Value::Void => false,
         // Functions are truthy (they exist), but comparing them to 0 makes no sense.
         // Treat as truthy so that `if f` doesn't silently fail.
-        Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => true,
+        Value::Lambda(_) | Value::Function(_) | Value::Tuple(_) => true,
         // A cell is truthy if nonempty.
         Value::Cell(v) => !v.is_empty(),
         // A struct / struct array is always truthy.
@@ -778,14 +773,12 @@ pub(crate) fn print_value(
                 println!("@<lambda>");
             }
         }
-        Value::Function {
-            outputs, params, ..
-        } => {
-            let params_str = params.join(", ");
-            let out_str = match outputs.len() {
+        Value::Function(fd) => {
+            let params_str = fd.params.join(", ");
+            let out_str = match fd.outputs.len() {
                 0 => String::new(),
-                1 => format!("{} = ", outputs[0]),
-                _ => format!("[{}] = ", outputs.join(", ")),
+                1 => format!("{} = ", fd.outputs[0]),
+                _ => format!("[{}] = ", fd.outputs.join(", ")),
             };
             if let Some(name) = label {
                 println!("{name} = @function {out_str}{name}({params_str})");
@@ -874,7 +867,7 @@ fn set_nested(
         map.insert(first.clone(), val);
     } else {
         let inner = match map.shift_remove(first) {
-            Some(Value::Struct(m)) => m,
+            Some(Value::Struct(m)) => *m,
             None => IndexMap::new(),
             Some(other) => {
                 map.insert(first.clone(), other);
@@ -882,7 +875,7 @@ fn set_nested(
             }
         };
         let updated = set_nested(inner, rest, val)?;
-        map.insert(first.clone(), Value::Struct(updated));
+        map.insert(first.clone(), Value::Struct(Box::new(updated)));
     }
     Ok(map)
 }
@@ -905,13 +898,13 @@ fn hoist_functions(stmts: &[StmtEntry], env: &mut Env) {
         {
             env.insert(
                 name.clone(),
-                Value::Function {
+                Value::Function(Box::new(crate::env::FunctionData {
                     outputs: outputs.clone(),
                     params: params.clone(),
                     body_source: body_source.clone(),
                     locals: IndexMap::new(),
                     doc: doc.clone(),
-                },
+                })),
             );
         }
     }
@@ -1010,7 +1003,7 @@ pub fn exec_stmts(
                         // First call: initialize to [] (empty matrix), matching MATLAB.
                         // This makes isempty(x) true so guards like
                         // `if isempty(x); x = 0; end` work correctly.
-                        env.insert(name.clone(), Value::Matrix(ndarray::Array2::zeros((0, 0))));
+                        env.insert(name.clone(), Value::Matrix(Box::new(ndarray::Array2::zeros((0, 0)))));
                     }
                 }
             }
@@ -1163,13 +1156,13 @@ pub fn exec_stmts(
                             {
                                 locals.insert(
                                     name.clone(),
-                                    Value::Function {
+                                    Value::Function(Box::new(crate::env::FunctionData {
                                         outputs: outputs.clone(),
                                         params: params.clone(),
                                         body_source: body_source.clone(),
                                         locals: IndexMap::new(),
                                         doc: doc.clone(),
-                                    },
+                                    })),
                                 );
                             }
                         }
@@ -1183,13 +1176,13 @@ pub fn exec_stmts(
                         {
                             env.insert(
                                 primary_name,
-                                Value::Function {
+                                Value::Function(Box::new(crate::env::FunctionData {
                                     outputs: outputs.clone(),
                                     params: params.clone(),
                                     body_source: body_source.clone(),
                                     locals,
                                     doc: doc.clone(),
-                                },
+                                })),
                             );
                         }
                         Ok(None)
@@ -1207,13 +1200,13 @@ pub fn exec_stmts(
                             {
                                 env.insert(
                                     name.clone(),
-                                    Value::Function {
+                                    Value::Function(Box::new(crate::env::FunctionData {
                                         outputs: outputs.clone(),
                                         params: params.clone(),
                                         body_source: body_source.clone(),
                                         locals: IndexMap::new(),
                                         doc: doc.clone(),
-                                    },
+                                    })),
                                 );
                             }
                         }
@@ -1517,7 +1510,7 @@ pub fn exec_stmts(
                                     for i in 0..nrows {
                                         col[[i, 0]] = m[[i, j]];
                                     }
-                                    Value::Matrix(col)
+                                    Value::Matrix(Box::new(col))
                                 }
                             })
                             .collect()
@@ -1644,7 +1637,7 @@ pub fn exec_stmts(
                     if let Some(var) = catch_var {
                         let mut map = IndexMap::new();
                         map.insert("message".to_string(), Value::Str(clean));
-                        env.insert(var.clone(), Value::Struct(map));
+                        env.insert(var.clone(), Value::Struct(Box::new(map)));
                     }
                     if let Some(sig) = exec_stmts(catch_body, env, io, fmt, base, compact)? {
                         return Ok(Some(sig));
@@ -1662,13 +1655,13 @@ pub fn exec_stmts(
             } => {
                 env.insert(
                     name.clone(),
-                    Value::Function {
+                    Value::Function(Box::new(crate::env::FunctionData {
                         outputs: outputs.clone(),
                         params: params.clone(),
                         body_source: body_source.clone(),
                         locals: IndexMap::new(),
                         doc: doc.clone(),
-                    },
+                    })),
                 );
             }
 
@@ -1725,7 +1718,7 @@ pub fn exec_stmts(
                         let idx = (i - 1) as usize;
                         let mut v = vec![Value::Scalar(0.0); idx + 1];
                         v[idx] = rhs.clone();
-                        env.insert(cell_name.clone(), Value::Cell(v));
+                        env.insert(cell_name.clone(), Value::Cell(Box::new(v)));
                     }
                 }
                 if !silent && let Some(val) = env.get(cell_name) {
@@ -1738,7 +1731,7 @@ pub fn exec_stmts(
                 let rhs =
                     eval_with_io(rhs_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let root = match env.remove(base_name) {
-                    Some(Value::Struct(m)) => m,
+                    Some(Value::Struct(m)) => *m,
                     None => IndexMap::new(),
                     Some(other) => {
                         env.insert(base_name.clone(), other);
@@ -1746,7 +1739,7 @@ pub fn exec_stmts(
                     }
                 };
                 let updated = set_nested(root, path, rhs)?;
-                let struct_val = Value::Struct(updated);
+                let struct_val = Value::Struct(Box::new(updated));
                 if !silent {
                     print_value(Some(base_name), &struct_val, fmt, base, compact);
                 }
@@ -1769,7 +1762,7 @@ pub fn exec_stmts(
                 let rhs =
                     eval_with_io(rhs_expr, env, io).map_err(|e| annotate_line(e, *stmt_line))?;
                 let root = match env.remove(base_name) {
-                    Some(Value::Struct(m)) => m,
+                    Some(Value::Struct(m)) => *m,
                     None => IndexMap::new(),
                     Some(other) => {
                         env.insert(base_name.clone(), other);
@@ -1781,7 +1774,7 @@ pub fn exec_stmts(
                 };
                 let mut updated = root;
                 updated.insert(field, rhs);
-                let struct_val = Value::Struct(updated);
+                let struct_val = Value::Struct(Box::new(updated));
                 if !silent {
                     print_value(Some(base_name), &struct_val, fmt, base, compact);
                 }
@@ -1808,9 +1801,9 @@ pub fn exec_stmts(
                 };
                 // Load or create the struct array
                 let mut arr: Vec<IndexMap<String, Value>> = match env.remove(base_name) {
-                    Some(Value::StructArray(v)) => v,
+                    Some(Value::StructArray(v)) => *v,
                     // A scalar struct with no index yet — promote to 1-element array
-                    Some(Value::Struct(m)) => vec![m],
+                    Some(Value::Struct(m)) => vec![*m],
                     None => Vec::new(),
                     Some(other) => {
                         env.insert(base_name.clone(), other);
@@ -1825,7 +1818,7 @@ pub fn exec_stmts(
                 let elem = arr[idx - 1].clone();
                 let updated_elem = set_nested(elem, path, rhs)?;
                 arr[idx - 1] = updated_elem;
-                let arr_val = Value::StructArray(arr);
+                let arr_val = Value::StructArray(Box::new(arr));
                 if !silent {
                     print_value(Some(base_name), &arr_val, fmt, base, compact);
                 }
@@ -2084,7 +2077,7 @@ pub(crate) fn exec_index_set(
             // Take ownership from env — moves the Array2 (pointer + metadata only),
             // avoiding the O(n) clone that would make repeated writes O(n²).
             let mut mat = match env.remove(name) {
-                Some(Value::Matrix(m)) => m,
+                Some(Value::Matrix(m)) => *m,
                 Some(Value::Scalar(n)) => Array2::from_elem((1, 1), n),
                 None | Some(Value::Void) => Array2::zeros((0, 0)),
                 Some(other) => {
@@ -2120,7 +2113,7 @@ pub(crate) fn exec_index_set(
             let result = if mat.nrows() == 1 && mat.ncols() == 1 {
                 Value::Scalar(mat[[0, 0]])
             } else {
-                Value::Matrix(mat)
+                Value::Matrix(Box::new(mat))
             };
             env.insert(name.to_string(), result);
         }
@@ -2209,7 +2202,7 @@ pub(crate) fn exec_index_set(
 
             // Take ownership from env — moves the Array2, avoiding the O(n) clone.
             let mut mat = match env.remove(name) {
-                Some(Value::Matrix(m)) => m,
+                Some(Value::Matrix(m)) => *m,
                 Some(Value::Scalar(n)) => Array2::from_elem((1, 1), n),
                 None | Some(Value::Void) => Array2::zeros((0, 0)),
                 Some(other) => {
@@ -2243,7 +2236,7 @@ pub(crate) fn exec_index_set(
             let result = if mat.nrows() == 1 && mat.ncols() == 1 {
                 Value::Scalar(mat[[0, 0]])
             } else {
-                Value::Matrix(mat)
+                Value::Matrix(Box::new(mat))
             };
             env.insert(name.to_string(), result);
         }
@@ -2297,7 +2290,7 @@ fn exec_index_set_complex(
     /// Takes LHS from `env`, upcasting real types to `Array2<Complex<f64>>`.
     fn take_as_complex(name: &str, env: &mut Env) -> Result<Array2<Complex<f64>>, String> {
         match env.remove(name) {
-            Some(Value::ComplexMatrix(m)) => Ok(m),
+            Some(Value::ComplexMatrix(m)) => Ok(*m),
             Some(Value::Matrix(m)) => Ok(m.mapv(|x| Complex::new(x, 0.0))),
             Some(Value::Scalar(n)) => Ok(Array2::from_elem((1, 1), Complex::new(n, 0.0))),
             None | Some(Value::Void) => Ok(Array2::zeros((0, 0))),
@@ -2377,7 +2370,7 @@ fn exec_index_set_complex(
                 mat[[row, col]] = val;
             }
 
-            env.insert(name.to_string(), Value::ComplexMatrix(mat));
+            env.insert(name.to_string(), Value::ComplexMatrix(Box::new(mat)));
         }
         2 => {
             let (nrows, ncols) = match env.get(name) {
@@ -2462,7 +2455,7 @@ fn exec_index_set_complex(
                 }
             }
 
-            env.insert(name.to_string(), Value::ComplexMatrix(mat));
+            env.insert(name.to_string(), Value::ComplexMatrix(Box::new(mat)));
         }
         _ => return Err("Indexed assignment supports at most 2 indices".to_string()),
     }

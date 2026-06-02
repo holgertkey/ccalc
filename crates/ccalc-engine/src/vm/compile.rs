@@ -501,15 +501,15 @@ impl Compiler {
                 body_source,
                 doc,
             } => {
-                use crate::env::Value;
+                use crate::env::{FunctionData, Value};
                 use indexmap::IndexMap;
-                let func = Value::Function {
+                let func = Value::Function(Box::new(FunctionData {
                     outputs: outputs.clone(),
                     params: params.clone(),
                     body_source: body_source.clone(),
                     locals: IndexMap::new(),
                     doc: doc.clone(),
-                };
+                }));
                 let const_idx = self.chunk.add_const(func);
                 let name_idx = self.chunk.name_idx(name);
                 self.emit(Instr::with_u16_u16(Opcode::DefineFunc, name_idx, const_idx));

@@ -383,7 +383,7 @@ impl IterState {
                             for i in 0..nrows {
                                 col[[i, 0]] = m[[i, j]];
                             }
-                            Value::Matrix(col)
+                            Value::Matrix(Box::new(col))
                         }
                     })
                     .collect()

@@ -621,19 +621,19 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::UnaryMinus(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Unary minus is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(-n)),
-            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| -x)))),
             Value::Complex(re, im) => Ok(Value::Complex(-re, -im)),
-            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(m.mapv(|c| -c))),
+            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(Box::new(m.mapv(|c| -c)))),
             Value::Str(s) => match str_to_numeric(&s) {
                 Value::Scalar(n) => Ok(Value::Scalar(-n)),
-                Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| -x))),
+                Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| -x)))),
                 _ => unreachable!(),
             },
             Value::StringObj(_) => {
                 Err("Unary minus is not applicable to string objects".to_string())
             }
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -647,27 +647,27 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::UnaryNot(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Logical NOT is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
-            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 })))),
             Value::Complex(re, im) => Ok(Value::Scalar(if re == 0.0 && im == 0.0 {
                 1.0
             } else {
                 0.0
             })),
             Value::ComplexMatrix(m) => {
-                Ok(Value::Matrix(m.mapv(|c| {
+                Ok(Value::Matrix(Box::new(m.mapv(|c| {
                     if c.re == 0.0 && c.im == 0.0 { 1.0 } else { 0.0 }
-                })))
+                }))))
             }
             Value::Str(s) => match str_to_numeric(&s) {
                 Value::Scalar(n) => Ok(Value::Scalar(if n == 0.0 { 1.0 } else { 0.0 })),
-                Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 }))),
+                Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| if x == 0.0 { 1.0 } else { 0.0 })))),
                 _ => unreachable!(),
             },
             Value::StringObj(_) => {
                 Err("Logical NOT is not applicable to string objects".to_string())
             }
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -703,7 +703,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             // Non-function variables are forwarded via borrow (no clone) to avoid
             // copying large matrix values on every indexed read (e.g. x(k) in a loop).
             if let Some(env_val) = env.get(name) {
-                if !matches!(env_val, Value::Lambda(_) | Value::Function { .. }) {
+                if !matches!(env_val, Value::Lambda(_) | Value::Function(_)) {
                     return eval_index(env_val, args, env);
                 }
                 // Lambda/Function: clone is cheap (Rc for Lambda, Strings for Function).
@@ -722,7 +722,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         let f = f.clone();
                         return f.0(&evaled, io);
                     }
-                    Value::Function { .. } => {
+                    Value::Function(_) => {
                         // Evaluate arguments and dispatch to the registered hook in exec.rs.
                         // User functions receive the raw arg list — NO ans injection. Empty call
                         // means no arguments (varargin = {}), matching MATLAB semantics.
@@ -863,14 +863,14 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 }),
                 src,
             );
-            Ok(Value::Lambda(lambda))
+            Ok(Value::Lambda(Box::new(lambda)))
         }
         Expr::CellLiteral(elems) => {
             let mut vals = Vec::with_capacity(elems.len());
             for e in elems {
                 vals.push(eval_inner(e, env, io.as_deref_mut())?);
             }
-            Ok(Value::Cell(vals))
+            Ok(Value::Cell(Box::new(vals)))
         }
         Expr::CellIndex(cell_expr, idx_expr) => {
             let cell = eval_inner(cell_expr, env, io.as_deref_mut())?;
@@ -939,9 +939,9 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                             })
                             .collect();
                         let n = nums.len();
-                        Ok(Value::Matrix(Array2::from_shape_vec((1, n), nums).unwrap()))
+                        Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), nums).unwrap())))
                     } else {
-                        Ok(Value::Cell(values))
+                        Ok(Value::Cell(Box::new(values)))
                     }
                 }
                 _ => Err(format!(
@@ -982,7 +982,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         }
                         f.0(&evaled, io)
                     }
-                    Value::Function { .. } => match io.as_deref_mut() {
+                    Value::Function(_) => match io.as_deref_mut() {
                         Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
                             Some(hook) => hook(&qualified, &val, &evaled, env, io_ref),
                             None => Err(format!("'{qualified}': exec::init() not called")),
@@ -1047,22 +1047,22 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 }),
                 src,
             );
-            Ok(Value::Lambda(lambda))
+            Ok(Value::Lambda(Box::new(lambda)))
         }
         Expr::PlainTranspose(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Transpose is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n)),
-            Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.t().to_owned()))),
             // Plain transpose: no conjugation — imaginary part unchanged
             Value::Complex(re, im) => Ok(Value::Complex(re, im)),
             // Plain transpose of complex matrix: swap axes only, no conjugation
-            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(m.t().to_owned())),
+            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(Box::new(m.t().to_owned()))),
             Value::Str(s) => Ok(Value::Str(s)),
             Value::StringObj(s) => Ok(Value::StringObj(s)),
             // Arrays: orientation is ignored (Vec<f64> is always 1-D), return as-is.
             v @ (Value::DateTimeArray(_) | Value::DurationArray(_)) => Ok(v),
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -1075,7 +1075,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::NaT => Ok(Value::DateTime(f64::NAN)),
         Expr::Matrix(rows) => {
             if rows.is_empty() {
-                return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+                return Ok(Value::Matrix(Box::new(Array2::<f64>::zeros((0, 0)))));
             }
 
             // Pass 1: evaluate all elements, skipping empty rows.
@@ -1091,7 +1091,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                 evaluated.push(ev_row);
             }
             if evaluated.is_empty() {
-                return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+                return Ok(Value::Matrix(Box::new(Array2::<f64>::zeros((0, 0)))));
             }
 
             // Pass 2: detect if any element is complex (scan the entire evaluated grid).
@@ -1120,7 +1120,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         return Err("Void value cannot be used in matrix literal".to_string());
                     }
                     Value::Lambda(_)
-                    | Value::Function { .. }
+                    | Value::Function(_)
                     | Value::Tuple(_)
                     | Value::Cell(_)
                     | Value::Struct(_)
@@ -1151,7 +1151,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                                     Array2::from_elem((1, 1), Complex::new(*re, *im))
                                 }
                                 Value::Matrix(m) => cm_from_real(m),
-                                Value::ComplexMatrix(m) => m.clone(),
+                                Value::ComplexMatrix(m) => (**m).clone(),
                                 _ => {
                                     return Err(
                                         "This type cannot be used in a complex matrix literal"
@@ -1185,7 +1185,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         );
                     }
                     if row_blocks.is_empty() {
-                        return Ok(Value::ComplexMatrix(Array2::zeros((0, 0))));
+                        return Ok(Value::ComplexMatrix(Box::new(Array2::zeros((0, 0)))));
                     }
                     let ncols = row_blocks[0].ncols();
                     for (i, blk) in row_blocks.iter().enumerate().skip(1) {
@@ -1205,7 +1205,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     }
                     let m = Array2::from_shape_vec((total_rows, ncols), flat)
                         .map_err(|e| format!("Matrix shape error: {e}"))?;
-                    Ok(Value::ComplexMatrix(m))
+                    Ok(Value::ComplexMatrix(Box::new(m)))
                 }
                 MatKind::DateTime => {
                     let mut ts: Vec<f64> = Vec::new();
@@ -1254,7 +1254,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                                 Value::Scalar(n) => {
                                     elem_mats.push(Array2::from_elem((1, 1), *n));
                                 }
-                                Value::Matrix(m) => elem_mats.push(m.clone()),
+                                Value::Matrix(m) => elem_mats.push((**m).clone()),
                                 Value::Void => {
                                     return Err(
                                         "Void value cannot be used in matrix literal".to_string()
@@ -1304,12 +1304,12 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                         );
                     }
                     if row_blocks.is_empty() {
-                        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+                        return Ok(Value::Matrix(Box::new(Array2::<f64>::zeros((0, 0)))));
                     }
                     let ncols = row_blocks[0].ncols();
                     if ncols == 0 {
                         let total_rows: usize = row_blocks.iter().map(|b| b.nrows()).sum();
-                        return Ok(Value::Matrix(Array2::zeros((total_rows, 0))));
+                        return Ok(Value::Matrix(Box::new(Array2::zeros((total_rows, 0)))));
                     }
                     for (i, blk) in row_blocks.iter().enumerate().skip(1) {
                         if blk.ncols() != ncols {
@@ -1328,7 +1328,7 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
                     }
                     let m = Array2::from_shape_vec((total_rows, ncols), flat)
                         .map_err(|e| format!("Matrix shape error: {e}"))?;
-                    Ok(Value::Matrix(m))
+                    Ok(Value::Matrix(Box::new(m)))
                 }
                 MatKind::Str => {
                     if evaluated.len() > 1 {
@@ -1367,17 +1367,17 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
         Expr::Transpose(e) => match eval_inner(e, env, io)? {
             Value::Void => Err("Transpose is not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n)),
-            Value::Matrix(m) => Ok(Value::Matrix(m.t().to_owned())),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.t().to_owned()))),
             Value::Complex(re, im) => Ok(Value::Complex(re, -im)),
             // Conjugate transpose (Hermitian): transpose axes + conjugate each element
-            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(m.t().mapv(|c| c.conj()))),
+            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(Box::new(m.t().mapv(|c| c.conj())))),
             // Transpose of a char array or string object: return as-is (1×N not fully supported)
             Value::Str(s) => Ok(Value::Str(s)),
             Value::StringObj(s) => Ok(Value::StringObj(s)),
             // Arrays: orientation is ignored (Vec<f64> is always 1-D), return as-is.
             v @ (Value::DateTimeArray(_) | Value::DurationArray(_)) => Ok(v),
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -1410,13 +1410,13 @@ fn eval_inner(expr: &Expr, env: &Env, mut io: Option<&mut IoContext>) -> Result<
             let n_float = (stop - start) / step;
             if n_float < -1e-10 {
                 // Empty range: step points in the wrong direction
-                return Ok(Value::Matrix(Array2::zeros((1, 0))));
+                return Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))));
             }
             let n = (n_float + 1e-10).floor() as usize + 1;
             let vals: Vec<f64> = (0..n).map(|i| start + i as f64 * step).collect();
             let m =
                 Array2::from_shape_vec((1, n), vals).map_err(|e| format!("Range error: {e}"))?;
-            Ok(Value::Matrix(m))
+            Ok(Value::Matrix(Box::new(m)))
         }
     }
 }
@@ -1443,8 +1443,8 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
         // Functions, tuples, cell arrays, structs, struct arrays, and maps are not numeric
         (Value::Lambda(_), _)
         | (_, Value::Lambda(_))
-        | (Value::Function { .. }, _)
-        | (_, Value::Function { .. })
+        | (Value::Function(_), _)
+        | (_, Value::Function(_))
         | (Value::Tuple(_), _)
         | (_, Value::Tuple(_))
         | (Value::Cell(_), _)
@@ -1568,17 +1568,17 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             cm_binop_complex(cm_from_real(&m), op, re, im)
         }
         // ComplexMatrix combinations
-        (Value::ComplexMatrix(a), Value::ComplexMatrix(b)) => complex_matrix_binop(a, op, b),
+        (Value::ComplexMatrix(a), Value::ComplexMatrix(b)) => complex_matrix_binop(*a, op, *b),
         (Value::ComplexMatrix(cm), Value::Matrix(m)) => {
-            complex_matrix_binop(cm, op, cm_from_real(&m))
+            complex_matrix_binop(*cm, op, cm_from_real(&m))
         }
         (Value::Matrix(m), Value::ComplexMatrix(cm)) => {
-            complex_matrix_binop(cm_from_real(&m), op, cm)
+            complex_matrix_binop(cm_from_real(&m), op, *cm)
         }
-        (Value::ComplexMatrix(cm), Value::Scalar(s)) => cm_binop_scalar(cm, op, s),
-        (Value::Scalar(s), Value::ComplexMatrix(cm)) => scalar_binop_cm(s, op, cm),
-        (Value::ComplexMatrix(cm), Value::Complex(re, im)) => cm_binop_complex(cm, op, re, im),
-        (Value::Complex(re, im), Value::ComplexMatrix(cm)) => complex_binop_cm(re, im, op, cm),
+        (Value::ComplexMatrix(cm), Value::Scalar(s)) => cm_binop_scalar(*cm, op, s),
+        (Value::Scalar(s), Value::ComplexMatrix(cm)) => scalar_binop_cm(s, op, *cm),
+        (Value::ComplexMatrix(cm), Value::Complex(re, im)) => cm_binop_complex(*cm, op, re, im),
+        (Value::Complex(re, im), Value::ComplexMatrix(cm)) => complex_binop_cm(re, im, op, *cm),
         (Value::Scalar(lv), Value::Scalar(rv)) => {
             let result = match op {
                 Op::Add => lv + rv,
@@ -1601,11 +1601,11 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
         (Value::Matrix(lm), Value::Matrix(rm)) => match op {
             Op::Add => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(&lm + &rm))
+                Ok(Value::Matrix(Box::new(&*lm + &*rm)))
             }
             Op::Sub => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(&lm - &rm))
+                Ok(Value::Matrix(Box::new(&*lm - &*rm)))
             }
             Op::Mul => {
                 if lm.ncols() != rm.nrows() {
@@ -1617,57 +1617,57 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
                         rm.ncols()
                     ));
                 }
-                Ok(Value::Matrix(lm.dot(&rm)))
+                Ok(Value::Matrix(Box::new(lm.dot(&*rm))))
             }
             Op::ElemMul => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(&lm * &rm))
+                Ok(Value::Matrix(Box::new(&*lm * &*rm)))
             }
             Op::ElemDiv => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(&lm / &rm))
+                Ok(Value::Matrix(Box::new(&*lm / &*rm)))
             }
             Op::ElemPow => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(
-                    ndarray::Zip::from(&lm)
-                        .and(&rm)
+                Ok(Value::Matrix(Box::new(
+                    ndarray::Zip::from(&*lm)
+                        .and(&*rm)
                         .map_collect(|a, b| a.powf(*b)),
-                ))
+                )))
             }
             Op::Eq | Op::NotEq | Op::Lt | Op::Gt | Op::LtEq | Op::GtEq => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(
-                    ndarray::Zip::from(&lm)
-                        .and(&rm)
+                Ok(Value::Matrix(Box::new(
+                    ndarray::Zip::from(&*lm)
+                        .and(&*rm)
                         .map_collect(|a, b| bool_to_f64(cmp_op(op, *a, *b))),
-                ))
+                )))
             }
             Op::And | Op::Or | Op::ElemAnd | Op::ElemOr => {
                 check_same_shape(&lm, &rm)?;
-                Ok(Value::Matrix(
-                    ndarray::Zip::from(&lm)
-                        .and(&rm)
+                Ok(Value::Matrix(Box::new(
+                    ndarray::Zip::from(&*lm)
+                        .and(&*rm)
                         .map_collect(|a, b| bool_to_f64(cmp_op(op, *a, *b))),
-                ))
+                )))
             }
             Op::Div => Err("Matrix / Matrix: use inv(B)*A or A*inv(B)".to_string()),
-            Op::LDiv => Ok(Value::Matrix(solve_linear(&lm, &rm)?)),
+            Op::LDiv => Ok(Value::Matrix(Box::new(solve_linear(&lm, &rm)?))),
             Op::Pow => Err("Matrix ^ Matrix: not supported".to_string()),
         },
         (Value::Scalar(s), Value::Matrix(m)) => match op {
-            Op::Add => Ok(Value::Matrix(s + &m)),
-            Op::Sub => Ok(Value::Matrix(m.mapv(|x| s - x))),
-            Op::Mul | Op::ElemMul => Ok(Value::Matrix(s * &m)),
+            Op::Add => Ok(Value::Matrix(Box::new(s + &*m))),
+            Op::Sub => Ok(Value::Matrix(Box::new(m.mapv(|x| s - x)))),
+            Op::Mul | Op::ElemMul => Ok(Value::Matrix(Box::new(s * &*m))),
             Op::Div => Err("Scalar / Matrix: not supported".to_string()),
             Op::ElemDiv => Err("Scalar ./ Matrix: not supported".to_string()),
             Op::LDiv => {
                 if s == 0.0 {
                     return Err("Left division by zero (a \\ B requires a ≠ 0)".to_string());
                 }
-                Ok(Value::Matrix(m.mapv(|x| x / s)))
+                Ok(Value::Matrix(Box::new(m.mapv(|x| x / s))))
             }
-            Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| s.powf(x)))),
+            Op::Pow | Op::ElemPow => Ok(Value::Matrix(Box::new(m.mapv(|x| s.powf(x))))),
             Op::Eq
             | Op::NotEq
             | Op::Lt
@@ -1677,18 +1677,18 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             | Op::And
             | Op::Or
             | Op::ElemAnd
-            | Op::ElemOr => Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, s, x))))),
+            | Op::ElemOr => Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64(cmp_op(op, s, x)))))),
         },
         (Value::Matrix(m), Value::Scalar(s)) => match op {
-            Op::Add => Ok(Value::Matrix(&m + s)),
-            Op::Sub => Ok(Value::Matrix(&m - s)),
-            Op::Mul | Op::ElemMul => Ok(Value::Matrix(&m * s)),
-            Op::Div | Op::ElemDiv => Ok(Value::Matrix(m.mapv(|x| x / s))),
+            Op::Add => Ok(Value::Matrix(Box::new(&*m + s))),
+            Op::Sub => Ok(Value::Matrix(Box::new(&*m - s))),
+            Op::Mul | Op::ElemMul => Ok(Value::Matrix(Box::new(&*m * s))),
+            Op::Div | Op::ElemDiv => Ok(Value::Matrix(Box::new(m.mapv(|x| x / s)))),
             Op::LDiv => {
                 let b = Array2::from_elem((m.nrows(), 1), s);
-                Ok(Value::Matrix(solve_linear(&m, &b)?))
+                Ok(Value::Matrix(Box::new(solve_linear(&m, &b)?)))
             }
-            Op::Pow | Op::ElemPow => Ok(Value::Matrix(m.mapv(|x| x.powf(s)))),
+            Op::Pow | Op::ElemPow => Ok(Value::Matrix(Box::new(m.mapv(|x| x.powf(s))))),
             Op::Eq
             | Op::NotEq
             | Op::Lt
@@ -1698,7 +1698,7 @@ fn eval_binop(l: Value, op: &Op, r: Value) -> Result<Value, String> {
             | Op::And
             | Op::Or
             | Op::ElemAnd
-            | Op::ElemOr => Ok(Value::Matrix(m.mapv(|x| bool_to_f64(cmp_op(op, x, s))))),
+            | Op::ElemOr => Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64(cmp_op(op, x, s)))))),
         },
     }
 }
@@ -1845,11 +1845,11 @@ fn complex_matrix_binop(
     match op {
         Op::Add => {
             same_shape()?;
-            Ok(Value::ComplexMatrix(a + b))
+            Ok(Value::ComplexMatrix(Box::new(a + b)))
         }
         Op::Sub => {
             same_shape()?;
-            Ok(Value::ComplexMatrix(a - b))
+            Ok(Value::ComplexMatrix(Box::new(a - b)))
         }
         Op::Mul => {
             if a.ncols() != b.nrows() {
@@ -1861,23 +1861,23 @@ fn complex_matrix_binop(
                     b.ncols()
                 ));
             }
-            Ok(Value::ComplexMatrix(a.dot(&b)))
+            Ok(Value::ComplexMatrix(Box::new(a.dot(&b))))
         }
         Op::ElemMul => {
             same_shape()?;
-            Ok(Value::ComplexMatrix(a * b))
+            Ok(Value::ComplexMatrix(Box::new(a * b)))
         }
         Op::ElemDiv => {
             same_shape()?;
-            Ok(Value::ComplexMatrix(a / b))
+            Ok(Value::ComplexMatrix(Box::new(a / b)))
         }
         Op::ElemPow => {
             same_shape()?;
-            Ok(Value::ComplexMatrix(
+            Ok(Value::ComplexMatrix(Box::new(
                 ndarray::Zip::from(&a)
                     .and(&b)
                     .map_collect(|x, y| x.powc(*y)),
-            ))
+            )))
         }
         Op::Pow => Err(
             "ComplexMatrix ^ ComplexMatrix: not supported; use .^ for element-wise power"
@@ -1888,34 +1888,34 @@ fn complex_matrix_binop(
         }
         Op::Eq => {
             same_shape()?;
-            Ok(Value::Matrix(
+            Ok(Value::Matrix(Box::new(
                 ndarray::Zip::from(&a)
                     .and(&b)
                     .map_collect(|x, y| bool_to_f64(x == y)),
-            ))
+            )))
         }
         Op::NotEq => {
             same_shape()?;
-            Ok(Value::Matrix(
+            Ok(Value::Matrix(Box::new(
                 ndarray::Zip::from(&a)
                     .and(&b)
                     .map_collect(|x, y| bool_to_f64(x != y)),
-            ))
+            )))
         }
         Op::Lt | Op::Gt | Op::LtEq | Op::GtEq => {
             Err("Ordering comparison not defined for complex matrices".to_string())
         }
         Op::And | Op::ElemAnd => {
             same_shape()?;
-            Ok(Value::Matrix(ndarray::Zip::from(&a).and(&b).map_collect(
+            Ok(Value::Matrix(Box::new(ndarray::Zip::from(&a).and(&b).map_collect(
                 |x, y| bool_to_f64((x.re != 0.0 || x.im != 0.0) && (y.re != 0.0 || y.im != 0.0)),
-            )))
+            ))))
         }
         Op::Or | Op::ElemOr => {
             same_shape()?;
-            Ok(Value::Matrix(ndarray::Zip::from(&a).and(&b).map_collect(
+            Ok(Value::Matrix(Box::new(ndarray::Zip::from(&a).and(&b).map_collect(
                 |x, y| bool_to_f64(x.re != 0.0 || x.im != 0.0 || y.re != 0.0 || y.im != 0.0),
-            )))
+            ))))
         }
     }
 }
@@ -1924,13 +1924,13 @@ fn complex_matrix_binop(
 fn cm_binop_scalar(cm: Array2<Complex<f64>>, op: &Op, s: f64) -> Result<Value, String> {
     let c = Complex::new(s, 0.0);
     match op {
-        Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| x + c))),
-        Op::Sub => Ok(Value::ComplexMatrix(cm.mapv(|x| x - c))),
-        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(cm.mapv(|x| x * c))),
-        Op::Div | Op::ElemDiv => Ok(Value::ComplexMatrix(cm.mapv(|x| x / c))),
-        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(cm.mapv(|x| x.powf(s)))),
-        Op::Eq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(x == c)))),
-        Op::NotEq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(x != c)))),
+        Op::Add => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x + c)))),
+        Op::Sub => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x - c)))),
+        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x * c)))),
+        Op::Div | Op::ElemDiv => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x / c)))),
+        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x.powf(s))))),
+        Op::Eq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(x == c))))),
+        Op::NotEq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(x != c))))),
         _ => Err("Unsupported operator between complex matrix and scalar".to_string()),
     }
 }
@@ -1939,12 +1939,12 @@ fn cm_binop_scalar(cm: Array2<Complex<f64>>, op: &Op, s: f64) -> Result<Value, S
 fn scalar_binop_cm(s: f64, op: &Op, cm: Array2<Complex<f64>>) -> Result<Value, String> {
     let c = Complex::new(s, 0.0);
     match op {
-        Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| c + x))),
-        Op::Sub => Ok(Value::ComplexMatrix(cm.mapv(|x| c - x))),
-        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(cm.mapv(|x| c * x))),
-        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(cm.mapv(|x| c.powc(x)))),
-        Op::Eq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(c == x)))),
-        Op::NotEq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(c != x)))),
+        Op::Add => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c + x)))),
+        Op::Sub => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c - x)))),
+        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c * x)))),
+        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c.powc(x))))),
+        Op::Eq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(c == x))))),
+        Op::NotEq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(c != x))))),
         _ => Err("Unsupported operator between scalar and complex matrix".to_string()),
     }
 }
@@ -1953,13 +1953,13 @@ fn scalar_binop_cm(s: f64, op: &Op, cm: Array2<Complex<f64>>) -> Result<Value, S
 fn cm_binop_complex(cm: Array2<Complex<f64>>, op: &Op, re: f64, im: f64) -> Result<Value, String> {
     let c = Complex::new(re, im);
     match op {
-        Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| x + c))),
-        Op::Sub => Ok(Value::ComplexMatrix(cm.mapv(|x| x - c))),
-        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(cm.mapv(|x| x * c))),
-        Op::Div | Op::ElemDiv => Ok(Value::ComplexMatrix(cm.mapv(|x| x / c))),
-        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(cm.mapv(|x| x.powc(c)))),
-        Op::Eq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(x == c)))),
-        Op::NotEq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(x != c)))),
+        Op::Add => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x + c)))),
+        Op::Sub => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x - c)))),
+        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x * c)))),
+        Op::Div | Op::ElemDiv => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x / c)))),
+        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| x.powc(c))))),
+        Op::Eq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(x == c))))),
+        Op::NotEq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(x != c))))),
         _ => Err("Unsupported operator between complex matrix and complex scalar".to_string()),
     }
 }
@@ -1968,12 +1968,12 @@ fn cm_binop_complex(cm: Array2<Complex<f64>>, op: &Op, re: f64, im: f64) -> Resu
 fn complex_binop_cm(re: f64, im: f64, op: &Op, cm: Array2<Complex<f64>>) -> Result<Value, String> {
     let c = Complex::new(re, im);
     match op {
-        Op::Add => Ok(Value::ComplexMatrix(cm.mapv(|x| c + x))),
-        Op::Sub => Ok(Value::ComplexMatrix(cm.mapv(|x| c - x))),
-        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(cm.mapv(|x| c * x))),
-        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(cm.mapv(|x| c.powc(x)))),
-        Op::Eq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(c == x)))),
-        Op::NotEq => Ok(Value::Matrix(cm.mapv(|x| bool_to_f64(c != x)))),
+        Op::Add => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c + x)))),
+        Op::Sub => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c - x)))),
+        Op::Mul | Op::ElemMul => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c * x)))),
+        Op::Pow | Op::ElemPow => Ok(Value::ComplexMatrix(Box::new(cm.mapv(|x| c.powc(x))))),
+        Op::Eq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(c == x))))),
+        Op::NotEq => Ok(Value::Matrix(Box::new(cm.mapv(|x| bool_to_f64(c != x))))),
         _ => Err("Unsupported operator between complex scalar and complex matrix".to_string()),
     }
 }
@@ -1983,9 +1983,9 @@ fn complex_binop_cm(re: f64, im: f64, op: &Op, cm: Array2<Complex<f64>>) -> Resu
 fn str_to_numeric(s: &str) -> Value {
     let codes: Vec<f64> = s.chars().map(|c| c as u32 as f64).collect();
     match codes.len() {
-        0 => Value::Matrix(Array2::zeros((1, 0))),
+        0 => Value::Matrix(Box::new(Array2::zeros((1, 0)))),
         1 => Value::Scalar(codes[0]),
-        n => Value::Matrix(Array2::from_shape_vec((1, n), codes).unwrap()),
+        n => Value::Matrix(Box::new(Array2::from_shape_vec((1, n), codes).unwrap())),
     }
 }
 
@@ -2033,7 +2033,7 @@ fn scalar_arg(v: &Value, fname: &str, pos: usize) -> Result<f64, String> {
             "Function '{fname}' argument {pos} must be a scalar, got a string"
         )),
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -2155,9 +2155,9 @@ where
                         f(&col)
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, ncols), result).unwrap(),
-                ))
+                )))
             }
         }
         _ => Err(format!("{fname}: argument must be numeric")),
@@ -2186,7 +2186,7 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
     match v {
         Value::Void => Err("Element-wise function not applicable to void".to_string()),
         Value::Scalar(n) => Ok(Value::Scalar(f(*n))),
-        Value::Matrix(m) => Ok(Value::Matrix(m.mapv(f))),
+        Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(f)))),
         Value::Complex(re, im) if *im == 0.0 => Ok(Value::Scalar(f(*re))),
         Value::Complex(_, _) => {
             Err("Element-wise real function not applicable to complex values".to_string())
@@ -2198,7 +2198,7 @@ fn apply_elem<F: Fn(f64) -> f64>(v: &Value, f: F) -> Result<Value, String> {
             Err("Element-wise function not applicable to strings".to_string())
         }
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -2229,7 +2229,7 @@ where
             Err("Reduction not applicable to strings".to_string())
         }
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -2251,9 +2251,9 @@ where
                         f(&col)
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, ncols), result).unwrap(),
-                ))
+                )))
             }
         }
     }
@@ -2292,13 +2292,13 @@ where
                     .collect();
                 if result.iter().all(|c| c.im == 0.0) {
                     let reals: Vec<f64> = result.iter().map(|c| c.re).collect();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, ncols), reals).unwrap(),
-                    ))
+                    )))
                 } else {
-                    Ok(Value::ComplexMatrix(
+                    Ok(Value::ComplexMatrix(Box::new(
                         Array2::from_shape_vec((1, ncols), result).unwrap(),
-                    ))
+                    )))
                 }
             }
         }
@@ -2316,13 +2316,13 @@ where
                     .collect();
                 if result.iter().all(|c| c.im == 0.0) {
                     let reals: Vec<f64> = result.iter().map(|c| c.re).collect();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, ncols), reals).unwrap(),
-                    ))
+                    )))
                 } else {
-                    Ok(Value::ComplexMatrix(
+                    Ok(Value::ComplexMatrix(Box::new(
                         Array2::from_shape_vec((1, ncols), result).unwrap(),
-                    ))
+                    )))
                 }
             }
         }
@@ -2350,7 +2350,7 @@ where
             Err("Cumulative reduction not applicable to strings".to_string())
         }
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -2400,7 +2400,7 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
         Value::ComplexMatrix(_) => Err("find: not applicable to complex matrices".to_string()),
         Value::Str(_) | Value::StringObj(_) => Err("find: not applicable to strings".to_string()),
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -2412,20 +2412,20 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
         | Value::Map(_) => Err("find: not applicable to this type".to_string()),
         Value::Complex(re, im) => {
             if (*re != 0.0 || *im != 0.0) && max_k >= 1 {
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
-                ))
+                )))
             } else {
-                Ok(Value::Matrix(Array2::zeros((1, 0))))
+                Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             }
         }
         Value::Scalar(n) => {
             if *n != 0.0 && max_k >= 1 {
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, 1), vec![1.0]).unwrap(),
-                ))
+                )))
             } else {
-                Ok(Value::Matrix(Array2::zeros((1, 0))))
+                Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             }
         }
         Value::Matrix(m) => {
@@ -2444,9 +2444,9 @@ fn find_nonzero(v: &Value, max_k: usize) -> Result<Value, String> {
             }
             let n = idxs.len();
             if n == 0 {
-                Ok(Value::Matrix(Array2::zeros((1, 0))))
+                Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             } else {
-                Ok(Value::Matrix(Array2::from_shape_vec((1, n), idxs).unwrap()))
+                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), idxs).unwrap())))
             }
         }
     }
@@ -2664,7 +2664,7 @@ fn printf_string(v: &Value) -> Result<String, String> {
         Value::DateTime(ts) => Ok(crate::datetime::format_datetime(*ts)),
         Value::Duration(s) => Ok(crate::datetime::format_duration(*s)),
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -2836,7 +2836,7 @@ fn call_function_value(
             let lf = lf.clone();
             lf.0(args, io)
         }
-        Value::Function { .. } => {
+        Value::Function(_) => {
             // Named function called via cellfun/arrayfun — name is unknown at this point.
             // Use a minimal env that doesn't export any user variables to avoid
             // polluting the caller's scope. Functions see their own scope via exec.
@@ -3270,21 +3270,21 @@ pub(crate) fn call_builtin(
         // --- Matrix constructors ---
         ("zeros", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
-            Ok(Value::Matrix(Array2::zeros((r, c))))
+            Ok(Value::Matrix(Box::new(Array2::zeros((r, c)))))
         }
         ("zeros", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
-            Ok(Value::Matrix(Array2::zeros((r, c))))
+            Ok(Value::Matrix(Box::new(Array2::zeros((r, c)))))
         }
         ("ones", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
-            Ok(Value::Matrix(Array2::ones((r, c))))
+            Ok(Value::Matrix(Box::new(Array2::ones((r, c)))))
         }
         ("ones", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
-            Ok(Value::Matrix(Array2::ones((r, c))))
+            Ok(Value::Matrix(Box::new(Array2::ones((r, c)))))
         }
         ("eye", 1) => {
             let n = scalar_arg(&args[0], name, 1)? as usize;
@@ -3292,34 +3292,34 @@ pub(crate) fn call_builtin(
             for i in 0..n {
                 m[[i, i]] = 1.0;
             }
-            Ok(Value::Matrix(m))
+            Ok(Value::Matrix(Box::new(m)))
         }
         // --- Matrix properties ---
         ("size", 1) => match &args[0] {
             Value::Void => Err("size: not applicable to void".to_string()),
-            Value::Scalar(_) | Value::Complex(_, _) | Value::Struct(_) => Ok(Value::Matrix(
+            Value::Scalar(_) | Value::Complex(_, _) | Value::Struct(_) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![1.0, 1.0]).unwrap(),
-            )),
-            Value::Matrix(m) => Ok(Value::Matrix(
+            ))),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![m.nrows() as f64, m.ncols() as f64]).unwrap(),
-            )),
-            Value::ComplexMatrix(m) => Ok(Value::Matrix(
+            ))),
+            Value::ComplexMatrix(m) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![m.nrows() as f64, m.ncols() as f64]).unwrap(),
-            )),
-            Value::Str(s) => Ok(Value::Matrix(
+            ))),
+            Value::Str(s) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![1.0, s.chars().count() as f64]).unwrap(),
-            )),
-            Value::StringObj(s) => Ok(Value::Matrix(
+            ))),
+            Value::StringObj(s) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![1.0, s.chars().count() as f64]).unwrap(),
-            )),
-            Value::Cell(v) => Ok(Value::Matrix(
+            ))),
+            Value::Cell(v) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![1.0, v.len() as f64]).unwrap(),
-            )),
-            Value::StructArray(arr) => Ok(Value::Matrix(
+            ))),
+            Value::StructArray(arr) => Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, 2), vec![1.0, arr.len() as f64]).unwrap(),
-            )),
+            ))),
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::DateTime(_)
             | Value::Duration(_)
@@ -3365,7 +3365,7 @@ pub(crate) fn call_builtin(
                     _ => Err(format!("size: invalid dimension {dim}")),
                 },
                 Value::Lambda(_)
-                | Value::Function { .. }
+                | Value::Function(_)
                 | Value::Tuple(_)
                 | Value::DateTime(_)
                 | Value::Duration(_)
@@ -3386,7 +3386,7 @@ pub(crate) fn call_builtin(
             Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::DateTime(_) | Value::Duration(_) => Ok(Value::Scalar(1.0)),
             Value::Map(m) => Ok(Value::Scalar(m.len() as f64)),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
+            Value::Lambda(_) | Value::Function(_) | Value::Tuple(_) => {
                 Err("length: not applicable to function values".to_string())
             }
         },
@@ -3402,7 +3402,7 @@ pub(crate) fn call_builtin(
             Value::DateTimeArray(v) | Value::DurationArray(v) => Ok(Value::Scalar(v.len() as f64)),
             Value::DateTime(_) | Value::Duration(_) => Ok(Value::Scalar(1.0)),
             Value::Map(m) => Ok(Value::Scalar(m.len() as f64)),
-            Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
+            Value::Lambda(_) | Value::Function(_) | Value::Tuple(_) => {
                 Err("numel: not applicable to function values".to_string())
             }
         },
@@ -3426,7 +3426,7 @@ pub(crate) fn call_builtin(
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3446,7 +3446,7 @@ pub(crate) fn call_builtin(
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3475,12 +3475,12 @@ pub(crate) fn call_builtin(
                     Ok(make_complex(re / denom, -im / denom))
                 }
             }
-            Value::Matrix(m) => Ok(Value::Matrix(inv_matrix(m)?)),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(inv_matrix(m)?))),
             Value::ComplexMatrix(_) => Err("inv: not supported for complex matrices".to_string()),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3497,17 +3497,17 @@ pub(crate) fn call_builtin(
             let b = scalar_arg(&args[1], name, 2)?;
             let n = scalar_arg(&args[2], name, 3)? as usize;
             if n == 0 {
-                return Ok(Value::Matrix(Array2::zeros((1, 0))));
+                return Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))));
             }
             if n == 1 {
-                return Ok(Value::Matrix(
+                return Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, 1), vec![b]).unwrap(),
-                ));
+                )));
             }
             let vals: Vec<f64> = (0..n)
                 .map(|i| a + (b - a) * i as f64 / (n - 1) as f64)
                 .collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
         }
         // --- Bitwise functions ---
         // All operands are truncated to i64. Results are non-negative integers
@@ -3570,37 +3570,37 @@ pub(crate) fn call_builtin(
         // --- NaN matrix constructors ---
         ("nan", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
-            Ok(Value::Matrix(Array2::from_elem((r, c), f64::NAN)))
+            Ok(Value::Matrix(Box::new(Array2::from_elem((r, c), f64::NAN))))
         }
         ("nan", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
-            Ok(Value::Matrix(Array2::from_elem((r, c), f64::NAN)))
+            Ok(Value::Matrix(Box::new(Array2::from_elem((r, c), f64::NAN))))
         }
         // --- Random number generation ---
         ("rand", 0) => Ok(Value::Scalar(rand_uniform())),
         ("rand", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
             let data: Vec<f64> = (0..r * c).map(|_| rand_uniform()).collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
         }
         ("rand", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
             let data: Vec<f64> = (0..r * c).map(|_| rand_uniform()).collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
         }
         ("randn", 0) => Ok(Value::Scalar(rand_normal())),
         ("randn", 1) => {
             let (r, c) = size_arg(&args[0], name)?;
             let data: Vec<f64> = (0..r * c).map(|_| rand_normal()).collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
         }
         ("randn", 2) => {
             let r = scalar_arg(&args[0], name, 1)? as usize;
             let c = scalar_arg(&args[1], name, 2)? as usize;
             let data: Vec<f64> = (0..r * c).map(|_| rand_normal()).collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
         }
         ("randi", 1) => {
             let (lo, hi) = randi_range(&args[0])?;
@@ -3613,7 +3613,7 @@ pub(crate) fn call_builtin(
             let data: Vec<f64> = (0..n * n)
                 .map(|_| RNG.with(|r| r.borrow_mut().gen_range(lo..=hi)) as f64)
                 .collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((n, n), data).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, n), data).unwrap())))
         }
         ("randi", 3) => {
             let (lo, hi) = randi_range(&args[0])?;
@@ -3622,7 +3622,7 @@ pub(crate) fn call_builtin(
             let data: Vec<f64> = (0..r * c)
                 .map(|_| RNG.with(|rng| rng.borrow_mut().gen_range(lo..=hi)) as f64)
                 .collect();
-            Ok(Value::Matrix(Array2::from_shape_vec((r, c), data).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((r, c), data).unwrap())))
         }
         ("rng", 1) => match &args[0] {
             Value::Scalar(n) => {
@@ -3714,7 +3714,7 @@ pub(crate) fn call_builtin(
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3779,7 +3779,7 @@ pub(crate) fn call_builtin(
                     Value::Str(_)
                     | Value::StringObj(_)
                     | Value::Lambda(_)
-                    | Value::Function { .. }
+                    | Value::Function(_)
                     | Value::Tuple(_)
                     | Value::Cell(_)
                     | Value::Struct(_)
@@ -3806,7 +3806,7 @@ pub(crate) fn call_builtin(
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3822,9 +3822,9 @@ pub(crate) fn call_builtin(
                 }
                 let mut vals: Vec<f64> = m.iter().copied().collect();
                 vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec(m.raw_dim(), vals).unwrap(),
-                ))
+                )))
             }
         },
         // --- Reshape ---
@@ -3837,9 +3837,9 @@ pub(crate) fn call_builtin(
                     if r * c != 1 {
                         return Err(format!("reshape: cannot reshape 1 element into {r}x{c}"));
                     }
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, 1), vec![*n]).unwrap(),
-                    ))
+                    )))
                 }
                 Value::Complex(_, _) => {
                     Err("reshape: not applicable to complex values".to_string())
@@ -3850,7 +3850,7 @@ pub(crate) fn call_builtin(
                 Value::Str(_)
                 | Value::StringObj(_)
                 | Value::Lambda(_)
-                | Value::Function { .. }
+                | Value::Function(_)
                 | Value::Tuple(_)
                 | Value::Cell(_)
                 | Value::Struct(_)
@@ -3875,7 +3875,7 @@ pub(crate) fn call_builtin(
                     for (i, &v) in flat.iter().enumerate() {
                         result[[i % r, i / r]] = v;
                     }
-                    Ok(Value::Matrix(result))
+                    Ok(Value::Matrix(Box::new(result)))
                 }
             }
         }
@@ -3888,7 +3888,7 @@ pub(crate) fn call_builtin(
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3919,7 +3919,7 @@ pub(crate) fn call_builtin(
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -3965,16 +3965,16 @@ pub(crate) fn call_builtin(
                     }
                 }
                 let n = unique.len();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, n), unique).unwrap(),
-                ))
+                )))
             }
             Value::Complex(_, _) => Err("unique: not applicable to complex values".to_string()),
             Value::ComplexMatrix(_) => Err("unique: not applicable to complex values".to_string()),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4025,7 +4025,7 @@ pub(crate) fn call_builtin(
                             cov_mat[[i, j]] = dot / denom;
                         }
                     }
-                    Ok(Value::Matrix(cov_mat))
+                    Ok(Value::Matrix(Box::new(cov_mat)))
                 }
             }
             _ => Err("cov: argument must be numeric".to_string()),
@@ -4128,9 +4128,9 @@ pub(crate) fn call_builtin(
                     }
                 }
             }
-            Ok(Value::Matrix(
+            Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, n_edges), counts).unwrap(),
-            ))
+            )))
         }
         // --- Percentiles and distributions ---
         ("prctile", 2) => {
@@ -4150,7 +4150,7 @@ pub(crate) fn call_builtin(
                     if n_p == 1 {
                         Ok(Value::Scalar(pr[0]))
                     } else {
-                        Ok(Value::Matrix(Array2::from_shape_vec((1, n_p), pr).unwrap()))
+                        Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n_p), pr).unwrap())))
                     }
                 }
                 Value::Matrix(m) if m.nrows() == 1 || m.ncols() == 1 => {
@@ -4159,7 +4159,7 @@ pub(crate) fn call_builtin(
                     if n_p == 1 {
                         Ok(Value::Scalar(pr[0]))
                     } else {
-                        Ok(Value::Matrix(Array2::from_shape_vec((1, n_p), pr).unwrap()))
+                        Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n_p), pr).unwrap())))
                     }
                 }
                 Value::Matrix(m) => {
@@ -4175,11 +4175,11 @@ pub(crate) fn call_builtin(
                     }
                     if n_p == 1 {
                         let row: Vec<f64> = result.row(0).iter().copied().collect();
-                        Ok(Value::Matrix(
+                        Ok(Value::Matrix(Box::new(
                             Array2::from_shape_vec((1, ncols), row).unwrap(),
-                        ))
+                        )))
                     } else {
-                        Ok(Value::Matrix(result))
+                        Ok(Value::Matrix(Box::new(result)))
                     }
                 }
                 _ => Err("prctile: first argument must be numeric".to_string()),
@@ -4206,9 +4206,9 @@ pub(crate) fn call_builtin(
                         .iter()
                         .map(|&x| if s == 0.0 { 0.0 } else { (x - mean) / s })
                         .collect();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec(m.raw_dim(), result).unwrap(),
-                    ))
+                    )))
                 } else {
                     let (nrows, ncols) = (m.nrows(), m.ncols());
                     let mut result = m.clone();
@@ -4231,7 +4231,7 @@ pub(crate) fn call_builtin(
         },
         // diag(v) — vector → diagonal matrix; diag(A) → column vector of main diagonal.
         ("diag", 1) => match &args[0] {
-            Value::Scalar(n) => Ok(Value::Matrix(Array2::from_elem((1, 1), *n))),
+            Value::Scalar(n) => Ok(Value::Matrix(Box::new(Array2::from_elem((1, 1), *n)))),
             Value::Matrix(m) => {
                 let (rows, cols) = (m.nrows(), m.ncols());
                 if rows == 1 || cols == 1 {
@@ -4242,19 +4242,19 @@ pub(crate) fn call_builtin(
                     for (i, &val) in v.iter().enumerate() {
                         result[[i, i]] = val;
                     }
-                    Ok(Value::Matrix(result))
+                    Ok(Value::Matrix(Box::new(result)))
                 } else {
                     // matrix → extract main diagonal as N×1 column vector
                     let n = rows.min(cols);
                     let d: Vec<f64> = (0..n).map(|i| m[[i, i]]).collect();
-                    Ok(Value::Matrix(Array2::from_shape_vec((n, 1), d).unwrap()))
+                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), d).unwrap())))
                 }
             }
             Value::Void => Err("diag: not applicable to void".to_string()),
             Value::Complex(re, im) => {
                 let mut result = Array2::<Complex<f64>>::zeros((1, 1));
                 result[[0, 0]] = Complex::new(*re, *im);
-                Ok(Value::ComplexMatrix(result))
+                Ok(Value::ComplexMatrix(Box::new(result)))
             }
             Value::ComplexMatrix(m) => {
                 let (rows, cols) = (m.nrows(), m.ncols());
@@ -4265,19 +4265,19 @@ pub(crate) fn call_builtin(
                     for (i, &val) in v.iter().enumerate() {
                         result[[i, i]] = val;
                     }
-                    Ok(Value::ComplexMatrix(result))
+                    Ok(Value::ComplexMatrix(Box::new(result)))
                 } else {
                     let n = rows.min(cols);
                     let d: Vec<Complex<f64>> = (0..n).map(|i| m[[i, i]]).collect();
-                    Ok(Value::ComplexMatrix(
+                    Ok(Value::ComplexMatrix(Box::new(
                         Array2::from_shape_vec((n, 1), d).unwrap(),
-                    ))
+                    )))
                 }
             }
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4296,11 +4296,11 @@ pub(crate) fn call_builtin(
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, _) => Ok(Value::Scalar(*re)),
             Value::Matrix(m) => Ok(Value::Matrix(m.clone())),
-            Value::ComplexMatrix(m) => Ok(Value::Matrix(m.mapv(|c| c.re))),
+            Value::ComplexMatrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|c| c.re)))),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4316,12 +4316,12 @@ pub(crate) fn call_builtin(
             Value::Void => Err("imag: not applicable to void".to_string()),
             Value::Scalar(_) => Ok(Value::Scalar(0.0)),
             Value::Complex(_, im) => Ok(Value::Scalar(*im)),
-            Value::Matrix(m) => Ok(Value::Matrix(Array2::zeros(m.raw_dim()))),
-            Value::ComplexMatrix(m) => Ok(Value::Matrix(m.mapv(|c| c.im))),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(Array2::zeros(m.raw_dim())))),
+            Value::ComplexMatrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|c| c.im)))),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4337,12 +4337,12 @@ pub(crate) fn call_builtin(
             Value::Void => Err("abs: not applicable to void".to_string()),
             Value::Scalar(n) => Ok(Value::Scalar(n.abs())),
             Value::Complex(re, im) => Ok(Value::Scalar((re * re + im * im).sqrt())),
-            Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| x.abs()))),
-            Value::ComplexMatrix(m) => Ok(Value::Matrix(m.mapv(|c| c.norm()))),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| x.abs())))),
+            Value::ComplexMatrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|c| c.norm())))),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4363,15 +4363,15 @@ pub(crate) fn call_builtin(
             })),
             Value::Complex(re, im) => Ok(Value::Scalar(im.atan2(*re))),
             Value::Matrix(m) => {
-                Ok(Value::Matrix(m.mapv(|x| {
+                Ok(Value::Matrix(Box::new(m.mapv(|x| {
                     if x >= 0.0 { 0.0 } else { std::f64::consts::PI }
-                })))
+                }))))
             }
-            Value::ComplexMatrix(m) => Ok(Value::Matrix(m.mapv(|c| c.im.atan2(c.re)))),
+            Value::ComplexMatrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|c| c.im.atan2(c.re))))),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4388,11 +4388,11 @@ pub(crate) fn call_builtin(
             Value::Scalar(n) => Ok(Value::Scalar(*n)),
             Value::Complex(re, im) => Ok(make_complex(*re, -*im)),
             Value::Matrix(m) => Ok(Value::Matrix(m.clone())),
-            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(m.mapv(|c| c.conj()))),
+            Value::ComplexMatrix(m) => Ok(Value::ComplexMatrix(Box::new(m.mapv(|c| c.conj())))),
             Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4419,7 +4419,7 @@ pub(crate) fn call_builtin(
             // Strings are not real numbers; functions are not numbers
             Value::Str(_) | Value::StringObj(_) => Ok(Value::Scalar(0.0)),
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4450,7 +4450,7 @@ pub(crate) fn call_builtin(
                 Err("num2str: not supported for complex matrices".to_string())
             }
             Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -4484,7 +4484,7 @@ pub(crate) fn call_builtin(
                     Err("num2str: not supported for complex matrices".to_string())
                 }
                 Value::Lambda(_)
-                | Value::Function { .. }
+                | Value::Function(_)
                 | Value::Tuple(_)
                 | Value::Cell(_)
                 | Value::Struct(_)
@@ -4560,13 +4560,13 @@ pub(crate) fn call_builtin(
                 };
                 map.insert(key, pair[1].clone());
             }
-            Ok(Value::Struct(map))
+            Ok(Value::Struct(Box::new(map)))
         }
         // fieldnames(s) — cell array of field names in insertion order
         ("fieldnames", 1) => match &args[0] {
             Value::Struct(map) => {
                 let names: Vec<Value> = map.keys().map(|k| Value::Str(k.clone())).collect();
-                Ok(Value::Cell(names))
+                Ok(Value::Cell(Box::new(names)))
             }
             Value::StructArray(arr) => {
                 // Use field names from first element
@@ -4574,7 +4574,7 @@ pub(crate) fn call_builtin(
                     .first()
                     .map(|m| m.keys().map(|k| Value::Str(k.clone())).collect())
                     .unwrap_or_default();
-                Ok(Value::Cell(names))
+                Ok(Value::Cell(Box::new(names)))
             }
             _ => Err("fieldnames: argument must be a struct".to_string()),
         },
@@ -4611,12 +4611,12 @@ pub(crate) fn call_builtin(
             Value::Map(map) => {
                 let mut sorted_keys: Vec<&String> = map.keys().collect();
                 sorted_keys.sort();
-                Ok(Value::Cell(
+                Ok(Value::Cell(Box::new(
                     sorted_keys
                         .into_iter()
                         .map(|k| Value::Str(k.clone()))
                         .collect(),
-                ))
+                )))
             }
             _ => Err("keys: argument must be a containers.Map".to_string()),
         },
@@ -4624,9 +4624,9 @@ pub(crate) fn call_builtin(
             Value::Map(map) => {
                 let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
                 pairs.sort_by_key(|(k, _)| *k);
-                Ok(Value::Cell(
+                Ok(Value::Cell(Box::new(
                     pairs.into_iter().map(|(_, v)| v.clone()).collect(),
-                ))
+                )))
             }
             _ => Err("values: argument must be a containers.Map".to_string()),
         },
@@ -4657,7 +4657,7 @@ pub(crate) fn call_builtin(
                             Ok(m2)
                         })
                         .collect();
-                    Ok(Value::StructArray(updated?))
+                    Ok(Value::StructArray(Box::new(updated?)))
                 }
                 _ => Err("rmfield: first argument must be a struct".to_string()),
             }
@@ -4692,13 +4692,13 @@ pub(crate) fn call_builtin(
         // cell(n) — create 1×n cell of Scalar(0.0) slots
         ("cell", 1) => {
             let n = scalar_arg(&args[0], name, 1)? as usize;
-            Ok(Value::Cell(vec![Value::Scalar(0.0); n]))
+            Ok(Value::Cell(Box::new(vec![Value::Scalar(0.0); n])))
         }
         // cell(m, n) — create 1×(m*n) cell (2-D layout deferred; stored flat)
         ("cell", 2) => {
             let m = scalar_arg(&args[0], name, 1)? as usize;
             let n = scalar_arg(&args[1], name, 2)? as usize;
-            Ok(Value::Cell(vec![Value::Scalar(0.0); m * n]))
+            Ok(Value::Cell(Box::new(vec![Value::Scalar(0.0); m * n])))
         }
         // cellfun(f, c) — apply f to each element of cell c.
         // Returns Value::Matrix when all results are scalars; otherwise Value::Cell.
@@ -4706,7 +4706,7 @@ pub(crate) fn call_builtin(
             let f = args[0].clone();
             match &args[1] {
                 Value::Cell(elems) => {
-                    let elems = elems.clone();
+                    let elems: Vec<Value> = (**elems).clone();
                     let mut results = Vec::with_capacity(elems.len());
                     for elem in &elems {
                         let result =
@@ -4728,12 +4728,12 @@ pub(crate) fn call_builtin(
                             .collect();
                         let n = vals.len();
                         if n == 0 {
-                            Ok(Value::Matrix(Array2::zeros((1, 0))))
+                            Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
                         } else {
-                            Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+                            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
                         }
                     } else {
-                        Ok(Value::Cell(results))
+                        Ok(Value::Cell(Box::new(results)))
                     }
                 }
                 _ => Err("cellfun: second argument must be a cell array".to_string()),
@@ -4762,9 +4762,9 @@ pub(crate) fn call_builtin(
                             }
                         }
                     }
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((m.nrows(), m.ncols()), flat).unwrap(),
-                    ))
+                    )))
                 }
                 Value::Scalar(n) => {
                     let elem = Value::Scalar(*n);
@@ -5056,17 +5056,17 @@ pub(crate) fn call_builtin(
                     if mx.shape() != my.shape() {
                         return Err("xor: matrices must have the same dimensions".to_string());
                     }
-                    Ok(Value::Matrix(ndarray::Zip::from(mx).and(my).map_collect(
+                    Ok(Value::Matrix(Box::new(ndarray::Zip::from(&**mx).and(&**my).map_collect(
                         |a, b| bool_to_f64((*a != 0.0) ^ (*b != 0.0)),
-                    )))
+                    ))))
                 }
                 (Value::Scalar(s), Value::Matrix(m)) => {
                     let sv = *s != 0.0;
-                    Ok(Value::Matrix(m.mapv(|x| bool_to_f64(sv ^ (x != 0.0)))))
+                    Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64(sv ^ (x != 0.0))))))
                 }
                 (Value::Matrix(m), Value::Scalar(s)) => {
                     let sv = *s != 0.0;
-                    Ok(Value::Matrix(m.mapv(|x| bool_to_f64((x != 0.0) ^ sv))))
+                    Ok(Value::Matrix(Box::new(m.mapv(|x| bool_to_f64((x != 0.0) ^ sv)))))
                 }
                 _ => Err("xor: arguments must be numeric".to_string()),
             }
@@ -5115,7 +5115,7 @@ pub(crate) fn call_builtin(
                 .split(delim.as_str())
                 .map(|p| Value::Str(p.to_string()))
                 .collect();
-            Ok(Value::Cell(parts))
+            Ok(Value::Cell(Box::new(parts)))
         }
         // strsplit(s) — split on whitespace
         ("strsplit", 1) => {
@@ -5124,7 +5124,7 @@ pub(crate) fn call_builtin(
                 .split_whitespace()
                 .map(|p| Value::Str(p.to_string()))
                 .collect();
-            Ok(Value::Cell(parts))
+            Ok(Value::Cell(Box::new(parts)))
         }
         // strjoin(c) / strjoin(c, delim) — join a cell array of strings
         ("strjoin", n) if n == 1 || n == 2 => {
@@ -5265,7 +5265,7 @@ pub(crate) fn call_builtin(
                     let f = f.clone();
                     f.0(call_args, io)
                 }
-                Value::Function { .. } => match io {
+                Value::Function(_) => match io {
                     Some(io_ref) => FN_CALL_HOOK.with(|c| match c.get() {
                         Some(hook) => hook("<pcall>", &callable, call_args, env, io_ref),
                         None => Err("pcall: function execution not initialized".to_string()),
@@ -5298,13 +5298,13 @@ pub(crate) fn call_builtin(
         ("eig", 1) => match &args[0] {
             Value::Scalar(n) => {
                 if get_nargout() <= 1 {
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, 1), vec![*n]).unwrap(),
-                    ))
+                    )))
                 } else {
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(Array2::eye(1)),
-                        Value::Matrix(Array2::from_elem((1, 1), *n)),
+                        Value::Matrix(Box::new(Array2::eye(1))),
+                        Value::Matrix(Box::new(Array2::from_elem((1, 1), *n))),
                     ]))
                 }
             }
@@ -5314,14 +5314,14 @@ pub(crate) fn call_builtin(
                 let has_imag = evals.iter().any(|c| c.im.abs() > 1e-14);
                 if get_nargout() <= 1 {
                     if has_imag {
-                        Ok(Value::ComplexMatrix(
+                        Ok(Value::ComplexMatrix(Box::new(
                             Array2::from_shape_vec((nn, 1), evals).unwrap(),
-                        ))
+                        )))
                     } else {
                         let reals: Vec<f64> = evals.iter().map(|c| c.re).collect();
-                        Ok(Value::Matrix(
+                        Ok(Value::Matrix(Box::new(
                             Array2::from_shape_vec((nn, 1), reals).unwrap(),
-                        ))
+                        )))
                     }
                 } else if has_imag {
                     Err("eig: [V,D] form not supported when eigenvalues are complex".to_string())
@@ -5331,7 +5331,7 @@ pub(crate) fn call_builtin(
                     for (i, &e) in reals.iter().enumerate() {
                         d[[i, i]] = e;
                     }
-                    Ok(Value::Tuple(vec![Value::Matrix(evecs), Value::Matrix(d)]))
+                    Ok(Value::Tuple(vec![Value::Matrix(Box::new(evecs)), Value::Matrix(Box::new(d))]))
                 }
             }
             _ => Err("eig: argument must be a real numeric matrix".to_string()),
@@ -5343,14 +5343,14 @@ pub(crate) fn call_builtin(
             Value::Scalar(n) => {
                 let sv = n.abs();
                 if get_nargout() <= 1 {
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, 1), vec![sv]).unwrap(),
-                    ))
+                    )))
                 } else {
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(Array2::eye(1)),
-                        Value::Matrix(Array2::from_elem((1, 1), sv)),
-                        Value::Matrix(Array2::eye(1)),
+                        Value::Matrix(Box::new(Array2::eye(1))),
+                        Value::Matrix(Box::new(Array2::from_elem((1, 1), sv))),
+                        Value::Matrix(Box::new(Array2::eye(1))),
                     ]))
                 }
             }
@@ -5361,7 +5361,7 @@ pub(crate) fn call_builtin(
                 let k = s_v.len();
                 if get_nargout() <= 1 {
                     let col: Vec<f64> = s_v;
-                    Ok(Value::Matrix(Array2::from_shape_vec((k, 1), col).unwrap()))
+                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((k, 1), col).unwrap())))
                 } else {
                     // Full SVD: extend U to m×m, S to m×n.
                     let u_full = complete_orthonormal_basis(&u_c);
@@ -5370,9 +5370,9 @@ pub(crate) fn call_builtin(
                         s_mat[[i, i]] = sv;
                     }
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(u_full),
-                        Value::Matrix(s_mat),
-                        Value::Matrix(v_c),
+                        Value::Matrix(Box::new(u_full)),
+                        Value::Matrix(Box::new(s_mat)),
+                        Value::Matrix(Box::new(v_c)),
                     ]))
                 }
             }
@@ -5387,9 +5387,9 @@ pub(crate) fn call_builtin(
                     s_mat[[i, i]] = sv;
                 }
                 Ok(Value::Tuple(vec![
-                    Value::Matrix(u_c),
-                    Value::Matrix(s_mat),
-                    Value::Matrix(v_c),
+                    Value::Matrix(Box::new(u_c)),
+                    Value::Matrix(Box::new(s_mat)),
+                    Value::Matrix(Box::new(v_c)),
                 ]))
             }
             _ => Err("svd: expected svd(A, 'econ')".to_string()),
@@ -5402,21 +5402,21 @@ pub(crate) fn call_builtin(
                     Ok(Value::Scalar(*n))
                 } else {
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(Array2::eye(1)),
-                        Value::Matrix(Array2::from_elem((1, 1), *n)),
-                        Value::Matrix(Array2::eye(1)),
+                        Value::Matrix(Box::new(Array2::eye(1))),
+                        Value::Matrix(Box::new(Array2::from_elem((1, 1), *n))),
+                        Value::Matrix(Box::new(Array2::eye(1))),
                     ]))
                 }
             }
             Value::Matrix(m) => {
                 let (l, u, p) = lu_decompose(m)?;
                 if get_nargout() <= 1 {
-                    Ok(Value::Matrix(u))
+                    Ok(Value::Matrix(Box::new(u)))
                 } else {
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(l),
-                        Value::Matrix(u),
-                        Value::Matrix(p),
+                        Value::Matrix(Box::new(l)),
+                        Value::Matrix(Box::new(u)),
+                        Value::Matrix(Box::new(p)),
                     ]))
                 }
             }
@@ -5430,20 +5430,20 @@ pub(crate) fn call_builtin(
                     Ok(Value::Scalar(*n))
                 } else {
                     Ok(Value::Tuple(vec![
-                        Value::Matrix(Array2::from_elem(
+                        Value::Matrix(Box::new(Array2::from_elem(
                             (1, 1),
                             if *n >= 0.0 { 1.0 } else { -1.0 },
-                        )),
-                        Value::Matrix(Array2::from_elem((1, 1), n.abs())),
+                        ))),
+                        Value::Matrix(Box::new(Array2::from_elem((1, 1), n.abs()))),
                     ]))
                 }
             }
             Value::Matrix(m) => {
                 let (q, r) = qr_decompose(m)?;
                 if get_nargout() <= 1 {
-                    Ok(Value::Matrix(r))
+                    Ok(Value::Matrix(Box::new(r)))
                 } else {
-                    Ok(Value::Tuple(vec![Value::Matrix(q), Value::Matrix(r)]))
+                    Ok(Value::Tuple(vec![Value::Matrix(Box::new(q)), Value::Matrix(Box::new(r))]))
                 }
             }
             _ => Err("qr: argument must be a real numeric matrix".to_string()),
@@ -5458,7 +5458,7 @@ pub(crate) fn call_builtin(
                     Ok(Value::Scalar(n.sqrt()))
                 }
             }
-            Value::Matrix(m) => Ok(Value::Matrix(chol_decompose(m)?)),
+            Value::Matrix(m) => Ok(Value::Matrix(Box::new(chol_decompose(m)?))),
             _ => Err("chol: argument must be a real numeric matrix".to_string()),
         },
 
@@ -5479,7 +5479,7 @@ pub(crate) fn call_builtin(
 
         // null(A): orthonormal basis for null space of A (columns of V for ~0 singular values).
         ("null", 1) => match &args[0] {
-            Value::Scalar(_) => Ok(Value::Matrix(Array2::zeros((1, 0)))),
+            Value::Scalar(_) => Ok(Value::Matrix(Box::new(Array2::zeros((1, 0))))),
             Value::Matrix(m) => {
                 let nn = m.ncols();
                 let (_, s_v, v_c) = svd_compute(m)?;
@@ -5490,7 +5490,7 @@ pub(crate) fn call_builtin(
                 let r = s_v.iter().filter(|&&s| s > tol).count();
                 let null_k = nn.saturating_sub(r);
                 if null_k == 0 {
-                    return Ok(Value::Matrix(Array2::zeros((nn, 0))));
+                    return Ok(Value::Matrix(Box::new(Array2::zeros((nn, 0)))));
                 }
                 let mut result = Array2::<f64>::zeros((nn, null_k));
                 for j in 0..null_k {
@@ -5501,7 +5501,7 @@ pub(crate) fn call_builtin(
                         }
                     }
                 }
-                Ok(Value::Matrix(result))
+                Ok(Value::Matrix(Box::new(result)))
             }
             _ => Err("null: argument must be a real numeric matrix".to_string()),
         },
@@ -5510,9 +5510,9 @@ pub(crate) fn call_builtin(
         ("orth", 1) => match &args[0] {
             Value::Scalar(x) => {
                 if x.abs() > 1e-15 {
-                    Ok(Value::Matrix(Array2::from_elem((1, 1), 1.0)))
+                    Ok(Value::Matrix(Box::new(Array2::from_elem((1, 1), 1.0))))
                 } else {
-                    Ok(Value::Matrix(Array2::zeros((1, 0))))
+                    Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
                 }
             }
             Value::Matrix(m) => {
@@ -5524,7 +5524,7 @@ pub(crate) fn call_builtin(
                     * 2.0;
                 let r = s_v.iter().filter(|&&s| s > tol).count();
                 if r == 0 {
-                    return Ok(Value::Matrix(Array2::zeros((mm, 0))));
+                    return Ok(Value::Matrix(Box::new(Array2::zeros((mm, 0)))));
                 }
                 let mut result = Array2::<f64>::zeros((mm, r));
                 for j in 0..r {
@@ -5534,7 +5534,7 @@ pub(crate) fn call_builtin(
                         }
                     }
                 }
-                Ok(Value::Matrix(result))
+                Ok(Value::Matrix(Box::new(result)))
             }
             _ => Err("orth: argument must be a real numeric matrix".to_string()),
         },
@@ -5586,7 +5586,7 @@ pub(crate) fn call_builtin(
                         }
                     }
                 }
-                Ok(Value::Matrix(result))
+                Ok(Value::Matrix(Box::new(result)))
             }
             _ => Err("pinv: argument must be a real numeric matrix".to_string()),
         },
@@ -5616,7 +5616,7 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Array2::from_shape_vec((1, n), out).unwrap()))
+                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), out).unwrap())))
                 } else if ncols == 1 {
                     let n = nrows;
                     let shift = n / 2;
@@ -5625,7 +5625,7 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Array2::from_shape_vec((n, 1), out).unwrap()))
+                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), out).unwrap())))
                 } else {
                     let row_shift = nrows / 2;
                     let col_shift = ncols / 2;
@@ -5635,7 +5635,7 @@ pub(crate) fn call_builtin(
                             out[[(i + row_shift) % nrows, (j + col_shift) % ncols]] = m[[i, j]];
                         }
                     }
-                    Ok(Value::Matrix(out))
+                    Ok(Value::Matrix(Box::new(out)))
                 }
             }
             _ => Err("fftshift: argument must be a numeric matrix".to_string()),
@@ -5654,7 +5654,7 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Array2::from_shape_vec((1, n), out).unwrap()))
+                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), out).unwrap())))
                 } else if ncols == 1 {
                     let n = nrows;
                     let shift = n.div_ceil(2);
@@ -5663,7 +5663,7 @@ pub(crate) fn call_builtin(
                     for (i, &x) in data.iter().enumerate() {
                         out[(i + shift) % n] = x;
                     }
-                    Ok(Value::Matrix(Array2::from_shape_vec((n, 1), out).unwrap()))
+                    Ok(Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), out).unwrap())))
                 } else {
                     let row_shift = nrows.div_ceil(2);
                     let col_shift = ncols.div_ceil(2);
@@ -5673,7 +5673,7 @@ pub(crate) fn call_builtin(
                             out[[(i + row_shift) % nrows, (j + col_shift) % ncols]] = m[[i, j]];
                         }
                     }
-                    Ok(Value::Matrix(out))
+                    Ok(Value::Matrix(Box::new(out)))
                 }
             }
             _ => Err("ifftshift: argument must be a numeric matrix".to_string()),
@@ -5707,9 +5707,9 @@ pub(crate) fn call_builtin(
             for k in neg_start..0 {
                 freqs.push(k as f64 * factor);
             }
-            Ok(Value::Matrix(
+            Ok(Value::Matrix(Box::new(
                 Array2::from_shape_vec((1, n), freqs).unwrap(),
-            ))
+            )))
         }
 
         // jsondecode(str) / jsonencode(val)
@@ -5817,10 +5817,10 @@ pub(crate) fn call_builtin(
                         y as f64
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("year: argument must be a datetime".to_string()),
         },
@@ -5837,10 +5837,10 @@ pub(crate) fn call_builtin(
                         mo as f64
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("month: argument must be a datetime".to_string()),
         },
@@ -5857,10 +5857,10 @@ pub(crate) fn call_builtin(
                         d as f64
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("day: argument must be a datetime".to_string()),
         },
@@ -5877,10 +5877,10 @@ pub(crate) fn call_builtin(
                         h as f64
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("hour: argument must be a datetime or duration".to_string()),
         },
@@ -5897,10 +5897,10 @@ pub(crate) fn call_builtin(
                         mi as f64
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("minute: argument must be a datetime or duration".to_string()),
         },
@@ -5917,10 +5917,10 @@ pub(crate) fn call_builtin(
                         s
                     })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("second: argument must be a datetime or duration".to_string()),
         },
@@ -5941,10 +5941,10 @@ pub(crate) fn call_builtin(
                     .iter()
                     .map(|ts| if ts.is_nan() { 1.0 } else { 0.0 })
                     .collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Ok(Value::Scalar(0.0)),
         },
@@ -5954,10 +5954,10 @@ pub(crate) fn call_builtin(
             Value::Duration(s) => Ok(Value::Scalar(*s / 3600.0)),
             Value::DurationArray(v) => {
                 let rows: Vec<f64> = v.iter().map(|s| s / 3600.0).collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => {
                 let s = scalar_arg(&args[0], "hours", 1)?;
@@ -5968,10 +5968,10 @@ pub(crate) fn call_builtin(
             Value::Duration(s) => Ok(Value::Scalar(*s / 60.0)),
             Value::DurationArray(v) => {
                 let rows: Vec<f64> = v.iter().map(|s| s / 60.0).collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => {
                 let s = scalar_arg(&args[0], "minutes", 1)?;
@@ -5982,10 +5982,10 @@ pub(crate) fn call_builtin(
             Value::Duration(s) => Ok(Value::Scalar(*s)),
             Value::DurationArray(v) => {
                 let rows = v.to_vec();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => {
                 let s = scalar_arg(&args[0], "seconds", 1)?;
@@ -5996,10 +5996,10 @@ pub(crate) fn call_builtin(
             Value::Duration(s) => Ok(Value::Scalar(*s / 86400.0)),
             Value::DurationArray(v) => {
                 let rows: Vec<f64> = v.iter().map(|s| s / 86400.0).collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => {
                 let s = scalar_arg(&args[0], "days", 1)?;
@@ -6010,10 +6010,10 @@ pub(crate) fn call_builtin(
             Value::Duration(s) => Ok(Value::Scalar(*s * 1000.0)),
             Value::DurationArray(v) => {
                 let rows: Vec<f64> = v.iter().map(|s| s * 1000.0).collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => {
                 let s = scalar_arg(&args[0], "milliseconds", 1)?;
@@ -6024,10 +6024,10 @@ pub(crate) fn call_builtin(
             Value::Duration(s) => Ok(Value::Scalar(*s / (365.2425 * 86400.0))),
             Value::DurationArray(v) => {
                 let rows: Vec<f64> = v.iter().map(|s| s / (365.2425 * 86400.0)).collect();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((rows.len(), 1), rows)
                         .map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => {
                 let s = scalar_arg(&args[0], "years", 1)?;
@@ -6048,13 +6048,13 @@ pub(crate) fn call_builtin(
                 let s = crate::datetime::format_datestr(*ts, "dd-MMM-yyyy HH:mm:ss");
                 Ok(Value::Str(s))
             }
-            Value::DateTimeArray(v) => Ok(Value::Cell(
+            Value::DateTimeArray(v) => Ok(Value::Cell(Box::new(
                 v.iter()
                     .map(|ts| {
                         Value::Str(crate::datetime::format_datestr(*ts, "dd-MMM-yyyy HH:mm:ss"))
                     })
                     .collect(),
-            )),
+            ))),
             _ => Err("datestr: argument must be a datetime".to_string()),
         },
         ("datestr", 2) => {
@@ -6066,11 +6066,11 @@ pub(crate) fn call_builtin(
                 Value::DateTime(ts) => {
                     Ok(Value::Str(crate::datetime::format_datestr(*ts, &fmt_str)))
                 }
-                Value::DateTimeArray(v) => Ok(Value::Cell(
+                Value::DateTimeArray(v) => Ok(Value::Cell(Box::new(
                     v.iter()
                         .map(|ts| Value::Str(crate::datetime::format_datestr(*ts, &fmt_str)))
                         .collect(),
-                )),
+                ))),
                 _ => Err("datestr: first argument must be a datetime".to_string()),
             }
         }
@@ -6086,9 +6086,9 @@ pub(crate) fn call_builtin(
                     mi as f64,
                     sec_i as f64,
                 ];
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     ndarray::Array2::from_shape_vec((1, 6), data).map_err(|e| e.to_string())?,
-                ))
+                )))
             }
             _ => Err("datevec: argument must be a datetime".to_string()),
         },
@@ -6125,19 +6125,19 @@ pub(crate) fn call_builtin(
                     // Row vector → diff along columns
                     let data: Vec<f64> =
                         (0..ncols - 1).map(|j| m[[0, j + 1]] - m[[0, j]]).collect();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         ndarray::Array2::from_shape_vec((1, data.len()), data)
                             .map_err(|e| e.to_string())?,
-                    ))
+                    )))
                 } else if nrows > 1 {
                     // Column vector or matrix → diff along rows
                     let data: Vec<f64> = (0..nrows - 1)
                         .flat_map(|i| (0..ncols).map(move |j| m[[i + 1, j]] - m[[i, j]]))
                         .collect();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         ndarray::Array2::from_shape_vec((nrows - 1, ncols), data)
                             .map_err(|e| e.to_string())?,
-                    ))
+                    )))
                 } else {
                     Err("diff: input must have at least 2 elements".to_string())
                 }
@@ -6213,7 +6213,7 @@ pub(crate) fn call_builtin(
                 let rm = *rm as usize;
                 let cn = *cn as usize;
                 if rm == 0 || cn == 0 {
-                    return Ok(Value::Matrix(Array2::zeros((0, 0))));
+                    return Ok(Value::Matrix(Box::new(Array2::zeros((0, 0)))));
                 }
                 let row_tile: Vec<Array2<f64>> = std::iter::repeat_n(a.view(), cn)
                     .map(|v| v.to_owned())
@@ -6231,12 +6231,12 @@ pub(crate) fn call_builtin(
                     &col_tiles.iter().map(|m| m.view()).collect::<Vec<_>>(),
                 )
                 .map_err(|e| e.to_string())?;
-                Ok(Value::Matrix(result))
+                Ok(Value::Matrix(Box::new(result)))
             }
             (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => {
                 let rm = *rm as usize;
                 let cn = *cn as usize;
-                Ok(Value::Matrix(Array2::from_elem((rm, cn), *s)))
+                Ok(Value::Matrix(Box::new(Array2::from_elem((rm, cn), *s))))
             }
             _ => Err("repmat: expects (matrix, m, n)".to_string()),
         },
@@ -6256,10 +6256,10 @@ pub(crate) fn call_builtin(
                         }
                     }
                 }
-                Ok(Value::Matrix(result))
+                Ok(Value::Matrix(Box::new(result)))
             }
-            (Value::Scalar(s), Value::Matrix(b)) => Ok(Value::Matrix(b.mapv(|x| x * s))),
-            (Value::Matrix(a), Value::Scalar(s)) => Ok(Value::Matrix(a.mapv(|x| x * s))),
+            (Value::Scalar(s), Value::Matrix(b)) => Ok(Value::Matrix(Box::new(b.mapv(|x| x * s)))),
+            (Value::Matrix(a), Value::Scalar(s)) => Ok(Value::Matrix(Box::new(a.mapv(|x| x * s)))),
             (Value::Scalar(a), Value::Scalar(b)) => Ok(Value::Scalar(a * b)),
             _ => Err("kron: arguments must be numeric matrices".to_string()),
         },
@@ -6272,11 +6272,11 @@ pub(crate) fn call_builtin(
             let y_mat = Array2::from_shape_fn((n, n), |(r, _c)| xv[r]);
             if get_nargout() >= 2 {
                 Ok(Value::Tuple(vec![
-                    Value::Matrix(x_mat),
-                    Value::Matrix(y_mat),
+                    Value::Matrix(Box::new(x_mat)),
+                    Value::Matrix(Box::new(y_mat)),
                 ]))
             } else {
-                Ok(Value::Matrix(x_mat))
+                Ok(Value::Matrix(Box::new(x_mat)))
             }
         }
         ("meshgrid", 2) => {
@@ -6288,11 +6288,11 @@ pub(crate) fn call_builtin(
             let y_mat = Array2::from_shape_fn((n_rows, n_cols), |(r, _c)| yv[r]);
             if get_nargout() >= 2 {
                 Ok(Value::Tuple(vec![
-                    Value::Matrix(x_mat),
-                    Value::Matrix(y_mat),
+                    Value::Matrix(Box::new(x_mat)),
+                    Value::Matrix(Box::new(y_mat)),
                 ]))
             } else {
-                Ok(Value::Matrix(x_mat))
+                Ok(Value::Matrix(Box::new(x_mat)))
             }
         }
 
@@ -6329,7 +6329,7 @@ pub(crate) fn call_builtin(
                 }
                 _ => Array2::from_shape_vec((3, 1), vec![cx, cy, cz]).unwrap(),
             };
-            Ok(Value::Matrix(result))
+            Ok(Value::Matrix(Box::new(result)))
         }
 
         ("dot", 2) => {
@@ -6384,11 +6384,11 @@ pub(crate) fn call_builtin(
             }
             let n = result.len();
             if n == 0 {
-                Ok(Value::Matrix(Array2::zeros((1, 0))))
+                Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             } else {
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, n), result).unwrap(),
-                ))
+                )))
             }
         }
 
@@ -6411,11 +6411,11 @@ pub(crate) fn call_builtin(
             }
             let n = result.len();
             if n == 0 {
-                Ok(Value::Matrix(Array2::zeros((1, 0))))
+                Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             } else {
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, n), result).unwrap(),
-                ))
+                )))
             }
         }
 
@@ -6447,11 +6447,11 @@ pub(crate) fn call_builtin(
             }
             let n = result.len();
             if n == 0 {
-                Ok(Value::Matrix(Array2::zeros((1, 0))))
+                Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))))
             } else {
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, n), result).unwrap(),
-                ))
+                )))
             }
         }
 
@@ -6485,9 +6485,9 @@ pub(crate) fn call_builtin(
                         })
                         .collect();
                     let shape = m.raw_dim();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec(shape, result).unwrap(),
-                    ))
+                    )))
                 }
                 _ => Err("ismember: first argument must be numeric".to_string()),
             }
@@ -6524,7 +6524,7 @@ pub(crate) fn call_builtin(
                     .map(|(&ri, &ci)| ((ci as usize - 1) * rows + ri as usize) as f64)
                     .collect();
                 let n = vals.len();
-                Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
             }
         }
 
@@ -6557,8 +6557,8 @@ pub(crate) fn call_builtin(
                     .iter()
                     .map(|&idx| ((idx as usize - 1) / rows + 1) as f64)
                     .collect();
-                let rm = Value::Matrix(Array2::from_shape_vec((1, n), rs).unwrap());
-                let cm = Value::Matrix(Array2::from_shape_vec((1, n), cs).unwrap());
+                let rm = Value::Matrix(Box::new(Array2::from_shape_vec((1, n), rs).unwrap()));
+                let cm = Value::Matrix(Box::new(Array2::from_shape_vec((1, n), cs).unwrap()));
                 Ok(Value::Tuple(vec![rm, cm]))
             }
         }
@@ -6568,9 +6568,9 @@ pub(crate) fn call_builtin(
                 let n = *n as usize;
                 let flat: Vec<f64> = a.iter().flat_map(|&x| std::iter::repeat_n(x, n)).collect();
                 let total = flat.len();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, total), flat).unwrap(),
-                ))
+                )))
             }
             (Value::Matrix(a), Value::Matrix(ns)) => {
                 let av: Vec<f64> = a.iter().copied().collect();
@@ -6586,13 +6586,13 @@ pub(crate) fn call_builtin(
                     .flat_map(|(&x, &n)| std::iter::repeat_n(x, n as usize))
                     .collect();
                 let total = flat.len();
-                Ok(Value::Matrix(
+                Ok(Value::Matrix(Box::new(
                     Array2::from_shape_vec((1, total), flat).unwrap(),
-                ))
+                )))
             }
             (Value::Scalar(s), Value::Scalar(n)) => {
                 let n = *n as usize;
-                Ok(Value::Matrix(Array2::from_elem((1, n), *s)))
+                Ok(Value::Matrix(Box::new(Array2::from_elem((1, n), *s))))
             }
             _ => Err("repelem: unsupported argument types".to_string()),
         },
@@ -6612,11 +6612,11 @@ pub(crate) fn call_builtin(
                         }
                     }
                 }
-                Ok(Value::Matrix(result))
+                Ok(Value::Matrix(Box::new(result)))
             }
-            (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => Ok(Value::Matrix(
+            (Value::Scalar(s), Value::Scalar(rm), Value::Scalar(cn)) => Ok(Value::Matrix(Box::new(
                 Array2::from_elem((*rm as usize, *cn as usize), *s),
-            )),
+            ))),
             _ => Err("repelem: expects (matrix, m, n) for 2D repetition".to_string()),
         },
 
@@ -6628,7 +6628,7 @@ pub(crate) fn call_builtin(
             }
             match &args[1] {
                 Value::Scalar(x) => Ok(Value::Scalar(horner(&coeffs, *x))),
-                Value::Matrix(m) => Ok(Value::Matrix(m.mapv(|x| horner(&coeffs, x)))),
+                Value::Matrix(m) => Ok(Value::Matrix(Box::new(m.mapv(|x| horner(&coeffs, x))))),
                 _ => Err("polyval: second argument must be a real numeric value".to_string()),
             }
         }
@@ -6678,7 +6678,7 @@ pub(crate) fn call_builtin(
             let coeffs = poly_back_sub(&r_sq, &qty)?;
             let result = Array2::from_shape_vec((1, ncols), coeffs)
                 .map_err(|e| format!("polyfit: internal error: {e}"))?;
-            Ok(Value::Matrix(result))
+            Ok(Value::Matrix(Box::new(result)))
         }
 
         ("roots", 1) => {
@@ -6687,7 +6687,7 @@ pub(crate) fn call_builtin(
             let start = raw.iter().position(|&c| c != 0.0).unwrap_or(raw.len());
             let coeffs = &raw[start..];
             if coeffs.len() <= 1 {
-                return Ok(Value::Matrix(Array2::zeros((0, 1))));
+                return Ok(Value::Matrix(Box::new(Array2::zeros((0, 1)))));
             }
             let roots = durand_kerner(coeffs)?;
             Ok(roots_to_value(&roots))
@@ -6696,7 +6696,7 @@ pub(crate) fn call_builtin(
         ("poly", 1) => match &args[0] {
             Value::Scalar(r) => {
                 let data = vec![1.0, -*r];
-                Ok(Value::Matrix(Array2::from_shape_vec((1, 2), data).unwrap()))
+                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, 2), data).unwrap())))
             }
             Value::Matrix(m) => {
                 if m.nrows() == 1 || m.ncols() == 1 {
@@ -6711,16 +6711,16 @@ pub(crate) fn call_builtin(
                         p = poly_conv(&p, &[1.0, -r]);
                     }
                     let ncols = p.len();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, ncols), p).unwrap(),
-                    ))
+                    )))
                 } else {
                     // Square matrix: characteristic polynomial via Faddeev-LeVerrier
                     let coeffs = characteristic_poly(m)?;
                     let ncols = coeffs.len();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         Array2::from_shape_vec((1, ncols), coeffs).unwrap(),
-                    ))
+                    )))
                 }
             }
             _ => Err("poly: argument must be a numeric vector or square matrix".to_string()),
@@ -6731,11 +6731,11 @@ pub(crate) fn call_builtin(
             let a = poly_coeffs(&args[0], "conv")?;
             let b = poly_coeffs(&args[1], "conv")?;
             if a.is_empty() || b.is_empty() {
-                return Ok(Value::Matrix(Array2::zeros((1, 0))));
+                return Ok(Value::Matrix(Box::new(Array2::zeros((1, 0)))));
             }
             let c = poly_conv(&a, &b);
             let len = c.len();
-            Ok(Value::Matrix(Array2::from_shape_vec((1, len), c).unwrap()))
+            Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, len), c).unwrap())))
         }
 
         ("deconv", 2) => {
@@ -6744,8 +6744,8 @@ pub(crate) fn call_builtin(
             let (q, r) = poly_deconv(&c, &b)?;
             let qn = q.len();
             let rn = r.len();
-            let q_val = Value::Matrix(Array2::from_shape_vec((1, qn), q).unwrap());
-            let r_val = Value::Matrix(Array2::from_shape_vec((1, rn), r).unwrap());
+            let q_val = Value::Matrix(Box::new(Array2::from_shape_vec((1, qn), q).unwrap()));
+            let r_val = Value::Matrix(Box::new(Array2::from_shape_vec((1, rn), r).unwrap()));
             Ok(Value::Tuple(vec![q_val, r_val]))
         }
 
@@ -6760,9 +6760,9 @@ pub(crate) fn call_builtin(
             }
             match &args[2] {
                 Value::Scalar(xi) => Ok(Value::Scalar(interp1_at(&xv, &yv, *xi, "linear"))),
-                Value::Matrix(xi_m) => Ok(Value::Matrix(
+                Value::Matrix(xi_m) => Ok(Value::Matrix(Box::new(
                     xi_m.mapv(|xi| interp1_at(&xv, &yv, xi, "linear")),
-                )),
+                ))),
                 _ => Err("interp1: query points must be numeric".to_string()),
             }
         }
@@ -6789,9 +6789,9 @@ pub(crate) fn call_builtin(
                 Value::Scalar(xi) => Ok(Value::Scalar(interp1_at(&xv, &yv, *xi, &method))),
                 Value::Matrix(xi_m) => {
                     let m_str = method.as_str();
-                    Ok(Value::Matrix(
+                    Ok(Value::Matrix(Box::new(
                         xi_m.mapv(|xi| interp1_at(&xv, &yv, xi, m_str)),
-                    ))
+                    )))
                 }
                 _ => Err("interp1: query points must be numeric".to_string()),
             }
@@ -6870,7 +6870,7 @@ fn dlmread_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, Str
     let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
 
     if lines.is_empty() {
-        return Ok(Value::Matrix(Array2::zeros((0, 0))));
+        return Ok(Value::Matrix(Box::new(Array2::zeros((0, 0)))));
     }
 
     // Determine delimiter: explicit → auto-detect (comma → tab → whitespace)
@@ -6913,7 +6913,7 @@ fn dlmread_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, Str
     }
 
     if rows.is_empty() {
-        return Ok(Value::Matrix(Array2::zeros((0, 0))));
+        return Ok(Value::Matrix(Box::new(Array2::zeros((0, 0)))));
     }
 
     let ncols = rows[0].len();
@@ -6931,7 +6931,7 @@ fn dlmread_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, Str
     let flat: Vec<f64> = rows.into_iter().flatten().collect();
     Array2::from_shape_vec((nrows, ncols), flat)
         .map_err(|e| format!("dlmread: shape error: {e}"))
-        .map(Value::Matrix)
+        .map(|m| Value::Matrix(Box::new(m)))
 }
 
 /// Formats one f64 value for use in a delimited file.
@@ -7123,7 +7123,7 @@ fn readmatrix_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, 
 
     let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.is_empty() {
-        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+        return Ok(Value::Matrix(Box::new(Array2::<f64>::zeros((0, 0)))));
     }
 
     let delim = match explicit_delim {
@@ -7136,7 +7136,7 @@ fn readmatrix_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, 
     let data_lines = if skip_header { &lines[1..] } else { &lines[..] };
 
     if data_lines.is_empty() {
-        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+        return Ok(Value::Matrix(Box::new(Array2::<f64>::zeros((0, 0)))));
     }
 
     let mut rows: Vec<Vec<f64>> = Vec::new();
@@ -7160,7 +7160,7 @@ fn readmatrix_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, 
     }
 
     if rows.is_empty() {
-        return Ok(Value::Matrix(Array2::<f64>::zeros((0, 0))));
+        return Ok(Value::Matrix(Box::new(Array2::<f64>::zeros((0, 0)))));
     }
 
     let ncols = rows[0].len();
@@ -7178,7 +7178,7 @@ fn readmatrix_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, 
     let flat: Vec<f64> = rows.into_iter().flatten().collect();
     Array2::from_shape_vec((nrows, ncols), flat)
         .map_err(|e| format!("readmatrix: shape error: {e}"))
-        .map(Value::Matrix)
+        .map(|m| Value::Matrix(Box::new(m)))
 }
 
 /// Reads a delimiter-separated file with a header row and returns a [`Value::Struct`] of columns.
@@ -7192,7 +7192,7 @@ fn readtable_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, S
 
     let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
     if lines.is_empty() {
-        return Ok(Value::Struct(IndexMap::new()));
+        return Ok(Value::Struct(Box::new(IndexMap::new())));
     }
 
     let delim = match explicit_delim {
@@ -7214,9 +7214,9 @@ fn readtable_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, S
     if data_lines.is_empty() {
         let mut s: IndexMap<String, Value> = IndexMap::new();
         for h in &headers {
-            s.insert(h.clone(), Value::Matrix(Array2::<f64>::zeros((0, 1))));
+            s.insert(h.clone(), Value::Matrix(Box::new(Array2::<f64>::zeros((0, 1)))));
         }
-        return Ok(Value::Struct(s));
+        return Ok(Value::Struct(Box::new(s)));
     }
 
     let mut all_rows: Vec<Vec<String>> = Vec::new();
@@ -7253,16 +7253,16 @@ fn readtable_impl(path: &str, explicit_delim: Option<String>) -> Result<Value, S
                 .collect();
             let col_mat = Array2::from_shape_vec((nrows, 1), vals)
                 .map_err(|e| format!("readtable: shape error: {e}"))?;
-            s.insert(headers[col].clone(), Value::Matrix(col_mat));
+            s.insert(headers[col].clone(), Value::Matrix(Box::new(col_mat)));
         } else {
             let vals: Vec<Value> = all_rows
                 .iter()
                 .map(|row| Value::Str(row[col].clone()))
                 .collect();
-            s.insert(headers[col].clone(), Value::Cell(vals));
+            s.insert(headers[col].clone(), Value::Cell(Box::new(vals)));
         }
     }
-    Ok(Value::Struct(s))
+    Ok(Value::Struct(Box::new(s)))
 }
 
 /// Quotes a CSV cell if it contains the delimiter, a double-quote, or a newline (RFC 4180).
@@ -7445,7 +7445,7 @@ fn dir_impl(path_arg: &str) -> Value {
     }
 
     let Ok(rd) = std::fs::read_dir(&dir_path) else {
-        return Value::StructArray(vec![]);
+        return Value::StructArray(Box::new(vec![]));
     };
 
     let mut file_rows: Vec<(String, IndexMap<String, Value>)> = rd
@@ -7473,7 +7473,7 @@ fn dir_impl(path_arg: &str) -> Value {
 
     file_rows.sort_by(|a, b| a.0.cmp(&b.0));
     entries.extend(file_rows.into_iter().map(|(_, row)| row));
-    Value::StructArray(entries)
+    Value::StructArray(Box::new(entries))
 }
 
 /// Converts an f64 to u64 for bitwise operations.
@@ -8094,7 +8094,7 @@ fn make_containers_map(
     io: Option<&mut IoContext>,
 ) -> Result<Value, String> {
     if args.is_empty() {
-        return Ok(Value::Map(IndexMap::new()));
+        return Ok(Value::Map(Box::new(IndexMap::new())));
     }
     if args.len() != 2 {
         return Err(
@@ -8127,6 +8127,8 @@ fn make_containers_map(
             values.len()
         ));
     }
+    let keys = *keys;
+    let values = *values;
     let mut map = IndexMap::new();
     for (k, v) in keys.into_iter().zip(values) {
         let key = match k {
@@ -8135,7 +8137,7 @@ fn make_containers_map(
         };
         map.insert(key, v);
     }
-    Ok(Value::Map(map))
+    Ok(Value::Map(Box::new(map)))
 }
 
 fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
@@ -8145,7 +8147,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
             // v(i), v(1:3), v(:), v(end), v(end-1:end)
             match val {
                 Value::Void => Err("Cannot index into void".to_string()),
-                Value::Lambda(_) | Value::Function { .. } | Value::Tuple(_) => {
+                Value::Lambda(_) | Value::Function(_) | Value::Tuple(_) => {
                     Err("Cannot index into a function value".to_string())
                 }
                 Value::Cell(_) => Err("Use c{i} to index into a cell array, not c(i)".to_string()),
@@ -8186,7 +8188,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                         total
                                     ));
                                 }
-                                Ok(Value::Struct(arr[i].clone()))
+                                Ok(Value::Struct(Box::new(arr[i].clone())))
                             } else {
                                 let mut selected = Vec::with_capacity(idxs.len());
                                 for &i in &idxs {
@@ -8199,7 +8201,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                     }
                                     selected.push(arr[i].clone());
                                 }
-                                Ok(Value::StructArray(selected))
+                                Ok(Value::StructArray(Box::new(selected)))
                             }
                         }
                     }
@@ -8246,9 +8248,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                     flat.push(m[[row, col]]);
                                 }
                             }
-                            Ok(Value::ComplexMatrix(
+                            Ok(Value::ComplexMatrix(Box::new(
                                 Array2::from_shape_vec((total, 1), flat).unwrap(),
-                            ))
+                            )))
                         }
                         DimIdx::Indices(idxs) => {
                             let nrows = m.nrows();
@@ -8271,9 +8273,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                 Ok(make_complex(c.re, c.im))
                             } else {
                                 let n = vals.len();
-                                Ok(Value::ComplexMatrix(
+                                Ok(Value::ComplexMatrix(Box::new(
                                     Array2::from_shape_vec((1, n), vals).unwrap(),
-                                ))
+                                )))
                             }
                         }
                     }
@@ -8296,9 +8298,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                     flat.push(m[[row, col]]);
                                 }
                             }
-                            Ok(Value::Matrix(
+                            Ok(Value::Matrix(Box::new(
                                 Array2::from_shape_vec((total, 1), flat).unwrap(),
-                            ))
+                            )))
                         }
                         DimIdx::Indices(idxs) => {
                             // Column-major linear indexing
@@ -8322,7 +8324,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                 Ok(Value::Scalar(vals[0]))
                             } else {
                                 let n = vals.len();
-                                Ok(Value::Matrix(Array2::from_shape_vec((1, n), vals).unwrap()))
+                                Ok(Value::Matrix(Box::new(Array2::from_shape_vec((1, n), vals).unwrap())))
                             }
                         }
                     }
@@ -8345,9 +8347,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                 Ok(Value::Scalar(codes[0]))
                             } else {
                                 let n = codes.len();
-                                Ok(Value::Matrix(
+                                Ok(Value::Matrix(Box::new(
                                     Array2::from_shape_vec((1, n), codes).unwrap(),
-                                ))
+                                )))
                             }
                         }
                         DimIdx::Indices(idxs) => {
@@ -8480,7 +8482,7 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                     | Value::Str(_)
                     | Value::StringObj(_)
                     | Value::Lambda(_)
-                    | Value::Function { .. }
+                    | Value::Function(_)
                     | Value::Tuple(_)
                     | Value::Cell(_)
                     | Value::Struct(_)
@@ -8545,9 +8547,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                             .iter()
                             .flat_map(|&r| cols.iter().map(move |&c| m[[r, c]]))
                             .collect();
-                        Ok(Value::ComplexMatrix(
+                        Ok(Value::ComplexMatrix(Box::new(
                             Array2::from_shape_vec((out_r, out_c), flat).unwrap(),
-                        ))
+                        )))
                     }
                     _ => {
                         let flat: Vec<f64> = rows
@@ -8561,9 +8563,9 @@ fn eval_index(val: &Value, args: &[Expr], env: &Env) -> Result<Value, String> {
                                 })
                             })
                             .collect();
-                        Ok(Value::Matrix(
+                        Ok(Value::Matrix(Box::new(
                             Array2::from_shape_vec((out_r, out_c), flat).unwrap(),
-                        ))
+                        )))
                     }
                 }
             }
@@ -8627,7 +8629,7 @@ fn resolve_dim(expr: &Expr, dim_size: usize, env: &Env) -> Result<DimIdx, String
             return Err("Index must be real, not a complex matrix".to_string());
         }
         Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::Cell(_)
         | Value::Struct(_)
@@ -8823,14 +8825,12 @@ pub fn format_value(v: &Value, base: Base, mode: &FormatMode) -> String {
         Value::Str(s) => s.clone(),
         Value::StringObj(s) => s.clone(),
         Value::Lambda(lf) => lf.1.clone(),
-        Value::Function {
-            params, outputs, ..
-        } => {
-            let params_str = params.join(", ");
-            let out_str = match outputs.len() {
+        Value::Function(fd) => {
+            let params_str = fd.params.join(", ");
+            let out_str = match fd.outputs.len() {
                 0 => String::new(),
-                1 => format!("{} = ", outputs[0]),
-                _ => format!("[{}] = ", outputs.join(", ")),
+                1 => format!("{} = ", fd.outputs[0]),
+                _ => format!("[{}] = ", fd.outputs.join(", ")),
             };
             format!("@function {out_str}f({params_str})")
         }
@@ -8859,7 +8859,7 @@ pub fn format_value_full(v: &Value, mode: &FormatMode) -> Option<String> {
         | Value::Str(_)
         | Value::StringObj(_)
         | Value::Lambda(_)
-        | Value::Function { .. }
+        | Value::Function(_)
         | Value::Tuple(_)
         | Value::DateTime(_)
         | Value::Duration(_) => None,
@@ -9312,11 +9312,11 @@ fn regexp_impl(
             .find_iter(s)
             .map(|m| Value::Str(m.as_str().to_string()))
             .collect();
-        Ok(Value::Cell(matches))
+        Ok(Value::Cell(Box::new(matches)))
     } else {
         match re.find(s) {
             Some(m) => Ok(Value::Scalar((s[..m.start()].chars().count() + 1) as f64)),
-            None => Ok(Value::Matrix(Array2::zeros((0, 0)))),
+            None => Ok(Value::Matrix(Box::new(Array2::zeros((0, 0))))),
         }
     }
 }
@@ -9368,13 +9368,13 @@ fn extract_real_vec(v: &Value, name: &str) -> Result<Vec<f64>, String> {
 fn complex_pairs_to_complex_matrix(data: Vec<(f64, f64)>) -> Value {
     let n = data.len();
     if n == 0 {
-        return Value::ComplexMatrix(Array2::zeros((1, 0)));
+        return Value::ComplexMatrix(Box::new(Array2::zeros((1, 0))));
     }
     let elems: Vec<Complex<f64>> = data
         .into_iter()
         .map(|(re, im)| Complex::new(re, im))
         .collect();
-    Value::ComplexMatrix(Array2::from_shape_vec((1, n), elems).unwrap())
+    Value::ComplexMatrix(Box::new(Array2::from_shape_vec((1, n), elems).unwrap()))
 }
 
 /// Extracts a flat complex vector from a [`Value::ComplexMatrix`], `Cell`, or real matrix.
@@ -9422,15 +9422,15 @@ fn fft_call(_v: &Value, _n_opt: Option<usize>) -> Result<Value, String> {
 fn ifft_call(v: &Value) -> Result<Value, String> {
     let complex = extract_complex_vec(v, "ifft")?;
     if complex.is_empty() {
-        return Ok(Value::Matrix(ndarray::Array2::zeros((1, 0))));
+        return Ok(Value::Matrix(Box::new(ndarray::Array2::zeros((1, 0)))));
     }
     let out = crate::fft::fft_inverse(&complex);
     if out.iter().all(|(_, im)| im.abs() < 1e-12) {
         let real: Vec<f64> = out.iter().map(|(re, _)| *re).collect();
         let n = real.len();
-        Ok(Value::Matrix(
+        Ok(Value::Matrix(Box::new(
             ndarray::Array2::from_shape_vec((1, n), real).unwrap(),
-        ))
+        )))
     } else {
         Ok(complex_pairs_to_complex_matrix(out))
     }
@@ -9642,7 +9642,7 @@ fn roots_to_value(roots: &[(f64, f64)]) -> Value {
     if all_real {
         let data: Vec<f64> = roots.iter().map(|(re, _)| *re).collect();
         let n = data.len();
-        Value::Matrix(Array2::from_shape_vec((n, 1), data).unwrap())
+        Value::Matrix(Box::new(Array2::from_shape_vec((n, 1), data).unwrap()))
     } else {
         let vals: Vec<Value> = roots
             .iter()
@@ -9654,7 +9654,7 @@ fn roots_to_value(roots: &[(f64, f64)]) -> Value {
                 }
             })
             .collect();
-        Value::Cell(vals)
+        Value::Cell(Box::new(vals))
     }
 }
 

@@ -907,11 +907,10 @@ pub fn run() {
 
             // help <topic>
             if let Some(topic) = stmt.strip_prefix("help ").map(str::trim) {
-                let doc = if let Some(Value::Function { doc: Some(d), .. }) = env.get(topic) {
-                    Some(d.clone())
-                } else if let Some(Value::Function { doc: Some(d), .. }) = resolve_autoloaded(topic)
-                {
-                    Some(d)
+                let doc = if let Some(Value::Function(fd)) = env.get(topic) {
+                    fd.doc.clone()
+                } else if let Some(Value::Function(fd)) = resolve_autoloaded(topic) {
+                    fd.doc.clone()
                 } else {
                     None
                 };
@@ -960,7 +959,7 @@ pub fn run() {
                         {
                             match load_mat_file(p) {
                                 Ok(Value::Struct(fields)) => {
-                                    for (k, v) in fields {
+                                    for (k, v) in *fields {
                                         env.insert(k, v);
                                     }
                                     println!("Workspace loaded.");
@@ -1062,14 +1061,12 @@ pub fn run() {
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
                                 Value::Lambda(lf) => println!("{name} = {}", lf.1),
-                                Value::Function {
-                                    params, outputs, ..
-                                } => {
-                                    let p = params.join(", ");
-                                    let out = match outputs.len() {
+                                    Value::Function(fd) => {
+                                        let p = fd.params.join(", ");
+                                        let out = match fd.outputs.len() {
                                         0 => String::new(),
-                                        1 => format!("{} = ", outputs[0]),
-                                        _ => format!("[{}] = ", outputs.join(", ")),
+                                        1 => format!("{} = ", fd.outputs[0]),
+                                        _ => format!("[{}] = ", fd.outputs.join(", ")),
                                     };
                                     println!("{name} = @function {out}{name}({p})");
                                 }
@@ -1153,14 +1150,12 @@ pub fn run() {
                                         }
                                     }
                                     Value::Lambda(lf) => println!("{}", lf.1),
-                                    Value::Function {
-                                        params, outputs, ..
-                                    } => {
-                                        let p = params.join(", ");
-                                        let out = match outputs.len() {
+                                        Value::Function(fd) => {
+                                            let p = fd.params.join(", ");
+                                            let out = match fd.outputs.len() {
                                             0 => String::new(),
-                                            1 => format!("{} = ", outputs[0]),
-                                            _ => format!("[{}] = ", outputs.join(", ")),
+                                            1 => format!("{} = ", fd.outputs[0]),
+                                            _ => format!("[{}] = ", fd.outputs.join(", ")),
                                         };
                                         println!("@function {out}f({p})");
                                     }
@@ -1265,14 +1260,12 @@ pub fn run_expr(expr: &str) {
                 Value::Str(s) => println!("{name} = {s}"),
                 Value::StringObj(s) => println!("{name} = {s}"),
                 Value::Lambda(lf) => println!("{name} = {}", lf.1),
-                Value::Function {
-                    params, outputs, ..
-                } => {
-                    let p = params.join(", ");
-                    let out = match outputs.len() {
+                    Value::Function(fd) => {
+                        let p = fd.params.join(", ");
+                        let out = match fd.outputs.len() {
                         0 => String::new(),
-                        1 => format!("{} = ", outputs[0]),
-                        _ => format!("[{}] = ", outputs.join(", ")),
+                        1 => format!("{} = ", fd.outputs[0]),
+                        _ => format!("[{}] = ", fd.outputs.join(", ")),
                     };
                     println!("{name} = @function {out}{name}({p})");
                 }
@@ -1330,14 +1323,12 @@ pub fn run_expr(expr: &str) {
                         }
                     }
                     Value::Lambda(lf) => println!("{}", lf.1),
-                    Value::Function {
-                        params, outputs, ..
-                    } => {
-                        let p = params.join(", ");
-                        let out = match outputs.len() {
+                        Value::Function(fd) => {
+                            let p = fd.params.join(", ");
+                            let out = match fd.outputs.len() {
                             0 => String::new(),
-                            1 => format!("{} = ", outputs[0]),
-                            _ => format!("[{}] = ", outputs.join(", ")),
+                            1 => format!("{} = ", fd.outputs[0]),
+                            _ => format!("[{}] = ", fd.outputs.join(", ")),
                         };
                         println!("@function {out}f({p})");
                     }
@@ -1815,7 +1806,7 @@ pub fn run_pipe(reader: impl BufRead) {
                         {
                             match load_mat_file(p) {
                                 Ok(Value::Struct(fields)) => {
-                                    for (k, v) in fields {
+                                    for (k, v) in *fields {
                                         env.insert(k, v);
                                     }
                                 }
@@ -1893,14 +1884,12 @@ pub fn run_pipe(reader: impl BufRead) {
                                 Value::Str(s) => println!("{name} = {s}"),
                                 Value::StringObj(s) => println!("{name} = {s}"),
                                 Value::Lambda(lf) => println!("{name} = {}", lf.1),
-                                Value::Function {
-                                    params, outputs, ..
-                                } => {
-                                    let p = params.join(", ");
-                                    let out = match outputs.len() {
+                                    Value::Function(fd) => {
+                                        let p = fd.params.join(", ");
+                                        let out = match fd.outputs.len() {
                                         0 => String::new(),
-                                        1 => format!("{} = ", outputs[0]),
-                                        _ => format!("[{}] = ", outputs.join(", ")),
+                                        1 => format!("{} = ", fd.outputs[0]),
+                                        _ => format!("[{}] = ", fd.outputs.join(", ")),
                                     };
                                     println!("{name} = @function {out}{name}({p})");
                                 }
@@ -1981,14 +1970,12 @@ pub fn run_pipe(reader: impl BufRead) {
                                         }
                                     }
                                     Value::Lambda(lf) => println!("{}", lf.1),
-                                    Value::Function {
-                                        params, outputs, ..
-                                    } => {
-                                        let p = params.join(", ");
-                                        let out = match outputs.len() {
+                                        Value::Function(fd) => {
+                                            let p = fd.params.join(", ");
+                                            let out = match fd.outputs.len() {
                                             0 => String::new(),
-                                            1 => format!("{} = ", outputs[0]),
-                                            _ => format!("[{}] = ", outputs.join(", ")),
+                                            1 => format!("{} = ", fd.outputs[0]),
+                                            _ => format!("[{}] = ", fd.outputs.join(", ")),
                                         };
                                         println!("@function {out}f({p})");
                                     }
@@ -2156,8 +2143,8 @@ fn print_who(env: &Env, base: Base, fmt: &FormatMode) {
             Value::Lambda(lf) => {
                 scalars.push(format!("{name} = {}", lf.1));
             }
-            Value::Function { params, .. } => {
-                scalars.push(format!("{name}({}) [function]", params.join(", ")));
+            Value::Function(fd) => {
+                scalars.push(format!("{name}({}) [function]", fd.params.join(", ")));
             }
             Value::Tuple(_) => {}
             Value::Cell(v) => {

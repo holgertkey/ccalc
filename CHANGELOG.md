@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.46.0+003] - 2026-06-02
+
+### Changed
+
+- **Phase 35b — Boxing large `Value` variants** (internal; no API change)
+
+  `sizeof(Value)` reduced from **168 bytes** to **32 bytes** by wrapping eight
+  large variants behind heap pointers:
+
+  | Variant | Before | After |
+  |---|---|---|
+  | `Matrix(Array2<f64>)` | 56 B | `Box` → 8 B |
+  | `ComplexMatrix(Array2<Complex<f64>>)` | 56 B | `Box` → 8 B |
+  | `Function { … }` | ~136 B | `Box<FunctionData>` → 8 B |
+  | `Struct(IndexMap<…>)` | ~72 B | `Box` → 8 B |
+  | `StructArray(Vec<…>)` | 24 B | `Box` → 8 B |
+  | `Map(IndexMap<…>)` | ~72 B | `Box` → 8 B |
+  | `Lambda(LambdaFn)` | ~40 B | `Box` → 8 B |
+  | `Cell(Vec<Value>)` | 24 B | `Box` → 8 B |
+
+  A compile-time assertion `const _VALUE_SIZE: () = assert!(size_of::<Value>() <= 32)`
+  prevents future regressions.
+
+  `Value::Function` fields are now accessed through the new `FunctionData` struct:
+  `fd.outputs`, `fd.params`, `fd.body_source`, `fd.locals`, `fd.doc`.
+  All callers migrated; `From<FunctionData> for Value` helper added for clean construction.
+
+  Clone semantics are unchanged: `Value::Scalar(f).clone()` is a 32-byte stack copy
+  with no heap allocation; `Value::Matrix(Box::new(m)).clone()` deep-clones the array
+  data as before.
+
+  **Impact on allocations (Julia-set inner loop):**
+  - `IterState` for a `1:256` range: 256 × 32 bytes = 8 KB (was 256 × 168 = 43 KB).
+  - `Vec<Value>` slot arrays, operand stacks: all 5–7× smaller.
+
+  **3 new tests:** `value_size_le_32`, `matrix_box_clone_independent`,
+  `function_box_roundtrip`.
+
 ## [0.46.0+002] - 2026-06-02
 
 ### Added

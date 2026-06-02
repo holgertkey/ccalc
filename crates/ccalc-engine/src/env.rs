@@ -34,6 +34,30 @@ impl PartialEq for LambdaFn {
     }
 }
 
+/// Extracted payload for [`Value::Function`] — stored behind a [`Box`] to keep
+/// [`Value`] at 32 bytes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionData {
+    /// Output variable names in declaration order (e.g. `["y"]` for `function y = f(x)`).
+    pub outputs: Vec<String>,
+    /// Parameter names in declaration order (e.g. `["x", "n"]`).
+    pub params: Vec<String>,
+    /// Raw source text of the function body (text between `function` header and `end`).
+    pub body_source: String,
+    /// Local helper functions defined in the same function file (MATLAB-style scoping).
+    /// Populated when a function file is sourced; empty for inline definitions.
+    pub locals: IndexMap<String, Value>,
+    /// Documentation string extracted from `%`-prefixed lines immediately before the
+    /// `function` keyword. `None` when no leading comment block is present.
+    pub doc: Option<String>,
+}
+
+impl From<FunctionData> for Value {
+    fn from(fd: FunctionData) -> Self {
+        Value::Function(Box::new(fd))
+    }
+}
+
 /// A value held in the variable environment.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -43,12 +67,12 @@ pub enum Value {
     Scalar(f64),
     /// A 2-D real matrix (row-major). Scalars are represented as 1×1 matrices
     /// only when produced by matrix operations; standalone numbers use `Scalar`.
-    Matrix(Array2<f64>),
+    Matrix(Box<Array2<f64>>),
     /// A 2-D complex matrix (row-major). Used when any element has a non-zero imaginary part.
     ///
     /// Produced by complex matrix literals, FFT output, or mixed real/complex arithmetic.
     /// Workspace save skips this type (same policy as all non-scalar types).
-    ComplexMatrix(Array2<Complex<f64>>),
+    ComplexMatrix(Box<Array2<Complex<f64>>>),
     /// Complex number `re + im*i`.
     Complex(f64, f64),
     /// Character array (single-quoted string). Represents a 1×N row of char values.
@@ -57,26 +81,15 @@ pub enum Value {
     StringObj(String),
     /// Anonymous function: `@(params) expr`. Stores a pre-compiled closure
     /// that captures the lexical environment at definition time.
-    Lambda(LambdaFn),
+    Lambda(Box<LambdaFn>),
     /// Named user-defined function: `function [outputs] = name(params) ... end`.
     ///
     /// The body is stored as raw source text and re-parsed on each call.
     /// Named functions execute in an isolated scope (only params are visible,
     /// plus built-in constants `i`, `j`).
-    Function {
-        /// Output variable names in declaration order (e.g. `["y"]` for `function y = f(x)`).
-        outputs: Vec<String>,
-        /// Parameter names in declaration order (e.g. `["x", "n"]`).
-        params: Vec<String>,
-        /// Raw source text of the function body (text between `function` header and `end`).
-        body_source: String,
-        /// Local helper functions defined in the same function file (MATLAB-style scoping).
-        /// Populated when a function file is sourced; empty for inline definitions.
-        locals: IndexMap<String, Value>,
-        /// Documentation string extracted from `%`-prefixed lines immediately before the
-        /// `function` keyword. `None` when no leading comment block is present.
-        doc: Option<String>,
-    },
+    ///
+    /// All fields are stored in a [`Box`]ed [`FunctionData`] to keep [`Value`] at 32 bytes.
+    Function(Box<FunctionData>),
     /// Multiple return values from a multi-output function call (internal use).
     ///
     /// Produced by calling a function with `outputs.len() > 1`.
@@ -86,17 +99,17 @@ pub enum Value {
     ///
     /// Created with `{1, 'hello', [1 2 3]}` syntax. Indexed with `c{i}` (1-based).
     /// 2-D cell arrays are deferred; all cells are flat `Vec<Value>` for now.
-    Cell(Vec<Value>),
+    Cell(Box<Vec<Value>>),
     /// Scalar struct: ordered field map, field names preserved in insertion order.
     ///
     /// Created with `s.field = val` or `struct('k', v, ...)`.
     /// Fields can hold any `Value`, including nested structs.
-    Struct(IndexMap<String, Value>),
+    Struct(Box<IndexMap<String, Value>>),
     /// 1-D array of structs (all sharing the same field schema).
     ///
     /// Created with `s(i).field = val` (1-based). Indexed with `s(i)` which returns
     /// a `Value::Struct`. `s.field` collects the field across all elements.
-    StructArray(Vec<IndexMap<String, Value>>),
+    StructArray(Box<Vec<IndexMap<String, Value>>>),
     /// A UTC timestamp: seconds since 1970-01-01 00:00:00 UTC.
     ///
     /// `f64::NAN` represents the `NaT` (Not-a-Time) sentinel.
@@ -116,8 +129,10 @@ pub enum Value {
     /// Keys are always `String`; values may be any [`Value`]. Preserves
     /// insertion order (via `IndexMap`). Indexed with `m('key')` and
     /// assigned with `m('key') = val`.
-    Map(IndexMap<String, Value>),
+    Map(Box<IndexMap<String, Value>>),
 }
+
+const _VALUE_SIZE: () = assert!(std::mem::size_of::<Value>() <= 32);
 
 impl Value {
     /// Returns the inner `f64` if this value is a [`Value::Scalar`], otherwise `None`.
@@ -140,7 +155,7 @@ impl Value {
             | Value::Str(_)
             | Value::StringObj(_)
             | Value::Lambda(_)
-            | Value::Function { .. }
+            | Value::Function(_)
             | Value::Tuple(_)
             | Value::Cell(_)
             | Value::Struct(_)
@@ -338,7 +353,7 @@ mod tests {
         env.insert("x".to_string(), Value::Scalar(5.0));
         env.insert(
             "m".to_string(),
-            Value::Matrix(array![[1.0, 2.0], [3.0, 4.0]]),
+            Value::Matrix(Box::new(array![[1.0, 2.0], [3.0, 4.0]])),
         );
         save_workspace(&env, &path).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
