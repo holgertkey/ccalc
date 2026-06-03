@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-06-03
+
+### Changed
+
+- **Phase 36 — Interpreter Performance 3: constant folding, inline arithmetic, function frames**
+
+  Three sub-phases cut hot-loop and function-call overhead by 4–8×:
+
+  - **36a — Constant folding:** invariant sub-expressions (`2 * pi`, `0.5 * dt`)
+    are evaluated at compile time and replaced with a single `PushConst`.
+    The compiler seeds a `const_map` from top-level assignments before the first
+    loop and folds any pure expression that resolves to a scalar.
+
+  - **36b — Scalar inline arithmetic fast path:** `Add`, `Sub`, `Mul`, `Div`,
+    and all six comparison opcodes use `scalar_binop!` / `scalar_cmp!` macros
+    that peek at the top two stack elements by reference; when both are
+    `Value::Scalar(f64)`, arithmetic is done inline without a function call.
+    `Neg` and `Not` use `stack.last_mut()` for zero-copy in-place mutation.
+
+  - **36c — Function call frames:** two-level fast path eliminates 4.7× overhead
+    on function-call benchmarks (`fn_calls_1000`: 3.3 ms → 0.70 ms, target
+    ≤1.0 ms met).
+
+    *`CallUser` opcode* — non-builtin function calls with pure arguments compile
+    to `CallUser(name, argc)` instead of the `EvalExpr` dispatcher, enabling
+    loop-variable slotting (e.g. `k` in `for k=1:N; s=inc(k); end` is now a
+    slot) and eliminating the `eval_with_io` AST round-trip per call.
+
+    *Vec-frame fast path* — for *leaf functions* (bodies with empty name pools:
+    no `LoadVar`/`StoreVar`/`CallUser` etc.) the per-call `Env::new()` + 7
+    HashMap insertions + HashMap drop is replaced with a pre-allocated
+    `Vec<Value>` frame seeded from params, run against a shared empty scratch
+    env, with outputs read directly from the returned slot vector.
+    Recursive or I/O-bearing functions (e.g. `fib`) fall back transparently to
+    the existing full-`Env` path.
+
+  **Benchmark summary (release build, Windows 11, A/B vs v0.47.0):**
+
+  | Benchmark | v0.47.0 | v0.48.0 | Improvement |
+  |-----------|---------|---------|-------------|
+  | `loop_10k` | 0.56 ms | 0.55 ms | neutral |
+  | `fn_calls_1000` | 2.92 ms | **0.70 ms** | **4.2×** |
+
+  19 new tests (36a: 7, 36b: 8, 36c: 12 including leaf/non-leaf predicates).
+  1076 tests pass.
+
 ## [0.47.0+004] - 2026-06-03
 
 ### Changed
