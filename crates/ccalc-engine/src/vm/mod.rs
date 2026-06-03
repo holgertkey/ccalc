@@ -112,6 +112,19 @@ pub enum Opcode {
     /// [`COMPILABLE_BUILTINS`]: crate::vm::compile::COMPILABLE_BUILTINS
     CallBuiltin = 50, // [u16 name_idx, u8 argc, 0, 0, 0]
 
+    /// Call a user-defined function (non-builtin). Pop `u8 argc` args
+    /// (rightmost on top); look up `chunk.names[u16 name_idx]` in env;
+    /// dispatch via [`crate::exec::dispatch_user_call_for_vm`]; push result.
+    ///
+    /// Fast path: if the looked-up value is [`Value::Function`], calls the
+    /// function directly in an isolated scope.  Slow path (lambda, matrix
+    /// indexing, autoload, builtin fallback): delegates to `eval_with_io`.
+    ///
+    /// Emitted for non-builtin, non-exec-intercepted calls whose arguments
+    /// are all pure.  The callee name is always kept in env (not a slot),
+    /// so the lookup is always valid.
+    CallUser = 52, // [u16 name_idx, u8 argc, 0, 0, 0]
+
     // ── Deferred expression evaluation ──────────────────────────────────────
     /// Evaluate `chunk.exprs[u16]` via `eval_with_io` and push the result.
     ///
@@ -291,6 +304,16 @@ pub struct Chunk {
     /// to initialize the `locals` vector from `env` on entry and to sync
     /// updated values back to `env` on exit.
     pub slot_names: Vec<String>,
+
+    /// Number of function parameters at the start of [`slot_names`](Self::slot_names).
+    ///
+    /// Set by [`compile_fn_body`](crate::vm::compile::compile_fn_body); `0` for
+    /// chunks compiled by [`compile`](crate::vm::compile::compile).
+    ///
+    /// When `> 0`: `slot_names[0..n_params]` holds the function's parameters in
+    /// declaration order, making `vm_exec_with_frame` able to seed them without
+    /// any HashMap lookup.
+    pub n_params: usize,
 }
 
 impl Chunk {
@@ -304,6 +327,7 @@ impl Chunk {
             index_sets: Vec::new(),
             lines: Vec::new(),
             slot_names: Vec::new(),
+            n_params: 0,
         }
     }
 

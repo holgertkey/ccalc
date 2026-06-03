@@ -11,6 +11,16 @@ type BodyCache = HashMap<String, Rc<Vec<StmtEntry>>>;
 /// constructs the compiler does not yet support (never retried).
 type ChunkCache = HashMap<String, Option<Rc<crate::vm::Chunk>>>;
 
+/// Cached entry for a leaf-function frame chunk.
+struct FrameCacheEntry {
+    chunk: Rc<crate::vm::Chunk>,
+}
+
+/// Compiled frame-optimised chunks keyed by body source string.
+///
+/// A `None` entry means compilation or leaf-eligibility failed — never retry.
+type FrameChunkCache = HashMap<String, Option<FrameCacheEntry>>;
+
 /// Expands a leading `~` to the user's home directory.
 ///
 /// On Windows `USERPROFILE` is tried as a fallback for `HOME`. If neither is set the
@@ -51,9 +61,20 @@ use crate::eval::{
 use crate::io::IoContext;
 use crate::parser::{Stmt, StmtEntry, parse_stmts};
 
+/// Maximum number of nested user-function calls before returning an error.
+///
+/// Prevents Rust-stack overflow on infinite recursion.  Set to 64 to stay
+/// well within the default 8 MB Rust thread stack even in debug builds
+/// (`call_user_function + vm_exec` each consume ~50–100 KB in debug mode due
+/// to Rust's debug frame overhead; 64 levels × ~100 KB = ~6.4 MB headroom).
+const MAX_CALL_DEPTH: u32 = 64;
+
 thread_local! {
     /// Tracks the current script nesting depth to prevent infinite recursion via `run()`.
     static RUN_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+
+    /// Tracks the current user-function call depth to prevent infinite recursion.
+    static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 
     /// Stack of directories for currently executing scripts.
     ///
@@ -88,6 +109,34 @@ thread_local! {
     /// entries mark bodies whose compilation failed (no retry on future calls).
     static BODY_CHUNK_CACHE: std::cell::RefCell<ChunkCache> =
         std::cell::RefCell::new(HashMap::new());
+
+    /// Frame-optimised chunk cache for leaf function bodies.
+    ///
+    /// A [`FrameCacheEntry`] is stored when `compile_fn_body` succeeds and the
+    /// resulting chunk passes `is_leaf_fn`.  A `None` entry permanently disables
+    /// the fast path for that body (non-leaf or compile failure).
+    static BODY_FRAME_CACHE: std::cell::RefCell<FrameChunkCache> =
+        std::cell::RefCell::new(HashMap::new());
+
+    /// Scratch `Env` used exclusively by the Vec-frame fast path.
+    ///
+    /// Leaf functions never read from or write to `env` during execution, so
+    /// this empty map is passed as the `env` parameter and is never touched.
+    /// It is never accessed concurrently because leaf functions cannot recurse
+    /// (empty `chunk.names` means no `CallUser`/`CallBuiltin`/`EvalExpr`).
+    static LEAF_SCRATCH_ENV: std::cell::RefCell<crate::env::Env> =
+        std::cell::RefCell::new(crate::env::Env::new());
+}
+
+/// RAII guard that restores `CALL_DEPTH` to `saved` when dropped.
+///
+/// Ensures the call depth counter is decremented on every exit path from
+/// `call_user_function`, including early returns and `?`-propagated errors.
+struct CallDepthGuard(u32);
+impl Drop for CallDepthGuard {
+    fn drop(&mut self) {
+        CALL_DEPTH.with(|c| c.set(self.0));
+    }
 }
 
 /// Recursively marks every statement in `stmts` (and all nested block bodies) as silent.
@@ -474,7 +523,7 @@ pub fn session_path_list() -> Vec<std::path::PathBuf> {
 /// any callable values (`Function`/`Lambda`) from the caller's environment, enabling
 /// recursion and mutual recursion.
 /// Multi-return: if the function has >1 output, returns `Value::Tuple`.
-fn call_user_function(
+pub(crate) fn call_user_function(
     name: &str,
     func: &Value,
     args: &[Value],
@@ -484,30 +533,22 @@ fn call_user_function(
     let Value::Function(fd) = func else {
         return Err("call_user_function: not a Function value".to_string());
     };
+    // Depth guard: prevent infinite recursion from overflowing the Rust call stack.
+    let depth = CALL_DEPTH.with(|c| c.get());
+    if depth >= MAX_CALL_DEPTH {
+        return Err(format!(
+            "'{name}': maximum function call depth ({MAX_CALL_DEPTH}) exceeded"
+        ));
+    }
+    CALL_DEPTH.with(|c| c.set(depth + 1));
+    // Guard restores depth on every exit path (including early returns and ? propagation).
+    let _depth_guard = CallDepthGuard(depth);
     let (outputs, params, body_source, locals) =
         (&fd.outputs, &fd.params, &fd.body_source, &fd.locals);
 
     // Push global and persistent tracking frames for this function call.
     global_frame_push();
     persistent_frame_push(name); // `name` is the function name from the call site
-
-    // Build isolated scope: seed imaginary unit and ans, then copy all callable
-    // values (Function/Lambda) from the caller's environment so that recursion
-    // and mutual recursion work correctly.
-    let mut local_env = Env::new();
-    local_env.insert("i".to_string(), Value::Complex(0.0, 1.0));
-    local_env.insert("j".to_string(), Value::Complex(0.0, 1.0));
-    local_env.insert("ans".to_string(), Value::Scalar(0.0));
-    // Local helper functions from the same function file (MATLAB-style scoping).
-    // These take priority and are always available regardless of the caller's env.
-    for (fn_name, val) in locals.iter() {
-        local_env.insert(fn_name.clone(), val.clone());
-    }
-    for (var_name, val) in caller_env.iter() {
-        if matches!(val, Value::Function(_) | Value::Lambda(_)) {
-            local_env.insert(var_name.clone(), val.clone());
-        }
-    }
 
     // Check for varargin: last parameter is 'varargin' → variadic function.
     let has_varargin = params.last().is_some_and(|p| p == "varargin");
@@ -538,6 +579,130 @@ fn call_user_function(
     } else {
         args
     };
+
+    // ── Vec-frame fast path (leaf functions only) ─────────────────────────────
+    // Eligible when the body compiles via `compile_fn_body`, all params are
+    // slotted, `chunk.names` is empty (no env access during execution), no
+    // varargin/varargout, and no prior parse/compile failure for this body.
+    if !has_varargin && outputs.last().is_none_or(|o| o != "varargout") {
+        // Look up (or populate) the frame-chunk cache entry for this body.
+        let cached = BODY_FRAME_CACHE.with(|cc| {
+            cc.borrow()
+                .get(body_source.as_str())
+                .map(|e| e.as_ref().map(|entry| Rc::clone(&entry.chunk)))
+        });
+
+        let frame_chunk_opt: Option<Rc<crate::vm::Chunk>> = match cached {
+            // Cache hit: Some(chunk) = leaf, None = known non-leaf/non-compilable.
+            Some(rc_opt) => rc_opt,
+            // Cache miss: try compile_fn_body and check leaf eligibility.
+            None => {
+                let rc_opt = get_or_parse_body(body_source)
+                    .ok()
+                    .and_then(|body| {
+                        crate::vm::compile::compile_fn_body(&body, params, outputs).ok()
+                    })
+                    .and_then(|chunk| {
+                        if crate::vm::compile::is_leaf_fn(&chunk)
+                            && chunk.n_params == params.len()
+                        {
+                            Some(Rc::new(chunk))
+                        } else {
+                            None
+                        }
+                    });
+                BODY_FRAME_CACHE.with(|cc| {
+                    let mut cache = cc.borrow_mut();
+                    cache.insert(
+                        body_source.to_string(),
+                        rc_opt.as_ref().map(|rc| FrameCacheEntry {
+                            chunk: Rc::clone(rc),
+                        }),
+                    );
+                });
+                rc_opt
+            }
+        };
+
+        if let Some(chunk) = frame_chunk_opt {
+            let fmt = get_display_fmt();
+            let base = get_display_base();
+            let compact = get_display_compact();
+
+            // Build slot frame: params at slots 0..n_params (guaranteed by compile_fn_body).
+            let mut frame = vec![Value::Void; chunk.slot_names.len()];
+            for (i, arg) in effective_args.iter().take(params.len()).enumerate() {
+                frame[i] = arg.clone();
+            }
+
+            // Execute against the shared scratch env (leaf functions never access env).
+            let exec_result = LEAF_SCRATCH_ENV.with(|cell| {
+                let mut scratch = cell.borrow_mut();
+                crate::vm::exec::vm_exec_with_frame(
+                    &chunk, frame, &mut scratch, io, &fmt, base, compact,
+                )
+            });
+
+            // Pop frames regardless of result (mirrors the regular path).
+            let (func_name_saved, persistent_names) = persistent_frame_pop();
+            for var_name in &persistent_names {
+                // Leaf functions cannot have persistent vars, but handle if present.
+                if let Some(val) = LEAF_SCRATCH_ENV.with(|c| c.borrow().get(var_name).cloned()) {
+                    persistent_save(&func_name_saved, var_name, val);
+                }
+            }
+            global_frame_pop();
+
+            let (signal, mut frame) = exec_result?;
+            match signal {
+                None | Some(Signal::Return) => {}
+                Some(Signal::Break) => return Err("'break' outside loop".to_string()),
+                Some(Signal::Continue) => return Err("'continue' outside loop".to_string()),
+            }
+
+            // Extract return values from the frame by slot index.
+            if outputs.is_empty() {
+                return Ok(Value::Void);
+            }
+            if outputs.len() == 1 {
+                let out_slot = chunk.slot_names.iter().position(|n| n == &outputs[0]);
+                return Ok(out_slot
+                    .map(|s| std::mem::replace(&mut frame[s], Value::Void))
+                    .unwrap_or(Value::Void));
+            }
+            let vals: Vec<Value> = outputs
+                .iter()
+                .map(|o| {
+                    chunk
+                        .slot_names
+                        .iter()
+                        .position(|n| n == o)
+                        .map(|s| std::mem::replace(&mut frame[s], Value::Void))
+                        .unwrap_or(Value::Void)
+                })
+                .collect();
+            return Ok(Value::Tuple(vals));
+        }
+    }
+    // ── End Vec-frame fast path — fall through to full-Env path ──────────────
+
+    // Build isolated scope: seed imaginary unit and ans, then copy all callable
+    // values (Function/Lambda) from the caller's environment so that recursion
+    // and mutual recursion work correctly.
+    let mut local_env = Env::new();
+    local_env.insert("i".to_string(), Value::Complex(0.0, 1.0));
+    local_env.insert("j".to_string(), Value::Complex(0.0, 1.0));
+    local_env.insert("ans".to_string(), Value::Scalar(0.0));
+    // Local helper functions from the same function file (MATLAB-style scoping).
+    // These take priority and are always available regardless of the caller's env.
+    for (fn_name, val) in locals.iter() {
+        local_env.insert(fn_name.clone(), val.clone());
+    }
+    for (var_name, val) in caller_env.iter() {
+        if matches!(val, Value::Function(_) | Value::Lambda(_)) {
+            local_env.insert(var_name.clone(), val.clone());
+        }
+    }
 
     // Bind fixed parameters
     for (p, a) in fixed_params.iter().zip(effective_args.iter()) {
@@ -636,6 +801,74 @@ fn call_user_function(
         .map(|o| local_env.remove(o).unwrap_or(Value::Void))
         .collect();
     Ok(Value::Tuple(vals))
+}
+
+/// Dispatch a user-function call from the VM's [`Opcode::CallUser`] handler.
+///
+/// Fast path: if `name` is a [`Value::Function`] in `env`, calls it directly
+/// via `call_user_function` (no intermediate AST round-trip).
+///
+/// Slow path: for lambdas, matrix indexing (variable shadows function name),
+/// auto-loaded functions, builtins, and other callable values — falls back to
+/// `eval_with_io` by temporarily binding args to env under synthetic key names.
+/// This path is correct for all value types and handles autoload automatically.
+pub(crate) fn dispatch_user_call_for_vm(
+    name: &str,
+    args: &[Value],
+    env: &mut Env,
+    io: &mut IoContext,
+) -> Result<Value, String> {
+    // Fast path: Function directly in env (the common case for hot loops).
+    // Use matches! + get to avoid cloning the Box<FunctionData> — pass &Value directly.
+    // Both `f: &Value` and `env: &Env` (caller_env) are immutable borrows; Rust allows it.
+    if matches!(env.get(name), Some(Value::Function(_))) {
+        let f = env.get(name).unwrap();
+        return call_user_function(name, f, args, env, io);
+    }
+    // Non-function or absent: lambda, matrix indexing, autoload, builtin fallback.
+    // eval_with_io handles all of these correctly.
+    call_via_eval_with_args(name, args, env, io)
+}
+
+/// Evaluate `name(args)` by temporarily binding `args` to synthetic env keys and
+/// calling `eval_with_io`.
+///
+/// Handles all callable types: autoloaded functions, builtins, lambdas, and matrix
+/// indexing when a variable shadows a function name.  Used as the slow-path fallback
+/// from `dispatch_user_call_for_vm` when the fast Function path is not applicable.
+fn call_via_eval_with_args(
+    name: &str,
+    args: &[Value],
+    env: &mut Env,
+    io: &mut IoContext,
+) -> Result<Value, String> {
+    // Bind each arg to a synthetic env key to avoid interfering with user variables.
+    let arg_keys: Vec<String> = (0..args.len())
+        .map(|i| format!("__vm_cu_{i}__"))
+        .collect();
+    let mut saved: Vec<(String, Option<Value>)> = Vec::with_capacity(args.len());
+    for (key, val) in arg_keys.iter().zip(args.iter()) {
+        saved.push((key.clone(), env.get(key.as_str()).cloned()));
+        env.insert(key.clone(), val.clone());
+    }
+    // Build the call expression referencing the synthetic arg keys.
+    let call_expr = crate::eval::Expr::Call(
+        name.to_string(),
+        arg_keys.iter().map(|k| crate::eval::Expr::Var(k.clone())).collect(),
+    );
+    let result = eval_with_io(&call_expr, env, io);
+    // Restore env: remove synthetic keys or restore pre-existing values.
+    for (key, saved_val) in saved {
+        match saved_val {
+            Some(v) => {
+                env.insert(key, v);
+            }
+            None => {
+                env.remove(&key);
+            }
+        }
+    }
+    result
 }
 
 /// Resolves a script filename to an existing path.

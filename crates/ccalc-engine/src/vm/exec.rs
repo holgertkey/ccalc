@@ -13,10 +13,10 @@ use crate::eval::{
     Base, Expr, FormatMode, Op, current_func_name, eval_with_io, global_set, is_global,
     is_persistent, persistent_save, set_display_ctx,
 };
-use crate::exec::{Signal, print_value};
+use crate::exec::{Signal, dispatch_user_call_for_vm, print_value};
 use crate::io::IoContext;
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ── Public entry points ───────────────────────────────────────────────────────
 
 /// Execute a compiled [`Chunk`] against `env`.
 ///
@@ -32,16 +32,55 @@ pub fn vm_exec(
     base: Base,
     compact: bool,
 ) -> Result<Option<Signal>, String> {
-    // Propagate display settings to eval.rs so EvalExpr / fn-call paths work.
     set_display_ctx(fmt, base, compact);
-
-    // ── Init slot-local variables from env (one-time cost per chunk entry) ───
-    let mut locals: Vec<Value> = chunk
+    let locals: Vec<Value> = chunk
         .slot_names
         .iter()
         .map(|name| env.get(name.as_str()).cloned().unwrap_or(Value::Void))
         .collect();
+    let (signal, final_locals) = vm_exec_inner(chunk, locals, env, io, fmt, base, compact)?;
+    sync_locals(chunk, &final_locals, env);
+    Ok(signal)
+}
 
+/// Execute a compiled [`Chunk`] with a pre-built slot frame.
+///
+/// Used by the Vec-frame fast path in `call_user_function` for leaf functions.
+/// The `frame` contains pre-seeded parameter values; the returned `Vec<Value>`
+/// holds the final slot state (including output variables) without any sync to
+/// `env`.
+///
+/// `env` is passed through to `vm_exec_inner` but leaf functions never access
+/// it — callers may pass a shared scratch `Env`.
+pub(crate) fn vm_exec_with_frame(
+    chunk: &Chunk,
+    frame: Vec<Value>,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> Result<(Option<Signal>, Vec<Value>), String> {
+    vm_exec_inner(chunk, frame, env, io, fmt, base, compact)
+}
+
+// ── Dispatch loop ─────────────────────────────────────────────────────────────
+
+/// Core VM dispatch loop.
+///
+/// Takes `locals` as a parameter (caller initialises from `env` or from a
+/// pre-built frame) and returns the final slot state without syncing back to
+/// `env`.  All public entry points ([`vm_exec`], [`vm_exec_with_frame`]) are
+/// thin wrappers around this function.
+fn vm_exec_inner(
+    chunk: &Chunk,
+    mut locals: Vec<Value>,
+    env: &mut Env,
+    io: &mut IoContext,
+    fmt: &FormatMode,
+    base: Base,
+    compact: bool,
+) -> Result<(Option<Signal>, Vec<Value>), String> {
     let mut stack: Vec<Value> = Vec::with_capacity(8);
     let mut iters: Vec<IterState> = Vec::new();
     let mut ip: usize = 0;
@@ -393,6 +432,25 @@ pub fn vm_exec(
                 ip += 1;
             }
 
+            // ── User function call ────────────────────────────────────────────
+            Opcode::CallUser => {
+                let name_idx = instr.u16_at(0) as usize;
+                let argc = instr.u8_at(2) as usize;
+                let mut args: Vec<Value> = (0..argc).map(|_| stack.pop().unwrap()).collect();
+                args.reverse();
+                let name = chunk.names[name_idx].clone();
+                // No sync_locals needed before the call:
+                // - function names are always in env (never slotted — callee names are
+                //   added to env-required by collect_user_callee_names)
+                // - the callee runs with an isolated local_env and cannot read or write
+                //   the caller's slot variables
+                let result = at_line!(dispatch_user_call_for_vm(&name, &args, env, io));
+                // No slot reload needed after the call: isolated env means the callee
+                // cannot modify caller's slots.  Normal vm_exec exit syncs slots to env.
+                stack.push(result);
+                ip += 1;
+            }
+
             // ── Deferred expression evaluation ────────────────────────────────
             Opcode::EvalExpr => {
                 let expr_idx = instr.u16_arg() as usize;
@@ -448,15 +506,12 @@ pub fn vm_exec(
 
             // ── Function control ──────────────────────────────────────────────
             Opcode::Return => {
-                sync_locals(chunk, &locals, env);
-                return Ok(Some(Signal::Return));
+                return Ok((Some(Signal::Return), locals));
             }
         }
     }
 
-    // ── Sync slot-local variables back to env on normal exit ─────────────────
-    sync_locals(chunk, &locals, env);
-    Ok(None)
+    Ok((None, locals))
 }
 
 // ── Arithmetic helpers ────────────────────────────────────────────────────────

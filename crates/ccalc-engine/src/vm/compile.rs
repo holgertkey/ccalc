@@ -196,6 +196,109 @@ pub fn compile(stmts: &[StmtEntry]) -> Result<Chunk, CompileError> {
     Ok(compiler.chunk)
 }
 
+/// Compile a function body to a [`Chunk`] with parameters and outputs pre-slotted.
+///
+/// Unlike [`compile`], this variant assigns fixed slot indices to `params` (slots
+/// `0..n_params`) and `outputs` (next slots) before the body's own locals.  The
+/// resulting chunk's [`Chunk::n_params`] field records how many parameters were
+/// successfully slotted.
+///
+/// When `chunk.n_params == params.len()` and [`is_leaf_fn`] returns `true` for
+/// the chunk, the VM can execute the body with a pre-built `Vec<Value>` frame
+/// instead of allocating a `HashMap` per call — the hot-function fast path.
+///
+/// Falls back transparently to [`compile`] semantics when a parameter is
+/// env-required (appears in a non-pure expression): in that case the param keeps
+/// a `StoreVar/LoadVar` round-trip through env, `chunk.names` is non-empty, and
+/// `n_params < params.len()` — all of which cause the caller to reject the fast
+/// path and use the existing full-`Env` call path.
+pub fn compile_fn_body(
+    stmts: &[StmtEntry],
+    params: &[String],
+    outputs: &[String],
+) -> Result<Chunk, CompileError> {
+    // ── Pass 1: body candidates (LHS of Assign + For loop vars) ──────────────
+    let mut candidates: Vec<String> = Vec::new();
+    collect_candidates(stmts, &mut candidates);
+
+    // ── Pass 2: env-required names ────────────────────────────────────────────
+    let mut env_required: HashSet<String> = HashSet::new();
+    env_required.insert("ans".to_string());
+    collect_env_required(stmts, &mut env_required);
+
+    // ── Build slot map: params first, then outputs, then body candidates ──────
+    let mut slot_map: HashMap<String, u16> = HashMap::new();
+    let mut slot_names: Vec<String> = Vec::new();
+    let mut n_params: usize = 0;
+
+    // 1. Parameters at slots 0..n_params.
+    for p in params {
+        if !env_required.contains(p) && !is_global(p) && !is_persistent(p) {
+            let slot = slot_names.len() as u16;
+            slot_map.insert(p.clone(), slot);
+            slot_names.push(p.clone());
+            n_params += 1;
+        }
+        // If a param is env-required, n_params is not incremented.
+        // The body will use LoadVar/StoreVar for it → chunk.names non-empty
+        // → is_leaf_fn returns false → fast path not used.
+    }
+
+    // 2. Outputs at the next slots (unless already slotted as a param).
+    for o in outputs {
+        if !slot_map.contains_key(o)
+            && !env_required.contains(o)
+            && !is_global(o)
+            && !is_persistent(o)
+        {
+            let slot = slot_names.len() as u16;
+            slot_map.insert(o.clone(), slot);
+            slot_names.push(o.clone());
+        }
+    }
+
+    // 3. Remaining body candidates.
+    for name in &candidates {
+        if !slot_map.contains_key(name)
+            && !env_required.contains(name)
+            && !is_global(name)
+            && !is_persistent(name)
+        {
+            let slot = slot_names.len() as u16;
+            slot_map.insert(name.clone(), slot);
+            slot_names.push(name.clone());
+        }
+    }
+
+    let const_map = build_const_map(stmts);
+
+    let mut compiler = Compiler {
+        chunk: Chunk::new(),
+        loop_stack: Vec::new(),
+        current_line: 0,
+        slots: slot_map,
+        const_map,
+    };
+    compiler.chunk.slot_names = slot_names;
+    compiler.chunk.n_params = n_params;
+    compiler.compile_stmts(stmts)?;
+    Ok(compiler.chunk)
+}
+
+/// Returns `true` when a compiled chunk is a *leaf function* — one whose body
+/// never accesses `env` during execution.
+///
+/// The condition `chunk.names.is_empty()` ensures no `LoadVar`, `StoreVar`,
+/// `IterNext`, `CallBuiltin`, `CallUser`, `EvalExpr`, or `DefineFunc`
+/// instruction references a name from the name pool.  Without those opcodes
+/// the VM loop never reads from or writes to `env`, so the function body can
+/// run against an empty scratch environment with zero overhead.
+///
+/// Used by `call_user_function` to select the Vec-frame fast path.
+pub fn is_leaf_fn(chunk: &Chunk) -> bool {
+    chunk.names.is_empty()
+}
+
 // ── Compiler context ──────────────────────────────────────────────────────────
 
 struct LoopFrame {
@@ -574,7 +677,11 @@ impl Compiler {
     /// handle via `EvalExpr`.
     fn is_pure(expr: &Expr) -> bool {
         match expr {
-            Expr::Number(_) | Expr::Var(_) => true,
+            Expr::Number(_) => true,
+            // `end` is not a regular env variable — it is injected by eval_index during
+            // indexing.  Marking it non-pure prevents v(end) from being compiled to
+            // CallUser (where `end` would not be in env and the LoadVar would fail).
+            Expr::Var(name) => name != "end",
             Expr::UnaryMinus(e) | Expr::UnaryNot(e) => Self::is_pure(e),
             Expr::BinOp(a, op, b) => {
                 !matches!(op, Op::ElemAnd | Op::ElemOr | Op::LDiv)
@@ -582,7 +689,16 @@ impl Compiler {
                     && Self::is_pure(b)
             }
             Expr::Call(name, args) => {
-                COMPILABLE_BUILTINS.contains(&name.as_str()) && args.iter().all(Self::is_pure)
+                // CallBuiltin: whitelisted math/predicate builtins.
+                if COMPILABLE_BUILTINS.contains(&name.as_str()) && args.iter().all(Self::is_pure) {
+                    return true;
+                }
+                // CallUser: non-intercepted user function calls with pure args.
+                // The callee name is added to env-required by collect_user_callee_names
+                // so the VM can look it up at dispatch time.
+                !EXEC_INTERCEPTS.contains(&name.as_str())
+                    && name != "eval"
+                    && args.iter().all(Self::is_pure)
             }
             _ => false,
         }
@@ -649,16 +765,27 @@ impl Compiler {
                 self.emit(Instr::no_arg(opcode));
             }
             Expr::Call(name, args) => {
-                // Guarded by is_pure: name is in COMPILABLE_BUILTINS, all args are pure.
+                // Push all arguments onto the stack first (left-to-right).
                 for arg in args {
                     self.compile_native(arg);
                 }
                 let name_idx = self.chunk.name_idx(name);
-                self.emit(Instr::with_u16_u8(
-                    Opcode::CallBuiltin,
-                    name_idx,
-                    args.len() as u8,
-                ));
+                if COMPILABLE_BUILTINS.contains(&name.as_str()) {
+                    // CallBuiltin: direct dispatch to call_builtin.
+                    self.emit(Instr::with_u16_u8(
+                        Opcode::CallBuiltin,
+                        name_idx,
+                        args.len() as u8,
+                    ));
+                } else {
+                    // CallUser: dispatch via dispatch_user_call_for_vm.
+                    // The callee name is kept in env (not a slot) so the lookup is valid.
+                    self.emit(Instr::with_u16_u8(
+                        Opcode::CallUser,
+                        name_idx,
+                        args.len() as u8,
+                    ));
+                }
             }
             _ => unreachable!("compile_native called on non-pure expression"),
         }
@@ -727,22 +854,31 @@ fn collect_env_required(stmts: &[StmtEntry], out: &mut HashSet<String>) {
             Stmt::Assign(_, expr) if !Compiler::is_pure(expr) => {
                 free_vars_in_expr(expr, out);
             }
-            Stmt::Assign(_, _) => {}
+            Stmt::Assign(_, expr) => {
+                // Pure expr: arg vars can be slots, but callee names for CallUser must stay in env.
+                collect_user_callee_names(expr, out);
+            }
             Stmt::Expr(expr) if !Compiler::is_pure(expr) => {
                 free_vars_in_expr(expr, out);
             }
-            Stmt::Expr(_) => {}
+            Stmt::Expr(expr) => {
+                collect_user_callee_names(expr, out);
+            }
             Stmt::For {
                 range_expr, body, ..
             } => {
                 if !Compiler::is_pure(range_expr) {
                     free_vars_in_expr(range_expr, out);
+                } else {
+                    collect_user_callee_names(range_expr, out);
                 }
                 collect_env_required(body, out);
             }
             Stmt::While { cond, body } => {
                 if !Compiler::is_pure(cond) {
                     free_vars_in_expr(cond, out);
+                } else {
+                    collect_user_callee_names(cond, out);
                 }
                 collect_env_required(body, out);
             }
@@ -754,11 +890,15 @@ fn collect_env_required(stmts: &[StmtEntry], out: &mut HashSet<String>) {
             } => {
                 if !Compiler::is_pure(cond) {
                     free_vars_in_expr(cond, out);
+                } else {
+                    collect_user_callee_names(cond, out);
                 }
                 collect_env_required(body, out);
                 for (ei_cond, ei_body) in elseif_branches {
                     if !Compiler::is_pure(ei_cond) {
                         free_vars_in_expr(ei_cond, out);
+                    } else {
+                        collect_user_callee_names(ei_cond, out);
                     }
                     collect_env_required(ei_body, out);
                 }
@@ -777,13 +917,44 @@ fn collect_env_required(stmts: &[StmtEntry], out: &mut HashSet<String>) {
                 for idx in indices {
                     free_vars_in_expr(idx, out);
                 }
-                // RHS: if not pure, collect its free vars too.
+                // RHS: if not pure, collect free vars; if pure, collect callee names.
                 if !Compiler::is_pure(value) {
                     free_vars_in_expr(value, out);
+                } else {
+                    collect_user_callee_names(value, out);
                 }
             }
             _ => {}
         }
+    }
+}
+
+/// Collect non-builtin callee names from a pure expression.
+///
+/// For `CallUser` paths: `inc(k)` adds `"inc"` to env-required so the VM can look up
+/// the function at dispatch time.  Arg variable names are intentionally NOT added —
+/// they remain eligible for slots.  Builtin callee names (`abs`, `sin`, …) are
+/// omitted because `CallBuiltin` resolves them without an env lookup.
+fn collect_user_callee_names(expr: &Expr, out: &mut HashSet<String>) {
+    match expr {
+        Expr::Call(name, args) => {
+            if !COMPILABLE_BUILTINS.contains(&name.as_str()) {
+                // Non-builtin callee: must stay in env for runtime dispatch.
+                out.insert(name.clone());
+            }
+            for arg in args {
+                collect_user_callee_names(arg, out);
+            }
+        }
+        Expr::BinOp(a, _, b) => {
+            collect_user_callee_names(a, out);
+            collect_user_callee_names(b, out);
+        }
+        Expr::UnaryMinus(e) | Expr::UnaryNot(e) => {
+            collect_user_callee_names(e, out);
+        }
+        // Leaf nodes (Number, Var) and other exprs have no callee names.
+        _ => {}
     }
 }
 

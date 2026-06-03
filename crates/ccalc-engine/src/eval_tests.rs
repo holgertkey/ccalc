@@ -8201,29 +8201,36 @@ mod vm_tests {
 
     #[test]
     fn slot_map_excludes_evalexpr_vars() {
-        // After 35c: abs is in COMPILABLE_BUILTINS → abs(a) is pure → `a` IS slotted.
-        // To demonstrate env-required exclusion we use a non-whitelisted user function.
-        // `a = 1; b = user_func(a)` — `a` appears inside a non-pure EvalExpr → env-required.
-        let stmts = parse_stmts("a = 1;\nb = user_func(a);").expect("parse");
+        // After Phase 36c: user_func(a) is pure (CallUser) → a IS slotted.
+        // Expressions that still emit EvalExpr (Range, Matrix literal, etc.) force env-required.
+        // Demonstrate with `b = a:5` — Range is never pure → a is env-required.
+        let stmts = parse_stmts("a = 1;\nb = a:5;").expect("parse");
         let chunk = compile(&stmts).expect("compile");
         assert!(
             !chunk.slot_names.contains(&"a".to_string()),
-            "a is referenced in user_func(a) (EvalExpr) → must NOT be slotted"
+            "a is referenced in a:5 (EvalExpr Range) → must NOT be slotted"
         );
         assert!(
             chunk.slot_names.contains(&"b".to_string()),
             "b is only an assignment LHS → should be slotted"
         );
-        // Verify that abs(a) is now pure: both a and b are slotted.
-        let stmts2 = parse_stmts("a = 1;\nb = abs(a);").expect("parse");
+        // After 36c: user_func(a) compiles to CallUser (pure); a becomes a slot.
+        let stmts2 = parse_stmts("a = 1;\nb = user_func(a);").expect("parse");
         let chunk2 = compile(&stmts2).expect("compile");
         assert!(
             chunk2.slot_names.contains(&"a".to_string()),
-            "after 35c: abs is whitelisted → abs(a) is pure → a IS slotted"
+            "after 36c: user_func(a) is pure (CallUser) → a IS slotted"
         );
         assert!(
             chunk2.slot_names.contains(&"b".to_string()),
             "b is an assignment LHS → should be slotted"
+        );
+        // Verify that abs(a) is still pure via CallBuiltin.
+        let stmts3 = parse_stmts("a = 1;\nb = abs(a);").expect("parse");
+        let chunk3 = compile(&stmts3).expect("compile");
+        assert!(
+            chunk3.slot_names.contains(&"a".to_string()),
+            "abs is whitelisted → abs(a) is pure (CallBuiltin) → a IS slotted"
         );
     }
 
@@ -8572,16 +8579,20 @@ mod vm_tests {
         }
     }
 
-    // ── 35c-10: disp(x) is NOT compiled via CallBuiltin (still EvalExpr) ─────
+    // ── 35c-10 / 36c: disp(x) compiles to CallUser (not EvalExpr, not CallBuiltin) ──
 
     #[test]
     fn callbuiltin_disp_still_evalexpr() {
-        // `disp` is not in COMPILABLE_BUILTINS → must emit EvalExpr, not CallBuiltin.
+        // Phase 36c: non-builtin calls with pure args compile to CallUser.
+        // `disp` is not in COMPILABLE_BUILTINS → emits CallUser (not EvalExpr, not CallBuiltin).
+        // At runtime CallUser falls back to eval_with_io for non-Function values.
         let stmts = parse_stmts("disp(x);").expect("parse");
         let chunk = compile(&stmts).expect("compile");
+        let has_calluser = chunk.code.iter().any(|i| i.op == Opcode::CallUser);
         let has_evalexpr = chunk.code.iter().any(|i| i.op == Opcode::EvalExpr);
         let has_callbuiltin = chunk.code.iter().any(|i| i.op == Opcode::CallBuiltin);
-        assert!(has_evalexpr, "disp is not whitelisted → must use EvalExpr");
+        assert!(has_calluser, "after 36c: disp(x) must emit CallUser");
+        assert!(!has_evalexpr, "disp(x) must not emit EvalExpr after 36c");
         assert!(!has_callbuiltin, "disp must not emit CallBuiltin");
     }
 
@@ -8888,5 +8899,199 @@ mod vm_tests {
         let mut env = new_env();
         run("s = 0;\nfor k = 1:100\n  s += k;\nend", &mut env);
         assert_eq!(scalar(&env, "s"), 5050.0, "sum 1..100 via fast-path loop");
+    }
+
+    // ── Phase 36c: Function call stack frames (CallUser opcode) ──────────────
+
+    // 36c-1: s = inc(k) in a for-loop compiles to CallUser and k gets a slot
+    #[test]
+    fn frame_calluser_opcode_emitted() {
+        init();
+        let fn_def = "function y = inc(x)\n  y = x + 1;\nend";
+        let loop_src = "s = 0;\nfor k = 1:5\n  s = inc(k);\nend";
+        // Compile just the loop statements to inspect the chunk.
+        let stmts = parse_stmts(loop_src).expect("parse loop");
+        let chunk = compile(&stmts).expect("compile loop");
+        // After 36c: inc(k) must emit CallUser, not EvalExpr.
+        let has_calluser = chunk.code.iter().any(|instr| instr.op == Opcode::CallUser);
+        let evalexpr_for_inc = chunk.code.iter().any(|instr| {
+            instr.op == Opcode::EvalExpr
+                && matches!(&chunk.exprs.get(instr.u16_arg() as usize), Some(crate::eval::Expr::Call(name, _)) if name == "inc")
+        });
+        assert!(has_calluser, "inc(k) must compile to CallUser");
+        assert!(!evalexpr_for_inc, "inc(k) must NOT emit EvalExpr");
+        // k must be slotted (no longer env-required by the CallUser).
+        assert!(chunk.slot_names.contains(&"k".to_string()), "k must be slotted");
+        assert!(chunk.slot_names.contains(&"s".to_string()), "s must be slotted");
+        // Register the function and run the script end-to-end.
+        let mut env = new_env();
+        run(fn_def, &mut env);
+        run(loop_src, &mut env);
+        // s = inc(k) stores the return value each iteration; last is inc(5) = 6.
+        assert_eq!(scalar(&env, "s"), 6.0, "after loop s = inc(5) = 6");
+    }
+
+    // 36c-2: simple function call returns correct value via CallUser
+    #[test]
+    fn frame_simple_return() {
+        init();
+        let mut env = new_env();
+        run("function y = inc(x)\n  y = x + 1;\nend", &mut env);
+        run("r = inc(5);", &mut env);
+        assert_eq!(scalar(&env, "r"), 6.0, "inc(5) must return 6");
+    }
+
+    // 36c-3: 1000 function calls in a for-loop — last stored value is inc(1000) = 1001
+    #[test]
+    fn frame_1000_calls() {
+        init();
+        let mut env = new_env();
+        run("function y = inc(x)\n  y = x + 1;\nend", &mut env);
+        run("s = 0;\nfor k = 1:1000\n  s = inc(k);\nend", &mut env);
+        assert_eq!(scalar(&env, "s"), 1001.0, "last call: inc(1000) = 1001");
+    }
+
+    // 36c-4: sum via 1000 function calls — s += inc(k) over k=1..1000
+    #[test]
+    fn frame_sum_1000_calls() {
+        init();
+        let mut env = new_env();
+        run("function y = inc(x)\n  y = x + 1;\nend", &mut env);
+        run("s = 0;\nfor k = 1:1000\n  s = s + inc(k);\nend", &mut env);
+        // sum(inc(k), k=1..1000) = sum(k+1, k=1..1000) = 500500 + 1000 = 501500
+        assert_eq!(scalar(&env, "s"), 501500.0, "sum of inc(k) for k=1..1000");
+    }
+
+    // 36c-5: recursive function (fib) via CallUser — no stack overflow for fib(10)
+    #[test]
+    fn frame_recursive_fib() {
+        init();
+        let mut env = new_env();
+        run(
+            "function y = fib(n)\n  if n <= 1\n    y = n;\n  else\n    y = fib(n-1) + fib(n-2);\n  end\nend",
+            &mut env,
+        );
+        run("r = fib(10);", &mut env);
+        assert_eq!(scalar(&env, "r"), 55.0, "fib(10) must equal 55");
+    }
+
+    // 36c-6: multi-return function via CallUser — both outputs correct
+    #[test]
+    fn frame_multiple_return() {
+        init();
+        let mut env = new_env();
+        run(
+            "function [a, b] = swap(x, y)\n  a = y;\n  b = x;\nend",
+            &mut env,
+        );
+        run("[p, q] = swap(1, 2);", &mut env);
+        assert_eq!(scalar(&env, "p"), 2.0, "first output of swap(1,2) should be 2");
+        assert_eq!(scalar(&env, "q"), 1.0, "second output of swap(1,2) should be 1");
+    }
+
+    // 36c-7: depth limit — infinite recursion produces error, not stack overflow
+    #[test]
+    fn frame_depth_limit() {
+        init();
+        let mut env = new_env();
+        run("function f(n)\n  f(n - 1);\nend", &mut env);
+        let result = crate::exec::exec_script(
+            &parse_stmts("f(1);").expect("parse"),
+            &mut env,
+            &mut IoContext::new(),
+            &FormatMode::default(),
+            Base::Dec,
+            true,
+        );
+        assert!(result.is_err(), "infinite recursion must return an error");
+        let msg = match result {
+            Err(e) => e,
+            Ok(_) => unreachable!(),
+        };
+        assert!(
+            msg.contains("depth") || msg.contains("recursion"),
+            "error must mention depth/recursion: {msg}"
+        );
+    }
+
+    // 36c-8: parameter isolation — modifying param inside function doesn't affect caller
+    #[test]
+    fn frame_slot_param_sync() {
+        init();
+        let mut env = new_env();
+        run("function y = modify(x)\n  x = x * 99;\n  y = x;\nend", &mut env);
+        run("x = 5;\nr = modify(x);", &mut env);
+        assert_eq!(scalar(&env, "x"), 5.0, "caller x must be unchanged");
+        assert_eq!(scalar(&env, "r"), 495.0, "return value = 5 * 99 = 495");
+    }
+
+    // 36c-9: function body using both CallBuiltin and CallUser produces correct result
+    #[test]
+    fn frame_mixed_builtin_user() {
+        init();
+        let mut env = new_env();
+        run(
+            "function y = inc_abs(x)\n  y = inc(abs(x));\nend\nfunction y = inc(x)\n  y = x + 1;\nend",
+            &mut env,
+        );
+        run("r = inc_abs(-4);", &mut env);
+        assert_eq!(scalar(&env, "r"), 5.0, "inc_abs(-4) = inc(abs(-4)) = inc(4) = 5");
+    }
+
+    // 36c-10: CallUser falls back correctly for matrix indexing (non-Function value)
+    #[test]
+    fn frame_calluser_matrix_indexing_fallback() {
+        // sv = [10 20 30]; y = sv(2) — sv is a Matrix, not a Function.
+        // CallUser must fall back to eval_with_io → indexing → 20.
+        init();
+        let mut env = new_env();
+        run("sv = [10 20 30];\ny = sv(2);", &mut env);
+        assert_eq!(scalar(&env, "y"), 20.0, "sv(2) via CallUser fallback must return 20");
+    }
+
+    // 36c-11: compile_fn_body produces a leaf chunk for a simple function body
+    #[test]
+    fn frame_vec_frame_is_leaf() {
+        // inc(x) body: y = x + 1 — all vars slotted, no env access → leaf.
+        let stmts = parse_stmts("y = x + 1;").expect("parse");
+        let chunk = crate::vm::compile::compile_fn_body(
+            &stmts,
+            &["x".to_string()],
+            &["y".to_string()],
+        )
+        .expect("compile_fn_body");
+        assert!(
+            crate::vm::compile::is_leaf_fn(&chunk),
+            "inc body must be a leaf (chunk.names must be empty)"
+        );
+        assert_eq!(chunk.n_params, 1, "x must be slotted as param 0");
+        assert_eq!(
+            chunk.slot_names.first(),
+            Some(&"x".to_string()),
+            "slot 0 = x (param)"
+        );
+        assert_eq!(
+            chunk.slot_names.get(1),
+            Some(&"y".to_string()),
+            "slot 1 = y (output)"
+        );
+    }
+
+    // 36c-12: fib(n) body is NOT a leaf (calls itself → chunk.names non-empty)
+    #[test]
+    fn frame_recursive_not_leaf() {
+        let stmts =
+            parse_stmts("if n <= 1\n  y = n;\nelse\n  y = fib(n-1) + fib(n-2);\nend")
+                .expect("parse");
+        let chunk = crate::vm::compile::compile_fn_body(
+            &stmts,
+            &["n".to_string()],
+            &["y".to_string()],
+        )
+        .expect("compile_fn_body");
+        assert!(
+            !crate::vm::compile::is_leaf_fn(&chunk),
+            "fib body has CallUser instructions → chunk.names non-empty → NOT a leaf"
+        );
     }
 }
