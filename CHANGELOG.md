@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.47.0+004] - 2026-06-03
+
+### Changed
+
+- **Phase 36c — Function call stack frames: `CallUser` opcode + Vec-frame fast path**
+
+  User-defined function calls in hot loops no longer go through the `EvalExpr`
+  dispatcher (`eval_with_io` round-trip). Two complementary changes together reduce
+  `fn_calls_1000` from 3.29 ms to ~0.70 ms (**4.7×**, target ≤1.0 ms met):
+
+  **`CallUser` opcode (stage 1).** The compiler now emits `CallUser` instead of
+  `EvalExpr` for non-builtin function calls whose arguments are all pure
+  (numbers, variables, or other pure expressions). `inc(k)` in a `for` loop
+  compiles to `LoadSlot(k) + CallUser("inc", 1)` — the loop variable `k` is
+  now eligible for a slot (no longer forced into `env`), and the call dispatches
+  directly via `dispatch_user_call_for_vm` without an AST round-trip.
+  A `collect_user_callee_names` pass keeps callee names in `env` (not in slots)
+  so `CallUser` can look them up at runtime. The special `end` keyword is
+  excluded from the "pure" classification to prevent `v(end)` from incorrectly
+  compiling to `CallUser`.
+
+  **Vec-frame fast path for leaf functions (stage 2).** A *leaf function* is
+  one whose compiled body has an empty name pool (`chunk.names.is_empty()`) —
+  no `LoadVar`, `StoreVar`, `CallUser`, `CallBuiltin`, or `EvalExpr`
+  instructions; the body accesses only slotted variables. For these functions,
+  the per-call `Env::new()` + 7 HashMap insertions + HashMap drop (≈1.5 µs) is
+  replaced with a `Vec<Value>` frame: params land at known slot indices 0..n,
+  `vm_exec_with_frame` runs the body against a shared empty scratch env, and the
+  output is read directly from the returned slot vector.
+  Recursive or I/O-bearing functions (e.g. `fib(n)`) fall back transparently to
+  the existing full-`Env` path.
+
+  New infrastructure: `compile_fn_body(stmts, params, outputs)`,
+  `Chunk::n_params`, `is_leaf_fn(chunk)`, `vm_exec_with_frame`,
+  `BODY_FRAME_CACHE`, `LEAF_SCRATCH_ENV`, `MAX_CALL_DEPTH = 64` recursion guard
+  with RAII `CallDepthGuard`.
+
+  12 new tests (2 added for leaf/non-leaf verification). 1076 tests pass.
+
 ## [0.47.0+002] - 2026-06-03
 
 ### Changed

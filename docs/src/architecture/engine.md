@@ -75,8 +75,8 @@ Added in Phase 34b.  Three modules:
 | Module | Role |
 |--------|------|
 | `vm/mod.rs` | Shared types: `Opcode` (u8), `Instr` (8 bytes, compile-time size assert), `Chunk`, `IterState`, `CompileError` |
-| `vm/compile.rs` | `compile(&[StmtEntry]) → Result<Chunk, CompileError>` — single-pass lowering; `is_compilable(&[StmtEntry]) → bool` — zero-allocation pre-check |
-| `vm/exec.rs` | `vm_exec(chunk, env, io, fmt, base, compact) → Result<Option<Signal>, String>` — main dispatch loop |
+| `vm/compile.rs` | `compile(&[StmtEntry])` and `compile_fn_body(stmts, params, outputs)` — single-pass lowering; `is_compilable` — zero-allocation pre-check; `is_leaf_fn` — Vec-frame eligibility predicate |
+| `vm/exec.rs` | `vm_exec` (env-init path) and `vm_exec_with_frame` (pre-built `Vec<Value>` path) — both thin wrappers around `vm_exec_inner` |
 
 `Instr` is always 8 bytes: 1-byte opcode + 7-byte little-endian payload.
 This fits thousands of instructions in L1-D cache.
@@ -131,14 +131,54 @@ prevents future size regressions.
 
 ### Benchmark summary (release, Windows 11)
 
-| Benchmark | v0.45 (Phase 34b) | v0.46 (Phase 35) | Improvement |
-|-----------|-------------------|------------------|-------------|
-| `loop_10k` | 4.68 ms | **0.56 ms** | 8.4× |
-| `fn_calls_1000` | 3.10 ms | 2.92 ms | 1.06× |
-| `scalar_ops_sum_1M` | 8.05 ms | 9.40 ms | within budget |
+| Benchmark | v0.45 (Phase 34b) | v0.46 (Phase 35) | v0.47 (Phase 36) | Overall |
+|-----------|-------------------|------------------|------------------|---------|
+| `loop_10k` | 4.68 ms | 0.56 ms | **0.55 ms** | 8.5× |
+| `fn_calls_1000` | 3.10 ms | 2.92 ms | **0.70 ms** | 4.4× |
+| `scalar_ops_sum_1M` | 8.05 ms | 9.40 ms | ~9.0 ms | within budget |
 
-`fn_calls_1000` is bounded by `call_user_function` (fresh `Env` allocation per
-call), not by the inner loop — a separate optimisation target.
+## Phase 36 — Interpreter Performance 3
+
+Three sub-phases reduced function-call overhead to meet the ≤1.0 ms target:
+
+### 36a — Constant folding
+
+Invariant sub-expressions (e.g. `2 * pi`, `0.5 * dt`) that appear inside loop
+bodies are evaluated at compile time and replaced with a single `PushConst`.
+The compiler builds a `const_map` from top-level assignments before the first
+loop, then calls `const_eval(expr, &const_map)` before emitting any pure
+expression.
+
+### 36b — Scalar inline arithmetic fast path
+
+`scalar_binop!` and `scalar_cmp!` macros peek at the top two stack elements by
+reference; when both are `Value::Scalar(f64)`, the result is computed inline
+(`f64` arithmetic + `truncate + push`) without calling `vm_binop`.  `Neg` and
+`Not` use `stack.last_mut()` for in-place mutation.  Non-scalar operands fall
+through to the existing general path.
+
+### 36c — Function call frames
+
+Two-level fast path for user-function calls:
+
+**`CallUser` opcode.** Non-builtin calls with pure arguments now compile to
+`CallUser(name_idx, argc)` instead of `EvalExpr`.  This eliminates the
+`eval_with_io` dispatch overhead and unblocks slotting of loop variables
+(e.g. `k` in `for k=1:N; s=inc(k); end` is now a slot).
+
+**Vec-frame fast path for leaf functions.** A *leaf function* has an empty
+name pool (`chunk.names.is_empty()`) — its body only accesses slotted variables.
+For leaf functions `call_user_function` skips `Env::new()` and instead seeds
+a pre-allocated `Vec<Value>` frame from the parameter list, runs
+`vm_exec_with_frame` against a shared empty scratch env, and reads outputs
+directly from the returned slot vector.  Recursive or I/O-bearing functions
+fall back to the full-Env path.
+
+Key additions: `compile_fn_body(stmts, params, outputs)` pre-slots params at
+`chunk.slot_names[0..n_params]`; `is_leaf_fn(chunk)` tests the predicate;
+`BODY_FRAME_CACHE` caches leaf chunks; `LEAF_SCRATCH_ENV` is the reusable
+empty env; `MAX_CALL_DEPTH = 64` with RAII `CallDepthGuard` prevents stack
+overflow on infinite recursion.
 
 ## Why a separate crate?
 
