@@ -8921,8 +8921,14 @@ mod vm_tests {
         assert!(has_calluser, "inc(k) must compile to CallUser");
         assert!(!evalexpr_for_inc, "inc(k) must NOT emit EvalExpr");
         // k must be slotted (no longer env-required by the CallUser).
-        assert!(chunk.slot_names.contains(&"k".to_string()), "k must be slotted");
-        assert!(chunk.slot_names.contains(&"s".to_string()), "s must be slotted");
+        assert!(
+            chunk.slot_names.contains(&"k".to_string()),
+            "k must be slotted"
+        );
+        assert!(
+            chunk.slot_names.contains(&"s".to_string()),
+            "s must be slotted"
+        );
         // Register the function and run the script end-to-end.
         let mut env = new_env();
         run(fn_def, &mut env);
@@ -8985,8 +8991,16 @@ mod vm_tests {
             &mut env,
         );
         run("[p, q] = swap(1, 2);", &mut env);
-        assert_eq!(scalar(&env, "p"), 2.0, "first output of swap(1,2) should be 2");
-        assert_eq!(scalar(&env, "q"), 1.0, "second output of swap(1,2) should be 1");
+        assert_eq!(
+            scalar(&env, "p"),
+            2.0,
+            "first output of swap(1,2) should be 2"
+        );
+        assert_eq!(
+            scalar(&env, "q"),
+            1.0,
+            "second output of swap(1,2) should be 1"
+        );
     }
 
     // 36c-7: depth limit — infinite recursion produces error, not stack overflow
@@ -9019,7 +9033,10 @@ mod vm_tests {
     fn frame_slot_param_sync() {
         init();
         let mut env = new_env();
-        run("function y = modify(x)\n  x = x * 99;\n  y = x;\nend", &mut env);
+        run(
+            "function y = modify(x)\n  x = x * 99;\n  y = x;\nend",
+            &mut env,
+        );
         run("x = 5;\nr = modify(x);", &mut env);
         assert_eq!(scalar(&env, "x"), 5.0, "caller x must be unchanged");
         assert_eq!(scalar(&env, "r"), 495.0, "return value = 5 * 99 = 495");
@@ -9035,7 +9052,11 @@ mod vm_tests {
             &mut env,
         );
         run("r = inc_abs(-4);", &mut env);
-        assert_eq!(scalar(&env, "r"), 5.0, "inc_abs(-4) = inc(abs(-4)) = inc(4) = 5");
+        assert_eq!(
+            scalar(&env, "r"),
+            5.0,
+            "inc_abs(-4) = inc(abs(-4)) = inc(4) = 5"
+        );
     }
 
     // 36c-10: CallUser falls back correctly for matrix indexing (non-Function value)
@@ -9046,7 +9067,11 @@ mod vm_tests {
         init();
         let mut env = new_env();
         run("sv = [10 20 30];\ny = sv(2);", &mut env);
-        assert_eq!(scalar(&env, "y"), 20.0, "sv(2) via CallUser fallback must return 20");
+        assert_eq!(
+            scalar(&env, "y"),
+            20.0,
+            "sv(2) via CallUser fallback must return 20"
+        );
     }
 
     // 36c-11: compile_fn_body produces a leaf chunk for a simple function body
@@ -9054,12 +9079,9 @@ mod vm_tests {
     fn frame_vec_frame_is_leaf() {
         // inc(x) body: y = x + 1 — all vars slotted, no env access → leaf.
         let stmts = parse_stmts("y = x + 1;").expect("parse");
-        let chunk = crate::vm::compile::compile_fn_body(
-            &stmts,
-            &["x".to_string()],
-            &["y".to_string()],
-        )
-        .expect("compile_fn_body");
+        let chunk =
+            crate::vm::compile::compile_fn_body(&stmts, &["x".to_string()], &["y".to_string()])
+                .expect("compile_fn_body");
         assert!(
             crate::vm::compile::is_leaf_fn(&chunk),
             "inc body must be a leaf (chunk.names must be empty)"
@@ -9080,15 +9102,11 @@ mod vm_tests {
     // 36c-12: fib(n) body is NOT a leaf (calls itself → chunk.names non-empty)
     #[test]
     fn frame_recursive_not_leaf() {
-        let stmts =
-            parse_stmts("if n <= 1\n  y = n;\nelse\n  y = fib(n-1) + fib(n-2);\nend")
-                .expect("parse");
-        let chunk = crate::vm::compile::compile_fn_body(
-            &stmts,
-            &["n".to_string()],
-            &["y".to_string()],
-        )
-        .expect("compile_fn_body");
+        let stmts = parse_stmts("if n <= 1\n  y = n;\nelse\n  y = fib(n-1) + fib(n-2);\nend")
+            .expect("parse");
+        let chunk =
+            crate::vm::compile::compile_fn_body(&stmts, &["n".to_string()], &["y".to_string()])
+                .expect("compile_fn_body");
         assert!(
             !crate::vm::compile::is_leaf_fn(&chunk),
             "fib body has CallUser instructions → chunk.names non-empty → NOT a leaf"

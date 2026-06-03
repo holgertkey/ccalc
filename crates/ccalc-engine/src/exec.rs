@@ -603,8 +603,7 @@ pub(crate) fn call_user_function(
                         crate::vm::compile::compile_fn_body(&body, params, outputs).ok()
                     })
                     .and_then(|chunk| {
-                        if crate::vm::compile::is_leaf_fn(&chunk)
-                            && chunk.n_params == params.len()
+                        if crate::vm::compile::is_leaf_fn(&chunk) && chunk.n_params == params.len()
                         {
                             Some(Rc::new(chunk))
                         } else {
@@ -639,7 +638,13 @@ pub(crate) fn call_user_function(
             let exec_result = LEAF_SCRATCH_ENV.with(|cell| {
                 let mut scratch = cell.borrow_mut();
                 crate::vm::exec::vm_exec_with_frame(
-                    &chunk, frame, &mut scratch, io, &fmt, base, compact,
+                    &chunk,
+                    frame,
+                    &mut scratch,
+                    io,
+                    &fmt,
+                    base,
+                    compact,
                 )
             });
 
@@ -843,9 +848,7 @@ fn call_via_eval_with_args(
     io: &mut IoContext,
 ) -> Result<Value, String> {
     // Bind each arg to a synthetic env key to avoid interfering with user variables.
-    let arg_keys: Vec<String> = (0..args.len())
-        .map(|i| format!("__vm_cu_{i}__"))
-        .collect();
+    let arg_keys: Vec<String> = (0..args.len()).map(|i| format!("__vm_cu_{i}__")).collect();
     let mut saved: Vec<(String, Option<Value>)> = Vec::with_capacity(args.len());
     for (key, val) in arg_keys.iter().zip(args.iter()) {
         saved.push((key.clone(), env.get(key.as_str()).cloned()));
@@ -854,7 +857,10 @@ fn call_via_eval_with_args(
     // Build the call expression referencing the synthetic arg keys.
     let call_expr = crate::eval::Expr::Call(
         name.to_string(),
-        arg_keys.iter().map(|k| crate::eval::Expr::Var(k.clone())).collect(),
+        arg_keys
+            .iter()
+            .map(|k| crate::eval::Expr::Var(k.clone()))
+            .collect(),
     );
     let result = eval_with_io(&call_expr, env, io);
     // Restore env: remove synthetic keys or restore pre-existing values.
