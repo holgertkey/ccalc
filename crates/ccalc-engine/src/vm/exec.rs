@@ -60,6 +60,47 @@ pub fn vm_exec(
         };
     }
 
+    // Inline scalar fast path for Add/Sub/Mul/Div.
+    // Peeks (by ref) at the top two stack elements; if both are Scalar, computes
+    // the result without popping and short-circuits with `continue`.
+    macro_rules! scalar_binop {
+        ($stack:expr, $op:tt, $fallback:expr) => {{
+            let n = $stack.len();
+            if n >= 2 {
+                if let (Value::Scalar(a), Value::Scalar(b)) =
+                    (&$stack[n - 2], &$stack[n - 1])
+                {
+                    let result = a $op b;
+                    $stack.truncate(n - 2);
+                    $stack.push(Value::Scalar(result));
+                    ip += 1;
+                    continue;
+                }
+            }
+            $fallback
+        }};
+    }
+
+    // Inline scalar fast path for comparison operators.
+    // Like scalar_binop! but produces 0.0/1.0 boolean results.
+    macro_rules! scalar_cmp {
+        ($stack:expr, $op:tt, $fallback:expr) => {{
+            let n = $stack.len();
+            if n >= 2 {
+                if let (Value::Scalar(a), Value::Scalar(b)) =
+                    (&$stack[n - 2], &$stack[n - 1])
+                {
+                    let result = if a $op b { 1.0_f64 } else { 0.0_f64 };
+                    $stack.truncate(n - 2);
+                    $stack.push(Value::Scalar(result));
+                    ip += 1;
+                    continue;
+                }
+            }
+            $fallback
+        }};
+    }
+
     while ip < chunk.code.len() {
         let instr = &chunk.code[ip];
         match instr.op {
@@ -142,30 +183,30 @@ pub fn vm_exec(
             }
 
             // ── Arithmetic ────────────────────────────────────────────────────
-            Opcode::Add => {
+            Opcode::Add => scalar_binop!(stack, +, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Add, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Sub => {
+            }),
+            Opcode::Sub => scalar_binop!(stack, -, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Sub, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Mul => {
+            }),
+            Opcode::Mul => scalar_binop!(stack, *, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Mul, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Div => {
+            }),
+            Opcode::Div => scalar_binop!(stack, /, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Div, b, env, io)));
                 ip += 1;
-            }
+            }),
             Opcode::Pow => {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
@@ -191,48 +232,53 @@ pub fn vm_exec(
                 ip += 1;
             }
             Opcode::Neg => {
+                if let Some(Value::Scalar(f)) = stack.last_mut() {
+                    *f = -*f;
+                    ip += 1;
+                    continue;
+                }
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_neg(a, env, io)));
                 ip += 1;
             }
 
             // ── Comparison / logical ──────────────────────────────────────────
-            Opcode::Eq => {
+            Opcode::Eq => scalar_cmp!(stack, ==, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Eq, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Ne => {
+            }),
+            Opcode::Ne => scalar_cmp!(stack, !=, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::NotEq, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Lt => {
+            }),
+            Opcode::Lt => scalar_cmp!(stack, <, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Lt, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Le => {
+            }),
+            Opcode::Le => scalar_cmp!(stack, <=, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::LtEq, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Gt => {
+            }),
+            Opcode::Gt => scalar_cmp!(stack, >, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::Gt, b, env, io)));
                 ip += 1;
-            }
-            Opcode::Ge => {
+            }),
+            Opcode::Ge => scalar_cmp!(stack, >=, {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
                 stack.push(at_line!(vm_binop(a, Op::GtEq, b, env, io)));
                 ip += 1;
-            }
+            }),
             Opcode::And => {
                 let b = stack.pop().unwrap();
                 let a = stack.pop().unwrap();
@@ -246,23 +292,23 @@ pub fn vm_exec(
                 ip += 1;
             }
             Opcode::Not => {
+                // Inline fast path: in-place negate without pop/push.
+                if let Some(Value::Scalar(f)) = stack.last_mut() {
+                    *f = if *f == 0.0 { 1.0 } else { 0.0 };
+                    ip += 1;
+                    continue;
+                }
+                // Slow path for complex / matrix NOT.
                 let a = stack.pop().unwrap();
-                let result = match &a {
-                    Value::Scalar(n) => Value::Scalar(if *n == 0.0 { 1.0 } else { 0.0 }),
-                    _ => {
-                        // Fall back via eval_with_io for complex / matrix NOT.
-                        let idx = env.len(); // use len as a unique key to avoid collision
-                        let tmp_key = format!("__vm_not_{idx}__");
-                        env.insert(tmp_key.clone(), a);
-                        let result = eval_with_io(
-                            &Expr::UnaryNot(Box::new(Expr::Var(tmp_key.clone()))),
-                            env,
-                            io,
-                        )?;
-                        env.remove(&tmp_key);
-                        result
-                    }
-                };
+                let idx = env.len();
+                let tmp_key = format!("__vm_not_{idx}__");
+                env.insert(tmp_key.clone(), a);
+                let result = eval_with_io(
+                    &Expr::UnaryNot(Box::new(Expr::Var(tmp_key.clone()))),
+                    env,
+                    io,
+                )?;
+                env.remove(&tmp_key);
                 stack.push(result);
                 ip += 1;
             }

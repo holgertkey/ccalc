@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.47.0+002] - 2026-06-03
+
+### Changed
+
+- **Phase 36b — Scalar inline arithmetic fast path**
+
+  `Add`, `Sub`, `Mul`, `Div` in the VM dispatch loop now use a `scalar_binop!`
+  macro that peeks at the top two stack elements by reference before deciding
+  whether to pop. When both are `Value::Scalar(f64)`, the arithmetic is done
+  inline (`truncate + push`) without a function call into `vm_binop`. The same
+  pattern applies to the six comparison opcodes (`Eq`, `Ne`, `Lt`, `Le`, `Gt`,
+  `Ge`) via `scalar_cmp!`, and to `Neg` and `Not` via in-place `last_mut()`
+  mutation. Non-scalar operands fall through unchanged to the existing
+  `vm_binop` / `vm_neg` / eval fallback.
+
+  8 new regression and correctness tests.
+
 ## [0.47.0+001] - 2026-06-03
 
 ### Changed

@@ -8794,4 +8794,99 @@ mod vm_tests {
             "x must be loaded at runtime, not folded"
         );
     }
+
+    // ── Phase 36b: Scalar inline arithmetic fast path ─────────────────────────
+
+    // 36b-1: scalar + scalar produces correct result (fast path exercised)
+    #[test]
+    fn fast_path_add_scalars() {
+        let mut env = new_env();
+        run("r = 3.0 + 4.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 7.0);
+    }
+
+    // 36b-2: matrix + matrix bypasses fast path and still produces correct result
+    #[test]
+    fn fast_path_slow_fallback() {
+        let mut env = new_env();
+        run("r = [1 2] + [3 4];", &mut env);
+        match env.get("r") {
+            Some(Value::Matrix(m)) => {
+                assert_eq!(m[[0, 0]], 4.0);
+                assert_eq!(m[[0, 1]], 6.0);
+            }
+            other => panic!("expected Matrix, got {other:?}"),
+        }
+    }
+
+    // 36b-3: scalar / 0 yields Inf (IEEE 754), no panic
+    #[test]
+    fn fast_path_div_by_zero() {
+        let mut env = new_env();
+        run("r = 1.0 / 0.0;", &mut env);
+        assert!(scalar(&env, "r").is_infinite(), "1/0 should be Inf");
+    }
+
+    // 36b-4: unary negation fast path: -(scalar)
+    #[test]
+    fn fast_path_neg() {
+        let mut env = new_env();
+        run("r = -3.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), -3.0);
+        run("r = -(7.5);", &mut env);
+        assert_eq!(scalar(&env, "r"), -7.5);
+    }
+
+    // 36b-5: logical NOT fast path; ~NaN → 0.0 (matches slow-path semantics)
+    #[test]
+    fn fast_path_not() {
+        let mut env = new_env();
+        run("r = ~0.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 1.0, "~0 == 1");
+        run("r = ~5.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 0.0, "~nonzero == 0");
+        // NaN is non-zero in IEEE 754 bit pattern but not equal to 0.0 → ~NaN == 0
+        run("r = ~nan;", &mut env);
+        assert_eq!(scalar(&env, "r"), 0.0, "~nan == 0 (matches slow-path)");
+    }
+
+    // 36b-6: comparison fast path produces 0.0/1.0 boolean scalars
+    #[test]
+    fn fast_path_comparison() {
+        let mut env = new_env();
+        run("r = 3.0 < 5.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 1.0, "3 < 5 == 1");
+        run("r = 5.0 < 3.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 0.0, "5 < 3 == 0");
+        run("r = 4.0 == 4.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 1.0, "4 == 4 == 1");
+        run("r = 4.0 ~= 5.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 1.0, "4 ~= 5 == 1");
+        run("r = 3.0 >= 3.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 1.0, "3 >= 3 == 1");
+        run("r = 2.0 <= 1.0;", &mut env);
+        assert_eq!(scalar(&env, "r"), 0.0, "2 <= 1 == 0");
+    }
+
+    // 36b-7: complex + complex still produces correct complex result after fast-path change
+    #[test]
+    fn fast_path_regression_complex() {
+        let mut env = new_env();
+        run("r = (1 + 2i) + (3 + 4i);", &mut env);
+        match env.get("r") {
+            Some(Value::Complex(re, im)) => {
+                assert!((*re - 4.0).abs() < 1e-12, "re == 4, got {re}");
+                assert!((*im - 6.0).abs() < 1e-12, "im == 6, got {im}");
+            }
+            other => panic!("expected Complex, got {other:?}"),
+        }
+    }
+
+    // 36b-8: end-to-end scalar loop still accumulates correctly after fast-path change
+    #[test]
+    fn fast_path_loop_regression() {
+        let mut env = new_env();
+        run("s = 0;\nfor k = 1:100\n  s += k;\nend", &mut env);
+        assert_eq!(scalar(&env, "s"), 5050.0, "sum 1..100 via fast-path loop");
+    }
 }
