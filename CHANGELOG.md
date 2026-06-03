@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.47.0+001] - 2026-06-03
+
+### Changed
+
+- **Phase 36a — Constant folding in the compiler**
+
+  Pure constant sub-expressions are now evaluated at compile time and replaced
+  with a single `PushConst` instruction, eliminating redundant arithmetic and
+  variable loads on every loop iteration.
+
+  **`const_eval` helper** (`vm/compile.rs`): evaluates `Expr::Number`, unary
+  negation, and binary arithmetic/comparison/logical operations whose operands
+  are all statically known.  Division by zero conservatively returns `None`
+  (falls through to runtime) even though IEEE 754 would yield `inf`.
+
+  **Named user constants (Stage 3)**: `build_const_map` scans the top-level
+  statements of a block (before the first loop or conditional) and seeds a
+  fold map with variables that are assigned exactly once with a constant RHS.
+  A use-before-def guard (`seen` set) ensures a variable is only folded after
+  its definition, not before — preserving correct runtime semantics even when
+  the user writes code that would error at runtime.
+
+  **`compile_native` integration**: tries `const_eval` first; if the whole
+  expression folds, emits one `PushConst` and returns. Sub-expressions that
+  cannot fold fall through to the existing per-variant emit path unchanged.
+
+  Examples folded: `2 * pi` → `PushConst(6.283…)`, `1 / (2 * pi)` →
+  `PushConst(0.159…)`, `0.5 * dt` (when `dt = 0.001` precedes the loop) →
+  `PushConst(0.0005)`.
+
+  7 new tests; `vm_compile_assign` updated to expect the folded form.
+
 ## [0.47.0] - 2026-06-02
 
 ### Changed
