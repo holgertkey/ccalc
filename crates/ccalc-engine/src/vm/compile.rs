@@ -182,11 +182,14 @@ pub fn compile(stmts: &[StmtEntry]) -> Result<Chunk, CompileError> {
         }
     }
 
+    let const_map = build_const_map(stmts);
+
     let mut compiler = Compiler {
         chunk: Chunk::new(),
         loop_stack: Vec::new(),
         current_line: 0,
         slots: slot_map,
+        const_map,
     };
     compiler.chunk.slot_names = slot_names;
     compiler.compile_stmts(stmts)?;
@@ -213,6 +216,9 @@ struct Compiler {
     current_line: usize,
     /// Map from variable name to slot index for pure-local variables.
     slots: HashMap<String, u16>,
+    /// Compile-time constant values for variables that are assigned exactly once
+    /// at top-level before any loop, with a constant RHS.  Used by `const_eval`.
+    const_map: HashMap<String, Value>,
 }
 
 impl Compiler {
@@ -584,8 +590,15 @@ impl Compiler {
 
     /// Emit native stack opcodes for a pure expression (no `eval_with_io`).
     ///
+    /// Tries `const_eval` first; if the entire expression folds to a constant
+    /// at compile time, emits a single `PushConst` and returns early.
     /// Panics if `expr` is not pure — callers must check [`is_pure`] first.
     fn compile_native(&mut self, expr: &Expr) {
+        if let Some(val) = const_eval(expr, &self.const_map) {
+            let idx = self.chunk.add_const(val);
+            self.emit(Instr::with_u16(Opcode::PushConst, idx));
+            return;
+        }
         match expr {
             Expr::Number(f) => {
                 let idx = self.chunk.add_const(Value::Scalar(*f));
@@ -771,6 +784,162 @@ fn collect_env_required(stmts: &[StmtEntry], out: &mut HashSet<String>) {
             }
             _ => {}
         }
+    }
+}
+
+// ── Constant folding ──────────────────────────────────────────────────────────
+
+/// Evaluate `expr` at compile time.
+///
+/// Returns `Some(Value::Scalar(…))` when the entire expression reduces to a
+/// scalar constant using only literal numbers and entries in `const_map`.
+/// Returns `None` for any sub-expression that is not statically known.
+///
+/// **Safety invariant:** any `Some(v)` returned must equal the value that
+/// `vm_exec` would produce at runtime for the same operands.  Returning `None`
+/// is always safe (the compiler falls through to the emit-at-runtime path).
+/// Division by zero intentionally returns `None` to stay conservative.
+fn const_eval(expr: &Expr, const_map: &HashMap<String, Value>) -> Option<Value> {
+    match expr {
+        Expr::Number(f) => Some(Value::Scalar(*f)),
+        Expr::Var(name) => const_map.get(name.as_str()).cloned(),
+        Expr::UnaryMinus(inner) => {
+            if let Some(Value::Scalar(f)) = const_eval(inner, const_map) {
+                Some(Value::Scalar(-f))
+            } else {
+                None
+            }
+        }
+        Expr::BinOp(a, op, b) => {
+            let va = const_eval(a, const_map)?;
+            let vb = const_eval(b, const_map)?;
+            if let (Value::Scalar(fa), Value::Scalar(fb)) = (va, vb) {
+                match op {
+                    // Conservative: don't fold division by zero even though IEEE gives inf.
+                    Op::Div if fb == 0.0 => None,
+                    Op::ElemDiv if fb == 0.0 => None,
+                    Op::Add => Some(Value::Scalar(fa + fb)),
+                    Op::Sub => Some(Value::Scalar(fa - fb)),
+                    Op::Mul | Op::ElemMul => Some(Value::Scalar(fa * fb)),
+                    Op::Div | Op::ElemDiv => Some(Value::Scalar(fa / fb)),
+                    Op::Pow | Op::ElemPow => Some(Value::Scalar(fa.powf(fb))),
+                    Op::Eq => Some(Value::Scalar(if fa == fb { 1.0 } else { 0.0 })),
+                    Op::NotEq => Some(Value::Scalar(if fa != fb { 1.0 } else { 0.0 })),
+                    Op::Lt => Some(Value::Scalar(if fa < fb { 1.0 } else { 0.0 })),
+                    Op::LtEq => Some(Value::Scalar(if fa <= fb { 1.0 } else { 0.0 })),
+                    Op::Gt => Some(Value::Scalar(if fa > fb { 1.0 } else { 0.0 })),
+                    Op::GtEq => Some(Value::Scalar(if fa >= fb { 1.0 } else { 0.0 })),
+                    Op::And => Some(Value::Scalar(if fa != 0.0 && fb != 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    })),
+                    Op::Or => Some(Value::Scalar(if fa != 0.0 || fb != 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    })),
+                    _ => None, // ElemAnd, ElemOr, LDiv not folded
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Build a map of compile-time-constant variable names from the top-level
+/// statements of a block.
+///
+/// A variable is a "named constant" when:
+/// 1. It is assigned exactly once across the entire block (including nested loops).
+/// 2. Its assignment appears at the top level before any loop or conditional.
+/// 3. The RHS evaluates to a scalar constant via `const_eval`.
+/// 4. It has not been referenced as a free variable in any *earlier* statement
+///    (use-before-def guard — prevents folding a name to its eventual value
+///    before it has been assigned at runtime).
+///
+/// These names are folded to their constant values wherever they appear in
+/// pure expressions within the compiled chunk.
+fn build_const_map(stmts: &[StmtEntry]) -> HashMap<String, Value> {
+    // Count total assignments for every name in the block (incl. nested).
+    let mut total_counts: HashMap<String, usize> = HashMap::new();
+    for (stmt, _, _) in stmts {
+        collect_assignment_counts(stmt, &mut total_counts);
+    }
+
+    let mut const_map: HashMap<String, Value> = HashMap::new();
+    // Track names that appeared as free vars in expressions seen so far.
+    // A name in this set was "used before defined" — don't fold it.
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for (stmt, _, _) in stmts {
+        match stmt {
+            // Stop at the first loop or conditional — we can only guarantee
+            // constness for names assigned before any branching.
+            Stmt::For { .. } | Stmt::While { .. } | Stmt::If { .. } => break,
+            Stmt::Assign(name, expr) => {
+                if total_counts.get(name).copied().unwrap_or(0) == 1
+                    && !seen.contains(name.as_str())
+                {
+                    // Build the map incrementally so `b = a * 3` folds if `a` is already known.
+                    if let Some(val) = const_eval(expr, &const_map) {
+                        const_map.insert(name.clone(), val);
+                    }
+                }
+                // Record the RHS free vars: any name used here was seen before
+                // any definition that follows.
+                free_vars_in_expr(expr, &mut seen);
+            }
+            Stmt::Expr(expr) => {
+                free_vars_in_expr(expr, &mut seen);
+            }
+            _ => {}
+        }
+    }
+    const_map
+}
+
+/// Recursively tally how many times each variable name is the target of an
+/// assignment (Assign or IndexSet) or a for-loop variable anywhere in `stmt`
+/// and its children.
+fn collect_assignment_counts(stmt: &Stmt, counts: &mut HashMap<String, usize>) {
+    match stmt {
+        Stmt::Assign(name, _) => *counts.entry(name.clone()).or_insert(0) += 1,
+        Stmt::IndexSet { name, .. } => *counts.entry(name.clone()).or_insert(0) += 1,
+        Stmt::For { var, body, .. } => {
+            *counts.entry(var.clone()).or_insert(0) += 1;
+            for (s, _, _) in body {
+                collect_assignment_counts(s, counts);
+            }
+        }
+        Stmt::While { body, .. } => {
+            for (s, _, _) in body {
+                collect_assignment_counts(s, counts);
+            }
+        }
+        Stmt::If {
+            body,
+            elseif_branches,
+            else_body,
+            ..
+        } => {
+            for (s, _, _) in body {
+                collect_assignment_counts(s, counts);
+            }
+            for (_, b) in elseif_branches {
+                for (s, _, _) in b {
+                    collect_assignment_counts(s, counts);
+                }
+            }
+            if let Some(b) = else_body {
+                for (s, _, _) in b {
+                    collect_assignment_counts(s, counts);
+                }
+            }
+        }
+        _ => {}
     }
 }
 

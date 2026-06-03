@@ -7913,35 +7913,32 @@ mod vm_tests {
 
     #[test]
     fn vm_compile_assign() {
-        // x = 3 + 4 — x is a pure local → PushConst PushConst Add StoreSlot
+        // x = 3 + 4 — constant folding collapses to PushConst(7) + StoreSlot.
         let stmts = parse_stmts("x = 3 + 4").expect("parse");
         let chunk = compile(&stmts).expect("compile");
+        // After folding: exactly 2 instructions.
         assert_eq!(
-            chunk.code[0].op,
-            Opcode::PushConst,
-            "expected PushConst for 3"
+            chunk.code.len(),
+            2,
+            "folded 3+4 should produce 2 instructions"
         );
+        assert_eq!(chunk.code[0].op, Opcode::PushConst, "expected PushConst(7)");
         assert_eq!(
             chunk.code[1].op,
-            Opcode::PushConst,
-            "expected PushConst for 4"
-        );
-        assert_eq!(chunk.code[2].op, Opcode::Add, "expected Add");
-        assert_eq!(
-            chunk.code[3].op,
             Opcode::StoreSlot,
             "expected StoreSlot (x is a pure local)"
         );
-        // Verify constant pool: 3.0 and 4.0
-        let c0 = chunk.code[0].u16_arg() as usize;
-        let c1 = chunk.code[1].u16_arg() as usize;
-        assert!(matches!(chunk.consts[c0], Value::Scalar(f) if f == 3.0));
-        assert!(matches!(chunk.consts[c1], Value::Scalar(f) if f == 4.0));
+        // Verify the folded constant is 7.0
+        let cidx = chunk.code[0].u16_arg() as usize;
+        assert!(
+            matches!(chunk.consts[cidx], Value::Scalar(f) if f == 7.0),
+            "folded constant should be 7.0"
+        );
         // Verify slot 0 is "x"
-        let slot = chunk.code[3].u16_at(0) as usize;
+        let slot = chunk.code[1].u16_at(0) as usize;
         assert_eq!(chunk.slot_names[slot], "x");
         // silent flag = 0 (not silent — no semicolon)
-        assert_eq!(chunk.code[3].u8_at(2), 0, "expected silent=0");
+        assert_eq!(chunk.code[1].u8_at(2), 0, "expected silent=0");
     }
 
     // ── 3: compile a for loop with correct backpatching ───────────────────────
@@ -8660,5 +8657,141 @@ mod vm_tests {
             }
             other => panic!("expected Function, got {other:?}"),
         }
+    }
+
+    // ── Phase 36a: Constant folding ───────────────────────────────────────────
+
+    // 36a-1: a bare numeric literal folds to a single PushConst
+    #[test]
+    fn fold_number_literal() {
+        let stmts = parse_stmts("x = 3.0;").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert_eq!(chunk.code.len(), 2, "PushConst + StoreSlot");
+        assert_eq!(chunk.code[0].op, Opcode::PushConst);
+        let cidx = chunk.code[0].u16_arg() as usize;
+        assert!(matches!(chunk.consts[cidx], Value::Scalar(f) if f == 3.0));
+    }
+
+    // 36a-2: 2 * pi folds to one PushConst; no LoadVar for pi
+    #[test]
+    fn fold_pi_times_two() {
+        let stmts = parse_stmts("x = 2 * pi;").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert_eq!(
+            chunk.code.len(),
+            2,
+            "only PushConst + StoreSlot after folding"
+        );
+        assert_eq!(chunk.code[0].op, Opcode::PushConst);
+        let cidx = chunk.code[0].u16_arg() as usize;
+        let expected = 2.0 * std::f64::consts::PI;
+        if let Value::Scalar(f) = chunk.consts[cidx] {
+            assert!(
+                (f - expected).abs() < 1e-12,
+                "expected 2*pi ≈ {expected}, got {f}"
+            );
+        } else {
+            panic!("expected Scalar in const pool");
+        }
+        assert!(
+            !chunk.code.iter().any(|i| i.op == Opcode::LoadVar),
+            "pi was folded — no LoadVar expected"
+        );
+    }
+
+    // 36a-3: nested constant expression folds to a single PushConst
+    #[test]
+    fn fold_nested() {
+        let stmts = parse_stmts("x = 1 / (2 * pi);").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert_eq!(chunk.code.len(), 2, "PushConst + StoreSlot only");
+        assert_eq!(chunk.code[0].op, Opcode::PushConst);
+        let cidx = chunk.code[0].u16_arg() as usize;
+        let expected = 1.0 / (2.0 * std::f64::consts::PI);
+        if let Value::Scalar(f) = chunk.consts[cidx] {
+            assert!((f - expected).abs() < 1e-15, "expected 1/(2*pi), got {f}");
+        } else {
+            panic!("expected Scalar");
+        }
+    }
+
+    // 36a-4: division by zero does NOT fold (runtime path used instead)
+    #[test]
+    fn fold_division_by_zero() {
+        let stmts = parse_stmts("x = 1 / 0;").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert!(
+            chunk.code.len() > 2,
+            "1/0 must not be folded; expected runtime dispatch (> 2 instrs)"
+        );
+        assert!(
+            chunk.code.iter().any(|i| i.op == Opcode::Div),
+            "Div opcode must be present for runtime dispatch"
+        );
+    }
+
+    // 36a-5: loop-invariant sub-expression folds; runtime part (sin(k)) does not
+    #[test]
+    fn fold_loop_invariant() {
+        let stmts = parse_stmts("for k=1:5\n  x = sin(k) * (2*pi);\nend").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        let two_pi = 2.0 * std::f64::consts::PI;
+        let has_folded_pi = chunk.consts.iter().any(|v| {
+            if let Value::Scalar(f) = v {
+                (f - two_pi).abs() < 1e-12
+            } else {
+                false
+            }
+        });
+        assert!(has_folded_pi, "2*pi should be folded into the const pool");
+        assert!(
+            chunk.code.iter().any(|i| i.op == Opcode::CallBuiltin),
+            "sin(k) must remain a CallBuiltin at runtime"
+        );
+    }
+
+    // 36a-6: top-level named constant is folded — inspects the chunk directly
+    #[test]
+    fn fold_named_const() {
+        // dt = 0.001 at top level; x = 0.5 * dt should fold to a single PushConst(0.0005).
+        let stmts = parse_stmts("dt = 0.001;\nx = 0.5 * dt;").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        // dt → PushConst(0.001) StoreSlot
+        // x  → PushConst(0.0005) StoreSlot   ← folded, no Mul
+        let has_folded = chunk.consts.iter().any(|v| {
+            if let Value::Scalar(f) = v {
+                (f - 0.0005_f64).abs() < 1e-15
+            } else {
+                false
+            }
+        });
+        assert!(
+            has_folded,
+            "0.5 * 0.001 should be folded into the const pool as 0.0005"
+        );
+        // No Mul opcode expected — the expression was fully folded.
+        assert!(
+            !chunk.code.iter().any(|i| i.op == Opcode::Mul),
+            "no Mul opcode expected — both operands were compile-time constants"
+        );
+    }
+
+    // 36a-7: no over-folding — expressions with runtime variables are not folded
+    #[test]
+    fn fold_regression() {
+        // y = x + 1 where x is an unknown variable: must not fold to a constant.
+        let stmts = parse_stmts("y = x + 1;").expect("parse");
+        let chunk = compile(&stmts).expect("compile");
+        assert!(
+            chunk.code.len() > 2,
+            "x+1 must not collapse to a single PushConst"
+        );
+        assert!(
+            chunk
+                .code
+                .iter()
+                .any(|i| i.op == Opcode::LoadVar || i.op == Opcode::LoadSlot),
+            "x must be loaded at runtime, not folded"
+        );
     }
 }
